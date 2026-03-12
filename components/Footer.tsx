@@ -25,7 +25,7 @@ export default function Footer() {
               Petite équipe française spécialisée dans la gestion administrative
               des organismes de formation et la certification Qualiopi.
             </p>
-            <p className="mt-2 gazette-byline">Fondée en 2017 · Paris</p>
+            <p className="mt-2 gazette-byline">Ensemble depuis 2017</p>
           </div>
 
           <div className="relative md:pl-4 md:before:absolute md:before:left-0 md:before:top-2 md:before:bottom-2 md:before:w-px md:before:bg-gradient-to-b md:before:from-transparent md:before:via-[#b28a62]/40 md:before:to-transparent">
