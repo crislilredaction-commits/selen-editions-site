@@ -1,26 +1,524 @@
+@import url("https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,900;1,400;1,600&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Cinzel:wght@400;600;700&display=swap");
 @import "tailwindcss";
 
+/* ═══════════════════════════════════════════════
+   SELEN EDITIONS — Gazette Magique CSS
+   Grimoire administratif / Parchemin vivant
+   ═══════════════════════════════════════════════ */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --parchment: #efe3cf;
+  --parchment-light: #f8f0e3;
+  --parchment-deep: #e0d0b8;
+  --ink: #3e2a1f;
+  --ink-soft: #5a4031;
+  --ink-faint: #8a7060;
+  --ocre: #b28a62;
+  --ocre-dark: #8a6243;
+  --ocre-gold: #c9a055;
+  --gold-shimmer: #d4aa5a;
+  --sepia-mid: #c8a87a;
+  --paper: #f8efdf;
+  --paper-warm: #f4e8d6;
+  --rust: #8a4b24;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ─── Base ─── */
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--parchment);
+  color: var(--ink);
+  font-family: "EB Garamond", Georgia, "Times New Roman", serif;
+  font-size: 17px;
+  line-height: 1.75;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── Noise texture overlay ─── */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0.028;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 256px 256px;
+}
+
+/* ─── Gazette Paper ─── */
+.gazette-paper {
+  background:
+    url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%233e2a1f' fill-opacity='0.018'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E"),
+    linear-gradient(160deg, rgba(255, 255, 255, 0.18) 0%, transparent 50%),
+    radial-gradient(
+      ellipse at 20% 0%,
+      rgba(212, 170, 90, 0.07) 0%,
+      transparent 55%
+    ),
+    radial-gradient(
+      ellipse at 80% 100%,
+      rgba(62, 42, 31, 0.04) 0%,
+      transparent 50%
+    ),
+    var(--parchment);
+}
+
+/* ─── Masthead divider ─── */
+.gazette-masthead-rule {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  color: var(--ocre-dark);
+}
+
+.gazette-masthead-rule::before,
+.gazette-masthead-rule::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--ocre), transparent);
+}
+
+/* ─── Cards ─── */
+.gazette-card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--sepia-mid);
+  background:
+    linear-gradient(
+      155deg,
+      rgba(255, 255, 255, 0.32) 0%,
+      rgba(255, 255, 255, 0.06) 60%
+    ),
+    radial-gradient(
+      circle at 8% 8%,
+      rgba(255, 255, 255, 0.5) 0%,
+      transparent 38%
+    ),
+    var(--paper);
+  box-shadow:
+    0 2px 0 rgba(62, 42, 31, 0.06),
+    0 8px 24px rgba(62, 42, 31, 0.07),
+    0 20px 60px rgba(62, 42, 31, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  transition:
+    transform 0.45s cubic-bezier(0.23, 1, 0.32, 1),
+    box-shadow 0.45s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.gazette-card:hover {
+  transform: translateY(-5px) rotate(0.2deg);
+  box-shadow:
+    0 2px 0 rgba(62, 42, 31, 0.06),
+    0 16px 40px rgba(62, 42, 31, 0.13),
+    0 32px 80px rgba(62, 42, 31, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+/* Ornamental corners */
+.gazette-card::before,
+.gazette-card::after {
+  content: "";
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border-color: var(--ocre);
+  opacity: 0.7;
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s ease;
+}
+
+.gazette-card::before {
+  top: 10px;
+  left: 10px;
+  border-top: 1.5px solid;
+  border-left: 1.5px solid;
+}
+
+.gazette-card::after {
+  right: 10px;
+  bottom: 10px;
+  border-right: 1.5px solid;
+  border-bottom: 1.5px solid;
+}
+
+.gazette-card:hover::before,
+.gazette-card:hover::after {
+  opacity: 1;
+  transform: scale(1.15);
+}
+
+/* Top band */
+.gazette-band {
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: 5px;
+  background: linear-gradient(
+    90deg,
+    var(--ocre-dark) 0%,
+    var(--ocre-gold) 35%,
+    var(--sepia-mid) 65%,
+    var(--ocre-dark) 100%
+  );
+}
+
+/* ─── Labels ─── */
+.gazette-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  border: 1px solid var(--ocre);
+  background: linear-gradient(
+    to right,
+    rgba(178, 138, 98, 0.08),
+    rgba(178, 138, 98, 0.03)
+  );
+  color: var(--ocre-dark);
+  font-family: "Cinzel", serif;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  padding: 0.3rem 0.75rem;
+}
+
+.gazette-label::before {
+  content: "✦";
+  font-size: 0.55rem;
+  opacity: 0.6;
+}
+
+/* ─── Section titles ─── */
+.gazette-section-title {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.gazette-section-title::before,
+.gazette-section-title::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--ocre) 30%,
+    var(--ink) 50%,
+    var(--ocre) 70%,
+    transparent
+  );
+}
+
+/* ─── Hero specific ─── */
+.gazette-hero-title {
+  font-family: "Playfair Display", Georgia, serif;
+  font-weight: 900;
+  line-height: 0.93;
+  letter-spacing: -0.02em;
+}
+
+.gazette-hero-border {
+  position: relative;
+  border-top: 3px double var(--ink);
+  border-bottom: 3px double var(--ink);
+  padding-top: 0.6rem;
+  padding-bottom: 0.6rem;
+}
+
+.gazette-hero-border::before {
+  content: "";
+  position: absolute;
+  inset: 4px 0;
+  border-top: 1px solid rgba(62, 42, 31, 0.2);
+  border-bottom: 1px solid rgba(62, 42, 31, 0.2);
+  pointer-events: none;
+}
+
+/* ─── Pull quote / ornament ─── */
+.gazette-ornament {
+  font-family: "Playfair Display", serif;
+  font-size: 5rem;
+  line-height: 0.6;
+  color: var(--ocre-gold);
+  opacity: 0.35;
+  font-style: italic;
+  user-select: none;
+}
+
+/* ─── CTA Dark Block ─── */
+.gazette-cta {
+  background:
+    url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 40L40 0H20L0 20M40 40V20L20 40' fill='%23ffffff' fill-opacity='0.02'/%3E%3C/svg%3E"),
+    linear-gradient(135deg, #2e1d14 0%, #3e2a1f 50%, #4a3124 100%);
+  border: 1px solid rgba(178, 138, 98, 0.3);
+  position: relative;
+  overflow: hidden;
+}
+
+.gazette-cta::before {
+  content: "";
+  position: absolute;
+  inset: 12px;
+  border: 1px solid rgba(201, 160, 85, 0.15);
+  pointer-events: none;
+}
+
+/* ─── Footer columns ─── */
+.gazette-footer {
+  background: linear-gradient(to bottom, var(--parchment-deep), #ddd0b6);
+  border-top: 3px double var(--ocre);
+  position: relative;
+}
+
+.gazette-footer::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--ocre-dark),
+    transparent
+  );
+}
+
+/* ─── Animations ─── */
+
+/* Float gentle */
+@keyframes floatSoft {
+  0%,
+  100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  33% {
+    transform: translateY(-8px) rotate(0.5deg);
+  }
+  66% {
+    transform: translateY(-4px) rotate(-0.3deg);
+  }
+}
+
+.selen-float {
+  animation: floatSoft 6s ease-in-out infinite;
+}
+.selen-float-delay {
+  animation: floatSoft 7.5s ease-in-out infinite 1.2s;
+}
+.selen-float-delay2 {
+  animation: floatSoft 9s ease-in-out infinite 2.4s;
+}
+
+/* Hero mascot */
+@keyframes floatMascot {
+  0%,
+  100% {
+    transform: translateY(0px) rotate(-2deg);
+  }
+  50% {
+    transform: translateY(-18px) rotate(2deg);
+  }
+}
+.animate-float-soft {
+  animation: floatMascot 5s ease-in-out infinite;
+}
+
+/* Gentle spin for accent elements */
+@keyframes spinSlow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+.animate-spin-slow {
+  animation: spinSlow 20s linear infinite;
+}
+
+/* Reveal on scroll (JS adds .is-visible) */
+.reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  transition:
+    opacity 0.75s cubic-bezier(0.23, 1, 0.32, 1),
+    transform 0.75s cubic-bezier(0.23, 1, 0.32, 1);
+}
+.reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+/* Staggered children */
+.reveal-stagger > * {
+  opacity: 0;
+  transform: translateY(22px);
+  transition:
+    opacity 0.65s cubic-bezier(0.23, 1, 0.32, 1),
+    transform 0.65s cubic-bezier(0.23, 1, 0.32, 1);
+}
+.reveal-stagger.is-visible > *:nth-child(1) {
+  opacity: 1;
+  transform: none;
+  transition-delay: 0.05s;
+}
+.reveal-stagger.is-visible > *:nth-child(2) {
+  opacity: 1;
+  transform: none;
+  transition-delay: 0.18s;
+}
+.reveal-stagger.is-visible > *:nth-child(3) {
+  opacity: 1;
+  transform: none;
+  transition-delay: 0.31s;
+}
+
+/* Hover premium */
+.selen-hover {
+  transition:
+    transform 0.5s cubic-bezier(0.23, 1, 0.32, 1),
+    filter 0.5s ease;
+}
+.selen-hover:hover {
+  transform: scale(1.1) rotate(-3deg);
+  filter: drop-shadow(0 4px 12px rgba(178, 138, 98, 0.4));
+}
+
+/* Gold shimmer on text */
+@keyframes goldShimmer {
+  0% {
+    background-position: -200% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+.gold-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--ocre-dark) 0%,
+    var(--gold-shimmer) 40%,
+    var(--ocre-dark) 60%,
+    var(--ocre-dark) 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: goldShimmer 5s linear infinite;
+}
+
+/* Dot separator */
+.gazette-dot-rule {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--ocre);
+  font-size: 0.5rem;
+  letter-spacing: 0.5rem;
+}
+.gazette-dot-rule::before,
+.gazette-dot-rule::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--ocre);
+  opacity: 0.4;
+}
+
+/* Ink drop button */
+.btn-ink {
+  position: relative;
+  overflow: hidden;
+  border: 2px solid var(--ink);
+  color: var(--ink);
+  padding: 0.75rem 1.75rem;
+  font-family: "Cinzel", serif;
+  font-size: 0.8rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  transition: color 0.4s ease;
+  background: transparent;
+}
+.btn-ink::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--ink);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+  z-index: 0;
+}
+.btn-ink:hover {
+  color: var(--parchment);
+}
+.btn-ink:hover::before {
+  transform: scaleX(1);
+}
+.btn-ink > span {
+  position: relative;
+  z-index: 1;
+}
+
+/* Light variant */
+.btn-ink-light {
+  border-color: var(--paper);
+  color: var(--paper);
+}
+.btn-ink-light::before {
+  background: var(--paper);
+}
+.btn-ink-light:hover {
+  color: var(--ink);
+}
+
+/* Byline */
+.gazette-byline {
+  font-family: "Cinzel", serif;
+  font-size: 0.6rem;
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  opacity: 0.75;
+}
+
+/* Drop cap */
+.gazette-dropcap::first-letter {
+  float: left;
+  font-family: "Playfair Display", serif;
+  font-size: 3.8rem;
+  font-weight: 900;
+  line-height: 0.75;
+  margin-right: 0.12em;
+  color: var(--ocre-dark);
+}
+
+/* Column rule for 2-col text */
+.gazette-columns {
+  column-count: 2;
+  column-gap: 2.5rem;
+  column-rule: 1px solid rgba(178, 138, 98, 0.3);
+}
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--parchment-deep);
+}
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(to bottom, var(--ocre), var(--ocre-dark));
+  border-radius: 4px;
 }
