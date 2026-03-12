@@ -28,13 +28,7 @@ export default function MentionsLegalesPage() {
                 <br />
                 Statut juridique : Entreprise individuelle
                 <br />
-                Adresse : 1, rue de Vallant, Droupt Saint Basle
-                <br />
                 Email : hello@selen-editions.fr
-                <br />
-                Numéro SIRET : 81772377800038
-                <br />
-                Directeur de la publication : Pascale Barthaux
               </p>
             </section>
 
