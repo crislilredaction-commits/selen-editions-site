@@ -17,10 +17,12 @@ const cinzel = Cinzel({
   variable: "--font-cinzel",
 });
 
-export const metadata: Metadata = {
+export const metadata = {
   title: "Selen Editions",
-  description:
-    "Petite équipe française spécialisée dans la gestion administrative des organismes de formation et la certification Qualiopi.",
+  description: "Le grimoire administratif des formateurs",
+  icons: {
+    icon: "/favicon.png",
+  },
 };
 
 export default function RootLayout({
@@ -31,6 +33,7 @@ export default function RootLayout({
   return (
     <html lang="fr">
       <body
+        suppressHydrationWarning
         className={`${playfair.variable} ${ebGaramond.variable} ${cinzel.variable}`}
       >
         {children}
