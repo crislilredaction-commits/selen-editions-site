@@ -39,9 +39,7 @@ export default function PrestationsPage() {
           {/* REVIEW */}
           <article className="gazette-card relative p-6 md:p-10">
             <div className="gazette-band" />
-            <span className="absolute -top-3.5 left-5 md:left-8 bg-[#3e2a1f] px-3 md:px-4 py-1 font-['Cinzel'] text-[0.58rem] uppercase tracking-widest text-[#f3e5cf]">
-              ✦ À la une
-            </span>
+
             <div className="pt-4">
               <div className="flex items-center gap-3 md:gap-4 mb-5">
                 <img
@@ -91,9 +89,7 @@ export default function PrestationsPage() {
           {/* PREPA */}
           <article className="gazette-card relative p-6 md:p-10">
             <div className="gazette-band" />
-            <span className="absolute -top-3.5 left-5 md:left-8 bg-[#7a5a31] px-3 md:px-4 py-1 font-['Cinzel'] text-[0.58rem] uppercase tracking-widest text-[#f3e5cf]">
-              ✦ Chronique
-            </span>
+
             <div className="pt-4">
               <div className="flex items-center gap-3 md:gap-4 mb-5">
                 <img
@@ -141,9 +137,7 @@ export default function PrestationsPage() {
           {/* DAILY — full width */}
           <article className="gazette-card relative p-6 md:p-10 md:col-span-2">
             <div className="gazette-band" />
-            <span className="absolute -top-3.5 left-5 md:left-8 bg-[#b28a62] px-3 md:px-4 py-1 font-['Cinzel'] text-[0.58rem] uppercase tracking-widest text-white">
-              ✦ Service continu
-            </span>
+
             <div className="pt-4">
               <div className="flex items-center gap-3 md:gap-4 mb-5 md:justify-center">
                 <img
