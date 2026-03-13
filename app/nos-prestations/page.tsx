@@ -89,7 +89,6 @@ export default function PrestationsPage() {
           {/* PREPA */}
           <article className="gazette-card relative p-6 md:p-10">
             <div className="gazette-band" />
-
             <div className="pt-4">
               <div className="flex items-center gap-3 md:gap-4 mb-5">
                 <img
@@ -125,11 +124,33 @@ export default function PrestationsPage() {
                 ))}
               </ul>
               <div className="mt-6 border border-[#b28a62]/30 bg-white/40 p-5 text-center">
-                <p className="gazette-byline">Tarif</p>
-                <p className="mt-2 font-['Playfair_Display'] text-4xl md:text-5xl font-semibold text-[#3e2a1f]">
-                  900{" "}
-                  <span className="text-xl md:text-2xl text-[#6e4a32]">€</span>
-                </p>
+                <p className="gazette-byline">Tarifs</p>
+
+                <div className="mt-4 space-y-4 text-[#3e2a1f]">
+                  <div>
+                    <p className="text-sm md:text-base text-[#6e4a32]">
+                      Audit initial
+                    </p>
+                    <p className="mt-1 font-['Playfair_Display'] text-3xl md:text-4xl font-semibold">
+                      900{" "}
+                      <span className="text-lg md:text-xl text-[#6e4a32]">
+                        €
+                      </span>
+                    </p>
+                  </div>
+
+                  <div className="border-t border-[#b28a62]/20 pt-4">
+                    <p className="text-sm md:text-base text-[#6e4a32]">
+                      Audit de surveillance ou de renouvellement
+                    </p>
+                    <p className="mt-1 font-['Playfair_Display'] text-3xl md:text-4xl font-semibold">
+                      1200{" "}
+                      <span className="text-lg md:text-xl text-[#6e4a32]">
+                        €
+                      </span>
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
           </article>
