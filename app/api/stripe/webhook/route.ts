@@ -268,6 +268,50 @@ async function activateAutoAuditAccess(session: Stripe.Checkout.Session) {
   }
 }
 
+async function createAuditBlancCase(session: Stripe.Checkout.Session) {
+  const email = session.customer_details?.email || session.customer_email || "";
+
+  if (!email) {
+    throw new Error("Aucun email client trouvé dans la session Stripe.");
+  }
+
+  const now = new Date();
+
+  const offer = session.metadata?.offer ?? "direct";
+  const amountPaid = session.amount_total ?? null;
+  const currency = session.currency ?? "eur";
+
+  const stripeCustomerId =
+    typeof session.customer === "string"
+      ? session.customer
+      : session.customer?.id;
+
+  const stripePaymentIntentId =
+    typeof session.payment_intent === "string"
+      ? session.payment_intent
+      : session.payment_intent?.id;
+
+  const { error } = await supabaseAdmin.from("audit_blanc_cases").insert({
+    client_email: email.toLowerCase(),
+    status: "booking_pending",
+    offer,
+    price_paid: amountPaid,
+    currency,
+    stripe_checkout_session_id: session.id,
+    stripe_customer_id: stripeCustomerId ?? null,
+    stripe_payment_intent_id: stripePaymentIntentId ?? null,
+    report_status: "not_started",
+    created_at: now.toISOString(),
+    updated_at: now.toISOString(),
+  });
+
+  if (error) {
+    throw new Error(
+      `Erreur Supabase création dossier audit blanc : ${error.message}`,
+    );
+  }
+}
+
 export async function POST(request: Request) {
   const body = await request.text();
   const signature = request.headers.get("stripe-signature");
@@ -305,6 +349,10 @@ export async function POST(request: Request) {
 
       if (session.metadata?.product_key === "preaudit_qualiopi") {
         await activateAutoAuditAccess(session);
+      }
+
+      if (session.metadata?.product_key === "audit_blanc_qualiopi") {
+        await createAuditBlancCase(session);
       }
     }
 

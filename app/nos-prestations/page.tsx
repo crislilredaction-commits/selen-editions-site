@@ -216,11 +216,21 @@ export default function PrestationsPage() {
                       </div>
                     </div>
 
-                    <p className="mt-5 font-['EB_Garamond'] italic text-[#8a6243] text-[0.9rem] leading-6">
-                      La réservation de l&apos;audit blanc sera bientôt
-                      disponible avec paiement Stripe puis prise de rendez-vous
-                      Calendly.
-                    </p>
+                    <div className="mt-5 border-t border-[#b28a62]/30 pt-4">
+                      <p className="font-['EB_Garamond'] italic text-[#8a6243] text-[0.9rem] leading-6">
+                        Le tarif réservé de 199 € sera proposé depuis l’espace
+                        client aux personnes ayant acheté l’auto-audit.
+                      </p>
+
+                      <div className="mt-5">
+                        <Link
+                          href="/paiement/audit-blanc"
+                          className="btn-ink text-center inline-block"
+                        >
+                          <span>Réserver un audit blanc direct — 397 €</span>
+                        </Link>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>

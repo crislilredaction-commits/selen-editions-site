@@ -324,7 +324,55 @@ export default function ClientDashboardPage() {
               padding: "1.2rem",
             }}
           >
-            <p className="gazette-label">Option accompagnement</p>
+            <article
+              style={{
+                background: "var(--paper)",
+                border: "1px solid var(--sepia-mid)",
+                borderLeft: "4px solid var(--ocre-gold)",
+                padding: "1.2rem",
+              }}
+            >
+              <p className="gazette-label">Selen Review</p>
+
+              <h2 style={{ color: "var(--ink)", marginBottom: "0.5rem" }}>
+                Audit blanc Qualiopi
+              </h2>
+
+              <p
+                style={{
+                  color: "var(--ink-soft)",
+                  lineHeight: 1.6,
+                  marginBottom: "1rem",
+                }}
+              >
+                Retrouvez ici votre dossier d’audit blanc, vos rendez-vous, les
+                consignes de préparation, puis le rapport transmis par
+                l’auditeur et les documents correctifs éventuels.
+              </p>
+
+              <div
+                style={{
+                  display: "grid",
+                  gap: "0.5rem",
+                  color: "var(--ink-faint)",
+                  fontSize: "0.9rem",
+                  lineHeight: 1.5,
+                  marginBottom: "1rem",
+                }}
+              >
+                <p>✦ Audit blanc direct : 397 €</p>
+                <p>✦ Tarif après auto-audit : 199 €</p>
+                <p>✦ Réservation Calendly après paiement</p>
+              </div>
+
+              <button
+                type="button"
+                className="btn-ink"
+                onClick={() => router.push("/client/audit-blanc")}
+              >
+                <span>Accéder à mon audit blanc →</span>
+              </button>
+            </article>
 
             <h2 style={{ color: "var(--ink)", marginBottom: "0.5rem" }}>
               Audit blanc après auto-audit
