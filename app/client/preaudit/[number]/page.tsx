@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "../../../lib/supabase/client";
+import { checkPreauditAccess } from "../../../lib/checkPreauditAccess";
+import ClientSupportBar from "@/components/ClientSupportBar";
 
 type Answer = "yes" | "partial" | "no" | "unknown";
 type Diagnostic = "a_verifier" | "majeure" | "mineure" | "conforme";
@@ -60,7 +62,10 @@ function computeDiagnostic(
           indicatorNumber === 22 ||
           indicatorNumber === 26 ||
           indicatorNumber === 27 ||
-          indicatorNumber === 28) &&
+          indicatorNumber === 28 ||
+          indicatorNumber === 29 ||
+          indicatorNumber === 31 ||
+          indicatorNumber === 32) &&
         q.affects_major
       ) {
         hasMajor = true;
@@ -70,7 +75,9 @@ function computeDiagnostic(
     }
   });
 
-  if (answered < 5) return "a_verifier";
+  const requiredAnswers = Math.min(5, questions.length);
+
+  if (answered < requiredAnswers) return "a_verifier";
   if (hasMajor) return "majeure";
   if (hasMinor) return "mineure";
   return "conforme";
@@ -135,34 +142,6 @@ function formatAuditType(value?: string | null) {
   if (value === "surveillance") return "Surveillance";
   if (value === "renouvellement") return "Renouvellement";
   return "Non renseigné";
-}
-
-function getIndicator1NonConformities(
-  questions: Question[],
-  answers: Record<string, Answer>,
-) {
-  const issues = {
-    hasAccessibilityIssue: false,
-    hasGeneralInfoIssue: false,
-  };
-
-  questions.forEach((q) => {
-    const answer = answers[q.id];
-
-    if (!answer || answer === "yes") return;
-
-    // QUESTION 13 → accessibilité
-    if (q.question_order === 13 && answer !== "yes") {
-      issues.hasAccessibilityIssue = true;
-    }
-
-    // autres questions indicateur 1
-    if (q.question_order !== 13 && answer !== "yes") {
-      issues.hasGeneralInfoIssue = true;
-    }
-  });
-
-  return issues;
 }
 
 function getIndicatorInfoBlocks(indicatorNumber: number) {
@@ -575,6 +554,66 @@ function getIndicatorInfoBlocks(indicatorNumber: number) {
         text: "Une simple liste de contacts ne suffit pas toujours : il faut montrer que le réseau est réellement mobilisé, avec des échanges, conventions, comptes rendus, retours entreprises ou actions concrètes liées à l’accueil en entreprise.",
       },
     ],
+
+    29: [
+      {
+        title: "Ce que l’auditeur vérifie",
+        text: "L’auditeur vérifie que le CFA développe des actions concrètes favorisant l’insertion professionnelle ou la poursuite d’études des apprentis.",
+      },
+      {
+        title: "Preuves attendues",
+        text: "Livret de suivi de l’apprenti, planning d’ateliers, feuilles d’émargement, supports CV ou entretien, informations sur les poursuites d’études, partenariats, enquêtes de sortie ou suivi des suites de parcours.",
+      },
+      {
+        title: "Bon à savoir",
+        text: "Il ne suffit pas de dire que les apprentis peuvent poursuivre leurs études ou chercher un emploi : il faut montrer les actions proposées, les preuves de participation ou de transmission, et si possible un suivi des suites de parcours.",
+      },
+    ],
+
+    30: [
+      {
+        title: "Ce que l’auditeur vérifie",
+        text: "L’auditeur vérifie que le prestataire recueille les appréciations des parties prenantes concernées : bénéficiaires, financeurs, équipes pédagogiques et entreprises lorsque cela s’applique.",
+      },
+      {
+        title: "Preuves attendues",
+        text: "Questionnaires de satisfaction, évaluations à chaud ou à froid, comptes rendus d’entretien, retours formateurs, retours entreprises, sollicitations financeurs, relances, exports de formulaires ou tableaux de synthèse.",
+      },
+      {
+        title: "Bon à savoir",
+        text: "Le recueil doit être organisé, tracé et permettre une expression libre. Il ne suffit pas d’avoir un questionnaire : il faut pouvoir prouver qu’il est envoyé, relancé si besoin, complété ou au moins sollicité auprès des parties prenantes concernées.",
+      },
+    ],
+
+    31: [
+      {
+        title: "Ce que l’auditeur vérifie",
+        text: "L’auditeur vérifie que le prestataire a défini et met en œuvre des modalités de traitement des difficultés, aléas et réclamations exprimés par les parties prenantes.",
+      },
+      {
+        title: "Preuves attendues",
+        text: "Procédure de traitement, tableau d’amélioration continue, registre des réclamations, emails, accusés de réception, réponses apportées, actions correctives, preuves de clôture et suivi des aléas.",
+      },
+      {
+        title: "Bon à savoir",
+        text: "Pour cet indicateur, il faut prouver le traitement réel : réception, analyse, réponse, action décidée, suivi et clôture. Une réclamation non tracée ou une difficulté traitée oralement sans preuve peut fragiliser l’audit.",
+      },
+    ],
+
+    32: [
+      {
+        title: "Ce que l’auditeur vérifie",
+        text: "L’auditeur vérifie que le prestataire met en œuvre des mesures d’amélioration à partir de l’analyse des appréciations, difficultés, aléas et réclamations.",
+      },
+      {
+        title: "Preuves attendues",
+        text: "Tableau d’amélioration continue, analyse des retours, causes identifiées, plan d’action, mesures mises en œuvre, preuves de réalisation, suivi d’efficacité, documents ou procédures mis à jour.",
+      },
+      {
+        title: "Bon à savoir",
+        text: "Le 32 ne valide pas seulement l’existence d’un tableau : il faut montrer le chemin complet entre le retour reçu, l’analyse, l’action décidée, la mise en œuvre réelle et la preuve de suivi. Un questionnaire sans exploitation ne suffit pas.",
+      },
+    ],
   };
 
   return (
@@ -608,7 +647,6 @@ export default function IndicateurPage() {
   const [sessionInfo, setSessionInfo] = useState<SessionInfo | null>(null);
   const [title, setTitle] = useState(`Indicateur ${indicatorNumber}`);
   const [questions, setQuestions] = useState<Question[]>([]); // questions VISIBLES (filtrées)
-  const [allQuestions, setAllQuestions] = useState<Question[]>([]); // toutes les questions de l'indicateur
   const [answers, setAnswers] = useState<Record<string, Answer>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
 
@@ -654,14 +692,33 @@ export default function IndicateurPage() {
         return;
       }
 
+      const applicableIndicators = sessionRow.applicable_indicators ?? [];
+      const excludedIndicators = sessionRow.excluded_indicators ?? [];
+
       setSessionId(sid);
       setSessionInfo({
         audit_type: sessionRow.audit_type,
         is_new_entrant: sessionRow.is_new_entrant,
-        applicable_indicators: sessionRow.applicable_indicators ?? [],
-        excluded_indicators: sessionRow.excluded_indicators ?? [],
+        applicable_indicators: applicableIndicators,
+        excluded_indicators: excludedIndicators,
         profile_data: sessionRow.profile_data ?? {},
       });
+
+      if (!applicableIndicators.includes(indicatorNumber)) {
+        const firstIndicator = applicableIndicators[0] ?? 1;
+
+        setError(
+          `L’indicateur ${indicatorNumber} n’est pas applicable à votre profil. Redirection vers le premier indicateur applicable…`,
+        );
+
+        setLoading(false);
+
+        setTimeout(() => {
+          router.push(`/client/preaudit/${firstIndicator}`);
+        }, 900);
+
+        return;
+      }
 
       const { data: indicatorData } = await supabase
         .from("preaudit_indicators")
@@ -690,9 +747,12 @@ export default function IndicateurPage() {
       }
 
       const allQuestionsData = questionData ?? [];
-      setAllQuestions(allQuestionsData);
 
-      const profileData = sessionRow.profile_data ?? {};
+      const profileData = {
+        ...(sessionRow.profile_data ?? {}),
+        is_new_entrant: sessionRow.is_new_entrant ?? false,
+        audit_type: sessionRow.audit_type ?? null,
+      };
 
       const visibleQuestions = allQuestionsData.filter((q) => {
         const condition = q.display_condition ?? {};
@@ -742,13 +802,15 @@ export default function IndicateurPage() {
       const initialNotes: Record<string, string> = {};
       const noteKey = `indicator_${indicatorNumber}`;
 
-      (answerData ?? []).forEach((row) => {
-        // On stocke TOUTES les réponses (y compris questions masquées)
-        // pour ne pas les perdre si le profil change et les rend visibles à nouveau
-        if (["yes", "partial", "no", "unknown"].includes(row.answer)) {
-          initialAnswers[row.question_id] = row.answer as Answer;
-        }
-      });
+      (answerData ?? []).forEach(
+        (row: { question_id: string; answer: string }) => {
+          // On stocke TOUTES les réponses (y compris questions masquées)
+          // pour ne pas les perdre si le profil change et les rend visibles à nouveau
+          if (["yes", "partial", "no", "unknown"].includes(row.answer)) {
+            initialAnswers[row.question_id] = row.answer as Answer;
+          }
+        },
+      );
 
       // Charger la note depuis la table dédiée (indépendante des questions)
       const { data: noteData } = await supabase.rpc(
@@ -793,11 +855,7 @@ export default function IndicateurPage() {
     router.push(`/client/preaudit/${targetNumber}`);
   }
 
-  async function saveAnswer(
-    questionId: string,
-    answer: Answer,
-    notes?: string,
-  ) {
+  async function saveAnswer(questionId: string, answer: Answer) {
     if (!sessionId) return;
 
     setAnswers((prev) => ({
@@ -848,7 +906,22 @@ export default function IndicateurPage() {
   const categories = Array.isArray(profileData.action_categories)
     ? profileData.action_categories.join(", ")
     : "Non renseigné";
+
   const indicatorNoteKey = `indicator_${indicatorNumber}`;
+
+  const applicableIndicators = sessionInfo?.applicable_indicators ?? [];
+  const currentIndicatorIndex = applicableIndicators.indexOf(indicatorNumber);
+
+  const previousIndicatorNumber =
+    currentIndicatorIndex > 0
+      ? applicableIndicators[currentIndicatorIndex - 1]
+      : null;
+
+  const nextIndicatorNumber =
+    currentIndicatorIndex >= 0 &&
+    currentIndicatorIndex < applicableIndicators.length - 1
+      ? applicableIndicators[currentIndicatorIndex + 1]
+      : null;
 
   if (loading) {
     return (
@@ -888,15 +961,31 @@ export default function IndicateurPage() {
       "https://pjbilmywwkpghhayftph.supabase.co/storage/v1/object/public/selen-documents/preaudit/indicateur-1/";
 
     const categories = Array.isArray(profileData.action_categories)
-      ? profileData.action_categories.map(String)
+      ? profileData.action_categories.map((item) =>
+          String(item).trim().toUpperCase(),
+        )
       : [];
 
-    const hasAF = categories.includes("AF");
+    const hasAF =
+      categories.includes("AF") ||
+      categories.includes("ACTION DE FORMATION") ||
+      categories.includes("ACTIONS DE FORMATION") ||
+      categories.includes("FORMATION") ||
+      categories.includes("ACTION_FORMATION") ||
+      categories.includes("ACTIONS_FORMATION");
+
     const hasBilan =
       categories.includes("BDC") ||
       categories.includes("BC") ||
-      categories.includes("BILAN");
-    const hasVAE = categories.includes("VAE");
+      categories.includes("BILAN") ||
+      categories.includes("BILAN DE COMPÉTENCES") ||
+      categories.includes("BILAN DE COMPETENCES");
+
+    const hasVAE =
+      categories.includes("VAE") ||
+      categories.includes("VALIDATION DES ACQUIS") ||
+      categories.includes("VALIDATION DES ACQUIS DE L’EXPÉRIENCE") ||
+      categories.includes("VALIDATION DES ACQUIS DE L'EXPÉRIENCE");
     const isCertifying = profileData.certification_training === "yes";
     const isApprenticeship = profileData.alternance_training === "yes";
 
@@ -997,14 +1086,6 @@ export default function IndicateurPage() {
     }
 
     if (indicatorNumber === 7 && hasGeneralIssue) {
-      const categories = Array.isArray(profileData.action_categories)
-        ? profileData.action_categories.map(String)
-        : [];
-
-      const hasAF = categories.includes("AF");
-      const isCertifying = profileData.certification_training === "yes";
-      const isApprenticeship = profileData.alternance_training === "yes";
-
       if ((hasAF && isCertifying) || isApprenticeship) {
         docs.push({
           name: "Tableau croisé contenu / référentiel de certification",
@@ -1243,6 +1324,69 @@ export default function IndicateurPage() {
       });
     }
 
+    if (indicatorNumber === 29 && hasGeneralIssue) {
+      docs.push({
+        name: "Livret de suivi de l’apprenti",
+        url: "https://pjbilmywwkpghhayftph.supabase.co/storage/v1/object/public/selen-documents/preaudit/indicateur-13/livret-suivi-apprenti.docx",
+      });
+
+      docs.push({
+        name: "Tableau de suivi des partenaires socio-économiques",
+        url: "https://pjbilmywwkpghhayftph.supabase.co/storage/v1/object/public/selen-documents/preaudit/indicateur-28/tableau-partenaires-socio-economiques.docx",
+      });
+    }
+
+    if (indicatorNumber === 30 && hasGeneralIssue) {
+      docs.push({
+        name: "Questionnaire de satisfaction à chaud — Apprenant",
+        url: "https://pjbilmywwkpghhayftph.supabase.co/storage/v1/object/public/selen-documents/preaudit/indicateur-30/questionnaire-satisfaction-chaud-apprenant.docx",
+      });
+
+      docs.push({
+        name: "Questionnaire de satisfaction à froid — Commanditaire / Entreprise",
+        url: "https://pjbilmywwkpghhayftph.supabase.co/storage/v1/object/public/selen-documents/preaudit/indicateur-30/questionnaire-satisfaction-froid-commanditaire-entreprise.docx",
+      });
+
+      docs.push({
+        name: "Questionnaire de satisfaction — Équipe pédagogique",
+        url: "https://pjbilmywwkpghhayftph.supabase.co/storage/v1/object/public/selen-documents/preaudit/indicateur-30/questionnaire-satisfaction-equipe-pedagogique.docx",
+      });
+
+      docs.push({
+        name: "Procédure de recueil de la satisfaction et des relances",
+        url: "https://pjbilmywwkpghhayftph.supabase.co/storage/v1/object/public/selen-documents/preaudit/indicateur-30/procedure-recueil-satisfaction-relances.docx",
+      });
+
+      docs.push({
+        name: "Tableau d’amélioration continue",
+        url: "https://pjbilmywwkpghhayftph.supabase.co/storage/v1/object/public/selen-documents/preaudit/indicateur-30/tableau-amelioration-continue.docx",
+      });
+    }
+
+    if (indicatorNumber === 31 && hasGeneralIssue) {
+      docs.push({
+        name: "Procédure de recueil de la satisfaction et des relances",
+        url: "https://pjbilmywwkpghhayftph.supabase.co/storage/v1/object/public/selen-documents/preaudit/indicateur-30/procedure-recueil-satisfaction-relances.docx",
+      });
+
+      docs.push({
+        name: "Tableau d’amélioration continue",
+        url: "https://pjbilmywwkpghhayftph.supabase.co/storage/v1/object/public/selen-documents/preaudit/indicateur-30/tableau-amelioration-continue.docx",
+      });
+    }
+
+    if (indicatorNumber === 32 && hasGeneralIssue) {
+      docs.push({
+        name: "Tableau d’amélioration continue",
+        url: "https://pjbilmywwkpghhayftph.supabase.co/storage/v1/object/public/selen-documents/preaudit/indicateur-30/tableau-amelioration-continue.docx",
+      });
+
+      docs.push({
+        name: "Procédure de recueil de la satisfaction et des relances",
+        url: "https://pjbilmywwkpghhayftph.supabase.co/storage/v1/object/public/selen-documents/preaudit/indicateur-30/procedure-recueil-satisfaction-relances.docx",
+      });
+    }
+
     return docs;
   }
 
@@ -1251,6 +1395,7 @@ export default function IndicateurPage() {
       className="gazette-paper"
       style={{ minHeight: "100vh", padding: "2rem" }}
     >
+      <ClientSupportBar context="l’auto-audit Qualiopi" />
       <div style={{ maxWidth: 1180, margin: "0 auto" }}>
         <header
           className="gazette-cta"
@@ -1401,7 +1546,7 @@ export default function IndicateurPage() {
               </div>
             ) : (
               <section style={{ display: "grid", gap: "1rem" }}>
-                {questions.map((q) => (
+                {questions.map((q, index) => (
                   <article
                     key={q.id}
                     style={{
@@ -1419,7 +1564,7 @@ export default function IndicateurPage() {
                         color: "var(--ocre-dark)",
                       }}
                     >
-                      Question {q.question_order}
+                      Question {index + 1}
                     </p>
 
                     <h2
@@ -1464,13 +1609,7 @@ export default function IndicateurPage() {
                           <button
                             key={value}
                             type="button"
-                            onClick={() =>
-                              saveAnswer(
-                                q.id,
-                                value as Answer,
-                                notes[indicatorNoteKey],
-                              )
-                            }
+                            onClick={() => saveAnswer(q.id, value as Answer)}
                             style={{
                               padding: "0.45rem 0.85rem",
                               border: "1px solid var(--sepia-mid)",
@@ -1582,7 +1721,7 @@ export default function IndicateurPage() {
                     <div
                       key={index}
                       style={{
-                        borderLeft: "2px solid var(--ocre)",
+                        borderLeft: "2px solid var(--ocre-gold)",
                         paddingLeft: "0.5rem",
                         lineHeight: 1.4,
                       }}
@@ -1729,7 +1868,9 @@ export default function IndicateurPage() {
               </p>
               <p style={{ fontSize: "0.92rem", color: "var(--ink-soft)" }}>
                 Indicateurs exclus :{" "}
-                {sessionInfo?.excluded_indicators?.length ?? 0}
+                {sessionInfo?.excluded_indicators?.length
+                  ? sessionInfo.excluded_indicators.join(", ")
+                  : "Aucun"}
               </p>
               <div style={{ marginTop: "0.8rem" }}>
                 <p
@@ -1778,23 +1919,36 @@ export default function IndicateurPage() {
                 <span>Modifier mon profil</span>
               </button>
 
-              {indicatorNumber > 1 && (
+              {previousIndicatorNumber !== null && (
                 <button
                   type="button"
-                  onClick={() => goToIndicator(indicatorNumber - 1)}
+                  onClick={() => goToIndicator(previousIndicatorNumber)}
                   className="btn-ink"
                 >
-                  <span>← Indicateur précédent</span>
+                  <span>← Indicateur {previousIndicatorNumber}</span>
                 </button>
               )}
 
-              <button
-                type="button"
-                onClick={() => goToIndicator(indicatorNumber + 1)}
-                className="btn-ink"
-              >
-                <span>Indicateur suivant →</span>
-              </button>
+              {nextIndicatorNumber !== null ? (
+                <button
+                  type="button"
+                  onClick={() => goToIndicator(nextIndicatorNumber)}
+                  className="btn-ink"
+                >
+                  <span>Indicateur {nextIndicatorNumber} →</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await saveCurrentNote();
+                    router.push("/client/preaudit/final");
+                  }}
+                  className="btn-ink"
+                >
+                  <span>Voir mon bilan final →</span>
+                </button>
+              )}
             </div>
           </aside>
         </div>

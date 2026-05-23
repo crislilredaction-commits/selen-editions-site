@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "../../lib/supabase/client";
+import { checkPreauditAccess } from "../../lib/checkPreauditAccess";
+import ClientSupportBar from "@/components/ClientSupportBar";
 
 type ProfileQuestion = {
   question_key: string;
@@ -45,6 +47,13 @@ export default function PreauditProfilePage() {
 
       if (!authData.user) {
         router.push("/client/login");
+        return;
+      }
+
+      const accessCheck = await checkPreauditAccess(supabase);
+
+      if (!accessCheck.ok) {
+        router.replace("/client");
         return;
       }
 
@@ -165,16 +174,30 @@ export default function PreauditProfilePage() {
     );
 
     setSavingKey(null);
-    console.log("Profil sauvegardé :", {
-      question: question.question_key,
-      value,
-      session: row,
-    });
   }
 
   async function saveProfileAndGo() {
     if (!session) {
       setError("Session préaudit introuvable.");
+      return;
+    }
+
+    const missingRequired = questions.filter((question) => {
+      if (!question.is_required) return false;
+
+      const value = answers[question.question_key];
+
+      if (Array.isArray(value)) return value.length === 0;
+
+      return value === "" || value === null || value === undefined;
+    });
+
+    if (missingRequired.length > 0) {
+      setError(
+        `Veuillez répondre aux questions obligatoires avant de continuer (${missingRequired.length} manquante${
+          missingRequired.length > 1 ? "s" : ""
+        }).`,
+      );
       return;
     }
 
@@ -195,8 +218,6 @@ export default function PreauditProfilePage() {
       }
     });
 
-    console.log("PROFIL ENVOYÉ AU BULK :", cleanProfileData);
-
     const { data, error: bulkError } = await supabase.rpc(
       "save_preaudit_profile_bulk",
       {
@@ -213,8 +234,6 @@ export default function PreauditProfilePage() {
     }
 
     const row = Array.isArray(data) ? data[0] : data;
-
-    console.log("PROFIL RETOUR BULK :", row);
 
     if (!row) {
       setError(
@@ -241,9 +260,7 @@ export default function PreauditProfilePage() {
 
     setSavingKey(null);
 
-    const firstIndicator = applicableIndicators[0] ?? 1;
-
-    router.push(`/client/preaudit/${firstIndicator}`);
+    router.push("/client/preaudit/marques");
   }
   function toggleMultiChoice(question: ProfileQuestion, option: string) {
     const current = Array.isArray(answers[question.question_key])
@@ -284,6 +301,7 @@ export default function PreauditProfilePage() {
 
   return (
     <main className="gazette-paper" style={{ minHeight: "100vh" }}>
+      <ClientSupportBar context="l’auto-audit Qualiopi" />
       <div
         style={{
           maxWidth: "900px",
@@ -497,6 +515,7 @@ export default function PreauditProfilePage() {
                           key={option}
                           type="button"
                           onClick={() => toggleMultiChoice(q, option)}
+                          disabled={savingKey === q.question_key}
                           style={{
                             padding: "0.45rem 0.9rem",
                             border: "1px solid var(--sepia-mid)",
@@ -504,7 +523,11 @@ export default function PreauditProfilePage() {
                               ? "var(--ocre-gold)"
                               : "transparent",
                             color: selected ? "#1a1410" : "var(--ink-soft)",
-                            cursor: "pointer",
+                            cursor:
+                              savingKey === q.question_key
+                                ? "not-allowed"
+                                : "pointer",
+                            opacity: savingKey === q.question_key ? 0.6 : 1,
                           }}
                         >
                           {option}
@@ -534,37 +557,27 @@ export default function PreauditProfilePage() {
                   />
                 )}
 
-                {q.impact_description && (
-                  <p
-                    style={{
-                      marginTop: "0.7rem",
-                      fontSize: "0.78rem",
-                      color: "var(--ink-faint)",
-                    }}
-                  >
-                    ✦ {q.impact_description}
-                  </p>
-                )}
+                {q.impact_description &&
+                  value !== "" &&
+                  value !== null &&
+                  value !== undefined &&
+                  !(Array.isArray(value) && value.length === 0) && (
+                    <p
+                      style={{
+                        marginTop: "0.7rem",
+                        fontSize: "0.78rem",
+                        color: "var(--ink-faint)",
+                        borderTop: "1px solid var(--sepia-mid)",
+                        paddingTop: "0.5rem",
+                      }}
+                    >
+                      ✦ {q.impact_description}
+                    </p>
+                  )}
               </article>
             );
           })}
         </section>
-
-        {error && (
-          <div
-            style={{
-              border: "1px solid var(--rust)",
-              borderLeft: "4px solid var(--rust)",
-              padding: "1rem",
-              marginTop: "1.5rem",
-              marginBottom: "1rem",
-              color: "var(--rust)",
-              background: "rgba(138,75,36,0.05)",
-            }}
-          >
-            {error}
-          </div>
-        )}
 
         <div
           style={{
@@ -597,7 +610,7 @@ export default function PreauditProfilePage() {
             <span>
               {savingKey === "all"
                 ? "Sauvegarde du profil…"
-                : "Commencer les indicateurs →"}
+                : "Continuer vers la vérification des marques →"}
             </span>
           </button>
         </div>
