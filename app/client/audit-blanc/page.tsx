@@ -118,6 +118,19 @@ function diagnosticColor(value?: string | null) {
   return "var(--ink-faint)";
 }
 
+function extractStoragePath(value?: string | null) {
+  if (!value) return "";
+
+  const marker = "/storage/v1/object/public/selen-documents/";
+  const markerIndex = value.indexOf(marker);
+
+  if (markerIndex >= 0) {
+    return value.slice(markerIndex + marker.length);
+  }
+
+  return value.replace(/^\/+/, "");
+}
+
 export default function ClientAuditBlancPage() {
   const router = useRouter();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -136,6 +149,17 @@ export default function ClientAuditBlancPage() {
   const [summary, setSummary] = useState<ClientAuditSummary | null>(null);
 
   const [report, setReport] = useState<AuditBlancReport | null>(null);
+
+  function getDocumentHref(doc: AuditBlancDocument) {
+    const storagePath = extractStoragePath(doc.storage_path || doc.public_url);
+
+    if (!storagePath) {
+      return doc.public_url ?? "#";
+    }
+
+    return supabase.storage.from("selen-documents").getPublicUrl(storagePath)
+      .data.publicUrl;
+  }
 
   useEffect(() => {
     async function loadAuditBlanc() {
@@ -815,7 +839,7 @@ export default function ClientAuditBlancPage() {
                     {documents.map((doc) => (
                       <a
                         key={doc.id}
-                        href={doc.public_url ?? doc.storage_path}
+                        href={getDocumentHref(doc)}
                         target="_blank"
                         rel="noreferrer"
                         style={{

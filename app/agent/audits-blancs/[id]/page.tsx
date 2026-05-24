@@ -198,6 +198,32 @@ function sanitizeFileName(name: string) {
     .toLowerCase();
 }
 
+function extractStoragePathFromPublicUrl(value?: string | null) {
+  if (!value) return "";
+
+  const marker = "/storage/v1/object/public/selen-documents/";
+  const markerIndex = value.indexOf(marker);
+
+  if (markerIndex >= 0) {
+    return value.slice(markerIndex + marker.length);
+  }
+
+  return value.replace(/^\/+/, "");
+}
+
+function getDocumentHref(document: AuditBlancDocument) {
+  const storagePath = extractStoragePathFromPublicUrl(
+    document.storage_path || document.public_url,
+  );
+
+  if (!storagePath) {
+    return document.public_url ?? "#";
+  }
+
+  return supabase.storage.from("selen-documents").getPublicUrl(storagePath).data
+    .publicUrl;
+}
+
 export default function AgentAuditBlancDetailPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
@@ -501,17 +527,25 @@ export default function AgentAuditBlancDetailPage() {
     setError("");
     setSuccess("");
 
-    const rowsToInsert = validModels.map((model) => ({
-      case_id: auditCase.id,
-      name: model.name,
-      document_type: "document_correctif",
-      storage_bucket: "selen-documents",
-      storage_path: model.file_url,
-      public_url: model.file_url,
-      uploaded_by_email: agent.email,
-      is_visible_to_client: true,
-      source_model_id: model.id,
-    }));
+    const rowsToInsert = validModels.map((model) => {
+      const storagePath = extractStoragePathFromPublicUrl(model.file_url);
+
+      const { data: publicUrlData } = supabase.storage
+        .from("selen-documents")
+        .getPublicUrl(storagePath);
+
+      return {
+        case_id: auditCase.id,
+        name: model.name,
+        document_type: "document_correctif",
+        storage_bucket: "selen-documents",
+        storage_path: storagePath,
+        public_url: publicUrlData.publicUrl,
+        uploaded_by_email: agent.email,
+        is_visible_to_client: true,
+        source_model_id: model.id,
+      };
+    });
 
     const { data: documentData, error: insertError } = await supabase
       .from("audit_blanc_documents")
@@ -1903,7 +1937,7 @@ export default function AgentAuditBlancDetailPage() {
                       >
                         <div>
                           <a
-                            href={document.public_url ?? "#"}
+                            href={getDocumentHref(document)}
                             target="_blank"
                             rel="noreferrer"
                             style={{

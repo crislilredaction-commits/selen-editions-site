@@ -83,6 +83,13 @@ export default function Header() {
               Nos prestations
               <span className="absolute -bottom-0.5 left-0 h-px w-0 bg-[#b28a62] group-hover:w-full transition-all duration-300" />
             </Link>
+
+            <Link
+              href="/client/login"
+              className="border border-[#b28a62] bg-[#f7ead6]/70 px-4 py-2 font-['Cinzel'] text-[0.68rem] uppercase tracking-[0.12em] text-[#3e2a1f] transition-all duration-300 hover:bg-[#ead4b3]"
+            >
+              Espace client / agent
+            </Link>
             <a
               href="https://calendly.com/romaric-paymal/rdv-romaric-paymal"
               target="_blank"
@@ -149,6 +156,7 @@ export default function Header() {
             {[
               { href: "/", label: "Accueil" },
               { href: "/nos-prestations", label: "Nos prestations" },
+              { href: "/client/login", label: "Espace client / agent" },
             ].map(({ href, label }) => (
               <Link
                 key={href}
