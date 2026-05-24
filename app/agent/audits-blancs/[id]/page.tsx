@@ -211,19 +211,6 @@ function extractStoragePathFromPublicUrl(value?: string | null) {
   return value.replace(/^\/+/, "");
 }
 
-function getDocumentHref(document: AuditBlancDocument) {
-  const storagePath = extractStoragePathFromPublicUrl(
-    document.storage_path || document.public_url,
-  );
-
-  if (!storagePath) {
-    return document.public_url ?? "#";
-  }
-
-  return supabase.storage.from("selen-documents").getPublicUrl(storagePath).data
-    .publicUrl;
-}
-
 export default function AgentAuditBlancDetailPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
@@ -231,6 +218,18 @@ export default function AgentAuditBlancDetailPage() {
 
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
+  function getDocumentHref(document: AuditBlancDocument) {
+    const storagePath = extractStoragePathFromPublicUrl(
+      document.storage_path || document.public_url,
+    );
+
+    if (!storagePath) {
+      return document.public_url ?? "#";
+    }
+
+    return supabase.storage.from("selen-documents").getPublicUrl(storagePath)
+      .data.publicUrl;
+  }
   const [loading, setLoading] = useState(true);
   const [savingCase, setSavingCase] = useState(false);
   const [uploading, setUploading] = useState(false);
