@@ -369,6 +369,16 @@ export async function POST(request: Request) {
   const rawBody = await request.text();
   const signatureHeader = request.headers.get("Calendly-Webhook-Signature");
 
+  // V1 : Calendly gratuit, donc pas de webhook actif.
+  // On ignore les appels tant qu’aucune clé de signature n’est configurée.
+  if (!calendlySigningKey) {
+    return NextResponse.json({
+      received: true,
+      ignored: true,
+      reason: "Calendly webhook disabled. Manual booking mode is active.",
+    });
+  }
+
   const isValidSignature = verifyCalendlySignature({
     rawBody,
     signatureHeader,

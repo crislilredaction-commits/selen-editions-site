@@ -41,38 +41,66 @@ function getQuestions(auditType?: string | null): BrandQuestion[] {
   if (auditType === "initial") {
     return [
       {
+        key: "initial_certificate_displayed",
+        question:
+          "Affichez-vous déjà un certificat Qualiopi alors que vous êtes en audit initial ?",
+        help: "En audit initial, vous n’êtes pas encore certifié. Vous ne devez donc pas afficher un certificat Qualiopi comme s’il était déjà obtenu.",
+        expectedAnswer: "no",
+      },
+      {
+        key: "initial_logo_used",
+        question:
+          "Utilisez-vous déjà le logo Qualiopi dans votre communication ?",
+        help: "Le logo Qualiopi ne doit pas être utilisé avant l’obtention effective de la certification.",
+        expectedAnswer: "no",
+      },
+      {
+        key: "initial_certified_claim",
+        question:
+          "Indiquez-vous quelque part que vous êtes certifié Qualiopi ?",
+        help: "Attention aux mentions comme “certifié Qualiopi”, “organisme certifié”, “certification Qualiopi obtenue” ou toute formulation équivalente avant obtention réelle du certificat.",
+        expectedAnswer: "no",
+      },
+      {
         key: "initial_website_mentions",
         question:
-          "Votre site internet mentionne-t-il Qualiopi, un organisme certificateur ou le Cofrac ?",
-        help: "En audit initial, l’organisme n’est pas encore certifié. Il ne doit pas laisser penser qu’une certification est déjà acquise.",
+          "Votre site internet peut-il laisser penser que la certification Qualiopi est déjà obtenue ?",
+        help: "Vous pouvez éventuellement indiquer que vous préparez la certification, mais sans créer de confusion avec une certification déjà acquise.",
         expectedAnswer: "no",
       },
       {
         key: "initial_email_mentions",
         question:
-          "Vos signatures email, emails commerciaux ou documents de présentation mentionnent-ils Qualiopi, un certificateur ou le Cofrac ?",
-        help: "Les supports commerciaux ne doivent pas créer de confusion avant l’obtention réelle de la certification.",
+          "Vos signatures email, emails commerciaux ou documents de présentation peuvent-ils laisser croire que vous êtes déjà certifié Qualiopi ?",
+        help: "Les supports commerciaux ne doivent pas transformer une démarche en cours en argument de certification déjà obtenue.",
         expectedAnswer: "no",
       },
       {
         key: "initial_social_mentions",
         question:
-          "Vos réseaux sociaux mentionnent-ils Qualiopi, un certificateur ou le Cofrac ?",
-        help: "Les publications, biographies ou visuels ne doivent pas suggérer que l’organisme est déjà certifié.",
+          "Vos réseaux sociaux peuvent-ils laisser penser que vous êtes déjà certifié Qualiopi ?",
+        help: "Vérifiez les biographies, publications, visuels, bannières et descriptions de profil.",
         expectedAnswer: "no",
       },
       {
         key: "initial_training_documents_mentions",
         question:
-          "Vos programmes, fiches formation, devis, conventions, catalogues ou supports commerciaux mentionnent-ils Qualiopi ?",
-        help: "Les documents liés aux formations ne doivent pas intégrer une mention ambiguë ou prématurée.",
+          "Vos programmes, fiches formation, devis, conventions, catalogues ou supports commerciaux mentionnent-ils Qualiopi de façon ambiguë ?",
+        help: "Les documents liés aux formations ne doivent pas intégrer une mention prématurée ou laisser croire que l’organisme est déjà certifié.",
         expectedAnswer: "no",
       },
       {
-        key: "initial_logo_or_certificate_visible",
+        key: "initial_cofrac_or_certifier_misleading",
         question:
-          "Le logo Qualiopi ou un certificat Qualiopi apparaît-il quelque part ?",
-        help: "Avant certification, le logo et le certificat ne doivent pas être utilisés.",
+          "Mentionnez-vous le Cofrac ou un organisme certificateur d’une manière qui pourrait laisser croire que vous êtes déjà certifié ?",
+        help: "Le Cofrac accrédite les certificateurs, il ne certifie pas directement les organismes de formation. Toute mention doit éviter de créer une confusion.",
+        expectedAnswer: "no",
+      },
+      {
+        key: "initial_pending_audit_as_certification",
+        question:
+          "Présentez-vous une démarche en cours comme une certification déjà acquise ?",
+        help: "Vous pouvez être en préparation ou en attente d’audit, mais cela ne doit pas être présenté comme une certification obtenue.",
         expectedAnswer: "no",
       },
     ];
@@ -494,9 +522,11 @@ export default function BrandUsageCheckPage() {
                     lineHeight: 1.6,
                   }}
                 >
-                  En audit initial, l’organisme n’est pas encore certifié. Il ne
-                  doit donc pas mentionner Qualiopi, un certificateur ou le
-                  Cofrac d’une manière qui pourrait laisser croire que la
+                  En audit initial, l’organisme n’est pas encore certifié. Il
+                  peut indiquer qu’il prépare une démarche Qualiopi, mais il ne
+                  doit pas afficher de certificat, utiliser le logo Qualiopi, se
+                  présenter comme certifié, ni mentionner le Cofrac ou un
+                  certificateur d’une manière qui pourrait laisser croire que la
                   certification est déjà obtenue.
                 </p>
               ) : (

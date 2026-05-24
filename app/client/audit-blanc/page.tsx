@@ -38,6 +38,30 @@ type AuditBlancDocument = {
   created_at: string;
 };
 
+type ClientAuditSummary = {
+  case_id: string;
+  brand_usage_diagnostic: string | null;
+  conformes: number;
+  mineures: number;
+  majeures: number;
+  a_verifier: number;
+  total_renseignes: number;
+};
+
+type AuditBlancReport = {
+  id: string;
+  case_id: string;
+  global_summary: string | null;
+  strengths: string | null;
+  major_nonconformities: string | null;
+  minor_nonconformities: string | null;
+  corrective_actions: string | null;
+  final_recommendation: string | null;
+  is_visible_to_client: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 function formatDateTime(value?: string | null) {
   if (!value) return "Non planifié";
 
@@ -79,6 +103,21 @@ function statusColor(status?: string | null) {
   return "var(--ink-faint)";
 }
 
+function diagnosticLabel(value?: string | null) {
+  if (value === "conforme") return "✅ Conforme";
+  if (value === "mineure") return "⚠️ Mineure";
+  if (value === "majeure") return "🚨 Majeure";
+  if (value === "a_verifier") return "… À vérifier";
+  return "Non renseigné";
+}
+
+function diagnosticColor(value?: string | null) {
+  if (value === "conforme") return "#6a8a4a";
+  if (value === "mineure") return "var(--ocre-gold)";
+  if (value === "majeure") return "var(--rust)";
+  return "var(--ink-faint)";
+}
+
 export default function ClientAuditBlancPage() {
   const router = useRouter();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -93,6 +132,10 @@ export default function ClientAuditBlancPage() {
   const [auditCase, setAuditCase] = useState<AuditBlancCase | null>(null);
   const [documents, setDocuments] = useState<AuditBlancDocument[]>([]);
   const [error, setError] = useState("");
+
+  const [summary, setSummary] = useState<ClientAuditSummary | null>(null);
+
+  const [report, setReport] = useState<AuditBlancReport | null>(null);
 
   useEffect(() => {
     async function loadAuditBlanc() {
@@ -133,7 +176,49 @@ export default function ClientAuditBlancPage() {
         return;
       }
 
+      if (caseData?.id) {
+        const { data: reportData, error: reportError } = await supabase
+          .from("audit_blanc_reports")
+          .select(
+            "id, case_id, global_summary, strengths, major_nonconformities, minor_nonconformities, corrective_actions, final_recommendation, is_visible_to_client, created_at, updated_at",
+          )
+          .eq("case_id", caseData.id)
+          .eq("is_visible_to_client", true)
+          .maybeSingle();
+
+        if (reportError) {
+          setError(`Impossible de charger le rapport. ${reportError.message}`);
+          setLoading(false);
+          return;
+        }
+
+        setReport((reportData ?? null) as AuditBlancReport | null);
+      }
+
       setAuditCase(caseData);
+
+      if (caseData?.id) {
+        const { data: summaryData, error: summaryError } = await supabase.rpc(
+          "get_audit_blanc_client_summary",
+          {
+            p_case_id: caseData.id,
+          },
+        );
+
+        if (summaryError) {
+          setError(
+            `Impossible de charger la synthèse. ${summaryError.message}`,
+          );
+          setLoading(false);
+          return;
+        }
+
+        const summaryRow = Array.isArray(summaryData)
+          ? summaryData[0]
+          : summaryData;
+
+        setSummary((summaryRow ?? null) as ClientAuditSummary | null);
+      }
 
       if (caseData?.id) {
         const { data: documentData, error: documentError } = await supabase
@@ -472,6 +557,244 @@ export default function ClientAuditBlancPage() {
                     par indicateur et notera les écarts ou points de vigilance.
                   </p>
                 </div>
+              </article>
+
+              <article
+                style={{
+                  background: "var(--paper)",
+                  border: "1px solid var(--sepia-mid)",
+                  borderLeft: "4px solid var(--ocre-gold)",
+                  padding: "1.2rem",
+                }}
+              >
+                <p className="gazette-label">Synthèse de l’audit blanc</p>
+
+                <h2 style={{ color: "var(--ink)", marginBottom: "0.7rem" }}>
+                  Votre état d’avancement
+                </h2>
+
+                {!summary ? (
+                  <p
+                    style={{
+                      color: "var(--ink-faint)",
+                      fontSize: "0.92rem",
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    La synthèse sera disponible lorsque l’auditeur aura commencé
+                    l’analyse.
+                  </p>
+                ) : (
+                  <>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns:
+                          "repeat(auto-fit, minmax(165px, 1fr))",
+                        gap: "0.8rem",
+                        alignItems: "stretch",
+                      }}
+                    >
+                      {[
+                        {
+                          label: "Marques",
+                          value: diagnosticLabel(
+                            summary.brand_usage_diagnostic,
+                          ),
+                          color: diagnosticColor(
+                            summary.brand_usage_diagnostic,
+                          ),
+                          background: "rgba(255,255,255,0.35)",
+                          isText: true,
+                        },
+                        {
+                          label: "Conformes",
+                          value: summary.conformes,
+                          color: "#4f6f36",
+                          background: "rgba(106,138,74,0.08)",
+                        },
+                        {
+                          label: "Mineures",
+                          value: summary.mineures,
+                          color: "var(--ocre-dark)",
+                          background: "rgba(201,160,85,0.1)",
+                        },
+                        {
+                          label: "Majeures",
+                          value: summary.majeures,
+                          color: "var(--rust)",
+                          background: "rgba(138,75,36,0.08)",
+                        },
+                        {
+                          label: "À vérifier",
+                          value: summary.a_verifier,
+                          color: "var(--ink-faint)",
+                          background: "rgba(90,64,49,0.05)",
+                        },
+                      ].map((item) => (
+                        <div
+                          key={item.label}
+                          style={{
+                            border: "1px solid var(--sepia-mid)",
+                            background: item.background,
+                            padding: "0.9rem",
+                            minHeight: "120px",
+                            display: "flex",
+                            flexDirection: "column",
+                            justifyContent: "space-between",
+                            gap: "0.7rem",
+                          }}
+                        >
+                          <p
+                            style={{
+                              fontFamily: "var(--font-cinzel, 'Cinzel', serif)",
+                              fontSize: "0.58rem",
+                              letterSpacing: "0.18em",
+                              textTransform: "uppercase",
+                              color: "var(--ocre-dark)",
+                              margin: 0,
+                              lineHeight: 1.4,
+                              wordBreak: "normal",
+                            }}
+                          >
+                            {item.label}
+                          </p>
+
+                          <p
+                            style={{
+                              color: item.color,
+                              fontSize: item.isText ? "1.05rem" : "1.9rem",
+                              fontWeight: 800,
+                              margin: 0,
+                              lineHeight: 1.15,
+                            }}
+                          >
+                            {item.value}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+
+                    <p
+                      style={{
+                        color: "var(--ink-faint)",
+                        fontSize: "0.9rem",
+                        lineHeight: 1.5,
+                        marginTop: "0.8rem",
+                      }}
+                    >
+                      Cette synthèse reprend les constats saisis par l’auditeur
+                      pendant l’audit blanc. Le rapport final détaille les
+                      points à corriger et les actions recommandées.
+                    </p>
+                  </>
+                )}
+              </article>
+
+              <article
+                style={{
+                  background: "var(--paper)",
+                  border: "1px solid var(--sepia-mid)",
+                  borderLeft: "4px solid var(--ocre-dark)",
+                  padding: "1.2rem",
+                }}
+              >
+                <p className="gazette-label">Rapport d’audit blanc</p>
+
+                <h2 style={{ color: "var(--ink)", marginBottom: "0.7rem" }}>
+                  Rapport transmis par l’auditeur
+                </h2>
+
+                {!report ? (
+                  <p
+                    style={{
+                      color: "var(--ink-faint)",
+                      fontSize: "0.92rem",
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    Le rapport n’est pas encore disponible. Il apparaîtra ici
+                    lorsque l’auditeur l’aura publié dans votre espace client.
+                  </p>
+                ) : (
+                  <div style={{ display: "grid", gap: "1rem" }}>
+                    {[
+                      {
+                        label: "Synthèse générale",
+                        value: report.global_summary,
+                      },
+                      {
+                        label: "Points conformes / éléments solides",
+                        value: report.strengths,
+                      },
+                      {
+                        label: "Non-conformités majeures probables",
+                        value: report.major_nonconformities,
+                      },
+                      {
+                        label: "Non-conformités mineures / points de vigilance",
+                        value: report.minor_nonconformities,
+                      },
+                      {
+                        label: "Actions correctives recommandées",
+                        value: report.corrective_actions,
+                      },
+                      {
+                        label: "Conclusion / recommandation finale",
+                        value: report.final_recommendation,
+                      },
+                    ].map((section) => (
+                      <div
+                        key={section.label}
+                        style={{
+                          border: "1px solid var(--sepia-mid)",
+                          background: "rgba(255,255,255,0.35)",
+                          padding: "0.9rem",
+                        }}
+                      >
+                        <p
+                          style={{
+                            fontFamily: "var(--font-cinzel, 'Cinzel', serif)",
+                            fontSize: "0.62rem",
+                            letterSpacing: "0.18em",
+                            textTransform: "uppercase",
+                            color: "var(--ocre-dark)",
+                            marginBottom: "0.45rem",
+                          }}
+                        >
+                          {section.label}
+                        </p>
+
+                        <p
+                          style={{
+                            color: section.value
+                              ? "var(--ink-soft)"
+                              : "var(--ink-faint)",
+                            lineHeight: 1.65,
+                            whiteSpace: "pre-wrap",
+                            fontSize: "0.94rem",
+                          }}
+                        >
+                          {section.value || "Non renseigné."}
+                        </p>
+                      </div>
+                    ))}
+
+                    <p
+                      style={{
+                        color: "var(--ink-faint)",
+                        fontSize: "0.82rem",
+                        lineHeight: 1.45,
+                      }}
+                    >
+                      Dernière mise à jour du rapport :{" "}
+                      {new Intl.DateTimeFormat("fr-FR", {
+                        dateStyle: "medium",
+                        timeStyle: "short",
+                      }).format(new Date(report.updated_at))}
+                    </p>
+                  </div>
+                )}
               </article>
 
               <article
