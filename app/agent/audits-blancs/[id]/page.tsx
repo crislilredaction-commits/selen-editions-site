@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "../../../lib/supabase/client";
-import jsPDF from "jspdf";
+import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
 type AuditBlancCase = {
@@ -295,9 +295,10 @@ function generateAuditReportPdfBlob({
     margin: { left: margin, right: margin },
   });
 
-  y =
-    (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable
-      .finalY + 10;
+  const lastTable = (doc as unknown as { lastAutoTable?: { finalY?: number } })
+    .lastAutoTable;
+
+  y = (lastTable?.finalY ?? y + 35) + 10;
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(13);
@@ -721,96 +722,105 @@ export default function AgentAuditBlancDetailPage() {
       return;
     }
 
-    setGeneratingPdf(true);
-    setError("");
-    setSuccess("");
+    try {
+      setGeneratingPdf(true);
+      setError("");
+      setSuccess("");
 
-    const pdfBlob = generateAuditReportPdfBlob({
-      auditCase,
-      indicatorNotes,
-      auditSummary,
-    });
-
-    const safeEmail = sanitizeFileName(auditCase.client_email);
-    const fileName = `rapport-audit-blanc-${safeEmail}-${Date.now()}.pdf`;
-    const storagePath = `audit-blanc/${auditCase.id}/${fileName}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from("selen-documents")
-      .upload(storagePath, pdfBlob, {
-        upsert: false,
-        contentType: "application/pdf",
+      const pdfBlob = generateAuditReportPdfBlob({
+        auditCase,
+        indicatorNotes,
+        auditSummary,
       });
 
-    if (uploadError) {
-      setError(`Erreur génération PDF : ${uploadError.message}`);
-      setGeneratingPdf(false);
-      return;
-    }
+      if (!pdfBlob || pdfBlob.size === 0) {
+        throw new Error("Le fichier PDF généré est vide.");
+      }
 
-    const { data: publicUrlData } = supabase.storage
-      .from("selen-documents")
-      .getPublicUrl(storagePath);
+      const safeEmail = sanitizeFileName(auditCase.client_email);
+      const fileName = `rapport-audit-blanc-${safeEmail}-${Date.now()}.pdf`;
+      const storagePath = `audit-blanc/${auditCase.id}/${fileName}`;
 
-    const { data: documentData, error: insertError } = await supabase
-      .from("audit_blanc_documents")
-      .insert({
-        case_id: auditCase.id,
-        name: "Rapport d’audit blanc",
-        document_type: "rapport_audit_blanc_pdf",
-        storage_bucket: "selen-documents",
-        storage_path: storagePath,
-        public_url: publicUrlData.publicUrl,
-        uploaded_by_email: agent.email,
-        is_visible_to_client: true,
-      })
-      .select(
-        "id, name, document_type, storage_path, public_url, is_visible_to_client, uploaded_by_email, created_at, source_model_id",
-      )
-      .single();
+      const { error: uploadError } = await supabase.storage
+        .from("selen-documents")
+        .upload(storagePath, pdfBlob, {
+          upsert: false,
+          contentType: "application/pdf",
+        });
 
-    if (insertError) {
-      setError(
-        `PDF généré, mais non associé au dossier : ${insertError.message}`,
+      if (uploadError) {
+        throw new Error(`Erreur upload PDF : ${uploadError.message}`);
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from("selen-documents")
+        .getPublicUrl(storagePath);
+
+      const { data: documentData, error: insertError } = await supabase
+        .from("audit_blanc_documents")
+        .insert({
+          case_id: auditCase.id,
+          name: "Rapport d’audit blanc",
+          document_type: "rapport_audit_blanc",
+          storage_bucket: "selen-documents",
+          storage_path: storagePath,
+          public_url: publicUrlData.publicUrl,
+          uploaded_by_email: agent.email,
+          is_visible_to_client: true,
+        })
+        .select(
+          "id, name, document_type, storage_path, public_url, is_visible_to_client, uploaded_by_email, created_at, source_model_id",
+        )
+        .single();
+
+      if (insertError) {
+        throw new Error(
+          `PDF généré, mais impossible de l’associer au dossier : ${insertError.message}`,
+        );
+      }
+
+      const { error: caseUpdateError } = await supabase
+        .from("audit_blanc_cases")
+        .update({
+          report_status: "sent",
+          report_storage_path: storagePath,
+          status: "report_ready",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", auditCase.id);
+
+      if (caseUpdateError) {
+        throw new Error(
+          `PDF généré, mais statut dossier non mis à jour : ${caseUpdateError.message}`,
+        );
+      }
+
+      setDocuments((prev) => [documentData as AuditBlancDocument, ...prev]);
+
+      setAuditCase((prev) =>
+        prev
+          ? {
+              ...prev,
+              report_status: "sent",
+              report_storage_path: storagePath,
+              status: "report_ready",
+              updated_at: new Date().toISOString(),
+            }
+          : prev,
       );
-      setGeneratingPdf(false);
-      return;
-    }
 
-    const { error: caseUpdateError } = await supabase
-      .from("audit_blanc_cases")
-      .update({
-        report_status: "sent",
-        report_storage_path: storagePath,
-        status: "report_ready",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", auditCase.id);
+      setSuccess("Rapport PDF généré et visible dans l’espace client.");
+    } catch (error) {
+      console.error("Erreur génération rapport PDF :", error);
 
-    if (caseUpdateError) {
       setError(
-        `PDF généré, mais statut dossier non mis à jour : ${caseUpdateError.message}`,
+        error instanceof Error
+          ? `Impossible de générer le rapport PDF : ${error.message}`
+          : "Impossible de générer le rapport PDF. Une erreur inconnue est survenue.",
       );
+    } finally {
       setGeneratingPdf(false);
-      return;
     }
-
-    setDocuments((prev) => [documentData as AuditBlancDocument, ...prev]);
-
-    setAuditCase((prev) =>
-      prev
-        ? {
-            ...prev,
-            report_status: "sent",
-            report_storage_path: storagePath,
-            status: "report_ready",
-            updated_at: new Date().toISOString(),
-          }
-        : prev,
-    );
-
-    setSuccess("Rapport PDF généré et visible dans l’espace client.");
-    setGeneratingPdf(false);
   }
 
   async function uploadDocument() {
