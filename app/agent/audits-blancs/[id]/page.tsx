@@ -6,6 +6,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "../../../lib/supabase/client";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 type AuditBlancCase = {
   id: string;
@@ -199,6 +201,167 @@ function extractStoragePathFromPublicUrl(value?: string | null) {
   return value.replace(/^\/+/, "");
 }
 
+function pdfText(value?: string | null) {
+  return value?.trim() || "Non renseigné.";
+}
+
+function diagnosticLabelPlain(value?: string | null) {
+  if (value === "conforme") return "Conforme";
+  if (value === "mineure") return "Non-conformité mineure probable";
+  if (value === "majeure") return "Non-conformité majeure probable";
+  if (value === "a_verifier") return "À vérifier";
+  return "Non renseigné";
+}
+
+function generateAuditReportPdfBlob({
+  auditCase,
+  indicatorNotes,
+  auditSummary,
+}: {
+  auditCase: AuditBlancCase;
+  indicatorNotes: IndicatorNote[];
+  auditSummary: AuditSummary;
+}) {
+  const doc = new jsPDF({
+    orientation: "portrait",
+    unit: "mm",
+    format: "a4",
+  });
+
+  const margin = 14;
+  let y = 18;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(18);
+  doc.text("Rapport d'audit blanc Qualiopi", margin, y);
+
+  y += 9;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.text(`Client : ${auditCase.client_email}`, margin, y);
+
+  y += 6;
+
+  doc.text(
+    `Généré le : ${new Intl.DateTimeFormat("fr-FR", {
+      dateStyle: "full",
+      timeStyle: "short",
+    }).format(new Date())}`,
+    margin,
+    y,
+  );
+
+  y += 10;
+
+  doc.setDrawColor(178, 138, 98);
+  doc.line(margin, y, 196, y);
+
+  y += 10;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
+  doc.text("Synthèse générale", margin, y);
+
+  y += 7;
+
+  autoTable(doc, {
+    startY: y,
+    head: [["Élément", "Résultat"]],
+    body: [
+      [
+        "Usage des marques",
+        diagnosticLabelPlain(auditCase.brand_usage_diagnostic),
+      ],
+      ["Indicateurs conformes", String(auditSummary.conforme)],
+      ["Non-conformités mineures probables", String(auditSummary.mineure)],
+      ["Non-conformités majeures probables", String(auditSummary.majeure)],
+      ["À vérifier", String(auditSummary.aVerifier)],
+    ],
+    styles: {
+      font: "helvetica",
+      fontSize: 9,
+      cellPadding: 3,
+      valign: "top",
+    },
+    headStyles: {
+      fillColor: [178, 138, 98],
+      textColor: [255, 255, 255],
+    },
+    columnStyles: {
+      0: { cellWidth: 80 },
+      1: { cellWidth: 90 },
+    },
+    margin: { left: margin, right: margin },
+  });
+
+  y =
+    (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable
+      .finalY + 10;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
+  doc.text("Constats détaillés", margin, y);
+
+  y += 7;
+
+  const sortedNotes = [...indicatorNotes].sort(
+    (a, b) => a.indicator_number - b.indicator_number,
+  );
+
+  const rows = [
+    [
+      "Usage des marques",
+      diagnosticLabelPlain(auditCase.brand_usage_diagnostic),
+      pdfText(auditCase.brand_usage_notes),
+    ],
+    ...sortedNotes.map((note) => [
+      `Indicateur ${note.indicator_number}`,
+      diagnosticLabelPlain(note.agent_diagnostic),
+      pdfText(note.user_notes),
+    ]),
+  ];
+
+  autoTable(doc, {
+    startY: y,
+    head: [["Partie", "Diagnostic", "Notes / constats"]],
+    body: rows,
+    styles: {
+      font: "helvetica",
+      fontSize: 8.5,
+      cellPadding: 3,
+      valign: "top",
+      overflow: "linebreak",
+    },
+    headStyles: {
+      fillColor: [62, 42, 31],
+      textColor: [255, 255, 255],
+    },
+    columnStyles: {
+      0: { cellWidth: 34 },
+      1: { cellWidth: 45 },
+      2: { cellWidth: 93 },
+    },
+    margin: { left: margin, right: margin },
+  });
+
+  const pageCount = doc.getNumberOfPages();
+
+  for (let page = 1; page <= pageCount; page += 1) {
+    doc.setPage(page);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(120, 90, 65);
+    doc.text(
+      `Selen Editions - Rapport d'audit blanc - Page ${page}/${pageCount}`,
+      margin,
+      288,
+    );
+  }
+
+  return doc.output("blob") as Blob;
+}
+
 export default function AgentAuditBlancDetailPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
@@ -244,6 +407,8 @@ export default function AgentAuditBlancDetailPage() {
   );
   const [selectedModelIds, setSelectedModelIds] = useState<string[]>([]);
   const [linkingModel, setLinkingModel] = useState(false);
+
+  const [generatingPdf, setGeneratingPdf] = useState(false);
 
   const auditSummary = buildAuditSummary(indicatorNotes);
 
@@ -548,6 +713,104 @@ export default function AgentAuditBlancDetailPage() {
       } visible${validModels.length > 1 ? "s" : ""} dans l’espace client.`,
     );
     setLinkingModel(false);
+  }
+
+  async function generateAuditReportPdf() {
+    if (!auditCase || !agent) {
+      setError("Dossier ou agent introuvable.");
+      return;
+    }
+
+    setGeneratingPdf(true);
+    setError("");
+    setSuccess("");
+
+    const pdfBlob = generateAuditReportPdfBlob({
+      auditCase,
+      indicatorNotes,
+      auditSummary,
+    });
+
+    const safeEmail = sanitizeFileName(auditCase.client_email);
+    const fileName = `rapport-audit-blanc-${safeEmail}-${Date.now()}.pdf`;
+    const storagePath = `audit-blanc/${auditCase.id}/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("selen-documents")
+      .upload(storagePath, pdfBlob, {
+        upsert: false,
+        contentType: "application/pdf",
+      });
+
+    if (uploadError) {
+      setError(`Erreur génération PDF : ${uploadError.message}`);
+      setGeneratingPdf(false);
+      return;
+    }
+
+    const { data: publicUrlData } = supabase.storage
+      .from("selen-documents")
+      .getPublicUrl(storagePath);
+
+    const { data: documentData, error: insertError } = await supabase
+      .from("audit_blanc_documents")
+      .insert({
+        case_id: auditCase.id,
+        name: "Rapport d’audit blanc",
+        document_type: "rapport_audit_blanc_pdf",
+        storage_bucket: "selen-documents",
+        storage_path: storagePath,
+        public_url: publicUrlData.publicUrl,
+        uploaded_by_email: agent.email,
+        is_visible_to_client: true,
+      })
+      .select(
+        "id, name, document_type, storage_path, public_url, is_visible_to_client, uploaded_by_email, created_at, source_model_id",
+      )
+      .single();
+
+    if (insertError) {
+      setError(
+        `PDF généré, mais non associé au dossier : ${insertError.message}`,
+      );
+      setGeneratingPdf(false);
+      return;
+    }
+
+    const { error: caseUpdateError } = await supabase
+      .from("audit_blanc_cases")
+      .update({
+        report_status: "sent",
+        report_storage_path: storagePath,
+        status: "report_ready",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", auditCase.id);
+
+    if (caseUpdateError) {
+      setError(
+        `PDF généré, mais statut dossier non mis à jour : ${caseUpdateError.message}`,
+      );
+      setGeneratingPdf(false);
+      return;
+    }
+
+    setDocuments((prev) => [documentData as AuditBlancDocument, ...prev]);
+
+    setAuditCase((prev) =>
+      prev
+        ? {
+            ...prev,
+            report_status: "sent",
+            report_storage_path: storagePath,
+            status: "report_ready",
+            updated_at: new Date().toISOString(),
+          }
+        : prev,
+    );
+
+    setSuccess("Rapport PDF généré et visible dans l’espace client.");
+    setGeneratingPdf(false);
   }
 
   async function uploadDocument() {
@@ -994,6 +1257,25 @@ export default function AgentAuditBlancDetailPage() {
                   Elle servira ensuite de base au rapport PDF transmis au
                   client.
                 </p>
+
+                <button
+                  type="button"
+                  className="btn-ink"
+                  onClick={generateAuditReportPdf}
+                  disabled={generatingPdf}
+                  style={{
+                    width: "100%",
+                    marginBottom: "1rem",
+                    opacity: generatingPdf ? 0.55 : 1,
+                    cursor: generatingPdf ? "not-allowed" : "pointer",
+                  }}
+                >
+                  <span>
+                    {generatingPdf
+                      ? "Génération du rapport PDF…"
+                      : "Générer le rapport PDF client"}
+                  </span>
+                </button>
 
                 <div style={{ display: "grid", gap: "0.8rem" }}>
                   <div

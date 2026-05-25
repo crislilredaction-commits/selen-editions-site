@@ -48,20 +48,6 @@ type ClientAuditSummary = {
   total_renseignes: number;
 };
 
-type AuditBlancReport = {
-  id: string;
-  case_id: string;
-  global_summary: string | null;
-  strengths: string | null;
-  major_nonconformities: string | null;
-  minor_nonconformities: string | null;
-  corrective_actions: string | null;
-  final_recommendation: string | null;
-  is_visible_to_client: boolean;
-  created_at: string;
-  updated_at: string;
-};
-
 function formatDateTime(value?: string | null) {
   if (!value) return "Non planifié";
 
@@ -148,7 +134,17 @@ export default function ClientAuditBlancPage() {
 
   const [summary, setSummary] = useState<ClientAuditSummary | null>(null);
 
-  const [report, setReport] = useState<AuditBlancReport | null>(null);
+  const reportDocuments = documents.filter(
+    (doc) =>
+      doc.document_type === "rapport_audit_blanc_pdf" ||
+      doc.document_type === "rapport_audit_blanc",
+  );
+
+  const correctiveDocuments = documents.filter(
+    (doc) =>
+      doc.document_type !== "rapport_audit_blanc_pdf" &&
+      doc.document_type !== "rapport_audit_blanc",
+  );
 
   function getDocumentHref(doc: AuditBlancDocument) {
     const storagePath = extractStoragePath(doc.storage_path || doc.public_url);
@@ -198,25 +194,6 @@ export default function ClientAuditBlancPage() {
         );
         setLoading(false);
         return;
-      }
-
-      if (caseData?.id) {
-        const { data: reportData, error: reportError } = await supabase
-          .from("audit_blanc_reports")
-          .select(
-            "id, case_id, global_summary, strengths, major_nonconformities, minor_nonconformities, corrective_actions, final_recommendation, is_visible_to_client, created_at, updated_at",
-          )
-          .eq("case_id", caseData.id)
-          .eq("is_visible_to_client", true)
-          .maybeSingle();
-
-        if (reportError) {
-          setError(`Impossible de charger le rapport. ${reportError.message}`);
-          setLoading(false);
-          return;
-        }
-
-        setReport((reportData ?? null) as AuditBlancReport | null);
       }
 
       setAuditCase(caseData);
@@ -726,10 +703,28 @@ export default function ClientAuditBlancPage() {
                 <p className="gazette-label">Rapport d’audit blanc</p>
 
                 <h2 style={{ color: "var(--ink)", marginBottom: "0.7rem" }}>
-                  Rapport transmis par l’auditeur
+                  Votre rapport PDF
                 </h2>
 
-                {!report ? (
+                {reportDocuments.length > 0 ? (
+                  <div style={{ display: "grid", gap: "0.55rem" }}>
+                    {reportDocuments.map((doc) => (
+                      <a
+                        key={doc.id}
+                        href={getDocumentHref(doc)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn-ink"
+                        style={{
+                          display: "inline-block",
+                          width: "fit-content",
+                        }}
+                      >
+                        <span>📥 Télécharger {doc.name}</span>
+                      </a>
+                    ))}
+                  </div>
+                ) : (
                   <p
                     style={{
                       color: "var(--ink-faint)",
@@ -737,87 +732,10 @@ export default function ClientAuditBlancPage() {
                       lineHeight: 1.5,
                     }}
                   >
-                    Le rapport n’est pas encore disponible. Il apparaîtra ici
-                    lorsque l’auditeur l’aura publié dans votre espace client.
+                    Le rapport PDF n’est pas encore disponible. Il apparaîtra
+                    ici lorsque l’auditeur l’aura généré et publié dans votre
+                    espace client.
                   </p>
-                ) : (
-                  <div style={{ display: "grid", gap: "1rem" }}>
-                    {[
-                      {
-                        label: "Synthèse générale",
-                        value: report.global_summary,
-                      },
-                      {
-                        label: "Points conformes / éléments solides",
-                        value: report.strengths,
-                      },
-                      {
-                        label: "Non-conformités majeures probables",
-                        value: report.major_nonconformities,
-                      },
-                      {
-                        label: "Non-conformités mineures / points de vigilance",
-                        value: report.minor_nonconformities,
-                      },
-                      {
-                        label: "Actions correctives recommandées",
-                        value: report.corrective_actions,
-                      },
-                      {
-                        label: "Conclusion / recommandation finale",
-                        value: report.final_recommendation,
-                      },
-                    ].map((section) => (
-                      <div
-                        key={section.label}
-                        style={{
-                          border: "1px solid var(--sepia-mid)",
-                          background: "rgba(255,255,255,0.35)",
-                          padding: "0.9rem",
-                        }}
-                      >
-                        <p
-                          style={{
-                            fontFamily: "var(--font-cinzel, 'Cinzel', serif)",
-                            fontSize: "0.62rem",
-                            letterSpacing: "0.18em",
-                            textTransform: "uppercase",
-                            color: "var(--ocre-dark)",
-                            marginBottom: "0.45rem",
-                          }}
-                        >
-                          {section.label}
-                        </p>
-
-                        <p
-                          style={{
-                            color: section.value
-                              ? "var(--ink-soft)"
-                              : "var(--ink-faint)",
-                            lineHeight: 1.65,
-                            whiteSpace: "pre-wrap",
-                            fontSize: "0.94rem",
-                          }}
-                        >
-                          {section.value || "Non renseigné."}
-                        </p>
-                      </div>
-                    ))}
-
-                    <p
-                      style={{
-                        color: "var(--ink-faint)",
-                        fontSize: "0.82rem",
-                        lineHeight: 1.45,
-                      }}
-                    >
-                      Dernière mise à jour du rapport :{" "}
-                      {new Intl.DateTimeFormat("fr-FR", {
-                        dateStyle: "medium",
-                        timeStyle: "short",
-                      }).format(new Date(report.updated_at))}
-                    </p>
-                  </div>
                 )}
               </article>
 
@@ -834,9 +752,9 @@ export default function ClientAuditBlancPage() {
                   Vos documents transmis par l’auditeur
                 </h2>
 
-                {documents.length > 0 ? (
+                {correctiveDocuments.length > 0 ? (
                   <div style={{ display: "grid", gap: "0.55rem" }}>
-                    {documents.map((doc) => (
+                    {correctiveDocuments.map((doc) => (
                       <a
                         key={doc.id}
                         href={getDocumentHref(doc)}
@@ -863,8 +781,8 @@ export default function ClientAuditBlancPage() {
                       lineHeight: 1.5,
                     }}
                   >
-                    Aucun rapport ou document correctif n’a encore été publié.
-                    Ils apparaîtront ici lorsque l’auditeur les aura transmis.
+                    Aucun document correctif n’a encore été publié. Ils
+                    apparaîtront ici lorsque l’auditeur les aura transmis.
                   </p>
                 )}
               </article>
