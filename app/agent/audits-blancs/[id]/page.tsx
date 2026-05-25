@@ -30,6 +30,7 @@ type AuditBlancCase = {
     | "mineure"
     | "majeure"
     | null;
+  brand_usage_notes: string | null;
 };
 
 type AgentProfile = {
@@ -82,6 +83,8 @@ type AgentNote = {
 type IndicatorNote = {
   indicator_number: number;
   agent_diagnostic: "a_verifier" | "conforme" | "mineure" | "majeure" | null;
+  user_notes: string | null;
+  updated_at: string | null;
 };
 
 type AuditSummary = {
@@ -262,6 +265,14 @@ export default function AgentAuditBlancDetailPage() {
 
   const auditSummary = buildAuditSummary(indicatorNotes);
 
+  const indicatorConstats = [...indicatorNotes]
+    .filter(
+      (note) =>
+        note.agent_diagnostic ||
+        (note.user_notes && note.user_notes.trim().length > 0),
+    )
+    .sort((a, b) => a.indicator_number - b.indicator_number);
+
   async function loadDetail() {
     setLoading(true);
     setError("");
@@ -306,7 +317,7 @@ export default function AgentAuditBlancDetailPage() {
     const { data: caseData, error: caseError } = await supabase
       .from("audit_blanc_cases")
       .select(
-        "id, client_email, status, offer, price_paid, currency, calendly_mode, calendly_event_1_start, calendly_event_1_end, calendly_event_2_start, calendly_event_2_end, meeting_url, report_status, report_storage_path, brand_usage_diagnostic, created_at, updated_at",
+        "id, client_email, status, offer, price_paid, currency, calendly_mode, calendly_event_1_start, calendly_event_1_end, calendly_event_2_start, calendly_event_2_end, meeting_url, report_status, report_storage_path, brand_usage_diagnostic, brand_usage_notes, created_at, updated_at",
       )
       .eq("id", caseId)
       .maybeSingle();
@@ -374,7 +385,7 @@ export default function AgentAuditBlancDetailPage() {
     const { data: indicatorNoteData, error: indicatorNoteError } =
       await supabase
         .from("audit_blanc_indicator_notes")
-        .select("indicator_number, agent_diagnostic")
+        .select("indicator_number, agent_diagnostic, user_notes, updated_at")
         .eq("case_id", caseId)
         .order("indicator_number", { ascending: true });
 
@@ -1114,6 +1125,174 @@ export default function AgentAuditBlancDetailPage() {
                   Cette synthèse se met à jour à partir des diagnostics
                   enregistrés dans l’outil d’audit indicateur par indicateur.
                 </p>
+              </article>
+
+              <article
+                style={{
+                  background: "var(--paper)",
+                  border: "1px solid var(--sepia-mid)",
+                  borderLeft: "4px solid var(--ocre-dark)",
+                  padding: "1.2rem",
+                }}
+              >
+                <p className="gazette-label">Synthèse des constats</p>
+
+                <h2 style={{ color: "var(--ink)", marginBottom: "0.7rem" }}>
+                  Notes prises pendant l’audit blanc
+                </h2>
+
+                <p
+                  style={{
+                    color: "var(--ink-faint)",
+                    fontSize: "0.9rem",
+                    lineHeight: 1.5,
+                    marginBottom: "1rem",
+                  }}
+                >
+                  Cette synthèse reprend les notes saisies dans l’outil d’audit.
+                  Elle servira ensuite de base au rapport PDF transmis au
+                  client.
+                </p>
+
+                <div style={{ display: "grid", gap: "0.8rem" }}>
+                  <div
+                    style={{
+                      border: "1px solid var(--sepia-mid)",
+                      background: "rgba(178,138,98,0.08)",
+                      padding: "0.9rem",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: "0.8rem",
+                        flexWrap: "wrap",
+                        alignItems: "center",
+                        marginBottom: "0.5rem",
+                      }}
+                    >
+                      <h3
+                        style={{
+                          color: "var(--ink)",
+                          fontSize: "1rem",
+                          margin: 0,
+                        }}
+                      >
+                        Usage des marques
+                      </h3>
+
+                      <span
+                        style={{
+                          color: diagnosticColor(
+                            auditCase.brand_usage_diagnostic,
+                          ),
+                          fontWeight: 800,
+                          fontSize: "0.9rem",
+                        }}
+                      >
+                        {diagnosticLabel(auditCase.brand_usage_diagnostic)}
+                      </span>
+                    </div>
+
+                    <p
+                      style={{
+                        color: auditCase.brand_usage_notes
+                          ? "var(--ink-soft)"
+                          : "var(--ink-faint)",
+                        lineHeight: 1.6,
+                        whiteSpace: "pre-wrap",
+                        fontSize: "0.92rem",
+                      }}
+                    >
+                      {auditCase.brand_usage_notes?.trim() ||
+                        "Aucune note renseignée."}
+                    </p>
+                  </div>
+
+                  {indicatorConstats.length === 0 ? (
+                    <div
+                      style={{
+                        border: "1px dashed var(--sepia-mid)",
+                        background: "rgba(255,255,255,0.35)",
+                        padding: "0.9rem",
+                      }}
+                    >
+                      <p
+                        style={{
+                          color: "var(--ink-faint)",
+                          fontSize: "0.92rem",
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        Aucune note indicateur n’a encore été enregistrée. Les
+                        constats apparaîtront ici au fur et à mesure de l’audit.
+                      </p>
+                    </div>
+                  ) : (
+                    indicatorConstats.map((note) => (
+                      <details
+                        key={note.indicator_number}
+                        style={{
+                          border: "1px solid var(--sepia-mid)",
+                          background: "rgba(255,255,255,0.38)",
+                          padding: "0.9rem",
+                        }}
+                      >
+                        <summary
+                          style={{
+                            cursor: "pointer",
+                            color: "var(--ink)",
+                            fontWeight: 800,
+                          }}
+                        >
+                          Indicateur {note.indicator_number} ·{" "}
+                          <span
+                            style={{
+                              color: diagnosticColor(note.agent_diagnostic),
+                            }}
+                          >
+                            {diagnosticLabel(note.agent_diagnostic)}
+                          </span>
+                        </summary>
+
+                        <div
+                          style={{
+                            marginTop: "0.75rem",
+                            display: "grid",
+                            gap: "0.5rem",
+                          }}
+                        >
+                          <p
+                            style={{
+                              color: note.user_notes
+                                ? "var(--ink-soft)"
+                                : "var(--ink-faint)",
+                              lineHeight: 1.6,
+                              whiteSpace: "pre-wrap",
+                              fontSize: "0.92rem",
+                            }}
+                          >
+                            {note.user_notes?.trim() ||
+                              "Aucune note renseignée."}
+                          </p>
+
+                          {note.updated_at && (
+                            <p
+                              style={{
+                                color: "var(--ink-faint)",
+                                fontSize: "0.78rem",
+                              }}
+                            >
+                              Dernière mise à jour :{" "}
+                              {formatDateTime(note.updated_at)}
+                            </p>
+                          )}
+                        </div>
+                      </details>
+                    ))
+                  )}
+                </div>
               </article>
 
               <article
