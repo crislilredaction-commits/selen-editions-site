@@ -11,14 +11,14 @@ type UserInfo = {
 
 type ToolAccess = {
   id: string;
-  email: string;
-  tool_key: string;
+  user_id: string;
+  tool_slug: string;
   status: string;
-  access_starts_at: string;
-  access_expires_at: string;
-  offer: string | null;
-  amount_paid: number | null;
-  currency: string | null;
+  access_type: "limited" | "unlimited" | string;
+  starts_at: string | null;
+  ends_at: string | null;
+  created_at: string;
+  updated_at: string | null;
 };
 
 function formatDate(value?: string | null) {
@@ -32,13 +32,29 @@ function formatDate(value?: string | null) {
 }
 
 function getRemainingDays(value?: string | null) {
-  if (!value) return 0;
+  if (!value) return null;
 
   const today = new Date();
   const expiresAt = new Date(value);
   const diff = expiresAt.getTime() - today.getTime();
 
   return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+}
+
+function hasActiveToolAccess(access?: ToolAccess | null) {
+  if (!access) return false;
+  if (access.status !== "active") return false;
+
+  if (access.access_type === "unlimited") return true;
+
+  if (access.access_type === "limited") {
+    if (!access.starts_at || !access.ends_at) return false;
+
+    const now = new Date();
+    return new Date(access.starts_at) <= now && new Date(access.ends_at) >= now;
+  }
+
+  return false;
 }
 
 function formatOffer(value?: string | null) {
@@ -53,13 +69,20 @@ export default function ClientDashboardPage() {
 
   const [loading, setLoading] = useState(true);
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
-  const [toolAccess, setToolAccess] = useState<ToolAccess | null>(null);
+  const [preauditAccess, setPreauditAccess] = useState<ToolAccess | null>(null);
+  const [auditBlancAccess, setAuditBlancAccess] = useState<ToolAccess | null>(
+    null,
+  );
   const [error, setError] = useState("");
 
-  const remainingDays = getRemainingDays(toolAccess?.access_expires_at);
+  const preauditRemainingDays = getRemainingDays(preauditAccess?.ends_at);
+  const auditBlancRemainingDays = getRemainingDays(auditBlancAccess?.ends_at);
 
-  const hasActiveAccess =
-    Boolean(toolAccess) && toolAccess?.status === "active" && remainingDays > 0;
+  const hasActiveAccess = hasActiveToolAccess(preauditAccess);
+  const hasActiveAuditBlancAccess = hasActiveToolAccess(auditBlancAccess);
+
+  const isPreauditUnlimited = preauditAccess?.access_type === "unlimited";
+  const isAuditBlancUnlimited = auditBlancAccess?.access_type === "unlimited";
 
   useEffect(() => {
     async function loadClientSpace() {
@@ -84,22 +107,35 @@ export default function ClientDashboardPage() {
       });
 
       const { data: accessData, error: accessError } = await supabase
-        .from("client_tool_access")
+        .from("selen_client_tool_access")
         .select(
-          "id, email, tool_key, status, access_starts_at, access_expires_at, offer, amount_paid, currency",
+          "id, user_id, tool_slug, status, access_type, starts_at, ends_at, created_at, updated_at",
         )
-        .eq("tool_key", "preaudit_qualiopi")
-        .maybeSingle();
+        .eq("user_id", data.user.id)
+        .in("tool_slug", ["preaudit-qualiopi", "audit-blanc-qualiopi"])
+        .order("created_at", { ascending: false });
 
       if (accessError) {
         setError(
-          `Impossible de vérifier votre accès auto-audit. ${accessError.message}`,
+          `Impossible de vérifier vos accès Selen. ${accessError.message}`,
         );
         setLoading(false);
         return;
       }
 
-      setToolAccess(accessData);
+      const accesses = (accessData ?? []) as ToolAccess[];
+
+      setPreauditAccess(
+        accesses.find((access) => access.tool_slug === "preaudit-qualiopi") ??
+          null,
+      );
+
+      setAuditBlancAccess(
+        accesses.find(
+          (access) => access.tool_slug === "audit-blanc-qualiopi",
+        ) ?? null,
+      );
+
       setLoading(false);
     }
 
@@ -218,20 +254,41 @@ export default function ClientDashboardPage() {
                     marginBottom: "0.8rem",
                   }}
                 >
-                  Votre accès à l’auto-audit est actif jusqu’au{" "}
-                  <strong>{formatDate(toolAccess?.access_expires_at)}</strong>.
+                  {isPreauditUnlimited ? (
+                    <>
+                      Votre accès à l’auto-audit est actif en{" "}
+                      <strong>illimité</strong>.
+                    </>
+                  ) : (
+                    <>
+                      Votre accès à l’auto-audit est actif jusqu’au{" "}
+                      <strong>{formatDate(preauditAccess?.ends_at)}</strong>.
+                    </>
+                  )}
                 </p>
 
-                <p
-                  style={{
-                    color: "#6a8a4a",
-                    fontWeight: 700,
-                    marginBottom: "1rem",
-                  }}
-                >
-                  Il vous reste environ {remainingDays} jour
-                  {remainingDays > 1 ? "s" : ""} d’accès.
-                </p>
+                {isPreauditUnlimited ? (
+                  <p
+                    style={{
+                      color: "#6a8a4a",
+                      fontWeight: 700,
+                      marginBottom: "1rem",
+                    }}
+                  >
+                    Votre accès n’a pas de date d’expiration.
+                  </p>
+                ) : (
+                  <p
+                    style={{
+                      color: "#6a8a4a",
+                      fontWeight: 700,
+                      marginBottom: "1rem",
+                    }}
+                  >
+                    Il vous reste environ {preauditRemainingDays ?? 0} jour
+                    {(preauditRemainingDays ?? 0) > 1 ? "s" : ""} d’accès.
+                  </p>
+                )}
 
                 <p
                   style={{
@@ -241,7 +298,10 @@ export default function ClientDashboardPage() {
                     marginBottom: "1rem",
                   }}
                 >
-                  Offre : {formatOffer(toolAccess?.offer)}
+                  Offre :{" "}
+                  {isPreauditUnlimited
+                    ? "Accès offert illimité"
+                    : "Accès offert"}
                 </p>
 
                 <div style={{ display: "grid", gap: "0.5rem" }}>
@@ -365,13 +425,39 @@ export default function ClientDashboardPage() {
                 <p>✦ Réservation Calendly après paiement</p>
               </div>
 
-              <button
-                type="button"
-                className="btn-ink"
-                onClick={() => router.push("/client/audit-blanc")}
-              >
-                <span>Accéder à mon audit blanc →</span>
-              </button>
+              {hasActiveAuditBlancAccess ? (
+                <>
+                  <p
+                    style={{
+                      color: "#6a8a4a",
+                      fontWeight: 700,
+                      marginBottom: "1rem",
+                    }}
+                  >
+                    {isAuditBlancUnlimited
+                      ? "Votre accès à l’audit blanc est actif en illimité."
+                      : `Votre accès à l’audit blanc est actif jusqu’au ${formatDate(
+                          auditBlancAccess?.ends_at,
+                        )}.`}
+                  </p>
+
+                  <button
+                    type="button"
+                    className="btn-ink"
+                    onClick={() => router.push("/client/audit-blanc")}
+                  >
+                    <span>Accéder à mon audit blanc →</span>
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className="btn-ink"
+                  onClick={() => router.push("/selen-review")}
+                >
+                  <span>Découvrir l’audit blanc →</span>
+                </button>
+              )}
             </article>
 
             <h2 style={{ color: "var(--ink)", marginBottom: "0.5rem" }}>
