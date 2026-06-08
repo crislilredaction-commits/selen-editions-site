@@ -40,6 +40,45 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
   },
 });
 
+type DossierConfig = {
+  dossierType: string;
+  title: string;
+  status: string;
+};
+
+const TOOL_DOSSIER_CONFIG: Record<string, DossierConfig> = {
+  preaudit_qualiopi: {
+    dossierType: "preaudit",
+    title: "Préaudit Qualiopi",
+    status: "assignable",
+  },
+  preaudit: {
+    dossierType: "preaudit",
+    title: "Préaudit Qualiopi",
+    status: "assignable",
+  },
+  "preaudit-qualiopi": {
+    dossierType: "preaudit",
+    title: "Préaudit Qualiopi",
+    status: "assignable",
+  },
+  audit_blanc_qualiopi: {
+    dossierType: "audit_blanc",
+    title: "Audit blanc Review",
+    status: "assignable",
+  },
+  audit_blanc: {
+    dossierType: "audit_blanc",
+    title: "Audit blanc Review",
+    status: "assignable",
+  },
+  "audit-blanc": {
+    dossierType: "audit_blanc",
+    title: "Audit blanc Review",
+    status: "assignable",
+  },
+};
+
 function addThreeMonths(date: Date) {
   const next = new Date(date);
   next.setMonth(next.getMonth() + 3);
@@ -59,6 +98,164 @@ function formatOffer(offer: string) {
   if (offer === "trois-fois")
     return "Auto-audit Qualiopi — paiement en 3 × 33 €";
   return "Auto-audit Qualiopi";
+}
+
+function getDossierConfigFromToolSlug(toolSlug: string) {
+  return TOOL_DOSSIER_CONFIG[toolSlug] ?? null;
+}
+
+function getClientEmailFromSession(session: Stripe.Checkout.Session) {
+  return (session.customer_details?.email || session.customer_email || "")
+    .trim()
+    .toLowerCase();
+}
+
+function getClientNameFromSession(session: Stripe.Checkout.Session) {
+  return (
+    session.customer_details?.name ||
+    session.metadata?.client_name ||
+    session.metadata?.name ||
+    null
+  );
+}
+
+async function ensureOrganisationForClient({
+  email,
+  fullName,
+}: {
+  email: string;
+  fullName?: string | null;
+}) {
+  const cleanEmail = email.trim().toLowerCase();
+
+  if (!cleanEmail) {
+    throw new Error("Email client obligatoire pour créer le client Studio.");
+  }
+
+  const { data: existingOrganisation, error: existingOrganisationError } =
+    await supabaseAdmin
+      .from("organisations")
+      .select("id, name, email")
+      .eq("email", cleanEmail)
+      .maybeSingle();
+
+  if (existingOrganisationError) {
+    throw new Error(
+      `Impossible de vérifier le client Studio. ${existingOrganisationError.message}`,
+    );
+  }
+
+  if (existingOrganisation?.id) {
+    return existingOrganisation;
+  }
+
+  const fallbackName = fullName?.trim() || cleanEmail;
+
+  const { data: newOrganisation, error: organisationError } =
+    await supabaseAdmin
+      .from("organisations")
+      .insert({
+        name: fallbackName,
+        email: cleanEmail,
+        status: "active",
+      })
+      .select("id, name, email")
+      .single();
+
+  if (organisationError || !newOrganisation) {
+    throw new Error(
+      `Impossible de créer le client Studio. ${
+        organisationError?.message ?? ""
+      }`,
+    );
+  }
+
+  return newOrganisation;
+}
+
+async function ensureDossierForClientAccess({
+  organisationId,
+  toolSlug,
+}: {
+  organisationId: string;
+  toolSlug: string;
+}) {
+  const config = getDossierConfigFromToolSlug(toolSlug);
+
+  if (!config) {
+    return null;
+  }
+
+  const { data: existingDossier, error: existingDossierError } =
+    await supabaseAdmin
+      .from("dossiers")
+      .select("id, title, type, status")
+      .eq("organisation_id", organisationId)
+      .eq("type", config.dossierType)
+      .neq("status", "archived")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+  if (existingDossierError) {
+    throw new Error(
+      `Impossible de vérifier les dossiers existants. ${existingDossierError.message}`,
+    );
+  }
+
+  if (existingDossier?.id) {
+    return existingDossier;
+  }
+
+  const { data: dossier, error: dossierError } = await supabaseAdmin
+    .from("dossiers")
+    .insert({
+      title: config.title,
+      type: config.dossierType,
+      organisation_id: organisationId,
+      status: config.status,
+    })
+    .select("id, title, type, status")
+    .single();
+
+  if (dossierError || !dossier) {
+    throw new Error(
+      `Accès créé, mais impossible de créer le dossier Studio. ${
+        dossierError?.message ?? ""
+      }`,
+    );
+  }
+
+  return dossier;
+}
+
+async function ensureStudioClientAndDossier({
+  session,
+  toolSlug,
+}: {
+  session: Stripe.Checkout.Session;
+  toolSlug: string;
+}) {
+  const email = getClientEmailFromSession(session);
+
+  if (!email) {
+    throw new Error("Aucun email client trouvé dans la session Stripe.");
+  }
+
+  const organisation = await ensureOrganisationForClient({
+    email,
+    fullName: getClientNameFromSession(session),
+  });
+
+  const dossier = await ensureDossierForClientAccess({
+    organisationId: organisation.id,
+    toolSlug,
+  });
+
+  return {
+    organisation,
+    dossier,
+  };
 }
 
 async function generateClientLoginLink(email: string) {
@@ -196,7 +393,7 @@ async function sendAutoAuditAccessEmail({
 }
 
 async function activateAutoAuditAccess(session: Stripe.Checkout.Session) {
-  const email = session.customer_details?.email || session.customer_email || "";
+  const email = getClientEmailFromSession(session);
 
   if (!email) {
     throw new Error("Aucun email client trouvé dans la session Stripe.");
@@ -221,7 +418,7 @@ async function activateAutoAuditAccess(session: Stripe.Checkout.Session) {
 
   const { error } = await supabaseAdmin.from("client_tool_access").upsert(
     {
-      email: email.toLowerCase(),
+      email,
       tool_key: "preaudit_qualiopi",
       status: "active",
       access_starts_at: now.toISOString(),
@@ -243,6 +440,11 @@ async function activateAutoAuditAccess(session: Stripe.Checkout.Session) {
     throw new Error(`Erreur Supabase activation accès : ${error.message}`);
   }
 
+  await ensureStudioClientAndDossier({
+    session,
+    toolSlug: "preaudit_qualiopi",
+  });
+
   if (offer === "trois-fois" && stripeSubscriptionId) {
     const cancelAt = addThreeMonths(now);
 
@@ -259,7 +461,7 @@ async function activateAutoAuditAccess(session: Stripe.Checkout.Session) {
 
   try {
     await sendAutoAuditAccessEmail({
-      email: email.toLowerCase(),
+      email,
       offer,
       expiresAt,
     });
@@ -269,10 +471,31 @@ async function activateAutoAuditAccess(session: Stripe.Checkout.Session) {
 }
 
 async function createAuditBlancCase(session: Stripe.Checkout.Session) {
-  const email = session.customer_details?.email || session.customer_email || "";
+  const email = getClientEmailFromSession(session);
 
   if (!email) {
     throw new Error("Aucun email client trouvé dans la session Stripe.");
+  }
+
+  const existingCase = await supabaseAdmin
+    .from("audit_blanc_cases")
+    .select("id")
+    .eq("stripe_checkout_session_id", session.id)
+    .maybeSingle();
+
+  if (existingCase.error) {
+    throw new Error(
+      `Impossible de vérifier l’existence de l’audit blanc. ${existingCase.error.message}`,
+    );
+  }
+
+  await ensureStudioClientAndDossier({
+    session,
+    toolSlug: "audit_blanc_qualiopi",
+  });
+
+  if (existingCase.data?.id) {
+    return existingCase.data;
   }
 
   const now = new Date();
@@ -291,25 +514,31 @@ async function createAuditBlancCase(session: Stripe.Checkout.Session) {
       ? session.payment_intent
       : session.payment_intent?.id;
 
-  const { error } = await supabaseAdmin.from("audit_blanc_cases").insert({
-    client_email: email.toLowerCase(),
-    status: "booking_pending",
-    offer,
-    price_paid: amountPaid,
-    currency,
-    stripe_checkout_session_id: session.id,
-    stripe_customer_id: stripeCustomerId ?? null,
-    stripe_payment_intent_id: stripePaymentIntentId ?? null,
-    report_status: "not_started",
-    created_at: now.toISOString(),
-    updated_at: now.toISOString(),
-  });
+  const { data, error } = await supabaseAdmin
+    .from("audit_blanc_cases")
+    .insert({
+      client_email: email,
+      status: "booking_pending",
+      offer,
+      price_paid: amountPaid,
+      currency,
+      stripe_checkout_session_id: session.id,
+      stripe_customer_id: stripeCustomerId ?? null,
+      stripe_payment_intent_id: stripePaymentIntentId ?? null,
+      report_status: "not_started",
+      created_at: now.toISOString(),
+      updated_at: now.toISOString(),
+    })
+    .select("id")
+    .single();
 
   if (error) {
     throw new Error(
       `Erreur Supabase création dossier audit blanc : ${error.message}`,
     );
   }
+
+  return data;
 }
 
 export async function POST(request: Request) {
