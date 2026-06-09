@@ -63,19 +63,27 @@ const TOOL_DOSSIER_CONFIG: Record<string, DossierConfig> = {
     status: "assignable",
   },
   audit_blanc_qualiopi: {
-    dossierType: "audit_blanc",
-    title: "Audit blanc Review",
-    status: "assignable",
+    dossierType: "review",
+    title: "Selen Review - Audit blanc Qualiopi",
+    status: "in_progress",
   },
+
   audit_blanc: {
-    dossierType: "audit_blanc",
-    title: "Audit blanc Review",
-    status: "assignable",
+    dossierType: "review",
+    title: "Selen Review - Audit blanc Qualiopi",
+    status: "in_progress",
   },
+
   "audit-blanc": {
-    dossierType: "audit_blanc",
-    title: "Audit blanc Review",
-    status: "assignable",
+    dossierType: "review",
+    title: "Selen Review - Audit blanc Qualiopi",
+    status: "in_progress",
+  },
+
+  "audit-blanc-qualiopi": {
+    dossierType: "review",
+    title: "Selen Review - Audit blanc Qualiopi",
+    status: "in_progress",
   },
 };
 
@@ -440,9 +448,9 @@ async function activateAutoAuditAccess(session: Stripe.Checkout.Session) {
     throw new Error(`Erreur Supabase activation accès : ${error.message}`);
   }
 
-  await ensureStudioClientAndDossier({
+  const { dossier } = await ensureStudioClientAndDossier({
     session,
-    toolSlug: "preaudit_qualiopi",
+    toolSlug: "audit_blanc_qualiopi",
   });
 
   if (offer === "trois-fois" && stripeSubscriptionId) {
@@ -489,12 +497,23 @@ async function createAuditBlancCase(session: Stripe.Checkout.Session) {
     );
   }
 
-  await ensureStudioClientAndDossier({
+  const { dossier } = await ensureStudioClientAndDossier({
     session,
     toolSlug: "audit_blanc_qualiopi",
   });
 
   if (existingCase.data?.id) {
+    if (dossier?.id) {
+      await supabaseAdmin
+        .from("audit_blanc_cases")
+        .update({
+          dossier_id: dossier.id,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", existingCase.data.id)
+        .is("dossier_id", null);
+    }
+
     return existingCase.data;
   }
 
@@ -518,6 +537,7 @@ async function createAuditBlancCase(session: Stripe.Checkout.Session) {
     .from("audit_blanc_cases")
     .insert({
       client_email: email,
+      dossier_id: dossier?.id ?? null,
       status: "booking_pending",
       offer,
       price_paid: amountPaid,
@@ -529,7 +549,7 @@ async function createAuditBlancCase(session: Stripe.Checkout.Session) {
       created_at: now.toISOString(),
       updated_at: now.toISOString(),
     })
-    .select("id")
+    .select("id, dossier_id")
     .single();
 
   if (error) {
