@@ -1447,6 +1447,14 @@ export default function IndicateurPage() {
               Indicateur {indicatorNumber} · {answeredCount}/{totalQuestions}{" "}
               réponses · {progress} %
             </p>
+            <button
+              type="button"
+              onClick={() => router.push("/client")}
+              className="btn-ink"
+              style={{ marginTop: "1rem" }}
+            >
+              <span>&larr; Retour &agrave; mon espace client</span>
+            </button>
           </div>
         </header>
 
