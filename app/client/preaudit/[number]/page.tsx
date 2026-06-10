@@ -3,7 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "../../../lib/supabase/client";
-import { checkPreauditAccess } from "../../../lib/checkPreauditAccess";
+import {
+  clearStoredPreauditSessionId,
+  getOrResumePreauditSessionId,
+  isPreauditSessionAccessError,
+} from "../../../lib/preauditSession";
 import ClientSupportBar from "@/components/ClientSupportBar";
 
 type Answer = "yes" | "partial" | "no" | "unknown";
@@ -662,17 +666,47 @@ export default function IndicateurPage() {
         return;
       }
 
-      const storedSessionId = localStorage.getItem("preaudit_session_id");
+      let currentSessionId: string;
 
-      if (!storedSessionId) {
-        router.push("/client/preaudit");
+      try {
+        currentSessionId = await getOrResumePreauditSessionId(supabase);
+      } catch (resumeError) {
+        setError(
+          resumeError instanceof Error
+            ? resumeError.message
+            : "Impossible de demarrer le preaudit.",
+        );
+        setLoading(false);
         return;
       }
 
-      const { data: pageRaw, error: sessionError } = await supabase.rpc(
+      let { data: pageRaw, error: sessionError } = await supabase.rpc(
         "get_preaudit_profile_page",
-        { p_session_id: storedSessionId },
+        { p_session_id: currentSessionId },
       );
+
+      if (sessionError && isPreauditSessionAccessError(sessionError)) {
+        clearStoredPreauditSessionId();
+
+        try {
+          currentSessionId = await getOrResumePreauditSessionId(supabase);
+        } catch (resumeError) {
+          setError(
+            resumeError instanceof Error
+              ? resumeError.message
+              : "Impossible de demarrer le preaudit.",
+          );
+          setLoading(false);
+          return;
+        }
+
+        const retry = await supabase.rpc("get_preaudit_profile_page", {
+          p_session_id: currentSessionId,
+        });
+
+        pageRaw = retry.data;
+        sessionError = retry.error;
+      }
 
       if (sessionError || !pageRaw) {
         setError(

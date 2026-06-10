@@ -3,7 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "../../../lib/supabase/client";
-import { checkPreauditAccess } from "../../../lib/checkPreauditAccess";
+import {
+  clearStoredPreauditSessionId,
+  getOrResumePreauditSessionId,
+  isPreauditSessionAccessError,
+} from "../../../lib/preauditSession";
 import ClientSupportBar from "@/components/ClientSupportBar";
 
 type BrandAnswer = "yes" | "no" | "";
@@ -284,17 +288,47 @@ export default function BrandUsageCheckPage() {
         return;
       }
 
-      const storedSessionId = localStorage.getItem("preaudit_session_id");
+      let currentSessionId: string;
 
-      if (!storedSessionId) {
-        router.push("/client/preaudit");
+      try {
+        currentSessionId = await getOrResumePreauditSessionId(supabase);
+      } catch (resumeError) {
+        setError(
+          resumeError instanceof Error
+            ? resumeError.message
+            : "Impossible de demarrer le preaudit.",
+        );
+        setLoading(false);
         return;
       }
 
-      const { data, error: loadError } = await supabase.rpc(
+      let { data, error: loadError } = await supabase.rpc(
         "get_preaudit_brand_usage_check",
-        { p_session_id: storedSessionId },
+        { p_session_id: currentSessionId },
       );
+
+      if (loadError && isPreauditSessionAccessError(loadError)) {
+        clearStoredPreauditSessionId();
+
+        try {
+          currentSessionId = await getOrResumePreauditSessionId(supabase);
+        } catch (resumeError) {
+          setError(
+            resumeError instanceof Error
+              ? resumeError.message
+              : "Impossible de demarrer le preaudit.",
+          );
+          setLoading(false);
+          return;
+        }
+
+        const retry = await supabase.rpc("get_preaudit_brand_usage_check", {
+          p_session_id: currentSessionId,
+        });
+
+        data = retry.data;
+        loadError = retry.error;
+      }
 
       if (loadError || !data) {
         setError(

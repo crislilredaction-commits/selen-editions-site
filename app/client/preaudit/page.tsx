@@ -4,6 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "../../lib/supabase/client";
 import { checkPreauditAccess } from "../../lib/checkPreauditAccess";
+import {
+  clearStoredPreauditSessionId,
+  getOrResumePreauditSessionId,
+  isPreauditSessionAccessError,
+} from "../../lib/preauditSession";
 import ClientSupportBar from "@/components/ClientSupportBar";
 
 type ProfileQuestion = {
@@ -57,39 +62,47 @@ export default function PreauditProfilePage() {
         return;
       }
 
-      let sessionId = localStorage.getItem("preaudit_session_id");
+      let sessionId = "";
 
-      if (!sessionId) {
-        const { data: sessionRaw, error: sessionError } = await supabase.rpc(
-          "start_or_resume_preaudit_session",
+      try {
+        sessionId = await getOrResumePreauditSessionId(supabase);
+      } catch (resumeError) {
+        setError(
+          resumeError instanceof Error
+            ? resumeError.message
+            : "Impossible de demarrer le preaudit.",
         );
+        setLoading(false);
+        return;
+      }
 
-        if (sessionError || !sessionRaw) {
+      let { data: pageRaw, error: pageError } = await supabase.rpc(
+        "get_preaudit_profile_page",
+        { p_session_id: sessionId },
+      );
+
+      if (pageError && isPreauditSessionAccessError(pageError)) {
+        clearStoredPreauditSessionId();
+
+        try {
+          sessionId = await getOrResumePreauditSessionId(supabase);
+        } catch (resumeError) {
           setError(
-            `Impossible de démarrer le préaudit. ${sessionError?.message ?? ""}`,
+            resumeError instanceof Error
+              ? resumeError.message
+              : "Impossible de demarrer le preaudit.",
           );
           setLoading(false);
           return;
         }
 
-        const sessionRow = Array.isArray(sessionRaw)
-          ? sessionRaw[0]
-          : sessionRaw;
-        sessionId = sessionRow?.session_id;
+        const retry = await supabase.rpc("get_preaudit_profile_page", {
+          p_session_id: sessionId,
+        });
 
-        if (!sessionId) {
-          setError("Session préaudit introuvable.");
-          setLoading(false);
-          return;
-        }
-
-        localStorage.setItem("preaudit_session_id", sessionId);
+        pageRaw = retry.data;
+        pageError = retry.error;
       }
-
-      const { data: pageRaw, error: pageError } = await supabase.rpc(
-        "get_preaudit_profile_page",
-        { p_session_id: sessionId },
-      );
 
       if (pageError || !pageRaw) {
         setError(
@@ -603,21 +616,6 @@ export default function PreauditProfilePage() {
             );
           })}
         </section>
-        {error && (
-          <div
-            style={{
-              border: "1px solid var(--rust)",
-              borderLeft: "4px solid var(--rust)",
-              padding: "1rem",
-              marginTop: "1.5rem",
-              marginBottom: "1rem",
-              color: "var(--rust)",
-              background: "rgba(138,75,36,0.05)",
-            }}
-          >
-            {error}
-          </div>
-        )}
         <div
           style={{
             marginTop: "2rem",
