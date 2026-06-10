@@ -1451,9 +1451,18 @@ export default function IndicateurPage() {
               type="button"
               onClick={() => router.push("/client")}
               className="btn-ink"
-              style={{ marginTop: "1rem" }}
+              style={{
+                marginTop: "1rem",
+                border: "1px solid rgba(201,160,85,0.85)",
+                background: "rgba(25,18,14,0.72)",
+                color: "var(--parchment)",
+                boxShadow: "0 0 0 1px rgba(255,255,255,0.08) inset",
+                opacity: 1,
+              }}
             >
-              <span>&larr; Retour &agrave; mon espace client</span>
+              <span style={{ color: "var(--parchment)", opacity: 1 }}>
+                &larr; Retour &agrave; mon espace client
+              </span>
             </button>
           </div>
         </header>
