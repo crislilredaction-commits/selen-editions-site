@@ -3,7 +3,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 type AccessCheckResult =
   | {
       ok: true;
-      accessExpiresAt: string;
+      accessExpiresAt: string | null;
+      accessType: string;
     }
   | {
       ok: false;
@@ -32,9 +33,12 @@ export async function checkPreauditAccess(
   }
 
   const { data: accessData, error: accessError } = await supabase
-    .from("client_tool_access")
-    .select("status, access_expires_at")
-    .eq("tool_key", "preaudit_qualiopi")
+    .from("selen_client_tool_access")
+    .select("status, access_type, starts_at, ends_at")
+    .eq("user_id", authData.user.id)
+    .eq("tool_slug", "preaudit-qualiopi")
+    .order("created_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   if (accessError) {
@@ -52,10 +56,26 @@ export async function checkPreauditAccess(
     };
   }
 
-  const expiresAt = new Date(accessData.access_expires_at);
-  const now = new Date();
+  if (accessData.status !== "active") {
+    return {
+      ok: false,
+      reason: "expired",
+    };
+  }
 
-  if (accessData.status !== "active" || expiresAt <= now) {
+  if (accessData.access_type === "unlimited") {
+    return {
+      ok: true,
+      accessExpiresAt: null,
+      accessType: accessData.access_type,
+    };
+  }
+
+  const now = new Date();
+  const startsAt = accessData.starts_at ? new Date(accessData.starts_at) : null;
+  const endsAt = accessData.ends_at ? new Date(accessData.ends_at) : null;
+
+  if (!startsAt || !endsAt || startsAt > now || endsAt < now) {
     return {
       ok: false,
       reason: "expired",
@@ -64,6 +84,7 @@ export async function checkPreauditAccess(
 
   return {
     ok: true,
-    accessExpiresAt: accessData.access_expires_at,
+    accessExpiresAt: accessData.ends_at,
+    accessType: accessData.access_type,
   };
 }

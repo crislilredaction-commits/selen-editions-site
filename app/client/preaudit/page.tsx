@@ -128,52 +128,13 @@ export default function PreauditProfilePage() {
     init();
   }, [router, supabase]);
 
-  async function saveAnswer(question: ProfileQuestion, value: unknown) {
-    if (!session) return;
-
-    setSavingKey(question.question_key);
+  function saveAnswer(question: ProfileQuestion, value: unknown) {
     setError("");
 
     setAnswers((prev) => ({
       ...prev,
       [question.question_key]: value,
     }));
-
-    const isTextType =
-      question.response_type === "text" || question.response_type === "date";
-
-    const { data, error: saveError } = await supabase.rpc(
-      "save_preaudit_profile_answer",
-      {
-        p_session_id: session.id,
-        p_question_key: question.question_key,
-        p_answer_value: isTextType ? null : value,
-        p_answer_text: isTextType ? String(value ?? "") : null,
-      },
-    );
-
-    if (saveError) {
-      setError(saveError.message);
-      setSavingKey(null);
-      return;
-    }
-
-    const row = Array.isArray(data) ? data[0] : data;
-
-    setSession((prev) =>
-      prev
-        ? {
-            ...prev,
-            applicable_indicators:
-              row?.applicable_indicators ?? prev.applicable_indicators,
-            excluded_indicators:
-              row?.excluded_indicators ?? prev.excluded_indicators,
-            profile_data: row?.profile_data ?? prev.profile_data,
-          }
-        : prev,
-    );
-
-    setSavingKey(null);
   }
 
   async function saveProfileAndGo() {
@@ -198,6 +159,8 @@ export default function PreauditProfilePage() {
           missingRequired.length > 1 ? "s" : ""
         }).`,
       );
+
+      window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
       return;
     }
 
@@ -228,8 +191,13 @@ export default function PreauditProfilePage() {
 
     if (bulkError) {
       console.error("ERREUR BULK PROFIL :", bulkError);
-      setError(`Erreur sauvegarde profil : ${bulkError.message}`);
+
+      setError(
+        `Erreur sauvegarde profil : ${bulkError.message || bulkError.code}`,
+      );
+
       setSavingKey(null);
+      window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
       return;
     }
 
@@ -262,6 +230,7 @@ export default function PreauditProfilePage() {
 
     router.push("/client/preaudit/marques");
   }
+
   function toggleMultiChoice(question: ProfileQuestion, option: string) {
     const current = Array.isArray(answers[question.question_key])
       ? (answers[question.question_key] as string[])
@@ -403,182 +372,252 @@ export default function PreauditProfilePage() {
             const value = answers[q.question_key];
 
             return (
-              <article
-                key={q.question_key}
-                style={{
-                  background: "var(--paper)",
-                  border: "1px solid var(--sepia-mid)",
-                  padding: "1rem",
-                  position: "relative",
-                }}
-              >
-                <p
+              <div key={q.question_key}>
+                <article
                   style={{
-                    fontFamily: "var(--font-cinzel, 'Cinzel', serif)",
-                    fontSize: "0.58rem",
-                    letterSpacing: "0.18em",
-                    textTransform: "uppercase",
-                    color: "var(--ocre-dark)",
-                    marginBottom: "0.35rem",
+                    background: "var(--paper)",
+                    border: "1px solid var(--sepia-mid)",
+                    padding: "1rem",
+                    position: "relative",
                   }}
                 >
-                  Question {q.question_order}
-                </p>
-
-                <h2
-                  style={{
-                    fontSize: "1rem",
-                    color: "var(--ink)",
-                    marginBottom: "0.4rem",
-                  }}
-                >
-                  {q.question}
-                </h2>
-
-                {q.help_text && (
                   <p
                     style={{
-                      fontSize: "0.85rem",
-                      color: "var(--ink-faint)",
-                      fontStyle: "italic",
-                      lineHeight: 1.5,
-                      marginBottom: "0.75rem",
+                      fontFamily: "var(--font-cinzel, 'Cinzel', serif)",
+                      fontSize: "0.58rem",
+                      letterSpacing: "0.18em",
+                      textTransform: "uppercase",
+                      color: "var(--ocre-dark)",
+                      marginBottom: "0.35rem",
                     }}
                   >
-                    {q.help_text}
+                    Question {q.question_order}
                   </p>
-                )}
 
-                {q.response_type === "yes_no" && (
-                  <div
-                    style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}
-                  >
-                    {[
-                      { label: "Oui", value: "yes" },
-                      { label: "Non", value: "no" },
-                    ].map((option) => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => saveAnswer(q, option.value)}
-                        disabled={savingKey === q.question_key}
-                        style={{
-                          padding: "0.45rem 0.9rem",
-                          border: "1px solid var(--sepia-mid)",
-                          background:
-                            value === option.value
-                              ? "var(--ocre-gold)"
-                              : "transparent",
-                          color:
-                            value === option.value
-                              ? "#1a1410"
-                              : "var(--ink-soft)",
-                          cursor: "pointer",
-                        }}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {q.response_type === "choice" && (
-                  <select
-                    value={String(value ?? "")}
-                    onChange={(e) => saveAnswer(q, e.target.value)}
+                  <h2
                     style={{
-                      width: "100%",
-                      padding: "0.6rem",
-                      border: "1px solid var(--sepia-mid)",
-                      background: "rgba(255,255,255,0.45)",
+                      fontSize: "1rem",
+                      color: "var(--ink)",
+                      marginBottom: "0.4rem",
                     }}
                   >
-                    <option value="">Sélectionner</option>
-                    {(q.options ?? []).map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </select>
-                )}
+                    {q.question}
+                  </h2>
 
-                {q.response_type === "multi_choice" && (
-                  <div
-                    style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}
-                  >
-                    {(q.options ?? []).map((option) => {
-                      const selected =
-                        Array.isArray(value) && value.includes(option);
+                  {q.help_text && (
+                    <p
+                      style={{
+                        fontSize: "0.85rem",
+                        color: "var(--ink-faint)",
+                        fontStyle: "italic",
+                        lineHeight: 1.5,
+                        marginBottom: "0.75rem",
+                      }}
+                    >
+                      {q.help_text}
+                    </p>
+                  )}
 
-                      return (
+                  {q.response_type === "yes_no" && (
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "0.5rem",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      {[
+                        { label: "Oui", value: "yes" },
+                        { label: "Non", value: "no" },
+                      ].map((option) => (
                         <button
-                          key={option}
+                          key={option.value}
                           type="button"
-                          onClick={() => toggleMultiChoice(q, option)}
+                          onClick={() => saveAnswer(q, option.value)}
                           disabled={savingKey === q.question_key}
                           style={{
                             padding: "0.45rem 0.9rem",
                             border: "1px solid var(--sepia-mid)",
-                            background: selected
-                              ? "var(--ocre-gold)"
-                              : "transparent",
-                            color: selected ? "#1a1410" : "var(--ink-soft)",
-                            cursor:
-                              savingKey === q.question_key
-                                ? "not-allowed"
-                                : "pointer",
-                            opacity: savingKey === q.question_key ? 0.6 : 1,
+                            background:
+                              value === option.value
+                                ? "var(--ocre-gold)"
+                                : "transparent",
+                            color:
+                              value === option.value
+                                ? "#1a1410"
+                                : "var(--ink-soft)",
+                            cursor: "pointer",
                           }}
                         >
-                          {option}
+                          {option.label}
                         </button>
-                      );
-                    })}
-                  </div>
-                )}
+                      ))}
+                    </div>
+                  )}
 
-                {(q.response_type === "text" || q.response_type === "date") && (
-                  <input
-                    type={q.response_type === "date" ? "date" : "text"}
-                    value={String(value ?? "")}
-                    onChange={(e) =>
-                      setAnswers((prev) => ({
-                        ...prev,
-                        [q.question_key]: e.target.value,
-                      }))
-                    }
-                    onBlur={(e) => saveAnswer(q, e.target.value)}
-                    style={{
-                      width: "100%",
-                      padding: "0.6rem",
-                      border: "1px solid var(--sepia-mid)",
-                      background: "rgba(255,255,255,0.45)",
-                    }}
-                  />
-                )}
-
-                {q.impact_description &&
-                  value !== "" &&
-                  value !== null &&
-                  value !== undefined &&
-                  !(Array.isArray(value) && value.length === 0) && (
-                    <p
+                  {q.response_type === "choice" && (
+                    <select
+                      value={String(value ?? "")}
+                      onChange={(e) => saveAnswer(q, e.target.value)}
                       style={{
-                        marginTop: "0.7rem",
-                        fontSize: "0.78rem",
-                        color: "var(--ink-faint)",
-                        borderTop: "1px solid var(--sepia-mid)",
-                        paddingTop: "0.5rem",
+                        width: "100%",
+                        padding: "0.6rem",
+                        border: "1px solid var(--sepia-mid)",
+                        background: "rgba(255,255,255,0.45)",
                       }}
                     >
-                      ✦ {q.impact_description}
-                    </p>
+                      <option value="">Sélectionner</option>
+                      {(q.options ?? []).map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
                   )}
-              </article>
+
+                  {q.response_type === "multi_choice" && (
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "0.5rem",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      {(q.options ?? []).map((option) => {
+                        const selected =
+                          Array.isArray(value) && value.includes(option);
+
+                        return (
+                          <button
+                            key={option}
+                            type="button"
+                            onClick={() => toggleMultiChoice(q, option)}
+                            disabled={savingKey === q.question_key}
+                            style={{
+                              padding: "0.45rem 0.9rem",
+                              border: "1px solid var(--sepia-mid)",
+                              background: selected
+                                ? "var(--ocre-gold)"
+                                : "transparent",
+                              color: selected ? "#1a1410" : "var(--ink-soft)",
+                              cursor:
+                                savingKey === q.question_key
+                                  ? "not-allowed"
+                                  : "pointer",
+                              opacity: savingKey === q.question_key ? 0.6 : 1,
+                            }}
+                          >
+                            {option}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {(q.response_type === "text" ||
+                    q.response_type === "date") && (
+                    <input
+                      type={q.response_type === "date" ? "date" : "text"}
+                      value={String(value ?? "")}
+                      onChange={(e) =>
+                        setAnswers((prev) => ({
+                          ...prev,
+                          [q.question_key]: e.target.value,
+                        }))
+                      }
+                      onBlur={(e) => saveAnswer(q, e.target.value)}
+                      style={{
+                        width: "100%",
+                        padding: "0.6rem",
+                        border: "1px solid var(--sepia-mid)",
+                        background: "rgba(255,255,255,0.45)",
+                      }}
+                    />
+                  )}
+
+                  {q.impact_description &&
+                    value !== "" &&
+                    value !== null &&
+                    value !== undefined &&
+                    !(Array.isArray(value) && value.length === 0) && (
+                      <p
+                        style={{
+                          marginTop: "0.7rem",
+                          fontSize: "0.78rem",
+                          color: "var(--ink-faint)",
+                          borderTop: "1px solid var(--sepia-mid)",
+                          paddingTop: "0.5rem",
+                        }}
+                      >
+                        ✦ {q.impact_description}
+                      </p>
+                    )}
+                </article>
+
+                {q.question_key === "audit_type" &&
+                  (answers.audit_type === "surveillance" ||
+                    answers.audit_type === "renouvellement") && (
+                    <div
+                      style={{
+                        border: "1px solid var(--ocre-gold)",
+                        borderLeft: "4px solid var(--ocre-dark)",
+                        background: "rgba(178,138,98,0.08)",
+                        padding: "1rem",
+                        marginTop: "0.7rem",
+                        color: "var(--ink-soft)",
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      <p
+                        style={{
+                          fontFamily: "var(--font-cinzel, serif)",
+                          fontSize: "0.62rem",
+                          letterSpacing: "0.2em",
+                          textTransform: "uppercase",
+                          color: "var(--ocre-dark)",
+                          marginBottom: "0.5rem",
+                        }}
+                      >
+                        Audit de surveillance ou de renouvellement
+                      </p>
+
+                      <p>
+                        Pour répondre au préaudit, vous pouvez vous appuyer sur
+                        un ou plusieurs de vos dossiers client qui vous semblent
+                        représentatifs de votre activité. Ces dossiers servent
+                        d’exemple pour vérifier que votre organisation est
+                        conforme.
+                      </p>
+
+                      <p style={{ marginTop: "0.5rem" }}>
+                        Vos autres dossiers doivent toutefois être construits
+                        selon la même logique et permettre de retrouver les
+                        mêmes types de preuves : analyse du besoin,
+                        contractualisation, convocation, émargement,
+                        évaluations, satisfaction, suivi et actions correctives
+                        si nécessaire.
+                      </p>
+                    </div>
+                  )}
+              </div>
             );
           })}
         </section>
-
+        {error && (
+          <div
+            style={{
+              border: "1px solid var(--rust)",
+              borderLeft: "4px solid var(--rust)",
+              padding: "1rem",
+              marginTop: "1.5rem",
+              marginBottom: "1rem",
+              color: "var(--rust)",
+              background: "rgba(138,75,36,0.05)",
+            }}
+          >
+            {error}
+          </div>
+        )}
         <div
           style={{
             marginTop: "2rem",

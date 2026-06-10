@@ -122,9 +122,7 @@ export default function ClientAuditBlancPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
   const calendlySingleUrl =
-    process.env.NEXT_PUBLIC_CALENDLY_AUDIT_BLANC_3H30_URL || "";
-  const calendlySplitUrl =
-    process.env.NEXT_PUBLIC_CALENDLY_AUDIT_BLANC_1H45_URL || "";
+    process.env.NEXT_PUBLIC_CALENDLY_AUDIT_BLANC_3H30_URL?.trim() || "";
 
   const [loading, setLoading] = useState(true);
   const [email, setEmail] = useState<string | null>(null);
@@ -177,13 +175,22 @@ export default function ClientAuditBlancPage() {
       }
 
       const userEmail = authData.user.email ?? null;
-      setEmail(userEmail);
+      const cleanEmail = userEmail?.trim().toLowerCase() ?? null;
+
+      setEmail(cleanEmail);
+
+      if (!cleanEmail) {
+        setError("Aucune adresse email n’est associée à votre compte client.");
+        setLoading(false);
+        return;
+      }
 
       const { data: caseData, error: caseError } = await supabase
         .from("audit_blanc_cases")
         .select(
           "id, client_email, status, offer, price_paid, currency, calendly_mode, calendly_event_1_start, calendly_event_1_end, calendly_event_1_url, calendly_event_2_start, calendly_event_2_end, calendly_event_2_url, meeting_url, report_status, report_storage_path, created_at, updated_at",
         )
+        .eq("client_email", cleanEmail)
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -460,9 +467,10 @@ export default function ClientAuditBlancPage() {
                         marginBottom: "1rem",
                       }}
                     >
-                      Choisissez le format qui vous convient. Vous pouvez faire
-                      l’audit blanc en un seul rendez-vous de 3h30, ou en deux
-                      rendez-vous d’1h45.
+                      Réservez votre créneau d’audit blanc de 3h30. Si vous avez
+                      choisi un format en deux rendez-vous d’1h45, réservez ce
+                      premier créneau : le second rendez-vous sera programmé
+                      avec vous pendant la première session.
                     </p>
 
                     <div
@@ -484,25 +492,24 @@ export default function ClientAuditBlancPage() {
                           pointerEvents: calendlySingleUrl ? "auto" : "none",
                         }}
                       >
-                        <span>Réserver 1 créneau de 3h30</span>
-                      </a>
-
-                      <a
-                        href={calendlySplitUrl || "#"}
-                        target={calendlySplitUrl ? "_blank" : undefined}
-                        rel="noreferrer"
-                        className="btn-ink"
-                        style={{
-                          textAlign: "center",
-                          opacity: calendlySplitUrl ? 1 : 0.55,
-                          pointerEvents: calendlySplitUrl ? "auto" : "none",
-                        }}
-                      >
-                        <span>Réserver 2 créneaux d’1h45</span>
+                        <span>Réserver mon audit blanc</span>
                       </a>
                     </div>
 
-                    {(!calendlySingleUrl || !calendlySplitUrl) && (
+                    <p
+                      style={{
+                        color: "var(--ink-faint)",
+                        fontSize: "0.88rem",
+                        lineHeight: 1.5,
+                        marginTop: "0.8rem",
+                      }}
+                    >
+                      Note : si votre audit blanc est prévu en deux sessions, le
+                      second rendez-vous sera fixé directement avec l’auditeur
+                      lors du premier échange.
+                    </p>
+
+                    {!calendlySingleUrl && (
                       <p
                         style={{
                           color: "var(--ink-faint)",
@@ -511,7 +518,7 @@ export default function ClientAuditBlancPage() {
                           marginTop: "0.8rem",
                         }}
                       >
-                        Les liens de réservation Calendly seront ajoutés très
+                        Le lien de réservation Calendly sera ajouté très
                         prochainement.
                       </p>
                     )}

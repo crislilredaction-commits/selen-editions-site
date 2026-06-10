@@ -2,6 +2,9 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+const STUDIO_URL =
+  process.env.NEXT_PUBLIC_STUDIO_URL || "https://studio.selen-editions.fr/";
+
 export default function Header() {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -88,8 +91,15 @@ export default function Header() {
               href="/client/login"
               className="border border-[#b28a62] bg-[#f7ead6]/70 px-4 py-2 font-['Cinzel'] text-[0.68rem] uppercase tracking-[0.12em] text-[#3e2a1f] transition-all duration-300 hover:bg-[#ead4b3]"
             >
-              Espace client / agent
+              Espace client
             </Link>
+
+            <a
+              href={STUDIO_URL}
+              className="border border-[#b28a62]/70 bg-transparent px-4 py-2 font-['Cinzel'] text-[0.68rem] uppercase tracking-[0.12em] text-[#3e2a1f] transition-all duration-300 hover:bg-[#ead4b3]"
+            >
+              Espace agent
+            </a>
             <a
               href="https://calendly.com/romaric-paymal/rdv-romaric-paymal"
               target="_blank"
@@ -156,7 +166,7 @@ export default function Header() {
             {[
               { href: "/", label: "Accueil" },
               { href: "/nos-prestations", label: "Nos prestations" },
-              { href: "/client/login", label: "Espace client / agent" },
+              { href: "/client/login", label: "Espace client" },
             ].map(({ href, label }) => (
               <Link
                 key={href}
@@ -168,6 +178,14 @@ export default function Header() {
                 {label}
               </Link>
             ))}
+            <a
+              href={STUDIO_URL}
+              onClick={() => setMenuOpen(false)}
+              className="flex items-center gap-3 border-b border-[#b28a62]/15 py-4 font-['EB_Garamond'] text-xl text-[#3e2a1f] hover:text-[#8a4b24] transition-colors"
+            >
+              <span className="text-[#b28a62] text-xs opacity-60">✦</span>
+              Espace agent
+            </a>
             <a
               href="https://calendly.com/romaric-paymal/rdv-romaric-paymal"
               target="_blank"
