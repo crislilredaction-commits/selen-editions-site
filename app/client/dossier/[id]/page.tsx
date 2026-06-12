@@ -358,7 +358,7 @@ export default function ClientNdaPage() {
               }}
             >
               <img
-                src="/Logo Selen Editions.png"
+                src="/logo-selen-editions.png"
                 alt="Selen Editions"
                 style={{ width: 30, height: 30, objectFit: "contain" }}
               />

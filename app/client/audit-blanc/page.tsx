@@ -117,6 +117,22 @@ function extractStoragePath(value?: string | null) {
   return value.replace(/^\/+/, "");
 }
 
+function isAuditReportDocument(doc: AuditBlancDocument) {
+  return (
+    doc.document_type === "rapport_audit_blanc_pdf" ||
+    doc.document_type === "rapport_audit_blanc"
+  );
+}
+
+function sortDocumentsByCreatedAtDesc(
+  docs: AuditBlancDocument[],
+): AuditBlancDocument[] {
+  return [...docs].sort(
+    (a, b) =>
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  );
+}
+
 export default function ClientAuditBlancPage() {
   const router = useRouter();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -132,16 +148,12 @@ export default function ClientAuditBlancPage() {
 
   const [summary, setSummary] = useState<ClientAuditSummary | null>(null);
 
-  const reportDocuments = documents.filter(
-    (doc) =>
-      doc.document_type === "rapport_audit_blanc_pdf" ||
-      doc.document_type === "rapport_audit_blanc",
-  );
+  const latestReportDocument =
+    sortDocumentsByCreatedAtDesc(documents.filter(isAuditReportDocument))[0] ??
+    null;
 
   const correctiveDocuments = documents.filter(
-    (doc) =>
-      doc.document_type !== "rapport_audit_blanc_pdf" &&
-      doc.document_type !== "rapport_audit_blanc",
+    (doc) => !isAuditReportDocument(doc),
   );
 
   function getDocumentHref(doc: AuditBlancDocument) {
@@ -713,9 +725,11 @@ export default function ClientAuditBlancPage() {
                   Votre rapport PDF
                 </h2>
 
-                {reportDocuments.length > 0 ? (
+                {latestReportDocument ? (
                   <div style={{ display: "grid", gap: "0.55rem" }}>
-                    {reportDocuments.map((doc) => (
+                    {[
+                      latestReportDocument,
+                    ].map((doc) => (
                       <a
                         key={doc.id}
                         href={getDocumentHref(doc)}
