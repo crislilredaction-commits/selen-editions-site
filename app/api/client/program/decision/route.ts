@@ -121,6 +121,11 @@ export async function POST(req: Request) {
           storage_path: storagePath,
           status: "uploaded",
           source: "client_upload",
+          document_role: "client_returned_document",
+          review_status: "received",
+          is_visible_to_client: false,
+          requires_client_action: false,
+          metadata: {},
         })
         .select("id")
         .single();
