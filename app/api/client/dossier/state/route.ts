@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import {
+  getAdminSupabase,
+  verifyClientNdaDossierAccess,
+} from "@/lib/server/clientNdaAccess";
 
 export async function GET(req: Request) {
   try {
@@ -13,20 +16,17 @@ export async function GET(req: Request) {
       );
     }
 
-    const supabase = await createClient();
+    const supabase = getAdminSupabase();
+    const access = await verifyClientNdaDossierAccess(supabase, dossierId);
 
-    const { data: dossier, error: dossierError } = await supabase
-      .from("dossiers")
-      .select("id, status, title, organisation_id")
-      .eq("id", dossierId)
-      .maybeSingle();
-
-    if (dossierError) {
+    if (!access.ok) {
       return NextResponse.json(
-        { error: dossierError.message },
-        { status: 500 },
+        { error: access.error },
+        { status: access.status },
       );
     }
+
+    const dossier = access.dossier;
 
     const { data: ndaVariables, error: ndaVariablesError } = await supabase
       .from("nda_variables")
@@ -49,13 +49,6 @@ export async function GET(req: Request) {
       return NextResponse.json(
         { error: ndaVariablesError.message },
         { status: 500 },
-      );
-    }
-
-    if (!dossier) {
-      return NextResponse.json(
-        { error: "Dossier introuvable." },
-        { status: 404 },
       );
     }
 

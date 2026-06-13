@@ -21,6 +21,14 @@ type ToolAccess = {
   updated_at: string | null;
 };
 
+type NdaDossier = {
+  id: string;
+  title: string | null;
+  status: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
 function formatDate(value?: string | null) {
   if (!value) return "Non renseignée";
 
@@ -73,6 +81,7 @@ export default function ClientDashboardPage() {
   const [auditBlancAccess, setAuditBlancAccess] = useState<ToolAccess | null>(
     null,
   );
+  const [ndaDossiers, setNdaDossiers] = useState<NdaDossier[]>([]);
   const [error, setError] = useState("");
 
   const preauditRemainingDays = getRemainingDays(preauditAccess?.ends_at);
@@ -135,6 +144,15 @@ export default function ClientDashboardPage() {
           (access) => access.tool_slug === "audit-blanc-qualiopi",
         ) ?? null,
       );
+
+      const ndaRes = await fetch("/api/client/nda-dossiers", {
+        cache: "no-store",
+      });
+      const ndaData = await ndaRes.json().catch(() => null);
+
+      if (ndaRes.ok) {
+        setNdaDossiers((ndaData?.dossiers ?? []) as NdaDossier[]);
+      }
 
       setLoading(false);
     }
@@ -345,6 +363,42 @@ export default function ClientDashboardPage() {
               </>
             )}
           </article>
+
+          {ndaDossiers.length > 0 && (
+            <article
+              style={{
+                background: "var(--paper)",
+                border: "1px solid var(--sepia-mid)",
+                borderLeft: "4px solid var(--ocre-gold)",
+                padding: "1.2rem",
+              }}
+            >
+              <p className="gazette-label">Dossier NDA</p>
+
+              <h2 style={{ color: "var(--ink)", marginBottom: "0.5rem" }}>
+                Votre accompagnement NDA
+              </h2>
+
+              <p
+                style={{
+                  color: "var(--ink-soft)",
+                  lineHeight: 1.6,
+                  marginBottom: "1rem",
+                }}
+              >
+                Reprenez votre dossier de déclaration d'activité et suivez les
+                échanges avec votre agent.
+              </p>
+
+              <button
+                type="button"
+                className="btn-ink"
+                onClick={() => router.push(`/client/dossier/${ndaDossiers[0].id}`)}
+              >
+                <span>Accéder à mon dossier NDA →</span>
+              </button>
+            </article>
+          )}
 
           <article
             style={{

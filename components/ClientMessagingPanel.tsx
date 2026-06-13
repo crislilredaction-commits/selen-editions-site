@@ -33,7 +33,7 @@ export default function ClientMessagingPanel({
     async function loadMessages() {
       try {
         const res = await fetch(
-          `/agent/api/messages/list?dossierId=${encodeURIComponent(dossierId)}`,
+          `/api/client/messages/list?dossierId=${encodeURIComponent(dossierId)}`,
           {
             cache: "no-store",
           },
@@ -62,7 +62,7 @@ export default function ClientMessagingPanel({
   useEffect(() => {
     async function markAsRead() {
       try {
-        await fetch("/agent/api/messages/read-client", {
+        await fetch("/api/client/messages/read-client", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -85,7 +85,7 @@ export default function ClientMessagingPanel({
       setError(null);
       setSuccess(false);
 
-      const res = await fetch("/agent/api/messages/send", {
+      const res = await fetch("/api/client/messages/send", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

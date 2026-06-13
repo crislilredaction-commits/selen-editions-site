@@ -1,26 +1,8 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-
-function getAdminSupabase() {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-    throw new Error("NEXT_PUBLIC_SUPABASE_URL manquante.");
-  }
-
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    throw new Error("SUPABASE_SERVICE_ROLE_KEY manquante.");
-  }
-
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
-    {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    },
-  );
-}
+import {
+  getAdminSupabase,
+  verifyClientNdaDossierAccess,
+} from "@/lib/server/clientNdaAccess";
 
 export async function POST(req: Request) {
   try {
@@ -46,9 +28,19 @@ export async function POST(req: Request) {
       );
     }
 
+    const access = await verifyClientNdaDossierAccess(supabase, dossierId);
+
+    if (!access.ok) {
+      return NextResponse.json(
+        { error: access.error },
+        { status: access.status },
+      );
+    }
+
     const { error } = await supabase.from("nda_variables").upsert(
       {
         dossier_id: dossierId,
+        organisation_id: access.dossier.organisation_id,
         stagiaire_prenom: stagiaire_prenom ?? null,
         stagiaire_nom: stagiaire_nom ?? null,
         stagiaire_adresse: stagiaire_adresse ?? null,

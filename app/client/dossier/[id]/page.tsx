@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import ClientMessagingPanel from "@/components/ClientMessagingPanel";
 import ClientProgramProposal from "@/components/ClientProgramProposal";
+import { createSupabaseBrowserClient } from "@/app/lib/supabase/client";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -30,6 +31,7 @@ interface DocState {
 export default function ClientNdaPage() {
   const params = useParams();
   const router = useRouter();
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
   const dossierId = useMemo(() => {
     const raw = params?.id;
@@ -60,6 +62,8 @@ export default function ClientNdaPage() {
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [accessLoading, setAccessLoading] = useState(true);
+  const [accessError, setAccessError] = useState<string | null>(null);
   const [programProposal, setProgramProposal] = useState<any | null>(null);
   const [programDecision, setProgramDecision] = useState<string | null>(null);
   const [step1Submitted, setStep1Submitted] = useState(false);
@@ -96,59 +100,79 @@ export default function ClientNdaPage() {
   useEffect(() => {
     async function loadClientState() {
       try {
-        if (!dossierId) return;
+        if (!dossierId) {
+          setAccessLoading(false);
+          setAccessError("Aucun dossier NDA n'a ete trouve dans l'URL.");
+          return;
+        }
 
-        const [programRes, stateRes] = await Promise.all([
-          fetch(
-            `/agent/api/program/client-latest?dossierId=${encodeURIComponent(dossierId)}`,
-            {
-              cache: "no-store",
-            },
-          ),
-          fetch(
-            `/api/client/dossier/state?dossierId=${encodeURIComponent(dossierId)}`,
-            {
-              cache: "no-store",
-            },
-          ),
-        ]);
+        setAccessLoading(true);
+        setAccessError(null);
 
-        const programData = await programRes.json().catch(() => null);
+        const { data: authData } = await supabase.auth.getUser();
+
+        if (!authData.user) {
+          router.replace("/client/login");
+          return;
+        }
+
+        const stateRes = await fetch(
+          `/api/client/dossier/state?dossierId=${encodeURIComponent(dossierId)}`,
+          {
+            cache: "no-store",
+          },
+        );
+
         const stateData = await stateRes.json().catch(() => null);
+
+        if (!stateRes.ok) {
+          setAccessError(
+            stateData?.error ??
+              "Vous n'etes pas autorise a consulter ce dossier NDA.",
+          );
+          return;
+        }
+
+        setStep1Submitted(Boolean(stateData?.step1Submitted));
+        setProgramDecision(stateData?.programDecision ?? null);
+
+        if (stateData?.step2) {
+          setStep2Form({
+            stagiaire_prenom: stateData.step2.stagiaire_prenom ?? "",
+            stagiaire_nom: stateData.step2.stagiaire_nom ?? "",
+            stagiaire_adresse: stateData.step2.stagiaire_adresse ?? "",
+            stagiaire_email: stateData.step2.stagiaire_email ?? "",
+            stagiaire_telephone: stateData.step2.stagiaire_telephone ?? "",
+            client_siret: stateData.step2.client_siret ?? "",
+            date_formation_prevue: stateData.step2.date_formation_prevue ?? "",
+            lieu_formation: stateData.step2.lieu_formation ?? "",
+          });
+        }
+
+        const programRes = await fetch(
+          `/api/client/program/latest?dossierId=${encodeURIComponent(dossierId)}`,
+          {
+            cache: "no-store",
+          },
+        );
+        const programData = await programRes.json().catch(() => null);
 
         if (programRes.ok) {
           setProgramProposal(programData?.version ?? null);
         }
-
-        if (stateRes.ok) {
-          setStep1Submitted(Boolean(stateData?.step1Submitted));
-          setProgramDecision(stateData?.programDecision ?? null);
-
-          if (stateData?.step2) {
-            setStep2Form({
-              stagiaire_prenom: stateData.step2.stagiaire_prenom ?? "",
-              stagiaire_nom: stateData.step2.stagiaire_nom ?? "",
-              stagiaire_adresse: stateData.step2.stagiaire_adresse ?? "",
-              stagiaire_email: stateData.step2.stagiaire_email ?? "",
-              stagiaire_telephone: stateData.step2.stagiaire_telephone ?? "",
-              client_siret: stateData.step2.client_siret ?? "",
-              date_formation_prevue:
-                stateData.step2.date_formation_prevue ?? "",
-              lieu_formation: stateData.step2.lieu_formation ?? "",
-            });
-          }
-        }
       } catch {
-        // silencieux
+        setAccessError("Impossible de charger ce dossier NDA.");
+      } finally {
+        setAccessLoading(false);
       }
     }
 
     loadClientState();
-  }, [dossierId]);
+  }, [dossierId, router, supabase]);
 
   async function saveStep1() {
     if (!dossierId) {
-      throw new Error("Aucun dossierId trouvé dans l’URL.");
+      throw new Error("Aucun dossierId trouvÃ© dans lâ€™URL.");
     }
 
     const res = await fetch("/api/client/dossier/step-1", {
@@ -165,7 +189,7 @@ export default function ClientNdaPage() {
     const data = await res.json().catch(() => null);
 
     if (!res.ok) {
-      throw new Error(data?.error ?? "Erreur lors de l’enregistrement.");
+      throw new Error(data?.error ?? "Erreur lors de lâ€™enregistrement.");
     }
 
     return data;
@@ -211,7 +235,7 @@ export default function ClientNdaPage() {
         await uploadOneDocument("kbis", docs.kbis.file);
       }
 
-      setSuccessMessage("Vos informations essentielles ont bien été envoyées.");
+      setSuccessMessage("Vos informations essentielles ont bien Ã©tÃ© envoyÃ©es.");
       setStep1Submitted(true);
       router.refresh();
     } catch (error) {
@@ -231,7 +255,7 @@ export default function ClientNdaPage() {
 
       await saveStep1();
 
-      setSuccessMessage("Vos informations ont bien été enregistrées.");
+      setSuccessMessage("Vos informations ont bien Ã©tÃ© enregistrÃ©es.");
     } catch (error) {
       setErrorMessage(
         error instanceof Error ? error.message : "Une erreur est survenue.",
@@ -263,11 +287,11 @@ export default function ClientNdaPage() {
       if (!res.ok) {
         throw new Error(
           data?.error ??
-            "Erreur lors de l’enregistrement des coordonnées client.",
+            "Erreur lors de lâ€™enregistrement des coordonnÃ©es client.",
         );
       }
 
-      setSuccessMessage("Les coordonnées du client ont bien été enregistrées.");
+      setSuccessMessage("Les coordonnÃ©es du client ont bien Ã©tÃ© enregistrÃ©es.");
       router.refresh();
     } catch (error) {
       setErrorMessage(
@@ -285,29 +309,145 @@ export default function ClientNdaPage() {
   const showStep2 = step1Submitted && isProgramValidated;
   const isProgramRefused = clientDecision === "refused";
   const isProgramPendingDecision = hasProgramProposal && !clientDecision;
+  const activeStepNumber = !step1Submitted
+    ? 1
+    : isProgramRefused
+      ? 2
+      : !hasProgramProposal
+        ? 2
+        : isProgramPendingDecision
+          ? 3
+          : isProgramValidated
+            ? 4
+            : 2;
 
   const steps = [
     {
       number: 1,
-      label: "Informations essentielles",
-      active: !showStep2,
+      label: "Dépôt initial",
+      active: activeStepNumber === 1,
+      status: step1Submitted ? "Terminé" : "En cours",
     },
     {
       number: 2,
-      label: "Informations client",
-      active: showStep2,
+      label: "Analyse du programme",
+      active: activeStepNumber === 2,
+      status: isProgramRefused
+        ? "Retour transmis"
+        : step1Submitted
+          ? "En cours"
+          : "À venir",
     },
     {
       number: 3,
-      label: "Documents à utiliser",
-      active: false,
+      label: "Validation du programme",
+      active: activeStepNumber === 3,
+      status: isProgramValidated
+        ? "Terminé"
+        : hasProgramProposal && !clientDecision
+          ? "Action requise"
+          : "À venir",
     },
     {
       number: 4,
-      label: "Dépôt final",
+      label: "Dossier NDA à compléter",
+      active: activeStepNumber === 4,
+      status: isProgramValidated
+        ? "En cours"
+        : "Disponible après validation du programme",
+    },
+    {
+      number: 5,
+      label: "Vérification agent",
       active: false,
+      status: "À venir",
+    },
+    {
+      number: 6,
+      label: "Dossier prêt pour dépôt",
+      active: false,
+      status: "À venir",
+    },
+    {
+      number: 7,
+      label: "Résultat DREETS",
+      active: false,
+      status: "À venir",
     },
   ];
+
+  if (accessLoading) {
+    return (
+      <main
+        style={{
+          minHeight: "100vh",
+          background: "linear-gradient(180deg, #f6f1e8 0%, #efe6d8 100%)",
+          color: "#3a261a",
+          display: "grid",
+          placeItems: "center",
+          padding: "2rem",
+          fontFamily: "Georgia, 'Times New Roman', serif",
+        }}
+      >
+        <p style={{ color: "#6f5b49" }}>Chargement de votre dossier NDA...</p>
+      </main>
+    );
+  }
+
+  if (accessError) {
+    return (
+      <main
+        style={{
+          minHeight: "100vh",
+          background: "linear-gradient(180deg, #f6f1e8 0%, #efe6d8 100%)",
+          color: "#3a261a",
+          display: "grid",
+          placeItems: "center",
+          padding: "2rem",
+          fontFamily: "Georgia, 'Times New Roman', serif",
+        }}
+      >
+        <section
+          style={{
+            width: "min(720px, 100%)",
+            border: "1px solid #d8c3a8",
+            background: "rgba(255,252,247,0.92)",
+            padding: "1.5rem",
+          }}
+        >
+          <p
+            style={{
+              fontSize: 12,
+              fontWeight: 700,
+              letterSpacing: "0.16em",
+              textTransform: "uppercase",
+              color: "#8a4b24",
+              marginBottom: 8,
+              fontFamily: "sans-serif",
+            }}
+          >
+            Acces dossier NDA
+          </p>
+
+          <h1 style={{ margin: "0 0 0.75rem", color: "#3a261a" }}>
+            Dossier indisponible
+          </h1>
+
+          <p style={{ color: "#5f4d3d", lineHeight: 1.7, marginBottom: 16 }}>
+            {accessError}
+          </p>
+
+          <button
+            type="button"
+            className="btn-ink"
+            onClick={() => router.push("/client")}
+          >
+            <span>Retour a mon espace client</span>
+          </button>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <div
@@ -392,14 +532,14 @@ export default function ClientNdaPage() {
           {/* Nav droite */}
           <div style={{ display: "flex", gap: 10 }}>
             <Btn variant="ghost" size="sm">
-              Réserver un appel
+              RÃ©server un appel
             </Btn>
           </div>
         </div>
       </header>
 
       {/* ------------------------------------------------------------------ */}
-      {/* BANDEAU PROGRESSION — ÉTAPE 1/4                                     */}
+      {/* BANDEAU PROGRESSION â€” Ã‰TAPE 1/4                                     */}
       {/* ------------------------------------------------------------------ */}
       <div
         style={{
@@ -485,7 +625,7 @@ export default function ClientNdaPage() {
                   </span>
                 </div>
 
-                {/* Séparateur */}
+                {/* SÃ©parateur */}
                 {i < steps.length - 1 && (
                   <div
                     style={{
@@ -544,9 +684,7 @@ export default function ClientNdaPage() {
                 fontFamily: "sans-serif",
               }}
             >
-              {showStep2
-                ? "Accompagnement NDA · Étape 2 sur 4"
-                : "Accompagnement NDA · Étape 1 sur 4"}
+              {`Accompagnement NDA · Étape ${activeStepNumber} sur 7`}
             </p>
             <h1
               style={{
@@ -560,17 +698,17 @@ export default function ClientNdaPage() {
             >
               {showStep2 ? (
                 <>
-                  Coordonnées du{" "}
-                  <span style={{ color: "#9c5a2e" }}>client à former</span>,
+                  CoordonnÃ©es du{" "}
+                  <span style={{ color: "#9c5a2e" }}>client Ã  former</span>,
                   <br />
-                  pas à pas
+                  pas Ã  pas
                 </>
               ) : (
                 <>
-                  Vos premières{" "}
+                  Vos premiÃ¨res{" "}
                   <span style={{ color: "#9c5a2e" }}>informations</span>,
                   <br />
-                  pas à pas
+                  pas Ã  pas
                 </>
               )}
             </h1>
@@ -584,8 +722,8 @@ export default function ClientNdaPage() {
               }}
             >
               {showStep2
-                ? "Cette étape nous permet de préparer les documents contractuels et administratifs liés à votre future action de formation."
-                : "Cette première étape nous permet de lancer votre accompagnement, de préparer vos futurs documents et de vous guider sans vous demander d'informations inutiles."}
+                ? "Cette Ã©tape nous permet de prÃ©parer les documents contractuels et administratifs liÃ©s Ã  votre future action de formation."
+                : "Cette premiÃ¨re Ã©tape nous permet de lancer votre accompagnement, de prÃ©parer vos futurs documents et de vous guider sans vous demander d'informations inutiles."}
             </p>
           </div>
 
@@ -631,7 +769,7 @@ export default function ClientNdaPage() {
           {!step1Submitted ? (
             <>
               <Card>
-                <Badge>Étape 1</Badge>
+                <Badge>Ã‰tape 1</Badge>
                 <h2 style={styles.cardTitle}>Avant de commencer</h2>
                 <div
                   style={{
@@ -643,11 +781,11 @@ export default function ClientNdaPage() {
                 >
                   <p style={styles.body}>
                     Ici, nous recueillons les informations indispensables pour
-                    lancer votre accompagnement et préparer vos documents.
+                    lancer votre accompagnement et prÃ©parer vos documents.
                   </p>
                   <p style={styles.body}>
                     Nous ne vous demandons pas tout d&apos;un coup :
-                    l&apos;objectif est de vous faire avancer étape par étape,
+                    l&apos;objectif est de vous faire avancer Ã©tape par Ã©tape,
                     sans surcharge.
                   </p>
                   <p
@@ -657,8 +795,8 @@ export default function ClientNdaPage() {
                       color: "#7f6b58",
                     }}
                   >
-                    Étape suivante : lorsque vous aurez trouvé votre client ou
-                    votre session, vous nous transmettrez les coordonnées
+                    Ã‰tape suivante : lorsque vous aurez trouvÃ© votre client ou
+                    votre session, vous nous transmettrez les coordonnÃ©es
                     utiles, les dates et le lieu de formation.
                   </p>
                 </div>
@@ -667,7 +805,7 @@ export default function ClientNdaPage() {
               <SimpleFormCard
                 badge="Indispensable"
                 title="Organisme de formation"
-                intro="Ces informations nous servent à ouvrir correctement votre accompagnement et à préparer les futurs documents au nom de votre organisme."
+                intro="Ces informations nous servent Ã  ouvrir correctement votre accompagnement et Ã  prÃ©parer les futurs documents au nom de votre organisme."
               >
                 <Field
                   label="Raison sociale"
@@ -683,7 +821,7 @@ export default function ClientNdaPage() {
                   onChange={(value) => updateForm("organisation_email", value)}
                 />
                 <Field
-                  label="Téléphone"
+                  label="TÃ©lÃ©phone"
                   placeholder="06 00 00 00 00"
                   value={form.organisation_phone}
                   onChange={(value) => updateForm("organisation_phone", value)}
@@ -692,12 +830,12 @@ export default function ClientNdaPage() {
 
               <SimpleFormCard
                 badge="Indispensable"
-                title="Représentant de l'organisme"
-                intro="Nous utiliserons ces informations pour compléter les documents administratifs liés à votre organisme."
+                title="ReprÃ©sentant de l'organisme"
+                intro="Nous utiliserons ces informations pour complÃ©ter les documents administratifs liÃ©s Ã  votre organisme."
               >
                 <Field
-                  label="Prénom"
-                  placeholder="Prénom"
+                  label="PrÃ©nom"
+                  placeholder="PrÃ©nom"
                   value={form.representant_prenom}
                   onChange={(value) => updateForm("representant_prenom", value)}
                 />
@@ -712,11 +850,11 @@ export default function ClientNdaPage() {
               <SimpleFormCard
                 badge="Indispensable"
                 title="Formateur principal"
-                intro="Ces informations nous permettent d'identifier correctement le formateur principal et de préparer les documents associés."
+                intro="Ces informations nous permettent d'identifier correctement le formateur principal et de prÃ©parer les documents associÃ©s."
               >
                 <Field
-                  label="Prénom"
-                  placeholder="Prénom"
+                  label="PrÃ©nom"
+                  placeholder="PrÃ©nom"
                   value={form.formateur_prenom}
                   onChange={(value) => updateForm("formateur_prenom", value)}
                 />
@@ -740,9 +878,9 @@ export default function ClientNdaPage() {
                 <Badge>Indispensable</Badge>
                 <h2 style={styles.cardTitle}>Formation</h2>
                 <p style={{ ...styles.body, marginTop: 12, marginBottom: 20 }}>
-                  Nous avons besoin ici de l'intitulé exact, de la durée, du
-                  tarif et de la modalité. Les dates, le lieu précis et les
-                  informations stagiaire seront demandés à l'étape suivante.
+                  Nous avons besoin ici de l'intitulÃ© exact, de la durÃ©e, du
+                  tarif et de la modalitÃ©. Les dates, le lieu prÃ©cis et les
+                  informations stagiaire seront demandÃ©s Ã  l'Ã©tape suivante.
                 </p>
                 <div
                   style={{
@@ -752,8 +890,8 @@ export default function ClientNdaPage() {
                   }}
                 >
                   <Field
-                    label="Intitulé exact de la formation"
-                    placeholder="Ex. Création et gestion d'entreprise"
+                    label="IntitulÃ© exact de la formation"
+                    placeholder="Ex. CrÃ©ation et gestion d'entreprise"
                     full
                     value={form.formation_intitule}
                     onChange={(value) =>
@@ -761,20 +899,20 @@ export default function ClientNdaPage() {
                     }
                   />
                   <Field
-                    label="Durée"
+                    label="DurÃ©e"
                     placeholder="35 heures"
                     value={form.formation_duree}
                     onChange={(value) => updateForm("formation_duree", value)}
                   />
                   <Field
                     label="Tarif"
-                    placeholder="Ex. 1 200 € TTC"
+                    placeholder="Ex. 1 200 â‚¬ TTC"
                     value={form.formation_tarif}
                     onChange={(value) => updateForm("formation_tarif", value)}
                   />
                   <SelectField
-                    label="Modalité"
-                    options={["Présentiel", "Distanciel", "Mixte"]}
+                    label="ModalitÃ©"
+                    options={["PrÃ©sentiel", "Distanciel", "Mixte"]}
                     value={form.formation_modalite}
                     onChange={(value) =>
                       updateForm("formation_modalite", value)
@@ -782,18 +920,18 @@ export default function ClientNdaPage() {
                   />
                 </div>
                 <Notice style={{ marginTop: 16 }}>
-                  Le programme doit être cohérent avec les diplômes et la
-                  qualification du formateur. En cas d'écart, un ajustement
-                  pourra être nécessaire avant validation.
+                  Le programme doit Ãªtre cohÃ©rent avec les diplÃ´mes et la
+                  qualification du formateur. En cas d'Ã©cart, un ajustement
+                  pourra Ãªtre nÃ©cessaire avant validation.
                 </Notice>
               </Card>
 
               <Card>
                 <Badge>Documents</Badge>
-                <h2 style={styles.cardTitle}>Pièces à déposer</h2>
+                <h2 style={styles.cardTitle}>PiÃ¨ces Ã  dÃ©poser</h2>
                 <p style={{ ...styles.body, marginTop: 12, marginBottom: 20 }}>
-                  Ces pièces nous permettent de vérifier la cohérence de votre
-                  activité et de préparer le traitement administratif dans de
+                  Ces piÃ¨ces nous permettent de vÃ©rifier la cohÃ©rence de votre
+                  activitÃ© et de prÃ©parer le traitement administratif dans de
                   bonnes conditions.
                 </p>
 
@@ -809,8 +947,8 @@ export default function ClientNdaPage() {
                     name="CV formateur"
                     status="Obligatoire"
                     statusColor="required"
-                    description="Le CV doit mentionner les formations dispensées, les diplômes obtenus et l'expérience professionnelle du formateur."
-                    notice="Format accepté : PDF, DOCX. Assurez-vous que le CV est à jour et reflète les compétences liées à la formation."
+                    description="Le CV doit mentionner les formations dispensÃ©es, les diplÃ´mes obtenus et l'expÃ©rience professionnelle du formateur."
+                    notice="Format acceptÃ© : PDF, DOCX. Assurez-vous que le CV est Ã  jour et reflÃ¨te les compÃ©tences liÃ©es Ã  la formation."
                     state={docs.cv}
                     onDrop={(f) => handleFileDrop("cv", f)}
                   />
@@ -819,11 +957,11 @@ export default function ClientNdaPage() {
                     name="Programme de formation"
                     status="Obligatoire"
                     statusColor="required"
-                    description="Le programme doit être en rapport avec les diplômes du formateur. Si votre programme n'est pas conforme ou risque d'être refusé, une reformulation vous sera proposée."
-                    notice="Format accepté : PDF, DOCX. Nous vous proposons un modèle à télécharger si vous n'en avez pas encore."
+                    description="Le programme doit Ãªtre en rapport avec les diplÃ´mes du formateur. Si votre programme n'est pas conforme ou risque d'Ãªtre refusÃ©, une reformulation vous sera proposÃ©e."
+                    notice="Format acceptÃ© : PDF, DOCX. Nous vous proposons un modÃ¨le Ã  tÃ©lÃ©charger si vous n'en avez pas encore."
                     state={docs.programme}
                     onDrop={(f) => handleFileDrop("programme", f)}
-                    downloadLabel="Télécharger le modèle de programme de formation"
+                    downloadLabel="TÃ©lÃ©charger le modÃ¨le de programme de formation"
                     downloadHref="/templates/modele-programme-formation-selen.docx"
                   />
                   <DocDropZone
@@ -831,10 +969,10 @@ export default function ClientNdaPage() {
                     name="Avis INSEE"
                     status="Obligatoire"
                     statusColor="required"
-                    description="L'avis de situation SIRENE (INSEE) permet de vérifier l'existence légale de votre organisme et votre code APE."
+                    description="L'avis de situation SIRENE (INSEE) permet de vÃ©rifier l'existence lÃ©gale de votre organisme et votre code APE."
                     notice={
                       <>
-                        Téléchargeable gratuitement sur{" "}
+                        TÃ©lÃ©chargeable gratuitement sur{" "}
                         <a
                           href="https://avis-situation-sirene.insee.fr/"
                           target="_blank"
@@ -846,7 +984,7 @@ export default function ClientNdaPage() {
                             textUnderlineOffset: 2,
                           }}
                         >
-                          le site de l’INSEE
+                          le site de lâ€™INSEE
                         </a>
                         . Doit dater de moins de 3 mois.
                       </>
@@ -857,12 +995,12 @@ export default function ClientNdaPage() {
                   <DocDropZone
                     docKey="kbis"
                     name="Extrait KBIS"
-                    status="Si concerné"
+                    status="Si concernÃ©"
                     statusColor="optional"
-                    description="Le KBIS est requis pour les sociétés commerciales. Il n’est pas attendu pour les micro-entreprises."
+                    description="Le KBIS est requis pour les sociÃ©tÃ©s commerciales. Il nâ€™est pas attendu pour les micro-entreprises."
                     notice={
                       <>
-                        À récupérer sur{" "}
+                        Ã€ rÃ©cupÃ©rer sur{" "}
                         <a
                           href="https://www.infogreffe.fr/kbis-documents/extrait-kbis?gad_source=1&gad_campaignid=23156315645&gbraid=0AAAAA90djejbDaanrl7BHHLn2O3kybwqB&gclid=Cj0KCQjwmunNBhDbARIsAOndKpm7ss8JfBpadw7vJdKBPyRo3mOxmvFG3a1cMhvucrhq4MNQLetqRWwaAuX1EALw_wcB"
                           target="_blank"
@@ -921,7 +1059,7 @@ export default function ClientNdaPage() {
                 <Btn variant="primary" onClick={handleSubmitEssentialInfos}>
                   {saving
                     ? "Envoi en cours..."
-                    : "Envoyer mes informations essentielles →"}
+                    : "Envoyer mes informations essentielles â†’"}
                 </Btn>
 
                 {errorMessage && (
@@ -956,9 +1094,9 @@ export default function ClientNdaPage() {
           ) : (
             <>
               <Card>
-                <Badge>Étape 1 terminée</Badge>
+                <Badge>Ã‰tape 1 terminÃ©e</Badge>
                 <h2 style={styles.cardTitle}>
-                  Merci, votre dossier a bien été transmis
+                  Merci, votre dossier a bien Ã©tÃ© transmis
                 </h2>
                 <div
                   style={{
@@ -970,19 +1108,19 @@ export default function ClientNdaPage() {
                 >
                   <p style={styles.body}>
                     Un agent va maintenant prendre en charge votre dossier. Il
-                    pourra vous contacter si certains éléments doivent être
-                    précisés ou complétés.
+                    pourra vous contacter si certains Ã©lÃ©ments doivent Ãªtre
+                    prÃ©cisÃ©s ou complÃ©tÃ©s.
                   </p>
                   <p style={styles.body}>
-                    La prochaine étape consiste à vérifier et, si nécessaire, à
-                    retravailler votre programme afin qu’il soit cohérent avec
-                    les diplômes du formateur et les attentes de l’instruction
+                    La prochaine Ã©tape consiste Ã  vÃ©rifier et, si nÃ©cessaire, Ã 
+                    retravailler votre programme afin quâ€™il soit cohÃ©rent avec
+                    les diplÃ´mes du formateur et les attentes de lâ€™instruction
                     du dossier.
                   </p>
                   <Notice>
                     Notre objectif est de vous proposer un programme conforme,
-                    cohérent et défendable, afin d’optimiser les chances
-                    d’acceptation de votre demande.
+                    cohÃ©rent et dÃ©fendable, afin dâ€™optimiser les chances
+                    dâ€™acceptation de votre demande.
                   </Notice>
                 </div>
               </Card>
@@ -1000,7 +1138,7 @@ export default function ClientNdaPage() {
                   <div>
                     <Badge>Vos informations</Badge>
                     <h2 style={{ ...styles.cardTitle, marginTop: 6 }}>
-                      Informations déjà transmises
+                      Informations dÃ©jÃ  transmises
                     </h2>
                   </div>
 
@@ -1023,36 +1161,36 @@ export default function ClientNdaPage() {
                     }}
                   >
                     <Notice>
-                      Vous pouvez consulter les éléments transmis. Si une
-                      correction est nécessaire, votre agent vous l’indiquera
+                      Vous pouvez consulter les Ã©lÃ©ments transmis. Si une
+                      correction est nÃ©cessaire, votre agent vous lâ€™indiquera
                       directement dans la messagerie.
                     </Notice>
 
                     <div style={{ ...styles.body }}>
                       <strong>Organisme :</strong>{" "}
-                      {form.organisation_name || "—"}
+                      {form.organisation_name || "â€”"}
                     </div>
                     <div style={{ ...styles.body }}>
-                      <strong>Email :</strong> {form.organisation_email || "—"}
+                      <strong>Email :</strong> {form.organisation_email || "â€”"}
                     </div>
                     <div style={{ ...styles.body }}>
-                      <strong>Téléphone :</strong>{" "}
-                      {form.organisation_phone || "—"}
+                      <strong>TÃ©lÃ©phone :</strong>{" "}
+                      {form.organisation_phone || "â€”"}
                     </div>
                     <div style={{ ...styles.body }}>
                       <strong>Formateur :</strong>{" "}
-                      {form.formateur_prenom || "—"} {form.formateur_nom || ""}
+                      {form.formateur_prenom || "â€”"} {form.formateur_nom || ""}
                     </div>
                     <div style={{ ...styles.body }}>
                       <strong>Formation :</strong>{" "}
-                      {form.formation_intitule || "—"}
+                      {form.formation_intitule || "â€”"}
                     </div>
                     <div style={{ ...styles.body }}>
-                      <strong>Durée :</strong> {form.formation_duree || "—"}
+                      <strong>DurÃ©e :</strong> {form.formation_duree || "â€”"}
                     </div>
                     <div style={{ ...styles.body }}>
-                      <strong>Modalité :</strong>{" "}
-                      {form.formation_modalite || "—"}
+                      <strong>ModalitÃ© :</strong>{" "}
+                      {form.formation_modalite || "â€”"}
                     </div>
                   </div>
                 ) : null}
@@ -1062,24 +1200,24 @@ export default function ClientNdaPage() {
                 <Card>
                   <Badge>Travail du programme</Badge>
                   <h2 style={styles.cardTitle}>
-                    Prochaine étape : votre programme
+                    Prochaine Ã©tape : votre programme
                   </h2>
                   <p style={{ ...styles.body, marginTop: 12 }}>
-                    Un agent va analyser les éléments transmis et vous proposer,
-                    si nécessaire, une version conforme de votre programme, en
-                    accord avec les diplômes du formateur et les exigences du
+                    Un agent va analyser les Ã©lÃ©ments transmis et vous proposer,
+                    si nÃ©cessaire, une version conforme de votre programme, en
+                    accord avec les diplÃ´mes du formateur et les exigences du
                     dossier.
                   </p>
                   <p style={{ ...styles.body, marginTop: 12 }}>
-                    Cette proposition apparaîtra ici dès qu’elle sera prête.
+                    Cette proposition apparaÃ®tra ici dÃ¨s quâ€™elle sera prÃªte.
                   </p>
                 </Card>
               ) : isProgramPendingDecision ? (
                 <Card>
                   <Badge>Travail du programme</Badge>
-                  <h2 style={styles.cardTitle}>Votre programme est prêt</h2>
+                  <h2 style={styles.cardTitle}>Votre programme est prÃªt</h2>
                   <p style={{ ...styles.body, marginTop: 12 }}>
-                    Votre conseiller a préparé une proposition de programme.
+                    Votre conseiller a prÃ©parÃ© une proposition de programme.
                     Vous pouvez maintenant la consulter, la valider ou demander
                     une modification.
                   </p>
@@ -1088,7 +1226,7 @@ export default function ClientNdaPage() {
                 <Card>
                   <Badge>En attente</Badge>
                   <h2 style={styles.cardTitle}>
-                    Votre retour a bien été transmis
+                    Votre retour a bien Ã©tÃ© transmis
                   </h2>
                   <p style={{ ...styles.body, marginTop: 12 }}>
                     Votre conseiller va reprendre votre demande et revenir vers
@@ -1097,13 +1235,13 @@ export default function ClientNdaPage() {
                 </Card>
               ) : isProgramValidated ? (
                 <Card>
-                  <Badge>Étape 2</Badge>
+                  <Badge>Ã‰tape 2</Badge>
                   <h2 style={styles.cardTitle}>
-                    Prochaine étape : les coordonnées du client à former
+                    Prochaine Ã©tape : les coordonnÃ©es du client Ã  former
                   </h2>
                   <p style={{ ...styles.body, marginTop: 12 }}>
-                    Votre programme a bien été validé. Vous pouvez maintenant
-                    renseigner les coordonnées du client à qui vous allez
+                    Votre programme a bien Ã©tÃ© validÃ©. Vous pouvez maintenant
+                    renseigner les coordonnÃ©es du client Ã  qui vous allez
                     dispenser cette formation.
                   </p>
                 </Card>
@@ -1112,11 +1250,11 @@ export default function ClientNdaPage() {
               {!hasProgramProposal ? (
                 <Card>
                   <Badge>En attente</Badge>
-                  <h2 style={styles.cardTitle}>Programme en cours d’étude</h2>
+                  <h2 style={styles.cardTitle}>Programme en cours dâ€™Ã©tude</h2>
                   <p style={{ ...styles.body, marginTop: 12 }}>
-                    Votre dossier est actuellement en cours d’analyse. Dès qu’un
-                    agent aura préparé une proposition de programme, elle
-                    s’affichera dans cet espace.
+                    Votre dossier est actuellement en cours dâ€™analyse. DÃ¨s quâ€™un
+                    agent aura prÃ©parÃ© une proposition de programme, elle
+                    sâ€™affichera dans cet espace.
                   </p>
                 </Card>
               ) : isProgramPendingDecision ? (
@@ -1128,7 +1266,7 @@ export default function ClientNdaPage() {
                 <Card>
                   <Badge>En attente</Badge>
                   <h2 style={styles.cardTitle}>
-                    Votre demande de modification a bien été transmise
+                    Votre demande de modification a bien Ã©tÃ© transmise
                   </h2>
                   <p style={{ ...styles.body, marginTop: 12 }}>
                     Votre conseiller va relire votre retour et revenir vers vous
@@ -1138,7 +1276,7 @@ export default function ClientNdaPage() {
               ) : isProgramValidated ? (
                 <>
                   <Card>
-                    <Badge>Étape 2</Badge>
+                    <Badge>Ã‰tape 2</Badge>
                     <h2 style={styles.cardTitle}>
                       Avant de renseigner votre client
                     </h2>
@@ -1152,50 +1290,50 @@ export default function ClientNdaPage() {
                       }}
                     >
                       <p style={styles.body}>
-                        Maintenant que votre programme est validé, vous devez
-                        renseigner les coordonnées du client à qui vous allez
+                        Maintenant que votre programme est validÃ©, vous devez
+                        renseigner les coordonnÃ©es du client Ã  qui vous allez
                         dispenser cette formation.
                       </p>
 
                       <Notice>
-                        Le client doit être un <strong>professionnel</strong>{" "}
-                        disposant d’un
-                        <strong> numéro SIRET</strong>.
+                        Le client doit Ãªtre un <strong>professionnel</strong>{" "}
+                        disposant dâ€™un
+                        <strong> numÃ©ro SIRET</strong>.
                       </Notice>
 
                       <Notice>
-                        Le client ne doit pas être un proche : évitez la famille
+                        Le client ne doit pas Ãªtre un proche : Ã©vitez la famille
                         et les amis proches.
                       </Notice>
 
                       <Notice>
-                        Les dates de formation doivent être prévues entre
+                        Les dates de formation doivent Ãªtre prÃ©vues entre
                         <strong> 1 mois minimum</strong> et
                         <strong> 3 mois maximum</strong>.
                       </Notice>
 
                       <Notice>
                         La formation peut avoir lieu{" "}
-                        <strong>en présentiel</strong> ou
-                        <strong> en visioconférence</strong>.
+                        <strong>en prÃ©sentiel</strong> ou
+                        <strong> en visioconfÃ©rence</strong>.
                       </Notice>
 
                       <Notice>
-                        Des contrôles de la DREETS sont possibles : contrôle sur
-                        place, contrôle à distance via votre lien de
-                        visioconférence, ou contrôle administratif avec demande
-                        de preuves de réalisation (émargements, évaluations,
+                        Des contrÃ´les de la DREETS sont possibles : contrÃ´le sur
+                        place, contrÃ´le Ã  distance via votre lien de
+                        visioconfÃ©rence, ou contrÃ´le administratif avec demande
+                        de preuves de rÃ©alisation (Ã©margements, Ã©valuations,
                         supports, etc.).
                       </Notice>
 
                       <Notice>
-                        Il est donc important d’indiquer une adresse précise ou
+                        Il est donc important dâ€™indiquer une adresse prÃ©cise ou
                         un vrai lien de connexion utilisable.
                       </Notice>
 
                       <Notice>
                         <strong>
-                          En cas de doute, réservez un appel afin d’échanger
+                          En cas de doute, rÃ©servez un appel afin dâ€™Ã©changer
                           avec un conseiller expert.
                         </strong>
                       </Notice>
@@ -1203,9 +1341,9 @@ export default function ClientNdaPage() {
                   </Card>
 
                   <Card>
-                    <Badge>Étape 2</Badge>
+                    <Badge>Ã‰tape 2</Badge>
                     <h2 style={styles.cardTitle}>
-                      Coordonnées du client à former
+                      CoordonnÃ©es du client Ã  former
                     </h2>
 
                     <div
@@ -1217,8 +1355,8 @@ export default function ClientNdaPage() {
                       }}
                     >
                       <Field
-                        label="Prénom du stagiaire"
-                        placeholder="Prénom"
+                        label="PrÃ©nom du stagiaire"
+                        placeholder="PrÃ©nom"
                         value={step2Form.stagiaire_prenom}
                         onChange={(value) =>
                           updateStep2Form("stagiaire_prenom", value)
@@ -1236,7 +1374,7 @@ export default function ClientNdaPage() {
 
                       <Field
                         label="Adresse postale"
-                        placeholder="Adresse complète"
+                        placeholder="Adresse complÃ¨te"
                         full
                         value={step2Form.stagiaire_adresse}
                         onChange={(value) =>
@@ -1255,7 +1393,7 @@ export default function ClientNdaPage() {
                       />
 
                       <Field
-                        label="Téléphone"
+                        label="TÃ©lÃ©phone"
                         placeholder="06 00 00 00 00"
                         value={step2Form.stagiaire_telephone}
                         onChange={(value) =>
@@ -1264,7 +1402,7 @@ export default function ClientNdaPage() {
                       />
 
                       <Field
-                        label="N° SIRET"
+                        label="NÂ° SIRET"
                         placeholder="123 456 789 00012"
                         value={step2Form.client_siret}
                         onChange={(value) =>
@@ -1273,8 +1411,8 @@ export default function ClientNdaPage() {
                       />
 
                       <Field
-                        label="Date souhaitée de la formation"
-                        placeholder="Sélectionnez une date"
+                        label="Date souhaitÃ©e de la formation"
+                        placeholder="SÃ©lectionnez une date"
                         type="date"
                         value={step2Form.date_formation_prevue}
                         onChange={(value) =>
@@ -1287,7 +1425,7 @@ export default function ClientNdaPage() {
 
                       <Field
                         label="Lieu ou lien de la formation"
-                        placeholder="Adresse précise ou lien Zoom / Meet / Teams"
+                        placeholder="Adresse prÃ©cise ou lien Zoom / Meet / Teams"
                         full
                         value={step2Form.lieu_formation}
                         onChange={(value) =>
@@ -1306,7 +1444,7 @@ export default function ClientNdaPage() {
                       <Btn variant="primary" onClick={handleSaveStep2}>
                         {saving
                           ? "Enregistrement..."
-                          : "Enregistrer les coordonnées du client →"}
+                          : "Enregistrer les coordonnÃ©es du client â†’"}
                       </Btn>
                       {errorMessage && (
                         <Notice
@@ -1396,6 +1534,16 @@ export default function ClientNdaPage() {
                       }}
                     >
                       {step.label}
+                    </p>
+                    <p
+                      style={{
+                        fontSize: 11,
+                        color: step.active ? "#9c5a2e" : "#9a8a78",
+                        margin: "4px 0 0",
+                        fontFamily: "sans-serif",
+                      }}
+                    >
+                      {step.status}
                     </p>
                   </div>
                 </div>
@@ -1598,7 +1746,7 @@ function DocDropZone({
                 fontFamily: "sans-serif",
               }}
             >
-              ✓ {state.file.name}
+              âœ“ {state.file.name}
             </p>
             <p
               style={{
@@ -1621,7 +1769,7 @@ function DocDropZone({
                 fontFamily: "sans-serif",
               }}
             >
-              Déposer un fichier ici
+              DÃ©poser un fichier ici
             </p>
             <p
               style={{
@@ -1631,7 +1779,7 @@ function DocDropZone({
                 fontFamily: "sans-serif",
               }}
             >
-              ou cliquer pour sélectionner · PDF, DOCX
+              ou cliquer pour sÃ©lectionner Â· PDF, DOCX
             </p>
           </div>
         )}
@@ -1661,7 +1809,7 @@ function DocDropZone({
 }
 
 // ---------------------------------------------------------------------------
-// Composants UI partagés
+// Composants UI partagÃ©s
 // ---------------------------------------------------------------------------
 
 function Card({
@@ -1863,7 +2011,7 @@ function SelectField({
           cursor: "pointer",
         }}
       >
-        <option value="">Sélectionner</option>
+        <option value="">SÃ©lectionner</option>
         {options.map((o) => (
           <option key={o} value={o}>
             {o}
@@ -1933,7 +2081,7 @@ function Btn({
 }
 
 // ---------------------------------------------------------------------------
-// Styles partagés
+// Styles partagÃ©s
 // ---------------------------------------------------------------------------
 
 const styles = {

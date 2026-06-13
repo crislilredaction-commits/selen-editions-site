@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import {
+  getAdminSupabase,
+  verifyClientNdaDossierAccess,
+} from "@/lib/server/clientNdaAccess";
 
 export async function POST(req: Request) {
   try {
-    const supabase = await createClient();
+    const supabase = getAdminSupabase();
 
     const body = await req.json();
 
@@ -13,6 +16,15 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { error: "proposalId ou dossierId manquant" },
         { status: 400 },
+      );
+    }
+
+    const access = await verifyClientNdaDossierAccess(supabase, dossierId);
+
+    if (!access.ok) {
+      return NextResponse.json(
+        { error: access.error },
+        { status: access.status },
       );
     }
 

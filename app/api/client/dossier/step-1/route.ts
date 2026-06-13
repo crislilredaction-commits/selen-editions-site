@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { createAgentNotification } from "@/lib/server/notifications";
+import {
+  getAdminSupabase,
+  verifyClientNdaDossierAccess,
+} from "@/lib/server/clientNdaAccess";
 
 export async function POST(req: Request) {
   try {
-    const supabase = await createClient();
+    const supabase = getAdminSupabase();
     const body = await req.json();
 
     const {
@@ -30,18 +33,16 @@ export async function POST(req: Request) {
       );
     }
 
-    const { data: dossier, error: dossierError } = await supabase
-      .from("dossiers")
-      .select("id, organisation_id, status")
-      .eq("id", dossierId)
-      .maybeSingle();
+    const access = await verifyClientNdaDossierAccess(supabase, dossierId);
 
-    if (dossierError || !dossier) {
+    if (!access.ok) {
       return NextResponse.json(
-        { error: "Dossier introuvable." },
-        { status: 404 },
+        { error: access.error },
+        { status: access.status },
       );
     }
+
+    const dossier = access.dossier;
 
     if (!dossier.organisation_id) {
       return NextResponse.json(
@@ -55,7 +56,6 @@ export async function POST(req: Request) {
       .from("organisations")
       .update({
         name: organisation_name || null,
-        email: organisation_email || null,
         phone: organisation_phone || null,
       })
       .eq("id", dossier.organisation_id);

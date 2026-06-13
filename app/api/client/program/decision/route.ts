@@ -1,27 +1,9 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { createAgentNotification } from "@/lib/server/notifications";
-
-function getAdminSupabase() {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-    throw new Error("NEXT_PUBLIC_SUPABASE_URL manquante.");
-  }
-
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    throw new Error("SUPABASE_SERVICE_ROLE_KEY manquante.");
-  }
-
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
-    {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    },
-  );
-}
+import {
+  getAdminSupabase,
+  verifyClientNdaDossierAccess,
+} from "@/lib/server/clientNdaAccess";
 
 function sanitizeFileName(name: string) {
   return name
@@ -78,18 +60,16 @@ export async function POST(req: Request) {
       );
     }
 
-    const { data: dossier, error: dossierError } = await supabase
-      .from("dossiers")
-      .select("id, title, organisation_id")
-      .eq("id", dossierId)
-      .maybeSingle();
+    const access = await verifyClientNdaDossierAccess(supabase, dossierId);
 
-    if (dossierError || !dossier) {
+    if (!access.ok) {
       return NextResponse.json(
-        { error: "Dossier introuvable." },
-        { status: 404 },
+        { error: access.error },
+        { status: access.status },
       );
     }
+
+    const dossier = access.dossier;
 
     const { data: version, error: versionError } = await supabase
       .from("dossier_program_versions")
