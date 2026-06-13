@@ -24,6 +24,17 @@ interface DocState {
   uploading: boolean;
 }
 
+type NdaDocument = {
+  id: string;
+  name: string | null;
+  document_type: string | null;
+  document_role: string | null;
+  review_status: string | null;
+  requires_client_action?: boolean | null;
+  status: string | null;
+  created_at: string | null;
+};
+
 // ---------------------------------------------------------------------------
 // Page principale
 // ---------------------------------------------------------------------------
@@ -68,6 +79,12 @@ export default function ClientNdaPage() {
   const [programDecision, setProgramDecision] = useState<string | null>(null);
   const [step1Submitted, setStep1Submitted] = useState(false);
   const [showStep1Details, setShowStep1Details] = useState(false);
+  const [clientUploadedDocuments, setClientUploadedDocuments] = useState<
+    NdaDocument[]
+  >([]);
+  const [publishedDocuments, setPublishedDocuments] = useState<NdaDocument[]>(
+    [],
+  );
   const [step2Form, setStep2Form] = useState({
     stagiaire_prenom: "",
     stagiaire_nom: "",
@@ -135,6 +152,12 @@ export default function ClientNdaPage() {
 
         setStep1Submitted(Boolean(stateData?.step1Submitted));
         setProgramDecision(stateData?.programDecision ?? null);
+        setClientUploadedDocuments(
+          (stateData?.clientUploadedDocuments ?? []) as NdaDocument[],
+        );
+        setPublishedDocuments(
+          (stateData?.publishedDocuments ?? []) as NdaDocument[],
+        );
 
         if (stateData?.step2) {
           setStep2Form({
@@ -1042,6 +1065,11 @@ export default function ClientNdaPage() {
                 </Notice>
               </Card>
 
+              <DocumentSections
+                clientUploadedDocuments={clientUploadedDocuments}
+                publishedDocuments={publishedDocuments}
+              />
+
               <div
                 style={{
                   display: "flex",
@@ -1195,6 +1223,11 @@ export default function ClientNdaPage() {
                   </div>
                 ) : null}
               </Card>
+
+              <DocumentSections
+                clientUploadedDocuments={clientUploadedDocuments}
+                publishedDocuments={publishedDocuments}
+              />
 
               {!hasProgramProposal ? (
                 <Card>
@@ -1569,6 +1602,214 @@ export default function ClientNdaPage() {
 // ---------------------------------------------------------------------------
 // DocDropZone
 // ---------------------------------------------------------------------------
+
+function DocumentSections({
+  clientUploadedDocuments,
+  publishedDocuments,
+}: {
+  clientUploadedDocuments: NdaDocument[];
+  publishedDocuments: NdaDocument[];
+}) {
+  return (
+    <Card>
+      <Badge>Documents du dossier</Badge>
+      <h2 style={styles.cardTitle}>Vos documents</h2>
+      <p style={{ ...styles.body, marginTop: 12, marginBottom: 18 }}>
+        Retrouvez ici les documents associés à votre dossier NDA. Les documents
+        internes de l'équipe Selen ne sont pas affichés dans cet espace.
+      </p>
+
+      <DocumentList
+        title="Vos documents déposés"
+        emptyText="Aucun document déposé n'est encore visible ici."
+        documents={clientUploadedDocuments}
+      />
+
+      <div style={{ height: 18 }} />
+
+      <DocumentList
+        title="Documents mis à disposition par Selen"
+        emptyText="Aucun document n'a encore été mis à disposition par Selen."
+        documents={publishedDocuments}
+        showClientAction
+      />
+    </Card>
+  );
+}
+
+function DocumentList({
+  title,
+  emptyText,
+  documents,
+  showClientAction = false,
+}: {
+  title: string;
+  emptyText: string;
+  documents: NdaDocument[];
+  showClientAction?: boolean;
+}) {
+  return (
+    <section>
+      <h3
+        style={{
+          fontSize: 15,
+          margin: "0 0 10px",
+          color: "#3a261a",
+          fontFamily: "sans-serif",
+        }}
+      >
+        {title}
+      </h3>
+
+      {documents.length === 0 ? (
+        <Notice>{emptyText}</Notice>
+      ) : (
+        <div style={{ display: "grid", gap: 10 }}>
+          {documents.map((document) => (
+            <div
+              key={document.id}
+              style={{
+                border: "1px solid #ead9bf",
+                background: "#fffdfa",
+                borderRadius: 4,
+                padding: "12px 14px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+                flexWrap: "wrap",
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <p
+                  style={{
+                    margin: 0,
+                    color: "#3a261a",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    fontFamily: "sans-serif",
+                  }}
+                >
+                  {document.name || formatDocumentType(document.document_type)}
+                </p>
+                <p
+                  style={{
+                    margin: "4px 0 0",
+                    color: "#7a6453",
+                    fontSize: 12,
+                    fontFamily: "sans-serif",
+                  }}
+                >
+                  {formatDocumentType(document.document_type)}
+                  {document.created_at
+                    ? ` · ${formatShortDate(document.created_at)}`
+                    : ""}
+                </p>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                }}
+              >
+                {showClientAction && document.requires_client_action ? (
+                  <DocumentBadge tone="warning">Action requise</DocumentBadge>
+                ) : null}
+                <DocumentBadge tone={getDocumentStatusTone(document)}>
+                  {formatDocumentStatus(document)}
+                </DocumentBadge>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function DocumentBadge({
+  children,
+  tone,
+}: {
+  children: React.ReactNode;
+  tone: "neutral" | "success" | "warning";
+}) {
+  const tones: Record<typeof tone, React.CSSProperties> = {
+    neutral: {
+      color: "#6f5a45",
+      background: "#fbf3e4",
+      borderColor: "#ead9bf",
+    },
+    success: {
+      color: "#446236",
+      background: "#f4fbef",
+      borderColor: "#cfe3c3",
+    },
+    warning: {
+      color: "#8a4b24",
+      background: "#fff4e8",
+      borderColor: "#e6bf8a",
+    },
+  };
+
+  return (
+    <span
+      style={{
+        border: "1px solid",
+        borderRadius: 999,
+        padding: "4px 9px",
+        fontSize: 11,
+        fontWeight: 700,
+        fontFamily: "sans-serif",
+        ...tones[tone],
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+function formatDocumentStatus(document: NdaDocument) {
+  if (document.review_status === "received") return "Reçu";
+  if (document.review_status === "needs_correction") return "À corriger";
+  if (document.review_status === "validated") return "Validé";
+  if (document.review_status === "not_reviewed") return "En attente";
+  if (document.status === "uploaded") return "Reçu";
+  return "En attente";
+}
+
+function getDocumentStatusTone(document: NdaDocument) {
+  if (document.review_status === "validated") return "success";
+  if (
+    document.review_status === "needs_correction" ||
+    document.requires_client_action
+  ) {
+    return "warning";
+  }
+
+  return "neutral";
+}
+
+function formatDocumentType(value?: string | null) {
+  if (!value) return "Document";
+
+  return value
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function formatShortDate(value: string) {
+  return new Intl.DateTimeFormat("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(new Date(value));
+}
 
 function DocDropZone({
   name,

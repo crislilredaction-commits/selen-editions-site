@@ -54,8 +54,22 @@ export async function GET(req: Request) {
 
     const { data: documents, error: docsError } = await supabase
       .from("documents")
-      .select("id, document_type, created_at")
-      .eq("dossier_id", dossierId);
+      .select(
+        `
+        id,
+        name,
+        document_type,
+        document_role,
+        review_status,
+        requires_client_action,
+        is_visible_to_client,
+        source,
+        status,
+        created_at
+      `,
+      )
+      .eq("dossier_id", dossierId)
+      .order("created_at", { ascending: false });
 
     if (docsError) {
       return NextResponse.json({ error: docsError.message }, { status: 500 });
@@ -88,6 +102,39 @@ export async function GET(req: Request) {
       receivedTypes.includes("avis_insee") || receivedTypes.includes("kbis");
 
     const step1Submitted = hasCv && hasProgramme && hasEntrepriseDoc;
+    const safeDocuments = (documents ?? []).map((document) => ({
+      id: document.id,
+      name: document.name,
+      document_type: document.document_type,
+      document_role: document.document_role,
+      review_status: document.review_status,
+      requires_client_action: document.requires_client_action,
+      status: document.status,
+      created_at: document.created_at,
+    }));
+
+    const clientUploadedDocuments = safeDocuments.filter(
+      (document) =>
+        documents?.some(
+          (sourceDocument) =>
+            sourceDocument.id === document.id &&
+            (sourceDocument.source === "client_upload" ||
+              sourceDocument.document_role === "initial_client_document" ||
+              sourceDocument.document_role === "client_returned_document"),
+        ) ?? false,
+    );
+
+    const publishedDocuments = safeDocuments.filter(
+      (document) =>
+        documents?.some(
+          (sourceDocument) =>
+            sourceDocument.id === document.id &&
+            sourceDocument.is_visible_to_client === true &&
+            sourceDocument.source !== "client_upload" &&
+            sourceDocument.document_role !== "initial_client_document" &&
+            sourceDocument.document_role !== "client_returned_document",
+        ) ?? false,
+    );
 
     return NextResponse.json({
       dossier: {
@@ -97,6 +144,8 @@ export async function GET(req: Request) {
       },
       step1Submitted,
       programDecision,
+      clientUploadedDocuments,
+      publishedDocuments,
       step2: {
         stagiaire_prenom: ndaVariables?.stagiaire_prenom ?? "",
         stagiaire_nom: ndaVariables?.stagiaire_nom ?? "",
