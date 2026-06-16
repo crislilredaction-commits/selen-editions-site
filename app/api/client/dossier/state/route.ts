@@ -32,14 +32,21 @@ export async function GET(req: Request) {
       .from("nda_variables")
       .select(
         `
+      client_nom,
+      client_adresse,
+      client_representant_prenom,
+      client_representant_nom,
       stagiaire_prenom,
       stagiaire_nom,
+      stagiaire_fonction,
       stagiaire_adresse,
       stagiaire_email,
       stagiaire_telephone,
       client_siret,
       date_formation_prevue,
-      lieu_formation
+      lieu_formation,
+      lieu_signature_convention,
+      date_signature_convention
     `,
       )
       .eq("dossier_id", dossierId)
@@ -147,14 +154,24 @@ export async function GET(req: Request) {
       clientUploadedDocuments,
       publishedDocuments,
       step2: {
+        client_nom: ndaVariables?.client_nom ?? "",
+        client_adresse: ndaVariables?.client_adresse ?? "",
+        client_representant_prenom:
+          ndaVariables?.client_representant_prenom ?? "",
+        client_representant_nom: ndaVariables?.client_representant_nom ?? "",
         stagiaire_prenom: ndaVariables?.stagiaire_prenom ?? "",
         stagiaire_nom: ndaVariables?.stagiaire_nom ?? "",
+        stagiaire_fonction: ndaVariables?.stagiaire_fonction ?? "",
         stagiaire_adresse: ndaVariables?.stagiaire_adresse ?? "",
         stagiaire_email: ndaVariables?.stagiaire_email ?? "",
         stagiaire_telephone: ndaVariables?.stagiaire_telephone ?? "",
         client_siret: ndaVariables?.client_siret ?? "",
         date_formation_prevue: ndaVariables?.date_formation_prevue ?? "",
         lieu_formation: ndaVariables?.lieu_formation ?? "",
+        lieu_signature_convention:
+          ndaVariables?.lieu_signature_convention ?? "",
+        date_signature_convention:
+          ndaVariables?.date_signature_convention ?? "",
       },
     });
   } catch (error) {

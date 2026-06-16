@@ -86,14 +86,21 @@ export default function ClientNdaPage() {
     [],
   );
   const [step2Form, setStep2Form] = useState({
+    client_nom: "",
+    client_adresse: "",
+    client_representant_prenom: "",
+    client_representant_nom: "",
     stagiaire_prenom: "",
     stagiaire_nom: "",
+    stagiaire_fonction: "",
     stagiaire_adresse: "",
     stagiaire_email: "",
     stagiaire_telephone: "",
     client_siret: "",
     date_formation_prevue: "",
     lieu_formation: "",
+    lieu_signature_convention: "",
+    date_signature_convention: "",
   });
 
   function updateStep2Form<K extends keyof typeof step2Form>(
@@ -163,14 +170,25 @@ export default function ClientNdaPage() {
 
         if (stateData?.step2) {
           setStep2Form({
+            client_nom: stateData.step2.client_nom ?? "",
+            client_adresse: stateData.step2.client_adresse ?? "",
+            client_representant_prenom:
+              stateData.step2.client_representant_prenom ?? "",
+            client_representant_nom:
+              stateData.step2.client_representant_nom ?? "",
             stagiaire_prenom: stateData.step2.stagiaire_prenom ?? "",
             stagiaire_nom: stateData.step2.stagiaire_nom ?? "",
+            stagiaire_fonction: stateData.step2.stagiaire_fonction ?? "",
             stagiaire_adresse: stateData.step2.stagiaire_adresse ?? "",
             stagiaire_email: stateData.step2.stagiaire_email ?? "",
             stagiaire_telephone: stateData.step2.stagiaire_telephone ?? "",
             client_siret: stateData.step2.client_siret ?? "",
             date_formation_prevue: stateData.step2.date_formation_prevue ?? "",
             lieu_formation: stateData.step2.lieu_formation ?? "",
+            lieu_signature_convention:
+              stateData.step2.lieu_signature_convention ?? "",
+            date_signature_convention:
+              stateData.step2.date_signature_convention ?? "",
           });
         }
 
@@ -1432,90 +1450,159 @@ export default function ClientNdaPage() {
 
                     <div
                       style={{
-                        display: "grid",
-                        gridTemplateColumns: "1fr 1fr",
-                        gap: 16,
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 22,
                         marginTop: 20,
                       }}
                     >
-                      <Field
-                        label="Prénom du stagiaire"
-                        placeholder="Prénom"
-                        value={step2Form.stagiaire_prenom}
-                        onChange={(value) =>
-                          updateStep2Form("stagiaire_prenom", value)
-                        }
-                      />
+                      <Step2Section title="Client professionnel / signataire">
+                        <Field
+                          label="Nom / raison sociale du client"
+                          placeholder="Ex. Atelier Martin SAS"
+                          full
+                          value={step2Form.client_nom}
+                          onChange={(value) =>
+                            updateStep2Form("client_nom", value)
+                          }
+                        />
+                        <Field
+                          label="Adresse du client professionnel"
+                          placeholder="Adresse complète du client professionnel"
+                          full
+                          value={step2Form.client_adresse}
+                          onChange={(value) =>
+                            updateStep2Form("client_adresse", value)
+                          }
+                        />
+                        <Field
+                          label="Prénom représentant client"
+                          placeholder="Prénom du signataire"
+                          value={step2Form.client_representant_prenom}
+                          onChange={(value) =>
+                            updateStep2Form(
+                              "client_representant_prenom",
+                              value,
+                            )
+                          }
+                        />
+                        <Field
+                          label="Nom représentant client"
+                          placeholder="Nom du signataire"
+                          value={step2Form.client_representant_nom}
+                          onChange={(value) =>
+                            updateStep2Form("client_representant_nom", value)
+                          }
+                        />
+                        <Field
+                          label="SIRET client"
+                          placeholder="123 456 789 00012"
+                          value={step2Form.client_siret}
+                          onChange={(value) =>
+                            updateStep2Form("client_siret", value)
+                          }
+                        />
+                      </Step2Section>
 
-                      <Field
-                        label="Nom du stagiaire"
-                        placeholder="Nom"
-                        value={step2Form.stagiaire_nom}
-                        onChange={(value) =>
-                          updateStep2Form("stagiaire_nom", value)
-                        }
-                      />
+                      <Step2Section title="Stagiaire / bénéficiaire">
+                        <Field
+                          label="Prénom stagiaire"
+                          placeholder="Prénom"
+                          value={step2Form.stagiaire_prenom}
+                          onChange={(value) =>
+                            updateStep2Form("stagiaire_prenom", value)
+                          }
+                        />
+                        <Field
+                          label="Nom stagiaire"
+                          placeholder="Nom"
+                          value={step2Form.stagiaire_nom}
+                          onChange={(value) =>
+                            updateStep2Form("stagiaire_nom", value)
+                          }
+                        />
+                        <Field
+                          label="Fonction stagiaire"
+                          placeholder="Ex. Responsable administratif"
+                          value={step2Form.stagiaire_fonction}
+                          onChange={(value) =>
+                            updateStep2Form("stagiaire_fonction", value)
+                          }
+                        />
+                        <Field
+                          label="Adresse stagiaire"
+                          placeholder="Adresse complète du stagiaire"
+                          full
+                          value={step2Form.stagiaire_adresse}
+                          onChange={(value) =>
+                            updateStep2Form("stagiaire_adresse", value)
+                          }
+                        />
+                        <Field
+                          label="Email stagiaire"
+                          placeholder="stagiaire@exemple.fr"
+                          type="email"
+                          value={step2Form.stagiaire_email}
+                          onChange={(value) =>
+                            updateStep2Form("stagiaire_email", value)
+                          }
+                        />
+                        <Field
+                          label="Téléphone stagiaire"
+                          placeholder="06 00 00 00 00"
+                          value={step2Form.stagiaire_telephone}
+                          onChange={(value) =>
+                            updateStep2Form("stagiaire_telephone", value)
+                          }
+                        />
+                      </Step2Section>
 
-                      <Field
-                        label="Adresse postale"
-                        placeholder="Adresse complète"
-                        full
-                        value={step2Form.stagiaire_adresse}
-                        onChange={(value) =>
-                          updateStep2Form("stagiaire_adresse", value)
-                        }
-                      />
+                      <Step2Section title="Action de formation">
+                        <Field
+                          label="Date prévue de début"
+                          placeholder="Sélectionnez une date"
+                          type="date"
+                          value={step2Form.date_formation_prevue}
+                          onChange={(value) =>
+                            updateStep2Form("date_formation_prevue", value)
+                          }
+                        />
+                        <Field
+                          label="Lieu ou lien de formation"
+                          placeholder="Adresse précise ou lien Zoom / Meet / Teams"
+                          full
+                          value={step2Form.lieu_formation}
+                          onChange={(value) =>
+                            updateStep2Form("lieu_formation", value)
+                          }
+                        />
+                      </Step2Section>
 
-                      <Field
-                        label="Email"
-                        placeholder="email@exemple.fr"
-                        type="email"
-                        value={step2Form.stagiaire_email}
-                        onChange={(value) =>
-                          updateStep2Form("stagiaire_email", value)
-                        }
-                      />
-
-                      <Field
-                        label="Téléphone"
-                        placeholder="06 00 00 00 00"
-                        value={step2Form.stagiaire_telephone}
-                        onChange={(value) =>
-                          updateStep2Form("stagiaire_telephone", value)
-                        }
-                      />
-
-                      <Field
-                        label="N° SIRET"
-                        placeholder="123 456 789 00012"
-                        value={step2Form.client_siret}
-                        onChange={(value) =>
-                          updateStep2Form("client_siret", value)
-                        }
-                      />
-
-                      <Field
-                        label="Date souhaitée de la formation"
-                        placeholder="Sélectionnez une date"
-                        type="date"
-                        value={step2Form.date_formation_prevue}
-                        onChange={(value) =>
-                          setStep2Form((current) => ({
-                            ...current,
-                            date_formation_prevue: value,
-                          }))
-                        }
-                      />
-
-                      <Field
-                        label="Lieu ou lien de la formation"
-                        placeholder="Adresse précise ou lien Zoom / Meet / Teams"
-                        full
-                        value={step2Form.lieu_formation}
-                        onChange={(value) =>
-                          updateStep2Form("lieu_formation", value)
-                        }
-                      />
+                      <Step2Section title="Signature / règlement">
+                        <Field
+                          label="Lieu de signature"
+                          placeholder="Ex. Paris"
+                          value={step2Form.lieu_signature_convention}
+                          onChange={(value) =>
+                            updateStep2Form(
+                              "lieu_signature_convention",
+                              value,
+                            )
+                          }
+                        />
+                        <Field
+                          label="Date de signature"
+                          placeholder="Sélectionnez une date"
+                          type="date"
+                          value={step2Form.date_signature_convention}
+                          onChange={(value) =>
+                            updateStep2Form(
+                              "date_signature_convention",
+                              value,
+                            )
+                          }
+                        />
+                      </Step2Section>
                     </div>
 
                     <div
@@ -2197,6 +2284,38 @@ function SimpleFormCard({
         {children}
       </div>
     </Card>
+  );
+}
+
+function Step2Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section
+      style={{
+        borderTop: "1px solid #ead9bf",
+        paddingTop: 18,
+      }}
+    >
+      <h3
+        style={{
+          margin: "0 0 14px",
+          color: "#3a261a",
+          fontSize: 16,
+          fontWeight: 600,
+          fontFamily: "sans-serif",
+        }}
+      >
+        {title}
+      </h3>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+        {children}
+      </div>
+    </section>
   );
 }
 
