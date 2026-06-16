@@ -1,7 +1,29 @@
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import ScrollReveal from "@/components/ScrollReveal";
+import {
+  formatArticleDate,
+  getArticleCover,
+  getFeaturedArticles,
+} from "@/lib/articles";
 import Link from "next/link";
+
+const aboutBlocks = [
+  {
+    title: "Petits OF",
+    text: "Une approche pensée pour les structures légères, les indépendants et les organismes qui veulent rester agiles.",
+  },
+  {
+    title: "80 % automatisé",
+    text: "Les tâches répétitives sont générées, suivies, classées et signalées automatiquement.",
+  },
+  {
+    title: "Contrôle humain",
+    text: "Les points sensibles restent vérifiés pour sécuriser les dossiers et préparer les audits.",
+  },
+];
+
+const featuredArticles = getFeaturedArticles();
 
 export default function Home() {
   return (
@@ -152,117 +174,154 @@ export default function Home() {
               </h2>
 
               <p className="mt-4 leading-7 text-[#5a4031] text-[0.95rem]">
-                Beaucoup de formateurs veulent transmettre, pas courir après des
-                dossiers, des relances et des obligations floues.
+                On devient rarement formateur pour courir après des
+                conventions, des émargements, des questionnaires, des relances
+                et des preuves Qualiopi.
               </p>
 
               <p className="mt-3 leading-7 text-[#6e4a32] text-[0.88rem]">
-                Selen est né pour remettre de l&apos;ordre dans ce chaos — avec
-                plus de clarté, plus de méthode, et beaucoup moins de
-                brouillard.
+                À force de gérer l&apos;administratif, beaucoup de petits
+                organismes finissent par perdre du temps, de l&apos;énergie… et
+                parfois même le plaisir de transmettre.
+              </p>
+
+              <p className="mt-3 border-t border-[#b28a62]/30 pt-4 leading-7 text-[#5a4031] text-[0.93rem]">
+                Selen existe pour remettre de l&apos;ordre dans ce chaos, sans
+                transformer les formateurs en gestionnaires à plein temps.
               </p>
             </div>
           </article>
         </div>
       </section>
 
-      {/* ═══ À LA UNE — 3 rubriques ═══ */}
+      {/* ═══ À PROPOS ═══ */}
       <section className="mx-auto max-w-6xl px-4 md:px-6 py-8 md:py-12">
         <div className="reveal mb-8">
           <div className="gazette-section-title text-center justify-center">
             <span className="font-['Cinzel'] text-[0.6rem] md:text-[0.65rem] uppercase tracking-[0.4em] md:tracking-[0.5em] text-[#8a6243] px-4 md:px-6">
-              À la une
+              À propos
             </span>
           </div>
         </div>
 
+        <article className="reveal gazette-card p-6 md:p-9">
+          <div className="gazette-band" />
+
+          <div className="pt-3">
+            <span className="gazette-label">À propos</span>
+
+            <h2 className="mt-5 max-w-4xl font-['Playfair_Display'] text-3xl md:text-5xl font-bold leading-tight">
+              Pour que les formateurs passionnés restent passionnants
+            </h2>
+
+            <div className="mt-6 grid gap-5 md:grid-cols-2 md:gap-8">
+              <p className="leading-7 md:leading-8 text-[#5a4031]">
+                Selen est né d&apos;un constat simple : les petits organismes de
+                formation n&apos;ont pas besoin d&apos;une usine à gaz pensée
+                pour les grandes structures. Ils ont besoin d&apos;un outil
+                clair, humain et fiable, capable de les aider à garder des
+                dossiers propres sans leur voler leur énergie.
+              </p>
+
+              <p className="leading-7 md:leading-8 text-[#5a4031]">
+                Notre rôle est de remettre l&apos;administratif à sa juste
+                place. Les documents, les relances, les preuves, le suivi des
+                sessions et les alertes peuvent être largement automatisés. Mais
+                les points sensibles doivent rester vérifiés par un humain, pour
+                éviter les oublis, les incohérences et les mauvaises surprises
+                en audit.
+              </p>
+            </div>
+
+            <p className="mt-5 leading-7 md:leading-8 text-[#5a4031]">
+              Selen accompagne les formateurs qui veulent rester concentrés sur
+              leur cœur de métier : transmettre, accompagner, faire progresser.
+              Parce qu&apos;une formation vivante ne devrait jamais être
+              étouffée par les papiers.
+            </p>
+
+            <blockquote className="mt-6 border-y border-[#b28a62]/30 py-5 text-center">
+              <p className="font-['Playfair_Display'] text-2xl md:text-3xl font-semibold italic leading-snug text-[#8a4b24]">
+                “L&apos;administratif doit soutenir la formation, pas
+                l&apos;étouffer.”
+              </p>
+            </blockquote>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-3">
+              {aboutBlocks.map(({ title, text }) => (
+                <div key={title} className="border border-[#b28a62]/30 bg-white/35 p-4 md:p-5">
+                  <h3 className="font-['Playfair_Display'] text-xl font-bold text-[#3e2a1f]">
+                    {title}
+                  </h3>
+                  <div className="mt-2 h-px w-8 bg-[#b28a62]/50" />
+                  <p className="mt-3 text-[0.92rem] leading-6 text-[#5a4031]">
+                    {text}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </article>
+      </section>
+
+      {/* ═══ ARTICLES À LA UNE ═══ */}
+      <section className="mx-auto max-w-6xl px-4 md:px-6 py-8 md:py-12">
+        <div className="reveal mb-8 text-center">
+          <div className="gazette-section-title justify-center">
+            <span className="font-['Cinzel'] text-[0.6rem] md:text-[0.65rem] uppercase tracking-[0.4em] md:tracking-[0.5em] text-[#8a6243] px-4 md:px-6">
+              À lire pour reprendre le contrôle
+            </span>
+          </div>
+          <p className="mx-auto mt-4 max-w-2xl text-[#6e4a32]">
+            Des ressources simples, concrètes et pensées pour les petits
+            organismes de formation.
+          </p>
+        </div>
+
         <div className="reveal-stagger grid gap-5 md:gap-7 md:grid-cols-3">
-          <article className="gazette-card p-5 md:p-7">
-            <div className="gazette-band" />
-            <div className="pt-2">
-              <span className="gazette-label">Rubrique</span>
+          {featuredArticles.map((article) => {
+            const cover = getArticleCover(article);
 
-              <h3 className="mt-4 font-['Playfair_Display'] text-2xl md:text-3xl font-bold leading-tight">
-                Selen Review
-              </h3>
+            return (
+            <article key={article.slug} className="gazette-card p-5 md:p-7">
+              <div className="gazette-band" />
+              {cover ? (
+                <div className="mb-5 h-36 overflow-hidden border border-[#b28a62]/25 bg-[#efe3cf]">
+                  <img
+                    src={cover}
+                    alt={article.coverAlt}
+                    className="h-full w-full object-cover"
+                    style={{ filter: "sepia(0.16) contrast(1.02)" }}
+                  />
+                </div>
+              ) : null}
+              <div className="pt-2">
+                <span className="gazette-label">{article.category}</span>
 
-              <div className="mt-1 h-px w-8 bg-[#b28a62]/50" />
+                <p className="mt-3 gazette-byline">
+                  {formatArticleDate(article.publishedAt)} · {article.readingTime}
+                </p>
 
-              <p className="mt-4 leading-7 text-[#5a4031] text-[0.93rem]">
-                Préparer un audit Qualiopi, ce n’est pas seulement relire le
-                référentiel. Il faut savoir si les preuves sont cohérentes,
-                complètes et réellement auditables.
-              </p>
+                <h3 className="mt-4 font-['Playfair_Display'] text-2xl md:text-3xl font-bold leading-tight">
+                  {article.title}
+                </h3>
 
-              <p className="mt-3 leading-7 text-[#5a4031] text-[0.93rem]">
-                Avec Selen Review, vous pouvez faire un premier point en
-                autonomie grâce à l’auto-audit, ou aller plus loin avec un audit
-                blanc accompagné par un auditeur.
-              </p>
+                <div className="mt-3 h-px w-8 bg-[#b28a62]/50" />
 
-              <p className="mt-3 leading-7 text-[#6e4a32] text-[0.88rem] italic">
-                Deux chemins possibles : avancer seul avec méthode, ou être
-                accompagné pour sécuriser votre préparation.
-              </p>
-            </div>
-          </article>
+                <p className="mt-4 leading-7 text-[#5a4031] text-[0.93rem]">
+                  {article.excerpt}
+                </p>
 
-          <article className="gazette-card p-5 md:p-7">
-            <div className="gazette-band" />
-            <div className="pt-2">
-              <span className="gazette-label">Rubrique</span>
-
-              <h3 className="mt-4 font-['Playfair_Display'] text-2xl md:text-3xl font-bold leading-tight">
-                Préparation Qualiopi
-              </h3>
-
-              <div className="mt-1 h-px w-8 bg-[#b28a62]/50" />
-
-              <p className="mt-4 leading-7 text-[#5a4031] text-[0.93rem]">
-                Préparer Qualiopi, ce n’est pas empiler des documents pour faire
-                joli. C’est construire une organisation cohérente et exploitable
-                au quotidien.
-              </p>
-
-              <p className="mt-3 leading-7 text-[#5a4031] text-[0.93rem]">
-                Une bonne préparation pose des bases solides et permet d’aborder
-                la suite avec beaucoup plus de confiance.
-              </p>
-
-              <p className="mt-3 leading-7 text-[#6e4a32] text-[0.88rem] italic">
-                Des fondations claires. Une organisation qui tient.
-              </p>
-            </div>
-          </article>
-
-          <article className="gazette-card p-5 md:p-7">
-            <div className="gazette-band" />
-            <div className="pt-2">
-              <span className="gazette-label">Rubrique</span>
-
-              <h3 className="mt-4 font-['Playfair_Display'] text-2xl md:text-3xl font-bold leading-tight">
-                Gestion quotidienne
-              </h3>
-
-              <div className="mt-1 h-px w-8 bg-[#b28a62]/50" />
-
-              <p className="mt-4 leading-7 text-[#5a4031] text-[0.93rem]">
-                Convocations, relances, conventions, attestations… la gestion
-                administrative finit vite par devenir un bruit de fond
-                permanent.
-              </p>
-
-              <p className="mt-3 leading-7 text-[#5a4031] text-[0.93rem]">
-                Déléguer cette partie, c’est retrouver de l’espace mental, une
-                organisation plus fluide et la possibilité de se recentrer sur
-                son vrai métier.
-              </p>
-
-              <p className="mt-3 leading-7 text-[#6e4a32] text-[0.88rem] italic">
-                Moins de bruit. Plus d’essentiel.
-              </p>
-            </div>
-          </article>
+                <Link
+                  href={`/articles/${article.slug}`}
+                  className="mt-5 inline-block font-['Cinzel'] text-[0.68rem] uppercase tracking-[0.16em] text-[#8a4b24] hover:text-[#3e2a1f]"
+                >
+                  Lire l&apos;article ✦
+                </Link>
+              </div>
+            </article>
+            );
+          })}
         </div>
       </section>
 

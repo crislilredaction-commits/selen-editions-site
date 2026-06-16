@@ -34,6 +34,7 @@ export default function Footer() {
               {[
                 { href: "/", label: "Accueil" },
                 { href: "/nos-prestations", label: "Nos prestations" },
+                { href: "/articles", label: "Articles" },
                 { href: "/mentions-legales", label: "Mentions légales" },
                 { href: "/cgv-cgu", label: "CGV / CGU" },
                 {
