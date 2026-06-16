@@ -1,8 +1,15 @@
 import { NextResponse } from "next/server";
+
 import {
   getAdminSupabase,
   verifyClientNdaDossierAccess,
 } from "@/lib/server/clientNdaAccess";
+
+const SIGNING_DOCUMENT_TYPES = [
+  "programme_formation",
+  "convention_formation",
+  "liste_formateurs",
+];
 
 export async function GET(req: Request) {
   try {
@@ -32,22 +39,22 @@ export async function GET(req: Request) {
       .from("nda_variables")
       .select(
         `
-      client_nom,
-      client_adresse,
-      client_representant_prenom,
-      client_representant_nom,
-      stagiaire_prenom,
-      stagiaire_nom,
-      stagiaire_fonction,
-      stagiaire_adresse,
-      stagiaire_email,
-      stagiaire_telephone,
-      client_siret,
-      date_formation_prevue,
-      lieu_formation,
-      lieu_signature_convention,
-      date_signature_convention
-    `,
+        client_nom,
+        client_adresse,
+        client_representant_prenom,
+        client_representant_nom,
+        stagiaire_prenom,
+        stagiaire_nom,
+        stagiaire_fonction,
+        stagiaire_adresse,
+        stagiaire_email,
+        stagiaire_telephone,
+        client_siret,
+        date_formation_prevue,
+        lieu_formation,
+        lieu_signature_convention,
+        date_signature_convention
+      `,
       )
       .eq("dossier_id", dossierId)
       .maybeSingle();
@@ -101,14 +108,6 @@ export async function GET(req: Request) {
 
     const programDecision = latestProgramVersion?.client_decision ?? null;
 
-    const receivedTypes = (documents ?? []).map((doc) => doc.document_type);
-
-    const hasCv = receivedTypes.includes("cv_formateur");
-    const hasProgramme = receivedTypes.includes("programme_formation");
-    const hasEntrepriseDoc =
-      receivedTypes.includes("avis_insee") || receivedTypes.includes("kbis");
-
-    const step1Submitted = hasCv && hasProgramme && hasEntrepriseDoc;
     const safeDocuments = (documents ?? []).map((document) => ({
       id: document.id,
       name: document.name,
@@ -126,8 +125,18 @@ export async function GET(req: Request) {
           (sourceDocument) =>
             sourceDocument.id === document.id &&
             (sourceDocument.source === "client_upload" ||
-              sourceDocument.document_role === "initial_client_document" ||
-              sourceDocument.document_role === "client_returned_document"),
+              sourceDocument.document_role === "initial_client_document") &&
+            sourceDocument.document_role !== "client_returned_document",
+        ) ?? false,
+    );
+
+    const finalReturnedDocuments = safeDocuments.filter(
+      (document) =>
+        documents?.some(
+          (sourceDocument) =>
+            sourceDocument.id === document.id &&
+            sourceDocument.source === "client_upload" &&
+            sourceDocument.document_role === "client_returned_document",
         ) ?? false,
     );
 
@@ -143,6 +152,35 @@ export async function GET(req: Request) {
         ) ?? false,
     );
 
+    const signingDocuments = safeDocuments.filter(
+      (document) =>
+        documents?.some(
+          (sourceDocument) =>
+            sourceDocument.id === document.id &&
+            sourceDocument.is_visible_to_client === true &&
+            sourceDocument.document_role === "client_to_complete" &&
+            sourceDocument.review_status === "pending_client" &&
+            SIGNING_DOCUMENT_TYPES.includes(sourceDocument.document_type),
+        ) ?? false,
+    );
+
+    const receivedInitialTypes = (documents ?? [])
+      .filter(
+        (document) =>
+          document.source === "client_upload" ||
+          document.document_role === "initial_client_document",
+      )
+      .map((document) => document.document_type);
+
+    const hasCv = receivedInitialTypes.includes("cv_formateur");
+    const hasProgramme = receivedInitialTypes.includes("programme_formation");
+    const hasEntrepriseDoc =
+      receivedInitialTypes.includes("avis_insee") ||
+      receivedInitialTypes.includes("kbis");
+
+    const step1Submitted = hasCv && hasProgramme && hasEntrepriseDoc;
+    const signingDocumentsReady = signingDocuments.length > 0;
+
     return NextResponse.json({
       dossier: {
         id: dossier.id,
@@ -151,8 +189,11 @@ export async function GET(req: Request) {
       },
       step1Submitted,
       programDecision,
+      signingDocumentsReady,
       clientUploadedDocuments,
+      finalReturnedDocuments,
       publishedDocuments,
+      signingDocuments,
       step2: {
         client_nom: ndaVariables?.client_nom ?? "",
         client_adresse: ndaVariables?.client_adresse ?? "",

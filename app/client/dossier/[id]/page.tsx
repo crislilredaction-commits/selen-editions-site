@@ -11,6 +11,13 @@ import { createSupabaseBrowserClient } from "@/app/lib/supabase/client";
 // ---------------------------------------------------------------------------
 
 type DocKey = "cv" | "programme" | "insee" | "kbis";
+type FinalDocKey =
+  | "conventionSignee"
+  | "programmeFormationSigne"
+  | "diplomesFormateurPrincipal"
+  | "casierJudiciaireN3"
+  | "statutActiviteFormationAdulte"
+  | "listeFormateursSignee";
 
 type MessageRow = {
   id: string;
@@ -54,6 +61,14 @@ export default function ClientNdaPage() {
     insee: { file: null, uploading: false },
     kbis: { file: null, uploading: false },
   });
+  const [finalDocs, setFinalDocs] = useState<Record<FinalDocKey, DocState>>({
+    conventionSignee: { file: null, uploading: false },
+    programmeFormationSigne: { file: null, uploading: false },
+    diplomesFormateurPrincipal: { file: null, uploading: false },
+    casierJudiciaireN3: { file: null, uploading: false },
+    statutActiviteFormationAdulte: { file: null, uploading: false },
+    listeFormateursSignee: { file: null, uploading: false },
+  });
 
   const [form, setForm] = useState({
     organisation_name: "",
@@ -85,6 +100,11 @@ export default function ClientNdaPage() {
   const [publishedDocuments, setPublishedDocuments] = useState<NdaDocument[]>(
     [],
   );
+  const [signingDocuments, setSigningDocuments] = useState<NdaDocument[]>([]);
+  const [signingDocumentsReady, setSigningDocumentsReady] = useState(false);
+  const [finalReturnedDocuments, setFinalReturnedDocuments] = useState<
+    NdaDocument[]
+  >([]);
   const [step2Form, setStep2Form] = useState({
     client_nom: "",
     client_adresse: "",
@@ -119,6 +139,10 @@ export default function ClientNdaPage() {
 
   function handleFileDrop(key: DocKey, file: File) {
     setDocs((prev) => ({ ...prev, [key]: { file, uploading: false } }));
+  }
+
+  function handleFinalFileDrop(key: FinalDocKey, file: File) {
+    setFinalDocs((prev) => ({ ...prev, [key]: { file, uploading: false } }));
   }
 
   const loadClientState = useCallback(
@@ -164,9 +188,17 @@ export default function ClientNdaPage() {
         setClientUploadedDocuments(
           (stateData?.clientUploadedDocuments ?? []) as NdaDocument[],
         );
+        setFinalReturnedDocuments(
+          (stateData?.finalReturnedDocuments ?? []) as NdaDocument[],
+        );
         setPublishedDocuments(
           (stateData?.publishedDocuments ?? []) as NdaDocument[],
         );
+
+        setSigningDocuments(
+          (stateData?.signingDocuments ?? []) as NdaDocument[],
+        );
+        setSigningDocumentsReady(Boolean(stateData?.signingDocumentsReady));
 
         if (stateData?.step2) {
           setStep2Form({
@@ -259,6 +291,30 @@ export default function ClientNdaPage() {
     const data = await res.json().catch(() => null);
 
     if (!res.ok) {
+      throw new Error(
+        data?.error ?? `Erreur lors de l'upload du document ${documentType}.`,
+      );
+    }
+  }
+
+  async function uploadOneFinalDocument(documentType: string, file: File) {
+    if (!dossierId) {
+      throw new Error("Aucun dossierId trouvé dans l'URL.");
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("dossierId", dossierId);
+    formData.append("documentType", documentType);
+
+    const res = await fetch("/api/client/dossier/final-upload", {
+      method: "POST",
+      body: formData,
+    });
+
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok || !data?.ok) {
       throw new Error(
         data?.error ?? `Erreur lors de l'upload du document ${documentType}.`,
       );
@@ -394,13 +450,130 @@ export default function ClientNdaPage() {
     }
   }
 
+  async function handleSubmitFinalDocuments() {
+    try {
+      setSaving(true);
+      setErrorMessage(null);
+      setSuccessMessage(null);
+
+      const selectedFinalDocuments = finalDocumentItems.filter(
+        (item) => finalDocs[item.key].file,
+      );
+
+      if (selectedFinalDocuments.length === 0) {
+        throw new Error(
+          "Ajoutez au moins un document signé ou une pièce finale.",
+        );
+      }
+
+      for (const item of selectedFinalDocuments) {
+        const file = finalDocs[item.key].file;
+
+        if (file) {
+          await uploadOneFinalDocument(item.documentType, file);
+        }
+      }
+
+      await loadClientState({ showLoading: false });
+
+      setFinalDocs({
+        conventionSignee: { file: null, uploading: false },
+        programmeFormationSigne: { file: null, uploading: false },
+        diplomesFormateurPrincipal: { file: null, uploading: false },
+        casierJudiciaireN3: { file: null, uploading: false },
+        statutActiviteFormationAdulte: { file: null, uploading: false },
+        listeFormateursSignee: { file: null, uploading: false },
+      });
+
+      setSuccessMessage("Vos documents signés ont bien été déposés.");
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Une erreur est survenue.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const clientDecision =
     programDecision ?? programProposal?.client_decision ?? null;
   const hasProgramProposal = Boolean(programProposal);
   const isProgramValidated = clientDecision === "validated";
   const showStep2 = step1Submitted && isProgramValidated;
+  const showStep2Form = showStep2 && !signingDocumentsReady;
+  const showSigningDocumentsAction = showStep2 && signingDocumentsReady;
   const isProgramRefused = clientDecision === "refused";
   const isProgramPendingDecision = hasProgramProposal && !clientDecision;
+  const finalDocumentItems: Array<{
+    key: FinalDocKey;
+    name: string;
+    documentType: string;
+    status: "Obligatoire" | "Si concerné";
+    statusColor: "required" | "optional";
+    description: string;
+    notice: string;
+  }> = [
+    {
+      key: "conventionSignee",
+      name: "Convention de formation signée",
+      documentType: "convention_signee",
+      status: "Obligatoire",
+      statusColor: "required",
+      description:
+        "Déposez la convention complétée et signée avec la mention demandée.",
+      notice: "Format accepté : PDF, DOCX.",
+    },
+    {
+      key: "programmeFormationSigne",
+      name: "Programme de formation signé",
+      documentType: "programme_formation_signe",
+      status: "Obligatoire",
+      statusColor: "required",
+      description:
+        "Déposez le programme signé après vérification des informations.",
+      notice: "Format accepté : PDF, DOCX.",
+    },
+    {
+      key: "diplomesFormateurPrincipal",
+      name: "Copies des diplômes / attestations de formation du formateur",
+      documentType: "diplomes_formateur_principal",
+      status: "Obligatoire",
+      statusColor: "required",
+      description:
+        "Déposez les diplômes, attestations de formation ou justificatifs de compétence du formateur principal.",
+      notice: "Format accepté : PDF, DOCX.",
+    },
+    {
+      key: "casierJudiciaireN3",
+      name: "Casier judiciaire n°3 du dirigeant",
+      documentType: "casier_judiciaire_n3",
+      status: "Obligatoire",
+      statusColor: "required",
+      description:
+        "Déposez le casier judiciaire n°3 du dirigeant pour le contrôle final.",
+      notice: "Format accepté : PDF, DOCX.",
+    },
+    {
+      key: "statutActiviteFormationAdulte",
+      name: "Statut / activité de formation adulte",
+      documentType: "statut_activite_formation_adulte",
+      status: "Obligatoire",
+      statusColor: "required",
+      description:
+        "Déposez la pièce permettant de confirmer l'activité de formation adulte.",
+      notice: "Format accepté : PDF, DOCX.",
+    },
+    {
+      key: "listeFormateursSignee",
+      name: "Liste des formateurs signée",
+      documentType: "liste_formateurs_signee",
+      status: "Si concerné",
+      statusColor: "optional",
+      description:
+        "Déposez la liste des formateurs signée si elle fait partie de votre pack ou dès qu'elle est prête.",
+      notice: "Format accepté : PDF, DOCX.",
+    },
+  ];
   const activeStepNumber = !step1Submitted
     ? 1
     : isProgramRefused
@@ -444,9 +617,11 @@ export default function ClientNdaPage() {
       number: 4,
       label: "Dossier NDA à compléter",
       active: activeStepNumber === 4,
-      status: isProgramValidated
-        ? "En cours"
-        : "Disponible après validation du programme",
+      status: signingDocumentsReady
+        ? "Documents à signer"
+        : isProgramValidated
+          ? "Coordonnées à renseigner"
+          : "Disponible après validation du programme",
     },
     {
       number: 5,
@@ -788,7 +963,14 @@ export default function ClientNdaPage() {
                 color: "#3a261a",
               }}
             >
-              {showStep2 ? (
+              {showSigningDocumentsAction ? (
+                <>
+                  Vos documents{" "}
+                  <span style={{ color: "#9c5a2e" }}>à signer</span>,
+                  <br />
+                  prêts à télécharger
+                </>
+              ) : showStep2 ? (
                 <>
                   Coordonnées du{" "}
                   <span style={{ color: "#9c5a2e" }}>client à former</span>,
@@ -813,9 +995,11 @@ export default function ClientNdaPage() {
                 margin: 0,
               }}
             >
-              {showStep2
-                ? "Cette étape nous permet de préparer les documents contractuels et administratifs liés à votre future action de formation."
-                : "Cette première étape nous permet de lancer votre accompagnement, de préparer vos futurs documents et de vous guider sans vous demander d'informations inutiles."}
+              {showSigningDocumentsAction
+                ? "Vos documents contractuels sont prêts. Téléchargez-les, signez-les, puis déposez les documents signés et les pièces finales dans l'espace prévu plus bas."
+                : showStep2
+                  ? "Cette étape nous permet de préparer les documents contractuels et administratifs liés à votre future action de formation."
+                  : "Cette première étape nous permet de lancer votre accompagnement, de préparer vos futurs documents et de vous guider sans vous demander d'informations inutiles."}{" "}
             </p>
           </div>
 
@@ -1134,10 +1318,14 @@ export default function ClientNdaPage() {
                 </Notice>
               </Card>
 
-              <DocumentSections
-                clientUploadedDocuments={clientUploadedDocuments}
-                publishedDocuments={publishedDocuments}
-              />
+              {!showSigningDocumentsAction ? (
+                <DocumentSections
+                  dossierId={dossierId}
+                  clientUploadedDocuments={clientUploadedDocuments}
+                  publishedDocuments={publishedDocuments}
+                  signingDocuments={signingDocuments}
+                />
+              ) : null}
 
               <div
                 style={{
@@ -1293,11 +1481,6 @@ export default function ClientNdaPage() {
                 ) : null}
               </Card>
 
-              <DocumentSections
-                clientUploadedDocuments={clientUploadedDocuments}
-                publishedDocuments={publishedDocuments}
-              />
-
               {!hasProgramProposal ? (
                 <Card>
                   <Badge>Travail du programme</Badge>
@@ -1342,9 +1525,9 @@ export default function ClientNdaPage() {
                     Prochaine étape : les coordonnées du client à former
                   </h2>
                   <p style={{ ...styles.body, margin: "12px 0 0" }}>
-                    Votre programme a bien été validé. Vous pouvez maintenant
-                    renseigner les coordonnées du client à qui vous allez
-                    dispenser cette formation.
+                    {showSigningDocumentsAction
+                      ? "Les coordonnées du client ont bien été transmises. Vos documents à signer sont maintenant disponibles ci-dessous."
+                      : "Votre programme a bien été validé. Vous pouvez maintenant renseigner les coordonnées du client à qui vous allez dispenser cette formation."}
                   </p>
                 </Card>
               ) : null}
@@ -1377,273 +1560,306 @@ export default function ClientNdaPage() {
                 </Card>
               ) : isProgramValidated ? (
                 <>
-                  <Card>
-                    <Badge>Étape 2</Badge>
-                    <h2 style={styles.cardTitle}>
-                      Avant de renseigner votre client
-                    </h2>
+                  {showStep2Form ? (
+                    <>
+                      <Card>
+                        <Badge>Étape 2</Badge>
+                        <h2 style={styles.cardTitle}>
+                          Avant de renseigner votre client
+                        </h2>
 
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 12,
-                        marginTop: 16,
-                      }}
-                    >
-                      <p style={styles.body}>
-                        Maintenant que votre programme est validé, vous devez
-                        renseigner les coordonnées du client à qui vous allez
-                        dispenser cette formation.
-                      </p>
-
-                      <Notice>
-                        Le client doit être un <strong>professionnel</strong>{" "}
-                        disposant d’un
-                        <strong> numéro SIRET</strong>.
-                      </Notice>
-
-                      <Notice>
-                        Le client ne doit pas être un proche : évitez la famille
-                        et les amis proches.
-                      </Notice>
-
-                      <Notice>
-                        Les dates de formation doivent être prévues entre
-                        <strong> 1 mois minimum</strong> et
-                        <strong> 3 mois maximum</strong>.
-                      </Notice>
-
-                      <Notice>
-                        La formation peut avoir lieu{" "}
-                        <strong>en présentiel</strong> ou
-                        <strong> en visioconférence</strong>.
-                      </Notice>
-
-                      <Notice>
-                        Des contrôles de la DREETS sont possibles : contrôle sur
-                        place, contrôle à distance via votre lien de
-                        visioconférence, ou contrôle administratif avec demande
-                        de preuves de réalisation (émargements, évaluations,
-                        supports, etc.).
-                      </Notice>
-
-                      <Notice>
-                        Il est donc important d’indiquer une adresse précise ou
-                        un vrai lien de connexion utilisable.
-                      </Notice>
-
-                      <Notice>
-                        <strong>
-                          En cas de doute, réservez un appel afin d’échanger
-                          avec un conseiller expert.
-                        </strong>
-                      </Notice>
-                    </div>
-                  </Card>
-
-                  <Card>
-                    <Badge>Étape 2</Badge>
-                    <h2 style={styles.cardTitle}>
-                      Coordonnées du client à former
-                    </h2>
-
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 22,
-                        marginTop: 20,
-                      }}
-                    >
-                      <Step2Section title="Client professionnel / signataire">
-                        <Field
-                          label="Nom / raison sociale du client"
-                          placeholder="Ex. Atelier Martin SAS"
-                          full
-                          value={step2Form.client_nom}
-                          onChange={(value) =>
-                            updateStep2Form("client_nom", value)
-                          }
-                        />
-                        <Field
-                          label="Adresse du client professionnel"
-                          placeholder="Adresse complète du client professionnel"
-                          full
-                          value={step2Form.client_adresse}
-                          onChange={(value) =>
-                            updateStep2Form("client_adresse", value)
-                          }
-                        />
-                        <Field
-                          label="Prénom représentant client"
-                          placeholder="Prénom du signataire"
-                          value={step2Form.client_representant_prenom}
-                          onChange={(value) =>
-                            updateStep2Form(
-                              "client_representant_prenom",
-                              value,
-                            )
-                          }
-                        />
-                        <Field
-                          label="Nom représentant client"
-                          placeholder="Nom du signataire"
-                          value={step2Form.client_representant_nom}
-                          onChange={(value) =>
-                            updateStep2Form("client_representant_nom", value)
-                          }
-                        />
-                        <Field
-                          label="SIRET client"
-                          placeholder="123 456 789 00012"
-                          value={step2Form.client_siret}
-                          onChange={(value) =>
-                            updateStep2Form("client_siret", value)
-                          }
-                        />
-                      </Step2Section>
-
-                      <Step2Section title="Stagiaire / bénéficiaire">
-                        <Field
-                          label="Prénom stagiaire"
-                          placeholder="Prénom"
-                          value={step2Form.stagiaire_prenom}
-                          onChange={(value) =>
-                            updateStep2Form("stagiaire_prenom", value)
-                          }
-                        />
-                        <Field
-                          label="Nom stagiaire"
-                          placeholder="Nom"
-                          value={step2Form.stagiaire_nom}
-                          onChange={(value) =>
-                            updateStep2Form("stagiaire_nom", value)
-                          }
-                        />
-                        <Field
-                          label="Fonction stagiaire"
-                          placeholder="Ex. Responsable administratif"
-                          value={step2Form.stagiaire_fonction}
-                          onChange={(value) =>
-                            updateStep2Form("stagiaire_fonction", value)
-                          }
-                        />
-                        <Field
-                          label="Adresse stagiaire"
-                          placeholder="Adresse complète du stagiaire"
-                          full
-                          value={step2Form.stagiaire_adresse}
-                          onChange={(value) =>
-                            updateStep2Form("stagiaire_adresse", value)
-                          }
-                        />
-                        <Field
-                          label="Email stagiaire"
-                          placeholder="stagiaire@exemple.fr"
-                          type="email"
-                          value={step2Form.stagiaire_email}
-                          onChange={(value) =>
-                            updateStep2Form("stagiaire_email", value)
-                          }
-                        />
-                        <Field
-                          label="Téléphone stagiaire"
-                          placeholder="06 00 00 00 00"
-                          value={step2Form.stagiaire_telephone}
-                          onChange={(value) =>
-                            updateStep2Form("stagiaire_telephone", value)
-                          }
-                        />
-                      </Step2Section>
-
-                      <Step2Section title="Action de formation">
-                        <Field
-                          label="Date prévue de début"
-                          placeholder="Sélectionnez une date"
-                          type="date"
-                          value={step2Form.date_formation_prevue}
-                          onChange={(value) =>
-                            updateStep2Form("date_formation_prevue", value)
-                          }
-                        />
-                        <Field
-                          label="Lieu ou lien de formation"
-                          placeholder="Adresse précise ou lien Zoom / Meet / Teams"
-                          full
-                          value={step2Form.lieu_formation}
-                          onChange={(value) =>
-                            updateStep2Form("lieu_formation", value)
-                          }
-                        />
-                      </Step2Section>
-
-                      <Step2Section title="Signature / règlement">
-                        <Field
-                          label="Lieu de signature"
-                          placeholder="Ex. Paris"
-                          value={step2Form.lieu_signature_convention}
-                          onChange={(value) =>
-                            updateStep2Form(
-                              "lieu_signature_convention",
-                              value,
-                            )
-                          }
-                        />
-                        <Field
-                          label="Date de signature"
-                          placeholder="Sélectionnez une date"
-                          type="date"
-                          value={step2Form.date_signature_convention}
-                          onChange={(value) =>
-                            updateStep2Form(
-                              "date_signature_convention",
-                              value,
-                            )
-                          }
-                        />
-                      </Step2Section>
-                    </div>
-
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "flex-end",
-                        marginTop: 20,
-                      }}
-                    >
-                      <Btn variant="primary" onClick={handleSaveStep2}>
-                        {saving
-                          ? "Enregistrement..."
-                          : "Enregistrer les coordonnées du client →"}
-                      </Btn>
-                      {errorMessage && (
-                        <Notice
+                        <div
                           style={{
-                            marginTop: 12,
-                            border: "1px solid #e7b8b8",
-                            background: "#fff1f1",
-                            color: "#8a2f2f",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 12,
+                            marginTop: 16,
                           }}
                         >
-                          {errorMessage}
-                        </Notice>
-                      )}
+                          <p style={styles.body}>
+                            Maintenant que votre programme est validé, vous
+                            devez renseigner les coordonnées du client à qui
+                            vous allez dispenser cette formation.
+                          </p>
 
-                      {successMessage && (
-                        <Notice
+                          <Notice>
+                            Le client doit être un{" "}
+                            <strong>professionnel</strong> disposant d’un
+                            <strong> numéro SIRET</strong>.
+                          </Notice>
+
+                          <Notice>
+                            Le client ne doit pas être un proche : évitez la
+                            famille et les amis proches.
+                          </Notice>
+
+                          <Notice>
+                            Les dates de formation doivent être prévues entre
+                            <strong> 1 mois minimum</strong> et
+                            <strong> 3 mois maximum</strong>.
+                          </Notice>
+
+                          <Notice>
+                            La formation peut avoir lieu{" "}
+                            <strong>en présentiel</strong> ou
+                            <strong> en visioconférence</strong>.
+                          </Notice>
+
+                          <Notice>
+                            Des contrôles de la DREETS sont possibles : contrôle
+                            sur place, contrôle à distance via votre lien de
+                            visioconférence, ou contrôle administratif avec
+                            demande de preuves de réalisation (émargements,
+                            évaluations, supports, etc.).
+                          </Notice>
+
+                          <Notice>
+                            Il est donc important d’indiquer une adresse précise
+                            ou un vrai lien de connexion utilisable.
+                          </Notice>
+
+                          <Notice>
+                            <strong>
+                              En cas de doute, réservez un appel afin d’échanger
+                              avec un conseiller expert.
+                            </strong>
+                          </Notice>
+                        </div>
+                      </Card>
+
+                      <Card>
+                        <Badge>Étape 2</Badge>
+                        <h2 style={styles.cardTitle}>
+                          Coordonnées du client à former
+                        </h2>
+
+                        <div
                           style={{
-                            marginTop: 12,
-                            border: "1px solid #cfe3c3",
-                            background: "#f4fbef",
-                            color: "#446236",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 22,
+                            marginTop: 20,
                           }}
                         >
-                          {successMessage}
-                        </Notice>
-                      )}
-                    </div>
-                  </Card>
+                          <Step2Section title="Client professionnel / signataire">
+                            <Field
+                              label="Nom / raison sociale du client"
+                              placeholder="Ex. Atelier Martin SAS"
+                              full
+                              value={step2Form.client_nom}
+                              onChange={(value) =>
+                                updateStep2Form("client_nom", value)
+                              }
+                            />
+                            <Field
+                              label="Adresse du client professionnel"
+                              placeholder="Adresse complète du client professionnel"
+                              full
+                              value={step2Form.client_adresse}
+                              onChange={(value) =>
+                                updateStep2Form("client_adresse", value)
+                              }
+                            />
+                            <Field
+                              label="Prénom représentant client"
+                              placeholder="Prénom du signataire"
+                              value={step2Form.client_representant_prenom}
+                              onChange={(value) =>
+                                updateStep2Form(
+                                  "client_representant_prenom",
+                                  value,
+                                )
+                              }
+                            />
+                            <Field
+                              label="Nom représentant client"
+                              placeholder="Nom du signataire"
+                              value={step2Form.client_representant_nom}
+                              onChange={(value) =>
+                                updateStep2Form(
+                                  "client_representant_nom",
+                                  value,
+                                )
+                              }
+                            />
+                            <Field
+                              label="SIRET client"
+                              placeholder="123 456 789 00012"
+                              value={step2Form.client_siret}
+                              onChange={(value) =>
+                                updateStep2Form("client_siret", value)
+                              }
+                            />
+                          </Step2Section>
+
+                          <Step2Section title="Stagiaire / bénéficiaire">
+                            <Field
+                              label="Prénom stagiaire"
+                              placeholder="Prénom"
+                              value={step2Form.stagiaire_prenom}
+                              onChange={(value) =>
+                                updateStep2Form("stagiaire_prenom", value)
+                              }
+                            />
+                            <Field
+                              label="Nom stagiaire"
+                              placeholder="Nom"
+                              value={step2Form.stagiaire_nom}
+                              onChange={(value) =>
+                                updateStep2Form("stagiaire_nom", value)
+                              }
+                            />
+                            <Field
+                              label="Fonction stagiaire"
+                              placeholder="Ex. Responsable administratif"
+                              value={step2Form.stagiaire_fonction}
+                              onChange={(value) =>
+                                updateStep2Form("stagiaire_fonction", value)
+                              }
+                            />
+                            <Field
+                              label="Adresse stagiaire"
+                              placeholder="Adresse complète du stagiaire"
+                              full
+                              value={step2Form.stagiaire_adresse}
+                              onChange={(value) =>
+                                updateStep2Form("stagiaire_adresse", value)
+                              }
+                            />
+                            <Field
+                              label="Email stagiaire"
+                              placeholder="stagiaire@exemple.fr"
+                              type="email"
+                              value={step2Form.stagiaire_email}
+                              onChange={(value) =>
+                                updateStep2Form("stagiaire_email", value)
+                              }
+                            />
+                            <Field
+                              label="Téléphone stagiaire"
+                              placeholder="06 00 00 00 00"
+                              value={step2Form.stagiaire_telephone}
+                              onChange={(value) =>
+                                updateStep2Form("stagiaire_telephone", value)
+                              }
+                            />
+                          </Step2Section>
+
+                          <Step2Section title="Action de formation">
+                            <Field
+                              label="Date prévue de début"
+                              placeholder="Sélectionnez une date"
+                              type="date"
+                              value={step2Form.date_formation_prevue}
+                              onChange={(value) =>
+                                updateStep2Form("date_formation_prevue", value)
+                              }
+                            />
+                            <Field
+                              label="Lieu ou lien de formation"
+                              placeholder="Adresse précise ou lien Zoom / Meet / Teams"
+                              full
+                              value={step2Form.lieu_formation}
+                              onChange={(value) =>
+                                updateStep2Form("lieu_formation", value)
+                              }
+                            />
+                          </Step2Section>
+
+                          <Step2Section title="Signature / règlement">
+                            <Field
+                              label="Lieu de signature"
+                              placeholder="Ex. Paris"
+                              value={step2Form.lieu_signature_convention}
+                              onChange={(value) =>
+                                updateStep2Form(
+                                  "lieu_signature_convention",
+                                  value,
+                                )
+                              }
+                            />
+                            <Field
+                              label="Date de signature"
+                              placeholder="Sélectionnez une date"
+                              type="date"
+                              value={step2Form.date_signature_convention}
+                              onChange={(value) =>
+                                updateStep2Form(
+                                  "date_signature_convention",
+                                  value,
+                                )
+                              }
+                            />
+                          </Step2Section>
+                        </div>
+
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "flex-end",
+                            marginTop: 20,
+                          }}
+                        >
+                          <Btn variant="primary" onClick={handleSaveStep2}>
+                            {saving
+                              ? "Enregistrement..."
+                              : "Enregistrer les coordonnées du client →"}
+                          </Btn>
+                          {errorMessage && (
+                            <Notice
+                              style={{
+                                marginTop: 12,
+                                border: "1px solid #e7b8b8",
+                                background: "#fff1f1",
+                                color: "#8a2f2f",
+                              }}
+                            >
+                              {errorMessage}
+                            </Notice>
+                          )}
+
+                          {successMessage && (
+                            <Notice
+                              style={{
+                                marginTop: 12,
+                                border: "1px solid #cfe3c3",
+                                background: "#f4fbef",
+                                color: "#446236",
+                              }}
+                            >
+                              {successMessage}
+                            </Notice>
+                          )}
+                        </div>
+                      </Card>
+                    </>
+                  ) : null}
+                  {showSigningDocumentsAction ? (
+                    <>
+                      <SigningDocumentsSection
+                        dossierId={dossierId}
+                        documents={signingDocuments}
+                      />
+
+                      <FinalDocumentsUploadSection
+                        finalDocs={finalDocs}
+                        finalDocumentItems={finalDocumentItems}
+                        finalReturnedDocuments={finalReturnedDocuments}
+                        saving={saving}
+                        errorMessage={errorMessage}
+                        successMessage={successMessage}
+                        onDrop={handleFinalFileDrop}
+                        onSubmit={handleSubmitFinalDocuments}
+                      />
+
+                      <DocumentSections
+                        dossierId={dossierId}
+                        clientUploadedDocuments={clientUploadedDocuments}
+                        publishedDocuments={publishedDocuments}
+                        signingDocuments={signingDocuments}
+                      />
+                    </>
+                  ) : null}
                 </>
               ) : null}
             </>
@@ -1742,50 +1958,283 @@ export default function ClientNdaPage() {
 // ---------------------------------------------------------------------------
 
 function DocumentSections({
+  dossierId,
   clientUploadedDocuments,
   publishedDocuments,
+  signingDocuments,
 }: {
+  dossierId: string;
   clientUploadedDocuments: NdaDocument[];
   publishedDocuments: NdaDocument[];
+  signingDocuments: NdaDocument[];
 }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const signingDocumentIds = new Set(signingDocuments.map((doc) => doc.id));
+
+  const otherPublishedDocuments = publishedDocuments.filter(
+    (document) => !signingDocumentIds.has(document.id),
+  );
+
   return (
     <Card>
       <Badge>Documents du dossier</Badge>
-      <h2 style={styles.cardTitle}>Vos documents</h2>
-      <p style={{ ...styles.body, margin: "12px 0 18px" }}>
-        Retrouvez ici les documents associés à votre dossier NDA. Les documents
-        internes de l'équipe Selen ne sont pas affichés dans cet espace.
-      </p>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 12,
+          flexWrap: "wrap",
+        }}
+      >
+        <h2 style={styles.cardTitle}>Vos documents</h2>
+        <Btn variant="ghost" size="sm" onClick={() => setIsOpen((v) => !v)}>
+          {isOpen
+            ? "Masquer les documents du dossier"
+            : "Afficher les documents du dossier"}
+        </Btn>
+      </div>
 
-      <DocumentList
-        title="Vos documents déposés"
-        emptyText="Aucun document déposé n'est encore visible ici."
-        documents={clientUploadedDocuments}
-      />
+      {isOpen ? (
+        <div style={{ marginTop: 18 }}>
+          <DocumentList
+            dossierId={dossierId}
+            title="Vos documents déposés"
+            emptyText="Aucun document déposé n'est encore visible ici."
+            documents={clientUploadedDocuments}
+          />
 
-      <div style={{ height: 18 }} />
+          <div style={{ height: 18 }} />
 
-      <DocumentList
-        title="Documents mis à disposition par Selen"
-        emptyText="Aucun document n'a encore été mis à disposition par Selen."
-        documents={publishedDocuments}
-        showClientAction
-      />
+          <DocumentList
+            dossierId={dossierId}
+            title="Documents mis à disposition par Selen"
+            emptyText="Aucun document n'a encore été mis à disposition par Selen."
+            documents={otherPublishedDocuments}
+            showClientAction
+            downloadable
+          />
+        </div>
+      ) : null}
+    </Card>
+  );
+}
+
+function SigningDocumentsSection({
+  dossierId,
+  documents,
+}: {
+  dossierId: string;
+  documents: NdaDocument[];
+}) {
+  return (
+    <Card>
+      <Badge>Documents à signer</Badge>
+      <h2 style={styles.cardTitle}>Vos documents contractuels sont prêts</h2>
+
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
+          marginTop: 16,
+        }}
+      >
+        <p style={styles.body}>
+          Les coordonnées ont été transmises et vos documents à signer sont
+          disponibles ci-dessous.
+        </p>
+
+        <Notice>
+          Téléchargez chaque document, vérifiez les informations, signez-les
+          manuellement avec la mention demandée, puis déposez les documents
+          signés et les pièces finales dans l'espace prévu ci-dessous.
+        </Notice>
+      </div>
+
+      <div style={{ marginTop: 18 }}>
+        <DocumentList
+          dossierId={dossierId}
+          title="Documents à télécharger et signer"
+          emptyText="Aucun document à signer n'est disponible pour le moment."
+          documents={documents}
+          showClientAction
+          downloadable
+        />
+      </div>
+    </Card>
+  );
+}
+
+function FinalDocumentsUploadSection({
+  finalDocs,
+  finalDocumentItems,
+  finalReturnedDocuments,
+  saving,
+  errorMessage,
+  successMessage,
+  onDrop,
+  onSubmit,
+}: {
+  finalDocs: Record<FinalDocKey, DocState>;
+  finalDocumentItems: Array<{
+    key: FinalDocKey;
+    name: string;
+    documentType: string;
+    status: "Obligatoire" | "Si concerné";
+    statusColor: "required" | "optional";
+    description: string;
+    notice: string;
+  }>;
+  finalReturnedDocuments: NdaDocument[];
+  saving: boolean;
+  errorMessage: string | null;
+  successMessage: string | null;
+  onDrop: (key: FinalDocKey, file: File) => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <Card>
+      <Badge>Contrôle final</Badge>
+      <h2 style={styles.cardTitle}>
+        Déposer les documents signés et pièces finales
+      </h2>
+
+      <div
+        style={{
+          marginTop: 18,
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 16,
+        }}
+      >
+        {finalDocumentItems.map((item) => (
+          <DocDropZone
+            key={item.key}
+            docKey={item.key}
+            name={item.name}
+            status={item.status}
+            statusColor={item.statusColor}
+            description={item.description}
+            notice={item.notice}
+            state={finalDocs[item.key]}
+            onDrop={(file) => onDrop(item.key, file)}
+          />
+        ))}
+      </div>
+
+      <Notice style={{ marginTop: 18 }}>
+        Une fois tous les documents déposés, votre conseiller vérifiera le
+        dossier final avant préparation du dépôt NDA.
+      </Notice>
+
+      <div style={{ marginTop: 18 }}>
+        <DocumentList
+          dossierId=""
+          title="Documents finaux déjà déposés"
+          emptyText="Aucun document final n'a encore été déposé."
+          documents={finalReturnedDocuments}
+          preferTypeLabel
+        />
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "flex-end",
+          gap: 12,
+          flexWrap: "wrap",
+          marginTop: 20,
+        }}
+      >
+        <Btn variant="primary" onClick={onSubmit}>
+          {saving ? "Dépôt en cours..." : "Déposer les documents sélectionnés"}
+        </Btn>
+
+        {errorMessage ? (
+          <Notice
+            style={{
+              marginTop: 8,
+              border: "1px solid #e7b8b8",
+              background: "#fff1f1",
+              color: "#8a2f2f",
+              width: "100%",
+            }}
+          >
+            {errorMessage}
+          </Notice>
+        ) : null}
+
+        {successMessage ? (
+          <Notice
+            style={{
+              marginTop: 8,
+              border: "1px solid #cfe3c3",
+              background: "#f4fbef",
+              color: "#446236",
+              width: "100%",
+            }}
+          >
+            {successMessage}
+          </Notice>
+        ) : null}
+      </div>
     </Card>
   );
 }
 
 function DocumentList({
+  dossierId,
   title,
   emptyText,
   documents,
   showClientAction = false,
+  downloadable = false,
+  preferTypeLabel = false,
 }: {
+  dossierId: string;
   title: string;
   emptyText: string;
   documents: NdaDocument[];
   showClientAction?: boolean;
+  downloadable?: boolean;
+  preferTypeLabel?: boolean;
 }) {
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+
+  async function handleDownload(document: NdaDocument) {
+    try {
+      setDownloadingId(document.id);
+      setDownloadError(null);
+
+      const res = await fetch(
+        `/api/client/documents/download?dossierId=${encodeURIComponent(
+          dossierId,
+        )}&documentId=${encodeURIComponent(document.id)}`,
+        { cache: "no-store" },
+      );
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data?.url) {
+        throw new Error(
+          data?.error ?? "Impossible de générer le lien de téléchargement.",
+        );
+      }
+
+      window.open(data.url, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      setDownloadError(
+        error instanceof Error
+          ? error.message
+          : "Impossible de télécharger ce document.",
+      );
+    } finally {
+      setDownloadingId(null);
+    }
+  }
+
   return (
     <section>
       <h3
@@ -1798,6 +2247,19 @@ function DocumentList({
       >
         {title}
       </h3>
+
+      {downloadError ? (
+        <Notice
+          style={{
+            marginBottom: 10,
+            border: "1px solid #e7b8b8",
+            background: "#fff1f1",
+            color: "#8a2f2f",
+          }}
+        >
+          {downloadError}
+        </Notice>
+      ) : null}
 
       {documents.length === 0 ? (
         <Notice>{emptyText}</Notice>
@@ -1828,7 +2290,10 @@ function DocumentList({
                     fontFamily: "sans-serif",
                   }}
                 >
-                  {document.name || formatDocumentType(document.document_type)}
+                  {preferTypeLabel
+                    ? formatDocumentType(document.document_type)
+                    : document.name ||
+                      formatDocumentType(document.document_type)}
                 </p>
                 <p
                   style={{
@@ -1856,9 +2321,22 @@ function DocumentList({
                 {showClientAction && document.requires_client_action ? (
                   <DocumentBadge tone="warning">Action requise</DocumentBadge>
                 ) : null}
+
                 <DocumentBadge tone={getDocumentStatusTone(document)}>
                   {formatDocumentStatus(document)}
                 </DocumentBadge>
+
+                {downloadable ? (
+                  <Btn
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDownload(document)}
+                  >
+                    {downloadingId === document.id
+                      ? "Préparation..."
+                      : "Télécharger"}
+                  </Btn>
+                ) : null}
               </div>
             </div>
           ))}
@@ -1915,6 +2393,7 @@ function formatDocumentStatus(document: NdaDocument) {
   if (document.review_status === "needs_correction") return "À corriger";
   if (document.review_status === "validated") return "Validé";
   if (document.review_status === "not_reviewed") return "En attente";
+  if (document.review_status === "pending_client") return "À compléter";
   if (document.status === "uploaded") return "Reçu";
   return "En attente";
 }
@@ -1933,6 +2412,21 @@ function getDocumentStatusTone(document: NdaDocument) {
 
 function formatDocumentType(value?: string | null) {
   if (!value) return "Document";
+
+  const labels: Record<string, string> = {
+    convention_signee: "Convention de formation signée",
+    programme_formation_signe: "Programme de formation signé",
+    diplomes_formateur_principal:
+      "Copies des diplômes / attestations de formation",
+    casier_judiciaire_n3: "Casier judiciaire n°3",
+    statut_activite_formation_adulte:
+      "Justificatif / statut activité de formation adulte",
+    liste_formateurs_signee: "Liste des formateurs signée",
+  };
+
+  if (labels[value]) {
+    return labels[value];
+  }
 
   return value
     .split("_")
@@ -1960,7 +2454,7 @@ function DocDropZone({
   downloadLabel,
   downloadHref,
 }: {
-  docKey: DocKey;
+  docKey: DocKey | FinalDocKey;
   name: string;
   status: string;
   statusColor: "required" | "optional";
