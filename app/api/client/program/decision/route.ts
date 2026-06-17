@@ -4,13 +4,7 @@ import {
   getAdminSupabase,
   verifyClientNdaDossierAccess,
 } from "@/lib/server/clientNdaAccess";
-
-function sanitizeFileName(name: string) {
-  return name
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zA-Z0-9._-]/g, "_");
-}
+import { createUniqueStorageFileName } from "@/lib/server/storageFileNames";
 
 export async function POST(req: Request) {
   try {
@@ -89,8 +83,11 @@ export async function POST(req: Request) {
     let uploadedDocumentId: string | null = null;
 
     if (decision === "refused" && hasFile && file instanceof File) {
-      const safeName = sanitizeFileName(file.name || "programme_client.docx");
-      const storagePath = `program-versions/${dossierId}/${Date.now()}-${safeName}`;
+      const safeStorageName = createUniqueStorageFileName(
+        file.name,
+        "programme-client.docx",
+      );
+      const storagePath = `program-versions/${dossierId}/${safeStorageName}`;
 
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
@@ -116,7 +113,7 @@ export async function POST(req: Request) {
         .insert({
           dossier_id: dossierId,
           organisation_id: dossier.organisation_id,
-          name: safeName,
+          name: file.name,
           document_type: "programme_client_corrige",
           storage_path: storagePath,
           status: "uploaded",

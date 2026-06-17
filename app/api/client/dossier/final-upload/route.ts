@@ -4,13 +4,7 @@ import {
   getAdminSupabase,
   verifyClientNdaDossierAccess,
 } from "@/lib/server/clientNdaAccess";
-
-function sanitizeFileName(name: string) {
-  return name
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zA-Z0-9._-]/g, "_");
-}
+import { createUniqueStorageFileName } from "@/lib/server/storageFileNames";
 
 export async function POST(req: Request) {
   try {
@@ -38,8 +32,11 @@ export async function POST(req: Request) {
     }
 
     const organisationId = access.dossier.organisation_id;
-    const safeName = sanitizeFileName(file.name || "document-signe.pdf");
-    const storagePath = `${organisationId}/${dossierId}/final/${Date.now()}-${safeName}`;
+    const safeStorageName = createUniqueStorageFileName(
+      file.name,
+      "document-signe.pdf",
+    );
+    const storagePath = `${organisationId}/${dossierId}/final/${safeStorageName}`;
     const arrayBuffer = await file.arrayBuffer();
     const fileBuffer = new Uint8Array(arrayBuffer);
 

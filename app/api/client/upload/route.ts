@@ -3,6 +3,7 @@ import {
   getAdminSupabase,
   verifyClientNdaDossierAccess,
 } from "@/lib/server/clientNdaAccess";
+import { createUniqueStorageFileName } from "@/lib/server/storageFileNames";
 
 export async function POST(req: Request) {
   try {
@@ -31,7 +32,11 @@ export async function POST(req: Request) {
     }
 
     const organisationId = access.dossier.organisation_id;
-    const filePath = `${organisationId}/${dossierId}/${Date.now()}-${file.name}`;
+    const safeStorageName = createUniqueStorageFileName(
+      file.name,
+      "document-initial.pdf",
+    );
+    const filePath = `${organisationId}/${dossierId}/initial/${safeStorageName}`;
 
     const arrayBuffer = await file.arrayBuffer();
     const fileBuffer = new Uint8Array(arrayBuffer);

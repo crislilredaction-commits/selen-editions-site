@@ -8,16 +8,10 @@ import {
   getAdminSupabase,
   verifyClientNdaDossierAccess,
 } from "@/lib/server/clientNdaAccess";
+import { createUniqueStorageFileName } from "@/lib/server/storageFileNames";
 
 const REFUSAL_LETTER_MESSAGE =
   "Le client a déposé un courrier de refus DREETS pour étude.";
-
-function sanitizeFileName(name: string) {
-  return name
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zA-Z0-9._-]/g, "_");
-}
 
 export async function POST(req: Request) {
   try {
@@ -43,8 +37,11 @@ export async function POST(req: Request) {
     }
 
     const organisationId = access.dossier.organisation_id;
-    const safeName = sanitizeFileName(file.name || "courrier-refus-nda.pdf");
-    const storagePath = `${organisationId}/${dossierId}/refusal/${Date.now()}-${safeName}`;
+    const safeStorageName = createUniqueStorageFileName(
+      file.name,
+      "courrier-refus-nda.pdf",
+    );
+    const storagePath = `${organisationId}/${dossierId}/refusal/${safeStorageName}`;
     const fileBuffer = new Uint8Array(await file.arrayBuffer());
 
     const { error: uploadError } = await supabase.storage
