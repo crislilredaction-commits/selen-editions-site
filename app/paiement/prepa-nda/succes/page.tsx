@@ -54,8 +54,9 @@ export default function PrepaNdaSuccessPage() {
           </div>
 
           <p className="mt-6 text-sm leading-6 text-[#6e4a32]">
-            Si l’email n’arrive pas dans les prochaines minutes, pensez à
-            vérifier vos spams. Vous pourrez aussi nous écrire à{" "}
+            Votre lien d’accès est envoyé par email après validation technique
+            du paiement. Si l’email n’arrive pas dans les prochaines minutes,
+            vérifiez vos spams ou écrivez-nous à{" "}
             <a
               href="mailto:hello@selen-editions.fr"
               className="underline underline-offset-4"
@@ -66,12 +67,12 @@ export default function PrepaNdaSuccessPage() {
           </p>
 
           <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link href="/client" className="btn-ink text-center">
-              <span>Accéder à mon espace client</span>
+            <Link href="/client/login" className="btn-ink text-center">
+              <span>Me connecter si j’ai reçu mon accès</span>
             </Link>
 
-            <Link href="/nos-prestations" className="btn-ghost text-center">
-              <span>Retour aux prestations</span>
+            <Link href="/" className="btn-ghost text-center">
+              <span>Retour à l’accueil</span>
             </Link>
           </div>
         </div>

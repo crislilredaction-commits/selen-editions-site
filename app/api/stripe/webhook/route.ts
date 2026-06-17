@@ -277,12 +277,19 @@ async function ensureStudioClientAndDossier({
   };
 }
 
-async function generateClientLoginLink(email: string) {
+async function generateClientLoginLink(
+  email: string,
+  redirectPath = "/client",
+) {
+  const cleanRedirectPath = redirectPath.startsWith("/")
+    ? redirectPath
+    : `/${redirectPath}`;
+
   const { data, error } = await supabaseAdmin.auth.admin.generateLink({
     type: "magiclink",
     email,
     options: {
-      redirectTo: `${siteUrl}/client`,
+      redirectTo: `${siteUrl}${cleanRedirectPath}`,
     },
   });
 
@@ -313,7 +320,7 @@ async function sendAutoAuditAccessEmail({
     return;
   }
 
-  const loginLink = await generateClientLoginLink(email);
+  const loginLink = await generateClientLoginLink(email, "/client/preaudit");
   const expirationLabel = formatDateFr(expiresAt);
   const offerLabel = formatOffer(offer);
 
@@ -411,7 +418,13 @@ async function sendAutoAuditAccessEmail({
   }
 }
 
-async function sendPrepaNdaAccessEmail({ email }: { email: string }) {
+async function sendPrepaNdaAccessEmail({
+  email,
+  dossierId,
+}: {
+  email: string;
+  dossierId?: string | null;
+}) {
   if (!resend) {
     console.warn(
       "RESEND_API_KEY absente : email d’accès Prépa NDA non envoyé.",
@@ -419,7 +432,10 @@ async function sendPrepaNdaAccessEmail({ email }: { email: string }) {
     return;
   }
 
-  const loginLink = await generateClientLoginLink(email);
+  const loginLink = await generateClientLoginLink(
+    email,
+    dossierId ? `/client/dossier/${dossierId}` : "/client",
+  );
 
   const subject = "Accès à votre dossier Prépa NDA Selen";
 
@@ -504,7 +520,7 @@ async function sendAuditBlancAccessEmail({ email }: { email: string }) {
     return;
   }
 
-  const loginLink = await generateClientLoginLink(email);
+  const loginLink = await generateClientLoginLink(email, "/client/audit-blanc");
 
   const subject = "Accès à votre audit blanc Selen Review";
 
@@ -621,9 +637,9 @@ async function activateAutoAuditAccess(session: Stripe.Checkout.Session) {
     throw new Error(`Erreur Supabase activation accès : ${error.message}`);
   }
 
-  await ensureStudioClientAndDossier({
+  const { dossier } = await ensureStudioClientAndDossier({
     session,
-    toolSlug: "preaudit_qualiopi",
+    toolSlug: "prepa_nda",
   });
 
   if (offer === "trois-fois" && stripeSubscriptionId) {
@@ -658,13 +674,16 @@ async function createPrepaNdaCase(session: Stripe.Checkout.Session) {
     throw new Error("Aucun email client trouvé dans la session Stripe.");
   }
 
-  await ensureStudioClientAndDossier({
+  const { dossier } = await ensureStudioClientAndDossier({
     session,
     toolSlug: "prepa_nda",
   });
 
   try {
-    await sendPrepaNdaAccessEmail({ email });
+    await sendPrepaNdaAccessEmail({
+      email,
+      dossierId: dossier?.id ?? null,
+    });
   } catch (emailError) {
     console.error(
       "Dossier Prépa NDA créé, mais email non envoyé :",

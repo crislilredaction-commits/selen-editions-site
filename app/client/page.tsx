@@ -65,12 +65,6 @@ function hasActiveToolAccess(access?: ToolAccess | null) {
   return false;
 }
 
-function formatOffer(value?: string | null) {
-  if (value === "unique") return "Paiement unique — 99 €";
-  if (value === "trois-fois") return "Paiement en 3 fois — 3 × 33 €";
-  return "Offre non renseignée";
-}
-
 export default function ClientDashboardPage() {
   const router = useRouter();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -87,11 +81,13 @@ export default function ClientDashboardPage() {
   const preauditRemainingDays = getRemainingDays(preauditAccess?.ends_at);
   const auditBlancRemainingDays = getRemainingDays(auditBlancAccess?.ends_at);
 
-  const hasActiveAccess = hasActiveToolAccess(preauditAccess);
+  const hasActivePreauditAccess = hasActiveToolAccess(preauditAccess);
   const hasActiveAuditBlancAccess = hasActiveToolAccess(auditBlancAccess);
 
   const isPreauditUnlimited = preauditAccess?.access_type === "unlimited";
   const isAuditBlancUnlimited = auditBlancAccess?.access_type === "unlimited";
+
+  const hasNdaDossier = ndaDossiers.length > 0;
 
   useEffect(() => {
     async function loadClientSpace() {
@@ -100,14 +96,8 @@ export default function ClientDashboardPage() {
 
       const { data, error: authError } = await supabase.auth.getUser();
 
-      if (authError) {
-        setError(authError.message);
-        setLoading(false);
-        return;
-      }
-
-      if (!data.user) {
-        router.push("/client/login");
+      if (authError || !data.user) {
+        router.replace("/client/login");
         return;
       }
 
@@ -125,33 +115,36 @@ export default function ClientDashboardPage() {
         .order("created_at", { ascending: false });
 
       if (accessError) {
-        setError(
-          `Impossible de vérifier vos accès Selen. ${accessError.message}`,
+        console.warn("Impossible de vérifier les accès outils :", accessError);
+      } else {
+        const accesses = (accessData ?? []) as ToolAccess[];
+
+        setPreauditAccess(
+          accesses.find((access) => access.tool_slug === "preaudit-qualiopi") ??
+            null,
         );
-        setLoading(false);
-        return;
+
+        setAuditBlancAccess(
+          accesses.find(
+            (access) => access.tool_slug === "audit-blanc-qualiopi",
+          ) ?? null,
+        );
       }
 
-      const accesses = (accessData ?? []) as ToolAccess[];
+      try {
+        const ndaRes = await fetch("/api/client/nda-dossiers", {
+          cache: "no-store",
+        });
 
-      setPreauditAccess(
-        accesses.find((access) => access.tool_slug === "preaudit-qualiopi") ??
-          null,
-      );
+        const ndaData = await ndaRes.json().catch(() => null);
 
-      setAuditBlancAccess(
-        accesses.find(
-          (access) => access.tool_slug === "audit-blanc-qualiopi",
-        ) ?? null,
-      );
-
-      const ndaRes = await fetch("/api/client/nda-dossiers", {
-        cache: "no-store",
-      });
-      const ndaData = await ndaRes.json().catch(() => null);
-
-      if (ndaRes.ok) {
-        setNdaDossiers((ndaData?.dossiers ?? []) as NdaDossier[]);
+        if (ndaRes.ok) {
+          setNdaDossiers((ndaData?.dossiers ?? []) as NdaDossier[]);
+        } else {
+          console.warn("Aucun dossier NDA récupéré :", ndaData);
+        }
+      } catch (ndaError) {
+        console.warn("Erreur récupération dossiers NDA :", ndaError);
       }
 
       setLoading(false);
@@ -159,6 +152,24 @@ export default function ClientDashboardPage() {
 
     loadClientSpace();
   }, [router, supabase]);
+
+  useEffect(() => {
+    if (loading) return;
+
+    if (
+      ndaDossiers.length === 1 &&
+      !hasActivePreauditAccess &&
+      !hasActiveAuditBlancAccess
+    ) {
+      router.replace(`/client/dossier/${ndaDossiers[0].id}`);
+    }
+  }, [
+    loading,
+    ndaDossiers,
+    hasActivePreauditAccess,
+    hasActiveAuditBlancAccess,
+    router,
+  ]);
 
   async function signOut() {
     await supabase.auth.signOut();
@@ -184,6 +195,7 @@ export default function ClientDashboardPage() {
         email={userInfo?.email}
         context="l’espace client Selen"
       />
+
       <div
         style={{
           maxWidth: 1100,
@@ -206,8 +218,8 @@ export default function ClientDashboardPage() {
             </h1>
 
             <p style={{ color: "var(--sepia-mid)", lineHeight: 1.65 }}>
-              Retrouvez ici vos outils Qualiopi, votre auto-audit, vos notes et
-              votre bilan final.
+              Retrouvez ici uniquement les dossiers, outils et accompagnements
+              liés à vos achats.
             </p>
 
             {userInfo?.email && (
@@ -221,10 +233,19 @@ export default function ClientDashboardPage() {
                 Connecté avec : {userInfo.email}
               </p>
             )}
+
+            <button
+              type="button"
+              onClick={signOut}
+              className="btn-ghost"
+              style={{ marginTop: "1rem" }}
+            >
+              <span>Se déconnecter</span>
+            </button>
           </div>
         </header>
 
-        {error && (
+        {error ? (
           <div
             style={{
               border: "1px solid var(--rust)",
@@ -237,34 +258,80 @@ export default function ClientDashboardPage() {
           >
             {error}
           </div>
-        )}
+        ) : null}
 
-        <section
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-            gap: "1rem",
-            marginBottom: "1.5rem",
-          }}
-        >
-          <article
+        {hasNdaDossier ||
+        hasActivePreauditAccess ||
+        hasActiveAuditBlancAccess ? (
+          <section
             style={{
-              background: "var(--paper)",
-              border: "1px solid var(--sepia-mid)",
-              borderLeft: hasActiveAccess
-                ? "4px solid #6a8a4a"
-                : "4px solid var(--rust)",
-              padding: "1.2rem",
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+              gap: "1rem",
+              marginBottom: "1.5rem",
             }}
           >
-            <p className="gazette-label">Auto-audit Qualiopi</p>
+            {hasNdaDossier ? (
+              <article
+                style={{
+                  background: "var(--paper)",
+                  border: "1px solid var(--sepia-mid)",
+                  borderLeft: "4px solid var(--ocre-gold)",
+                  padding: "1.2rem",
+                }}
+              >
+                <p className="gazette-label">Prépa NDA</p>
 
-            <h2 style={{ color: "var(--ink)", marginBottom: "0.5rem" }}>
-              {hasActiveAccess ? "Accès actif" : "Accès non actif"}
-            </h2>
+                <h2 style={{ color: "var(--ink)", marginBottom: "0.5rem" }}>
+                  Votre dossier de déclaration d’activité
+                </h2>
 
-            {hasActiveAccess ? (
-              <>
+                <p
+                  style={{
+                    color: "var(--ink-soft)",
+                    lineHeight: 1.6,
+                    marginBottom: "1rem",
+                  }}
+                >
+                  Accédez à votre dossier NDA, déposez vos pièces, suivez les
+                  échanges avec votre agent et avancez jusqu’au dépôt sur Mon
+                  Activité Formation.
+                </p>
+
+                <div style={{ display: "grid", gap: "0.7rem" }}>
+                  {ndaDossiers.map((dossier) => (
+                    <button
+                      key={dossier.id}
+                      type="button"
+                      className="btn-ink"
+                      onClick={() =>
+                        router.push(`/client/dossier/${dossier.id}`)
+                      }
+                    >
+                      <span>
+                        {dossier.title || "Accéder à mon dossier NDA"} →
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </article>
+            ) : null}
+
+            {hasActivePreauditAccess ? (
+              <article
+                style={{
+                  background: "var(--paper)",
+                  border: "1px solid var(--sepia-mid)",
+                  borderLeft: "4px solid #6a8a4a",
+                  padding: "1.2rem",
+                }}
+              >
+                <p className="gazette-label">Auto-audit Qualiopi</p>
+
+                <h2 style={{ color: "var(--ink)", marginBottom: "0.5rem" }}>
+                  Votre auto-audit est actif
+                </h2>
+
                 <p
                   style={{
                     color: "var(--ink-soft)",
@@ -285,17 +352,7 @@ export default function ClientDashboardPage() {
                   )}
                 </p>
 
-                {isPreauditUnlimited ? (
-                  <p
-                    style={{
-                      color: "#6a8a4a",
-                      fontWeight: 700,
-                      marginBottom: "1rem",
-                    }}
-                  >
-                    Votre accès n’a pas de date d’expiration.
-                  </p>
-                ) : (
+                {!isPreauditUnlimited ? (
                   <p
                     style={{
                       color: "#6a8a4a",
@@ -306,21 +363,7 @@ export default function ClientDashboardPage() {
                     Il vous reste environ {preauditRemainingDays ?? 0} jour
                     {(preauditRemainingDays ?? 0) > 1 ? "s" : ""} d’accès.
                   </p>
-                )}
-
-                <p
-                  style={{
-                    color: "var(--ink-faint)",
-                    fontSize: "0.9rem",
-                    lineHeight: 1.5,
-                    marginBottom: "1rem",
-                  }}
-                >
-                  Offre :{" "}
-                  {isPreauditUnlimited
-                    ? "Accès offert illimité"
-                    : "Accès offert"}
-                </p>
+                ) : null}
 
                 <div style={{ display: "grid", gap: "0.5rem" }}>
                   <button
@@ -339,9 +382,24 @@ export default function ClientDashboardPage() {
                     <span>Voir mon bilan final</span>
                   </button>
                 </div>
-              </>
-            ) : (
-              <>
+              </article>
+            ) : null}
+
+            {hasActiveAuditBlancAccess ? (
+              <article
+                style={{
+                  background: "var(--paper)",
+                  border: "1px solid var(--sepia-mid)",
+                  borderLeft: "4px solid var(--ocre-gold)",
+                  padding: "1.2rem",
+                }}
+              >
+                <p className="gazette-label">Selen Review</p>
+
+                <h2 style={{ color: "var(--ink)", marginBottom: "0.5rem" }}>
+                  Votre audit blanc Qualiopi
+                </h2>
+
                 <p
                   style={{
                     color: "var(--ink-soft)",
@@ -349,138 +407,12 @@ export default function ClientDashboardPage() {
                     marginBottom: "1rem",
                   }}
                 >
-                  Aucun accès actif à l’auto-audit Qualiopi n’est associé à ce
-                  compte, ou votre accès de 3 mois est terminé.
+                  Retrouvez votre dossier d’audit blanc, vos rendez-vous, les
+                  consignes de préparation, le rapport transmis par l’auditeur
+                  et les documents correctifs éventuels.
                 </p>
 
-                <button
-                  type="button"
-                  className="btn-ink"
-                  onClick={() => router.push("/auto-audit-qualiopi")}
-                >
-                  <span>Découvrir l’auto-audit Qualiopi</span>
-                </button>
-              </>
-            )}
-          </article>
-
-          {ndaDossiers.length > 0 && (
-            <article
-              style={{
-                background: "var(--paper)",
-                border: "1px solid var(--sepia-mid)",
-                borderLeft: "4px solid var(--ocre-gold)",
-                padding: "1.2rem",
-              }}
-            >
-              <p className="gazette-label">Dossier NDA</p>
-
-              <h2 style={{ color: "var(--ink)", marginBottom: "0.5rem" }}>
-                Votre accompagnement NDA
-              </h2>
-
-              <p
-                style={{
-                  color: "var(--ink-soft)",
-                  lineHeight: 1.6,
-                  marginBottom: "1rem",
-                }}
-              >
-                Reprenez votre dossier de déclaration d'activité et suivez les
-                échanges avec votre agent.
-              </p>
-
-              <button
-                type="button"
-                className="btn-ink"
-                onClick={() => router.push(`/client/dossier/${ndaDossiers[0].id}`)}
-              >
-                <span>Accéder à mon dossier NDA →</span>
-              </button>
-            </article>
-          )}
-
-          <article
-            style={{
-              background: "var(--paper)",
-              border: "1px solid var(--sepia-mid)",
-              padding: "1.2rem",
-            }}
-          >
-            <p className="gazette-label">Ce que contient l’outil</p>
-
-            <h2 style={{ color: "var(--ink)", marginBottom: "0.5rem" }}>
-              Votre grimoire de préparation
-            </h2>
-
-            <div
-              style={{
-                display: "grid",
-                gap: "0.45rem",
-                color: "var(--ink-soft)",
-                lineHeight: 1.55,
-                fontSize: "0.95rem",
-              }}
-            >
-              <p>✅ Questionnaire profil</p>
-              <p>✅ Vérification usage des marques Qualiopi</p>
-              <p>✅ Diagnostic indicateur par indicateur</p>
-              <p>✅ Modèles de documents selon vos réponses</p>
-              <p>✅ Notes personnelles</p>
-              <p>✅ Bilan final avec export Excel</p>
-            </div>
-          </article>
-
-          <article
-            style={{
-              background: "var(--paper)",
-              border: "1px solid var(--sepia-mid)",
-              padding: "1.2rem",
-            }}
-          >
-            <article
-              style={{
-                background: "var(--paper)",
-                border: "1px solid var(--sepia-mid)",
-                borderLeft: "4px solid var(--ocre-gold)",
-                padding: "1.2rem",
-              }}
-            >
-              <p className="gazette-label">Selen Review</p>
-
-              <h2 style={{ color: "var(--ink)", marginBottom: "0.5rem" }}>
-                Audit blanc Qualiopi
-              </h2>
-
-              <p
-                style={{
-                  color: "var(--ink-soft)",
-                  lineHeight: 1.6,
-                  marginBottom: "1rem",
-                }}
-              >
-                Retrouvez ici votre dossier d’audit blanc, vos rendez-vous, les
-                consignes de préparation, puis le rapport transmis par
-                l’auditeur et les documents correctifs éventuels.
-              </p>
-
-              <div
-                style={{
-                  display: "grid",
-                  gap: "0.5rem",
-                  color: "var(--ink-faint)",
-                  fontSize: "0.9rem",
-                  lineHeight: 1.5,
-                  marginBottom: "1rem",
-                }}
-              >
-                <p>✦ Audit blanc direct : 397 €</p>
-                <p>✦ Tarif après auto-audit : 199 €</p>
-                <p>✦ Réservation Calendly après paiement</p>
-              </div>
-
-              {hasActiveAuditBlancAccess ? (
-                <>
+                {!isAuditBlancUnlimited ? (
                   <p
                     style={{
                       color: "#6a8a4a",
@@ -488,85 +420,62 @@ export default function ClientDashboardPage() {
                       marginBottom: "1rem",
                     }}
                   >
-                    {isAuditBlancUnlimited
-                      ? "Votre accès à l’audit blanc est actif en illimité."
-                      : `Votre accès à l’audit blanc est actif jusqu’au ${formatDate(
-                          auditBlancAccess?.ends_at,
-                        )}.`}
+                    Accès actif jusqu’au {formatDate(auditBlancAccess?.ends_at)}
+                    . Il reste environ {auditBlancRemainingDays ?? 0} jour
+                    {(auditBlancRemainingDays ?? 0) > 1 ? "s" : ""}.
                   </p>
+                ) : null}
 
-                  <button
-                    type="button"
-                    className="btn-ink"
-                    onClick={() => router.push("/client/audit-blanc")}
-                  >
-                    <span>Accéder à mon audit blanc →</span>
-                  </button>
-                </>
-              ) : (
                 <button
                   type="button"
                   className="btn-ink"
-                  onClick={() => router.push("/selen-review")}
+                  onClick={() => router.push("/client/audit-blanc")}
                 >
-                  <span>Découvrir l’audit blanc →</span>
+                  <span>Accéder à mon audit blanc →</span>
                 </button>
-              )}
-            </article>
+              </article>
+            ) : null}
+          </section>
+        ) : (
+          <section className="gazette-card" style={{ padding: "1.5rem" }}>
+            <p className="gazette-label">Aucun espace actif</p>
 
             <h2 style={{ color: "var(--ink)", marginBottom: "0.5rem" }}>
-              Audit blanc après auto-audit
+              Aucun dossier ou outil actif n’est associé à ce compte
             </h2>
 
             <p
               style={{
                 color: "var(--ink-soft)",
-                lineHeight: 1.6,
-                marginBottom: "1rem",
+                lineHeight: 1.7,
+                maxWidth: 760,
               }}
             >
-              Après votre auto-audit, vous pourrez réserver un audit blanc avec
-              un auditeur certifié au tarif réservé de <strong>199 €</strong>.
+              Si vous venez de finaliser un paiement, l’ouverture de votre
+              espace peut prendre quelques instants. Vérifiez également que vous
+              êtes connecté avec la même adresse email que celle utilisée lors
+              du paiement.
             </p>
 
             <p
               style={{
-                color: "var(--ink-faint)",
-                fontSize: "0.9rem",
-                lineHeight: 1.5,
+                color: "var(--ink-soft)",
+                lineHeight: 1.7,
+                maxWidth: 760,
+                marginTop: "0.8rem",
               }}
             >
-              L’audit blanc direct, sans passage par l’auto-audit, sera proposé
-              séparément à 397 €.
+              En cas de doute, contactez Selen à{" "}
+              <a
+                href="mailto:hello@selen-editions.fr"
+                style={{ color: "var(--rust)" }}
+              >
+                hello@selen-editions.fr
+              </a>
+              .
             </p>
-          </article>
-        </section>
-
-        <section
-          style={{
-            background: "rgba(178,138,98,0.08)",
-            border: "1px dashed var(--sepia-mid)",
-            padding: "1rem",
-            marginBottom: "1rem",
-          }}
-        >
-          <p className="gazette-label">Gestion du compte</p>
-
-          <p
-            style={{
-              color: "var(--ink-soft)",
-              lineHeight: 1.6,
-              marginBottom: "0.8rem",
-            }}
-          >
-            Vous pouvez vous déconnecter à tout moment. Vos accès et vos données
-            de préaudit restent liés à votre adresse email.
-          </p>
-
-          <button type="button" className="btn-ink" onClick={signOut}>
-            <span>Se déconnecter</span>
-          </button>
-        </section>
+          </section>
+        )}
       </div>
     </main>
   );
