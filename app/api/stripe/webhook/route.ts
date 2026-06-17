@@ -85,6 +85,17 @@ const TOOL_DOSSIER_CONFIG: Record<string, DossierConfig> = {
     title: "Selen Review - Audit blanc Qualiopi",
     status: "in_progress",
   },
+
+  prepa_nda: {
+    dossierType: "nda",
+    title: "Prépa NDA - Déclaration d’activité",
+    status: "draft",
+  },
+  "prepa-nda": {
+    dossierType: "nda",
+    title: "Prépa NDA - Déclaration d’activité",
+    status: "draft",
+  },
 };
 
 function addThreeMonths(date: Date) {
@@ -400,6 +411,168 @@ async function sendAutoAuditAccessEmail({
   }
 }
 
+async function sendPrepaNdaAccessEmail({ email }: { email: string }) {
+  if (!resend) {
+    console.warn(
+      "RESEND_API_KEY absente : email d’accès Prépa NDA non envoyé.",
+    );
+    return;
+  }
+
+  const loginLink = await generateClientLoginLink(email);
+
+  const subject = "Accès à votre dossier Prépa NDA Selen";
+
+  const text = [
+    "Bonjour,",
+    "",
+    "Merci pour votre achat.",
+    "",
+    "Votre dossier Prépa NDA est maintenant ouvert dans votre espace client Selen.",
+    "",
+    `Identifiant : ${email}`,
+    "",
+    "Pour accéder à votre espace client, cliquez ici :",
+    loginLink,
+    "",
+    "Depuis votre espace, vous pourrez déposer les premiers éléments nécessaires à la préparation de votre dossier de déclaration d’activité.",
+    "",
+    "Votre agent Selen vous accompagnera ensuite dans la vérification, la préparation des documents et le suivi du dépôt.",
+    "",
+    "À très bientôt,",
+    "",
+    "L’équipe Selen Editions",
+  ].join("\n");
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; color: #3e2a1f; line-height: 1.6; max-width: 640px;">
+      <h1 style="color:#8a4b24;">Votre dossier Prépa NDA est ouvert</h1>
+
+      <p>Bonjour,</p>
+
+      <p>Merci pour votre achat.</p>
+
+      <p>
+        Votre dossier <strong>Prépa NDA</strong> est maintenant ouvert dans votre espace client Selen.
+      </p>
+
+      <div style="background:#f8efdf; border-left:4px solid #b28a62; padding:14px 16px; margin:20px 0;">
+        <p style="margin:0;"><strong>Identifiant :</strong> ${email}</p>
+      </div>
+
+      <p>
+        Pour accéder à votre espace client, cliquez sur le bouton ci-dessous :
+      </p>
+
+      <p style="margin:24px 0;">
+        <a href="${loginLink}" style="background:#3e2a1f; color:#f7ead6; padding:12px 18px; text-decoration:none; border-radius:999px; display:inline-block;">
+          Ouvrir mon espace client
+        </a>
+      </p>
+
+      <p>
+        Depuis votre espace, vous pourrez déposer les premiers éléments nécessaires à la préparation de votre dossier de déclaration d’activité.
+      </p>
+
+      <p>
+        Votre agent Selen vous accompagnera ensuite dans la vérification, la préparation des documents et le suivi du dépôt.
+      </p>
+
+      <p>À très bientôt,<br />L’équipe Selen Editions</p>
+    </div>
+  `;
+
+  const { error } = await resend.emails.send({
+    from: resendFromEmail,
+    to: email,
+    subject,
+    text,
+    html,
+    replyTo: "hello@selen-editions.fr",
+  });
+
+  if (error) {
+    throw new Error(`Erreur Resend : ${error.message}`);
+  }
+}
+
+async function sendAuditBlancAccessEmail({ email }: { email: string }) {
+  if (!resend) {
+    console.warn(
+      "RESEND_API_KEY absente : email d’accès audit blanc non envoyé.",
+    );
+    return;
+  }
+
+  const loginLink = await generateClientLoginLink(email);
+
+  const subject = "Accès à votre audit blanc Selen Review";
+
+  const text = [
+    "Bonjour,",
+    "",
+    "Merci pour votre achat.",
+    "",
+    "Votre dossier d’audit blanc Selen Review est maintenant ouvert dans votre espace client.",
+    "",
+    `Identifiant : ${email}`,
+    "",
+    "Pour accéder à votre espace client, cliquez ici :",
+    loginLink,
+    "",
+    "Depuis votre espace, vous pourrez suivre votre dossier, accéder aux échanges avec Selen et récupérer les éléments liés à votre audit blanc.",
+    "",
+    "À très bientôt,",
+    "",
+    "L’équipe Selen Editions",
+  ].join("\n");
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; color: #3e2a1f; line-height: 1.6; max-width: 640px;">
+      <h1 style="color:#8a4b24;">Votre audit blanc Selen Review est ouvert</h1>
+
+      <p>Bonjour,</p>
+
+      <p>Merci pour votre achat.</p>
+
+      <p>
+        Votre dossier d’<strong>audit blanc Selen Review</strong> est maintenant ouvert dans votre espace client.
+      </p>
+
+      <div style="background:#f8efdf; border-left:4px solid #b28a62; padding:14px 16px; margin:20px 0;">
+        <p style="margin:0;"><strong>Identifiant :</strong> ${email}</p>
+      </div>
+
+      <p>Pour accéder à votre espace client, cliquez sur le bouton ci-dessous :</p>
+
+      <p style="margin:24px 0;">
+        <a href="${loginLink}" style="background:#3e2a1f; color:#f7ead6; padding:12px 18px; text-decoration:none; border-radius:999px; display:inline-block;">
+          Ouvrir mon espace client
+        </a>
+      </p>
+
+      <p>
+        Depuis votre espace, vous pourrez suivre votre dossier, accéder aux échanges avec Selen et récupérer les éléments liés à votre audit blanc.
+      </p>
+
+      <p>À très bientôt,<br />L’équipe Selen Editions</p>
+    </div>
+  `;
+
+  const { error } = await resend.emails.send({
+    from: resendFromEmail,
+    to: email,
+    subject,
+    text,
+    html,
+    replyTo: "hello@selen-editions.fr",
+  });
+
+  if (error) {
+    throw new Error(`Erreur Resend : ${error.message}`);
+  }
+}
+
 async function activateAutoAuditAccess(session: Stripe.Checkout.Session) {
   const email = getClientEmailFromSession(session);
 
@@ -448,9 +621,9 @@ async function activateAutoAuditAccess(session: Stripe.Checkout.Session) {
     throw new Error(`Erreur Supabase activation accès : ${error.message}`);
   }
 
-  const { dossier } = await ensureStudioClientAndDossier({
+  await ensureStudioClientAndDossier({
     session,
-    toolSlug: "audit_blanc_qualiopi",
+    toolSlug: "preaudit_qualiopi",
   });
 
   if (offer === "trois-fois" && stripeSubscriptionId) {
@@ -475,6 +648,28 @@ async function activateAutoAuditAccess(session: Stripe.Checkout.Session) {
     });
   } catch (emailError) {
     console.error("Accès activé, mais email non envoyé :", emailError);
+  }
+}
+
+async function createPrepaNdaCase(session: Stripe.Checkout.Session) {
+  const email = getClientEmailFromSession(session);
+
+  if (!email) {
+    throw new Error("Aucun email client trouvé dans la session Stripe.");
+  }
+
+  await ensureStudioClientAndDossier({
+    session,
+    toolSlug: "prepa_nda",
+  });
+
+  try {
+    await sendPrepaNdaAccessEmail({ email });
+  } catch (emailError) {
+    console.error(
+      "Dossier Prépa NDA créé, mais email non envoyé :",
+      emailError,
+    );
   }
 }
 
@@ -557,6 +752,11 @@ async function createAuditBlancCase(session: Stripe.Checkout.Session) {
       `Erreur Supabase création dossier audit blanc : ${error.message}`,
     );
   }
+  try {
+    await sendAuditBlancAccessEmail({ email });
+  } catch (emailError) {
+    console.error("Audit blanc créé, mais email non envoyé :", emailError);
+  }
 
   return data;
 }
@@ -602,6 +802,9 @@ export async function POST(request: Request) {
 
       if (session.metadata?.product_key === "audit_blanc_qualiopi") {
         await createAuditBlancCase(session);
+      }
+      if (session.metadata?.product_key === "prepa_nda") {
+        await createPrepaNdaCase(session);
       }
     }
 

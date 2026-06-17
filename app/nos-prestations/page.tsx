@@ -260,7 +260,8 @@ export default function PrestationsPage() {
                     </h2>
 
                     <p className="mt-2 text-[#6e4a32] text-sm md:text-base">
-                      Mise en conformité et préparation complète du dossier.
+                      Préparer votre déclaration d’activité ou votre audit
+                      Qualiopi avec un accompagnement humain.
                     </p>
                   </div>
                 </div>
@@ -274,57 +275,149 @@ export default function PrestationsPage() {
             <div className="px-6 md:px-8 pb-8 md:pb-10">
               <div className="border-t border-[#b28a62]/30 pt-6">
                 <p className="leading-7 text-[#5a4031] text-[0.95rem]">
-                  Mise en place d&apos;un système administratif conforme clé en
-                  main, pensé pour structurer votre organisme et préparer votre
-                  dossier d&apos;audit.
+                  Selen Prepa accompagne les formateurs et petits organismes de
+                  formation dans les étapes sensibles : obtenir un numéro de
+                  déclaration d’activité, structurer un dossier conforme ou
+                  préparer un audit Qualiopi avec méthode.
                 </p>
 
-                <ul className="mt-5 space-y-2 text-[#5a4031]">
-                  {[
-                    "Documents structurés et conformes",
-                    "Accompagnement à la constitution du dossier",
-                    "Préparation complète à l'audit",
-                  ].map((item) => (
-                    <li
-                      key={item}
-                      className="flex items-center gap-3 text-[0.9rem]"
-                    >
-                      <span className="text-[#b28a62] text-xs shrink-0">✦</span>
-                      {item}
-                    </li>
-                  ))}
-                </ul>
+                <div className="mt-6 grid gap-5 lg:grid-cols-3">
+                  <article className="border border-[#b28a62]/30 bg-white/45 p-5">
+                    <p className="gazette-label">Déclaration d’activité</p>
 
-                <div className="mt-6 border border-[#b28a62]/30 bg-white/40 p-5 text-center">
-                  <p className="gazette-byline">Tarifs</p>
+                    <h3 className="mt-3 font-['Playfair_Display'] text-2xl md:text-3xl font-bold">
+                      Prépa NDA
+                    </h3>
 
-                  <div className="mt-4 grid gap-4 md:grid-cols-2 text-[#3e2a1f]">
-                    <div>
-                      <p className="text-sm md:text-base text-[#6e4a32]">
-                        Audit initial
-                      </p>
+                    <p className="mt-3 leading-7 text-[#5a4031] text-[0.93rem]">
+                      Pour les formateurs qui veulent obtenir leur numéro de
+                      déclaration d’activité sans se perdre dans les pièces, les
+                      codes, les documents à signer et la procédure DREETS.
+                    </p>
 
-                      <p className="mt-1 font-['Playfair_Display'] text-3xl md:text-4xl font-semibold">
-                        900{" "}
-                        <span className="text-lg md:text-xl text-[#6e4a32]">
-                          €
-                        </span>
-                      </p>
-                    </div>
+                    <ul className="mt-5 space-y-2 text-[#5a4031]">
+                      {[
+                        "Vérification des pièces de départ",
+                        "Relecture et reformulation du programme",
+                        "Préparation des documents à signer",
+                        "Guidage pour le dépôt sur Mon Activité Formation",
+                        "Suivi en cas de demande ou de refus DREETS",
+                      ].map((item) => (
+                        <li
+                          key={item}
+                          className="flex items-center gap-3 text-[0.9rem]"
+                        >
+                          <span className="text-[#b28a62] text-xs shrink-0">
+                            ✦
+                          </span>
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
 
-                    <div className="border-t md:border-t-0 md:border-l border-[#b28a62]/20 pt-4 md:pt-0 md:pl-4">
-                      <p className="text-sm md:text-base text-[#6e4a32]">
-                        Surveillance ou renouvellement
-                      </p>
+                    <div className="mt-6 border border-[#b28a62]/30 bg-[#f8efdf]/70 p-4 text-center">
+                      <p className="gazette-byline">Tarif</p>
 
-                      <p className="mt-1 font-['Playfair_Display'] text-3xl md:text-4xl font-semibold">
-                        1200{" "}
-                        <span className="text-lg md:text-xl text-[#6e4a32]">
-                          €
-                        </span>
+                      <p className="mt-2 font-['Playfair_Display'] text-4xl font-semibold text-[#3e2a1f]">
+                        390 <span className="text-xl text-[#6e4a32]">€</span>
                       </p>
                     </div>
-                  </div>
+
+                    <div className="mt-5 flex flex-col gap-3">
+                      <Link href="/prepa-nda" className="btn-ink text-center">
+                        <span>Découvrir la Prépa NDA</span>
+                      </Link>
+
+                      <Link
+                        href="/paiement/prepa-nda"
+                        className="btn-ink text-center"
+                      >
+                        <span>Acheter la Prépa NDA — 390 €</span>
+                      </Link>
+                    </div>
+                  </article>
+
+                  <article className="border border-[#b28a62]/30 bg-white/35 p-5">
+                    <p className="gazette-label">Audit initial</p>
+
+                    <h3 className="mt-3 font-['Playfair_Display'] text-2xl md:text-3xl font-bold">
+                      Prépa Qualiopi initial
+                    </h3>
+
+                    <p className="mt-3 leading-7 text-[#5a4031] text-[0.93rem]">
+                      Pour structurer votre organisme avant un premier audit
+                      Qualiopi : documents, preuves, organisation et logique de
+                      conformité.
+                    </p>
+
+                    <ul className="mt-5 space-y-2 text-[#5a4031]">
+                      {[
+                        "Documents structurés et conformes",
+                        "Accompagnement à la constitution du dossier",
+                        "Préparation complète à l’audit initial",
+                      ].map((item) => (
+                        <li
+                          key={item}
+                          className="flex items-center gap-3 text-[0.9rem]"
+                        >
+                          <span className="text-[#b28a62] text-xs shrink-0">
+                            ✦
+                          </span>
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+
+                    <div className="mt-6 border border-[#b28a62]/30 bg-[#f8efdf]/70 p-4 text-center">
+                      <p className="gazette-byline">Tarif</p>
+
+                      <p className="mt-2 font-['Playfair_Display'] text-4xl font-semibold text-[#3e2a1f]">
+                        900 <span className="text-xl text-[#6e4a32]">€</span>
+                      </p>
+                    </div>
+                  </article>
+
+                  <article className="border border-[#b28a62]/30 bg-white/35 p-5">
+                    <p className="gazette-label">
+                      Surveillance ou renouvellement
+                    </p>
+
+                    <h3 className="mt-3 font-['Playfair_Display'] text-2xl md:text-3xl font-bold">
+                      Prépa Qualiopi avancée
+                    </h3>
+
+                    <p className="mt-3 leading-7 text-[#5a4031] text-[0.93rem]">
+                      Pour les organismes déjà certifiés qui doivent préparer un
+                      audit de surveillance, de renouvellement ou remettre de
+                      l’ordre dans leurs preuves.
+                    </p>
+
+                    <ul className="mt-5 space-y-2 text-[#5a4031]">
+                      {[
+                        "Revue des preuves existantes",
+                        "Identification des écarts",
+                        "Préparation du dossier d’audit",
+                      ].map((item) => (
+                        <li
+                          key={item}
+                          className="flex items-center gap-3 text-[0.9rem]"
+                        >
+                          <span className="text-[#b28a62] text-xs shrink-0">
+                            ✦
+                          </span>
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+
+                    <div className="mt-6 border border-[#b28a62]/30 bg-[#f8efdf]/70 p-4 text-center">
+                      <p className="gazette-byline">Tarif</p>
+
+                      <p className="mt-2 font-['Playfair_Display'] text-4xl font-semibold text-[#3e2a1f]">
+                        1200 <span className="text-xl text-[#6e4a32]">€</span>
+                      </p>
+                    </div>
+                  </article>
                 </div>
               </div>
             </div>
