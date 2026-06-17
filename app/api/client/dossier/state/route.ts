@@ -98,7 +98,7 @@ export async function GET(req: Request) {
     const { data: latestProgramVersion, error: latestProgramVersionError } =
       await supabase
         .from("dossier_program_versions")
-        .select("client_decision")
+        .select("id, status, version_type, client_decision, client_decision_at")
         .eq("dossier_id", dossierId)
         .eq("version_type", "client_sent")
         .order("created_at", { ascending: false })
@@ -113,6 +113,7 @@ export async function GET(req: Request) {
     }
 
     const programDecision = latestProgramVersion?.client_decision ?? null;
+    const programVersionStatus = latestProgramVersion?.status ?? null;
 
     const safeDocuments = (documents ?? []).map((document) => ({
       id: document.id,
@@ -207,6 +208,8 @@ export async function GET(req: Request) {
       },
       step1Submitted,
       programDecision,
+      programVersionStatus,
+      latestProgramVersion: latestProgramVersion ?? null,
       signingDocumentsReady,
       clientUploadedDocuments,
       finalReturnedDocuments,

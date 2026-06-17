@@ -61,6 +61,20 @@ const NDA_DEPOSIT_SUBMITTED_STATUSES = [
 ];
 const NDA_REFUSED_STATUSES = ["nda_refused", "refused_by_dreets"];
 const NDA_OBTAINED_STATUSES = ["nda_obtained"];
+const PROGRAM_SENT_STATUSES = [
+  "program_sent_to_client",
+  "programme_sent_to_client",
+  "sent_to_client",
+  "client_sent",
+  "pending_client",
+  "waiting_client_validation",
+];
+const PROGRAM_REFUSED_STATUSES = [
+  "refused_by_client",
+  "correction_requested",
+  "changes_requested",
+];
+const PROGRAM_VALIDATED_STATUSES = ["validated_by_client", "validated"];
 const OFFICIAL_NDA_DEPOSIT_URL =
   "https://efpconnect.emploi.gouv.fr/auth/realms/efp/protocol/cas/login?TARGET=https%3A%2F%2Fwww.monactiviteformation.emploi.gouv.fr%2Fmon-activite-formation%2F";
 const TVA_EXEMPTION_CERFA_URL =
@@ -127,6 +141,9 @@ export default function ClientNdaPage() {
   const [refusalMessage, setRefusalMessage] = useState<string | null>(null);
   const [programProposal, setProgramProposal] = useState<any | null>(null);
   const [programDecision, setProgramDecision] = useState<string | null>(null);
+  const [programVersionStatus, setProgramVersionStatus] = useState<
+    string | null
+  >(null);
   const [step1Submitted, setStep1Submitted] = useState(false);
   const [showStep1Details, setShowStep1Details] = useState(false);
   const [clientUploadedDocuments, setClientUploadedDocuments] = useState<
@@ -227,6 +244,7 @@ export default function ClientNdaPage() {
             null,
         );
         setProgramDecision(stateData?.programDecision ?? null);
+        setProgramVersionStatus(stateData?.programVersionStatus ?? null);
         setClientUploadedDocuments(
           (stateData?.clientUploadedDocuments ?? []) as NdaDocument[],
         );
@@ -276,6 +294,14 @@ export default function ClientNdaPage() {
 
         if (programRes.ok) {
           setProgramProposal(programData?.version ?? null);
+          setProgramVersionStatus(
+            programData?.version?.status ?? stateData?.programVersionStatus ?? null,
+          );
+          setProgramDecision(
+            programData?.version?.client_decision ??
+              stateData?.programDecision ??
+              null,
+          );
         }
       } catch {
         setAccessError("Impossible de charger ce dossier NDA.");
@@ -677,8 +703,19 @@ export default function ClientNdaPage() {
   const clientDecision =
     programDecision ?? programProposal?.client_decision ?? null;
   const hasProgramProposal = Boolean(programProposal);
-  const isProgramValidated = clientDecision === "validated";
   const normalizedDossierStatus = dossierStatus ?? "";
+  const normalizedProgramStatus =
+    programVersionStatus ?? programProposal?.status ?? "";
+  const isProgramValidated =
+    clientDecision === "validated" ||
+    PROGRAM_VALIDATED_STATUSES.includes(normalizedProgramStatus);
+  const isProgramRefused =
+    clientDecision === "refused" ||
+    PROGRAM_REFUSED_STATUSES.includes(normalizedProgramStatus);
+  const isProgramSentToClient =
+    hasProgramProposal || PROGRAM_SENT_STATUSES.includes(normalizedDossierStatus);
+  const isProgramPendingDecision =
+    isProgramSentToClient && !isProgramValidated && !isProgramRefused;
   const ndaDepositStatus = ndaTracking?.nda_deposit_status ?? null;
   const isNdaObtained =
     ndaDepositStatus === "nda_obtained" ||
@@ -714,8 +751,6 @@ export default function ClientNdaPage() {
   const showStep2Form = showStep2 && !signingDocumentsReady;
   const showSigningDocumentsAction =
     showStep2 && signingDocumentsReady && !isFinalReview;
-  const isProgramRefused = clientDecision === "refused";
-  const isProgramPendingDecision = hasProgramProposal && !clientDecision;
   const finalDocumentItems: Array<{
     key: FinalDocKey;
     name: string;
@@ -804,8 +839,8 @@ export default function ClientNdaPage() {
           : !step1Submitted
             ? 1
             : isProgramRefused
-              ? 2
-              : !hasProgramProposal
+              ? 3
+              : !isProgramSentToClient
                 ? 2
                 : isProgramPendingDecision
                   ? 3
@@ -824,11 +859,12 @@ export default function ClientNdaPage() {
       number: 2,
       label: "Programme en préparation",
       active: activeStepNumber === 2,
-      status: isProgramRefused
-        ? "Retour transmis"
-        : step1Submitted
-          ? "En cours"
-          : "À venir",
+      status:
+        isProgramSentToClient || isProgramValidated || isProgramRefused
+          ? "Terminé"
+          : step1Submitted
+            ? "En cours"
+            : "À venir",
     },
     {
       number: 3,
@@ -836,9 +872,11 @@ export default function ClientNdaPage() {
       active: activeStepNumber === 3,
       status: isProgramValidated
         ? "Terminé"
-        : hasProgramProposal && !clientDecision
-          ? "Action requise"
-          : "À venir",
+        : isProgramRefused
+          ? "Correction demandée"
+          : isProgramPendingDecision
+            ? "Action requise"
+            : "À venir",
     },
     {
       number: 4,
@@ -1753,7 +1791,7 @@ export default function ClientNdaPage() {
                 <FinalReviewStatusSection />
               ) : null}
 
-              {!isPastSigningWorkflow && !hasProgramProposal ? (
+              {!isPastSigningWorkflow && !isProgramSentToClient ? (
                 <Card>
                   <Badge>Travail du programme</Badge>
                   <h2 style={styles.cardTitle}>
@@ -1804,7 +1842,7 @@ export default function ClientNdaPage() {
                 </Card>
               ) : null}
 
-              {!isPastSigningWorkflow && !hasProgramProposal ? (
+              {!isPastSigningWorkflow && !isProgramSentToClient ? (
                 <Card>
                   <Badge>En attente</Badge>
                   <h2 style={styles.cardTitle}>Programme en cours d’étude</h2>
@@ -1814,11 +1852,23 @@ export default function ClientNdaPage() {
                     s’affichera dans cet espace.
                   </p>
                 </Card>
-              ) : isProgramPendingDecision ? (
+              ) : isProgramPendingDecision && hasProgramProposal ? (
                 <ClientProgramProposal
                   dossierId={dossierId}
                   program={programProposal}
                 />
+              ) : isProgramPendingDecision ? (
+                <Card>
+                  <Badge>Validation du programme</Badge>
+                  <h2 style={styles.cardTitle}>
+                    Votre programme est prêt à être validé
+                  </h2>
+                  <p style={{ ...styles.body, margin: "12px 0 0" }}>
+                    Une proposition de programme vous a été transmise. Si elle
+                    n'apparaît pas encore, rechargez la page dans quelques
+                    instants ou contactez Selen.
+                  </p>
+                </Card>
               ) : isProgramRefused ? (
                 <Card>
                   <Badge>En attente</Badge>
