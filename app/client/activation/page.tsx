@@ -4,7 +4,15 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createSupabaseBrowserClient } from "../../lib/supabase/client";
+import { createSupabaseBrowserClient } from "@/app/lib/supabase/client";
+
+function sanitizeNextPath(value: string | null) {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) {
+    return "/client";
+  }
+
+  return value;
+}
 
 function ClientActivationContent() {
   const router = useRouter();
@@ -15,26 +23,64 @@ function ClientActivationContent() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
+  const [activationReady, setActivationReady] = useState(false);
   const [message, setMessage] = useState("");
 
-  const nextPath = searchParams.get("next") || "/client";
+  const nextPath = sanitizeNextPath(searchParams.get("next"));
 
   useEffect(() => {
     async function prepareSession() {
       setCheckingSession(true);
+      setActivationReady(false);
       setMessage("");
 
       const code = searchParams.get("code");
+      const tokenHash = searchParams.get("token_hash");
+      const type = searchParams.get("type");
+      const otpType =
+        type === "invite" || type === "recovery" ? type : null;
 
-      if (code) {
+      if (tokenHash && otpType) {
+        const { error } = await supabase.auth.verifyOtp({
+          token_hash: tokenHash,
+          type: otpType as any,
+        });
+
+        if (error) {
+          setMessage(
+            "Le lien d'activation est invalide ou a expiré. Demandez un nouveau lien à Selen.",
+          );
+          setCheckingSession(false);
+          return;
+        }
+      } else if (code) {
         const { error } = await supabase.auth.exchangeCodeForSession(code);
 
         if (error) {
           setMessage(
-            "Le lien d’activation est invalide ou a expiré. Demandez un nouveau lien à Selen.",
+            "Le lien d'activation est invalide ou a expiré. Demandez un nouveau lien à Selen.",
           );
           setCheckingSession(false);
           return;
+        }
+      } else if (typeof window !== "undefined" && window.location.hash) {
+        const hashParams = new URLSearchParams(window.location.hash.slice(1));
+        const accessToken = hashParams.get("access_token");
+        const refreshToken = hashParams.get("refresh_token");
+
+        if (accessToken && refreshToken) {
+          const { error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+
+          if (error) {
+            setMessage(
+              "Le lien d'activation est invalide ou a expiré. Demandez un nouveau lien à Selen.",
+            );
+            setCheckingSession(false);
+            return;
+          }
         }
       }
 
@@ -42,10 +88,13 @@ function ClientActivationContent() {
 
       if (!data.session) {
         setMessage(
-          "Aucune session d’activation n’a été trouvée. Ouvrez cette page depuis le lien reçu par email.",
+          "Aucune session d'activation n'a été trouvée. Ouvrez cette page depuis le lien reçu par email.",
         );
+        setCheckingSession(false);
+        return;
       }
 
+      setActivationReady(true);
       setCheckingSession(false);
     }
 
@@ -76,13 +125,14 @@ function ClientActivationContent() {
 
     if (error) {
       setMessage(
-        "Impossible d’enregistrer votre mot de passe. Le lien a peut-être expiré.",
+        "Impossible d'enregistrer votre mot de passe. Le lien a peut-être expiré.",
       );
       setLoading(false);
       return;
     }
 
     router.replace(nextPath);
+    router.refresh();
   }
 
   return (
@@ -113,7 +163,7 @@ function ClientActivationContent() {
               }}
             >
               Choisissez le mot de passe qui vous permettra ensuite de vous
-              connecter à votre espace client Selen.
+              connecter à votre espace client Selen avec votre email.
             </p>
           </div>
         </div>
@@ -128,9 +178,9 @@ function ClientActivationContent() {
         >
           {checkingSession ? (
             <p style={{ color: "var(--ink-soft)", lineHeight: 1.6 }}>
-              Vérification du lien d’activation…
+              Vérification du lien d'activation...
             </p>
-          ) : (
+          ) : activationReady ? (
             <form
               onSubmit={handlePasswordCreation}
               style={{ display: "grid", gap: "1rem" }}
@@ -190,7 +240,7 @@ function ClientActivationContent() {
                 </span>
               </button>
             </form>
-          )}
+          ) : null}
 
           {message ? (
             <div

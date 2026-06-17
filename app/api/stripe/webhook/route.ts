@@ -284,28 +284,57 @@ async function generateClientLoginLink(
   const cleanRedirectPath = redirectPath.startsWith("/")
     ? redirectPath
     : `/${redirectPath}`;
+  const baseActivationUrl = `${siteUrl.replace(/\/$/, "")}/client/activation`;
+  const buildActivationUrl = (tokenHash: string, type: "invite" | "recovery") =>
+    `${baseActivationUrl}?token_hash=${encodeURIComponent(
+      tokenHash,
+    )}&type=${type}&next=${encodeURIComponent(cleanRedirectPath)}`;
 
-  const activationUrl = `${siteUrl}/client/activation?next=${encodeURIComponent(
-    cleanRedirectPath,
-  )}`;
+  const buildFallbackRedirectUrl = () =>
+    `${baseActivationUrl}?next=${encodeURIComponent(cleanRedirectPath)}`;
+
+  const getInternalLinkFromGeneratedLink = (
+    generatedLink: Awaited<
+      ReturnType<typeof supabaseAdmin.auth.admin.generateLink>
+    >,
+    type: "invite" | "recovery",
+  ) => {
+    const properties = generatedLink.data?.properties as
+      | {
+          hashed_token?: string;
+          action_link?: string;
+        }
+      | undefined;
+
+    if (properties?.hashed_token) {
+      return buildActivationUrl(properties.hashed_token, type);
+    }
+
+    return properties?.action_link ?? null;
+  };
 
   const inviteLink = await supabaseAdmin.auth.admin.generateLink({
     type: "invite",
     email,
     options: {
-      redirectTo: activationUrl,
+      redirectTo: buildFallbackRedirectUrl(),
     },
   });
 
-  if (inviteLink.data?.properties?.action_link) {
-    return inviteLink.data.properties.action_link;
+  const inviteActivationLink = getInternalLinkFromGeneratedLink(
+    inviteLink,
+    "invite",
+  );
+
+  if (!inviteLink.error && inviteActivationLink) {
+    return inviteActivationLink;
   }
 
   const recoveryLink = await supabaseAdmin.auth.admin.generateLink({
     type: "recovery",
     email,
     options: {
-      redirectTo: activationUrl,
+      redirectTo: buildFallbackRedirectUrl(),
     },
   });
 
@@ -315,13 +344,16 @@ async function generateClientLoginLink(
     );
   }
 
-  const actionLink = recoveryLink.data?.properties?.action_link;
+  const recoveryActivationLink = getInternalLinkFromGeneratedLink(
+    recoveryLink,
+    "recovery",
+  );
 
-  if (!actionLink) {
+  if (!recoveryActivationLink) {
     throw new Error("Supabase n’a pas retourné de lien d’activation.");
   }
 
-  return actionLink;
+  return recoveryActivationLink;
 }
 
 async function sendAutoAuditAccessEmail({
@@ -466,8 +498,10 @@ async function sendPrepaNdaAccessEmail({
     "",
     `Identifiant : ${email}`,
     "",
-    "Pour accéder à votre espace client, cliquez ici :",
+    "Pour créer votre mot de passe, cliquez ici :",
     loginLink,
+    "",
+    "Vous pourrez ensuite vous reconnecter normalement avec votre email et ce mot de passe depuis la page de connexion client.",
     "",
     "Depuis votre espace, vous pourrez déposer les premiers éléments nécessaires à la préparation de votre dossier de déclaration d’activité.",
     "",
@@ -495,13 +529,19 @@ async function sendPrepaNdaAccessEmail({
       </div>
 
       <p>
-        Pour accéder à votre espace client, cliquez sur le bouton ci-dessous :
+        Votre identifiant de connexion est votre adresse email. Pour créer votre mot de passe,
+        cliquez sur le bouton ci-dessous :
       </p>
 
       <p style="margin:24px 0;">
         <a href="${loginLink}" style="background:#3e2a1f; color:#f7ead6; padding:12px 18px; text-decoration:none; border-radius:999px; display:inline-block;">
-          Ouvrir mon espace client
+          Créer mon mot de passe
         </a>
+      </p>
+
+      <p>
+        Vous pourrez ensuite vous reconnecter normalement avec votre email et ce mot de passe
+        depuis la page de connexion client.
       </p>
 
       <p>
