@@ -285,22 +285,40 @@ async function generateClientLoginLink(
     ? redirectPath
     : `/${redirectPath}`;
 
-  const { data, error } = await supabaseAdmin.auth.admin.generateLink({
-    type: "magiclink",
+  const activationUrl = `${siteUrl}/client/activation?next=${encodeURIComponent(
+    cleanRedirectPath,
+  )}`;
+
+  const inviteLink = await supabaseAdmin.auth.admin.generateLink({
+    type: "invite",
     email,
     options: {
-      redirectTo: `${siteUrl}${cleanRedirectPath}`,
+      redirectTo: activationUrl,
     },
   });
 
-  if (error) {
-    throw new Error(`Erreur génération lien de connexion : ${error.message}`);
+  if (inviteLink.data?.properties?.action_link) {
+    return inviteLink.data.properties.action_link;
   }
 
-  const actionLink = data?.properties?.action_link;
+  const recoveryLink = await supabaseAdmin.auth.admin.generateLink({
+    type: "recovery",
+    email,
+    options: {
+      redirectTo: activationUrl,
+    },
+  });
+
+  if (recoveryLink.error) {
+    throw new Error(
+      `Erreur génération lien d’activation : ${recoveryLink.error.message}`,
+    );
+  }
+
+  const actionLink = recoveryLink.data?.properties?.action_link;
 
   if (!actionLink) {
-    throw new Error("Supabase n’a pas retourné de lien de connexion.");
+    throw new Error("Supabase n’a pas retourné de lien d’activation.");
   }
 
   return actionLink;
@@ -337,7 +355,7 @@ async function sendAutoAuditAccessEmail({
     `Identifiant : ${email}`,
     `Accès valable jusqu’au : ${expirationLabel}`,
     "",
-    "Pour accéder à votre espace client, cliquez ici :",
+    "Pour créer votre mot de passe et accéder à votre espace client, cliquez ici :",
     loginLink,
     "",
     "Depuis votre espace, vous pourrez :",
@@ -380,7 +398,7 @@ async function sendAutoAuditAccessEmail({
 
       <p style="margin:24px 0;">
         <a href="${loginLink}" style="background:#3e2a1f; color:#f7ead6; padding:12px 18px; text-decoration:none; border-radius:999px; display:inline-block;">
-          Ouvrir mon espace client
+          Créer mon mot de passe
         </a>
       </p>
 

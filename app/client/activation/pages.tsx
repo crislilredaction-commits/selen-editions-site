@@ -1,0 +1,223 @@
+"use client";
+
+import Header from "@/components/Header";
+import Footer from "@/components/Footer";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { createSupabaseBrowserClient } from "../../lib/supabase/client";
+
+function ClientActivationContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [message, setMessage] = useState("");
+
+  const nextPath = searchParams.get("next") || "/client";
+
+  useEffect(() => {
+    async function prepareSession() {
+      setCheckingSession(true);
+      setMessage("");
+
+      const code = searchParams.get("code");
+
+      if (code) {
+        const { error } = await supabase.auth.exchangeCodeForSession(code);
+
+        if (error) {
+          setMessage(
+            "Le lien d’activation est invalide ou a expiré. Demandez un nouveau lien à Selen.",
+          );
+          setCheckingSession(false);
+          return;
+        }
+      }
+
+      const { data } = await supabase.auth.getSession();
+
+      if (!data.session) {
+        setMessage(
+          "Aucune session d’activation n’a été trouvée. Ouvrez cette page depuis le lien reçu par email.",
+        );
+      }
+
+      setCheckingSession(false);
+    }
+
+    prepareSession();
+  }, [searchParams, supabase]);
+
+  async function handlePasswordCreation(event: React.FormEvent) {
+    event.preventDefault();
+
+    setLoading(true);
+    setMessage("");
+
+    if (password.length < 8) {
+      setMessage("Votre mot de passe doit contenir au moins 8 caractères.");
+      setLoading(false);
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setMessage("Les deux mots de passe ne correspondent pas.");
+      setLoading(false);
+      return;
+    }
+
+    const { error } = await supabase.auth.updateUser({
+      password,
+    });
+
+    if (error) {
+      setMessage(
+        "Impossible d’enregistrer votre mot de passe. Le lien a peut-être expiré.",
+      );
+      setLoading(false);
+      return;
+    }
+
+    router.replace(nextPath);
+  }
+
+  return (
+    <main className="gazette-paper min-h-screen text-[#3e2a1f]">
+      <Header />
+
+      <section className="mx-auto max-w-3xl px-4 md:px-6 py-12 md:py-16">
+        <div className="gazette-cta px-6 md:px-10 py-10 md:py-14">
+          <div style={{ position: "relative", zIndex: 1, textAlign: "center" }}>
+            <p className="gazette-label">Activation du compte</p>
+
+            <h1
+              className="gazette-hero-title"
+              style={{
+                color: "var(--parchment)",
+                marginBottom: "0.6rem",
+              }}
+            >
+              Créer votre mot de passe
+            </h1>
+
+            <p
+              style={{
+                color: "var(--sepia-mid)",
+                lineHeight: 1.65,
+                maxWidth: 620,
+                margin: "0 auto",
+              }}
+            >
+              Choisissez le mot de passe qui vous permettra ensuite de vous
+              connecter à votre espace client Selen.
+            </p>
+          </div>
+        </div>
+
+        <section
+          style={{
+            marginTop: "1.2rem",
+            background: "var(--paper)",
+            border: "1px solid var(--sepia-mid)",
+            padding: "1.4rem",
+          }}
+        >
+          {checkingSession ? (
+            <p style={{ color: "var(--ink-soft)", lineHeight: 1.6 }}>
+              Vérification du lien d’activation…
+            </p>
+          ) : (
+            <form
+              onSubmit={handlePasswordCreation}
+              style={{ display: "grid", gap: "1rem" }}
+            >
+              <label style={{ display: "grid", gap: "0.35rem" }}>
+                Nouveau mot de passe
+                <input
+                  type="password"
+                  placeholder="Au moins 8 caractères"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  required
+                  minLength={8}
+                  style={{
+                    width: "100%",
+                    padding: "0.75rem",
+                    border: "1px solid var(--sepia-mid)",
+                    background: "rgba(255,255,255,0.6)",
+                    color: "var(--ink)",
+                  }}
+                />
+              </label>
+
+              <label style={{ display: "grid", gap: "0.35rem" }}>
+                Confirmer le mot de passe
+                <input
+                  type="password"
+                  placeholder="Retapez votre mot de passe"
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  required
+                  minLength={8}
+                  style={{
+                    width: "100%",
+                    padding: "0.75rem",
+                    border: "1px solid var(--sepia-mid)",
+                    background: "rgba(255,255,255,0.6)",
+                    color: "var(--ink)",
+                  }}
+                />
+              </label>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="btn-ink"
+                style={{
+                  width: "100%",
+                  opacity: loading ? 0.55 : 1,
+                  cursor: loading ? "not-allowed" : "pointer",
+                }}
+              >
+                <span>
+                  {loading
+                    ? "Création du mot de passe..."
+                    : "Créer mon mot de passe"}
+                </span>
+              </button>
+            </form>
+          )}
+
+          {message ? (
+            <div
+              style={{
+                marginTop: "1rem",
+                padding: "0.9rem",
+                border: "1px solid rgba(138,75,36,0.35)",
+                background: "rgba(138,75,36,0.06)",
+                color: "var(--rust)",
+                lineHeight: 1.5,
+              }}
+            >
+              {message}
+            </div>
+          ) : null}
+        </section>
+      </section>
+
+      <Footer />
+    </main>
+  );
+}
+
+export default function ClientActivationPage() {
+  return (
+    <Suspense fallback={null}>
+      <ClientActivationContent />
+    </Suspense>
+  );
+}
