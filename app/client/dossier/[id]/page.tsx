@@ -17,7 +17,17 @@ type FinalDocKey =
   | "diplomesFormateurPrincipal"
   | "casierJudiciaireN3"
   | "statutActiviteFormationAdulte"
-  | "listeFormateursSignee";
+  | "listeFormateursSignee"
+  | "statutsSociete";
+
+type NdaTracking = {
+  nda_deposit_specific_code?: string | null;
+  nda_deposit_specific_code_label?: string | null;
+  nda_deposit_status?: string | null;
+  nda_deposit_submitted_at?: string | null;
+  nda_deposit_refusal_received_at?: string | null;
+  nda_obtained_at?: string | null;
+};
 
 type MessageRow = {
   id: string;
@@ -41,6 +51,20 @@ type NdaDocument = {
   status: string | null;
   created_at: string | null;
 };
+
+const FINAL_REVIEW_STATUSES = ["under_review", "final_review"];
+const NDA_DEPOSIT_SUBMITTED_STATUSES = [
+  "nda_deposit_submitted",
+  "deposit_submitted",
+  "submitted_to_dreets",
+  "waiting_dreets",
+];
+const NDA_REFUSED_STATUSES = ["nda_refused", "refused_by_dreets"];
+const NDA_OBTAINED_STATUSES = ["nda_obtained"];
+const OFFICIAL_NDA_DEPOSIT_URL =
+  "https://efpconnect.emploi.gouv.fr/auth/realms/efp/protocol/cas/login?TARGET=https%3A%2F%2Fwww.monactiviteformation.emploi.gouv.fr%2Fmon-activite-formation%2F";
+const TVA_EXEMPTION_CERFA_URL =
+  "https://www.impots.gouv.fr/sites/default/files/formulaires/3511-sd/2026/3511-sd_4894.pdf";
 
 // ---------------------------------------------------------------------------
 // Page principale
@@ -68,6 +92,7 @@ export default function ClientNdaPage() {
     casierJudiciaireN3: { file: null, uploading: false },
     statutActiviteFormationAdulte: { file: null, uploading: false },
     listeFormateursSignee: { file: null, uploading: false },
+    statutsSociete: { file: null, uploading: false },
   });
 
   const [form, setForm] = useState({
@@ -90,6 +115,16 @@ export default function ClientNdaPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [accessLoading, setAccessLoading] = useState(true);
   const [accessError, setAccessError] = useState<string | null>(null);
+  const [dossierStatus, setDossierStatus] = useState<string | null>(null);
+  const [ndaTracking, setNdaTracking] = useState<NdaTracking | null>(null);
+  const [ndaDepositSpecificCode, setNdaDepositSpecificCode] = useState<
+    string | null
+  >(null);
+  const [depositSubmitting, setDepositSubmitting] = useState(false);
+  const [refusalSubmitting, setRefusalSubmitting] = useState(false);
+  const [showRefusalUpload, setShowRefusalUpload] = useState(false);
+  const [refusalLetterFile, setRefusalLetterFile] = useState<File | null>(null);
+  const [refusalMessage, setRefusalMessage] = useState<string | null>(null);
   const [programProposal, setProgramProposal] = useState<any | null>(null);
   const [programDecision, setProgramDecision] = useState<string | null>(null);
   const [step1Submitted, setStep1Submitted] = useState(false);
@@ -184,6 +219,13 @@ export default function ClientNdaPage() {
         }
 
         setStep1Submitted(Boolean(stateData?.step1Submitted));
+        setDossierStatus(stateData?.dossier?.status ?? null);
+        setNdaTracking(stateData?.ndaTracking ?? null);
+        setNdaDepositSpecificCode(
+          stateData?.ndaTracking?.nda_deposit_specific_code ??
+            stateData?.ndaTracking?.nda_deposit_specific_code_label ??
+            null,
+        );
         setProgramDecision(stateData?.programDecision ?? null);
         setClientUploadedDocuments(
           (stateData?.clientUploadedDocuments ?? []) as NdaDocument[],
@@ -318,6 +360,122 @@ export default function ClientNdaPage() {
       throw new Error(
         data?.error ?? `Erreur lors de l'upload du document ${documentType}.`,
       );
+    }
+  }
+
+  async function notifyFinalDocumentsSubmitted() {
+    try {
+      const res = await fetch("/api/client/nda/final-documents-submitted", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ dossierId }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        console.warn(
+          "Notification agent documents finaux non envoyée.",
+          data?.error ?? res.statusText,
+        );
+      }
+    } catch (error) {
+      console.warn("Notification agent documents finaux non envoyée.", error);
+    }
+  }
+
+  async function handleOfficialDepositSubmitted() {
+    try {
+      setDepositSubmitting(true);
+      setErrorMessage(null);
+      setSuccessMessage(null);
+
+      const res = await fetch("/api/client/nda/deposit-submitted", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ dossierId }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data?.ok) {
+        throw new Error(
+          data?.error ?? "Impossible d'enregistrer le dépôt officiel.",
+        );
+      }
+
+      setNdaTracking((current) => ({
+        ...(current ?? {}),
+        nda_deposit_status:
+          data?.ndaTracking?.nda_deposit_status ?? "dreets_pending",
+        nda_deposit_submitted_at:
+          data?.ndaTracking?.nda_deposit_submitted_at ??
+          new Date().toISOString(),
+      }));
+      setSuccessMessage("Votre dépôt officiel a bien été enregistré.");
+      await loadClientState({ showLoading: false });
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Une erreur est survenue.",
+      );
+    } finally {
+      setDepositSubmitting(false);
+    }
+  }
+
+  async function handleSubmitRefusalLetter() {
+    try {
+      setRefusalSubmitting(true);
+      setErrorMessage(null);
+      setSuccessMessage(null);
+      setRefusalMessage(null);
+
+      if (!refusalLetterFile) {
+        throw new Error(
+          "Ajoutez le courrier de refus reçu avant de l'envoyer.",
+        );
+      }
+
+      const formData = new FormData();
+      formData.append("file", refusalLetterFile);
+      formData.append("dossierId", dossierId);
+
+      const res = await fetch("/api/client/nda/refusal-letter", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data?.ok) {
+        throw new Error(
+          data?.error ?? "Impossible d'envoyer le courrier de refus.",
+        );
+      }
+
+      setNdaTracking((current) => ({
+        ...(current ?? {}),
+        nda_deposit_status:
+          data?.ndaTracking?.nda_deposit_status ?? "refusal_received",
+        nda_deposit_refusal_received_at:
+          data?.ndaTracking?.nda_deposit_refusal_received_at ??
+          new Date().toISOString(),
+      }));
+      setRefusalLetterFile(null);
+      setShowRefusalUpload(false);
+      setRefusalMessage(
+        "Votre courrier a été transmis à Selen. Un agent va l'étudier pour vous indiquer la suite.",
+      );
+      await loadClientState({ showLoading: false });
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Une erreur est survenue.",
+      );
+    } finally {
+      setRefusalSubmitting(false);
     }
   }
 
@@ -459,6 +617,24 @@ export default function ClientNdaPage() {
       const selectedFinalDocuments = finalDocumentItems.filter(
         (item) => finalDocs[item.key].file,
       );
+      const hasReturnedFinalDocument = (documentType: string) =>
+        finalReturnedDocuments.some(
+          (document) => document.document_type === documentType,
+        );
+      const missingRequiredDocuments = finalDocumentItems.filter(
+        (item) =>
+          item.required &&
+          !finalDocs[item.key].file &&
+          !hasReturnedFinalDocument(item.documentType),
+      );
+
+      if (missingRequiredDocuments.length > 0) {
+        throw new Error(
+          `Document(s) obligatoire(s) manquant(s) : ${missingRequiredDocuments
+            .map((item) => item.name)
+            .join(", ")}.`,
+        );
+      }
 
       if (selectedFinalDocuments.length === 0) {
         throw new Error(
@@ -474,6 +650,8 @@ export default function ClientNdaPage() {
         }
       }
 
+      void notifyFinalDocumentsSubmitted();
+
       await loadClientState({ showLoading: false });
 
       setFinalDocs({
@@ -483,6 +661,7 @@ export default function ClientNdaPage() {
         casierJudiciaireN3: { file: null, uploading: false },
         statutActiviteFormationAdulte: { file: null, uploading: false },
         listeFormateursSignee: { file: null, uploading: false },
+        statutsSociete: { file: null, uploading: false },
       });
 
       setSuccessMessage("Vos documents signés ont bien été déposés.");
@@ -499,9 +678,42 @@ export default function ClientNdaPage() {
     programDecision ?? programProposal?.client_decision ?? null;
   const hasProgramProposal = Boolean(programProposal);
   const isProgramValidated = clientDecision === "validated";
-  const showStep2 = step1Submitted && isProgramValidated;
+  const normalizedDossierStatus = dossierStatus ?? "";
+  const ndaDepositStatus = ndaTracking?.nda_deposit_status ?? null;
+  const isNdaObtained =
+    ndaDepositStatus === "nda_obtained" ||
+    Boolean(ndaTracking?.nda_obtained_at) ||
+    NDA_OBTAINED_STATUSES.includes(normalizedDossierStatus);
+  const isNdaDepositSubmitted =
+    ndaDepositStatus === "dreets_pending" ||
+    Boolean(ndaTracking?.nda_deposit_submitted_at) ||
+    NDA_DEPOSIT_SUBMITTED_STATUSES.includes(normalizedDossierStatus);
+  const isNdaRefused =
+    ndaDepositStatus === "refusal_received" ||
+    Boolean(ndaTracking?.nda_deposit_refusal_received_at) ||
+    NDA_REFUSED_STATUSES.includes(normalizedDossierStatus);
+  const isNdaDepositReady =
+    normalizedDossierStatus === "compliant" &&
+    !isNdaObtained &&
+    !isNdaDepositSubmitted &&
+    !isNdaRefused;
+  const isFinalReview =
+    !isNdaObtained &&
+    !isNdaDepositSubmitted &&
+    !isNdaRefused &&
+    !isNdaDepositReady &&
+    FINAL_REVIEW_STATUSES.includes(normalizedDossierStatus);
+  const isPastSigningWorkflow =
+    isFinalReview ||
+    isNdaDepositReady ||
+    isNdaDepositSubmitted ||
+    isNdaRefused ||
+    isNdaObtained;
+  const showStep2 =
+    step1Submitted && isProgramValidated && !isPastSigningWorkflow;
   const showStep2Form = showStep2 && !signingDocumentsReady;
-  const showSigningDocumentsAction = showStep2 && signingDocumentsReady;
+  const showSigningDocumentsAction =
+    showStep2 && signingDocumentsReady && !isFinalReview;
   const isProgramRefused = clientDecision === "refused";
   const isProgramPendingDecision = hasProgramProposal && !clientDecision;
   const finalDocumentItems: Array<{
@@ -510,6 +722,7 @@ export default function ClientNdaPage() {
     documentType: string;
     status: "Obligatoire" | "Si concerné";
     statusColor: "required" | "optional";
+    required: boolean;
     description: string;
     notice: string;
   }> = [
@@ -519,6 +732,7 @@ export default function ClientNdaPage() {
       documentType: "convention_signee",
       status: "Obligatoire",
       statusColor: "required",
+      required: true,
       description:
         "Déposez la convention complétée et signée avec la mention demandée.",
       notice: "Format accepté : PDF, DOCX.",
@@ -529,6 +743,7 @@ export default function ClientNdaPage() {
       documentType: "programme_formation_signe",
       status: "Obligatoire",
       statusColor: "required",
+      required: true,
       description:
         "Déposez le programme signé après vérification des informations.",
       notice: "Format accepté : PDF, DOCX.",
@@ -539,6 +754,7 @@ export default function ClientNdaPage() {
       documentType: "diplomes_formateur_principal",
       status: "Obligatoire",
       statusColor: "required",
+      required: true,
       description:
         "Déposez les diplômes, attestations de formation ou justificatifs de compétence du formateur principal.",
       notice: "Format accepté : PDF, DOCX.",
@@ -549,53 +765,64 @@ export default function ClientNdaPage() {
       documentType: "casier_judiciaire_n3",
       status: "Obligatoire",
       statusColor: "required",
+      required: true,
       description:
         "Déposez le casier judiciaire n°3 du dirigeant pour le contrôle final.",
       notice: "Format accepté : PDF, DOCX.",
     },
-    {
-      key: "statutActiviteFormationAdulte",
-      name: "Statut / activité de formation adulte",
-      documentType: "statut_activite_formation_adulte",
-      status: "Obligatoire",
-      statusColor: "required",
-      description:
-        "Déposez la pièce permettant de confirmer l'activité de formation adulte.",
-      notice: "Format accepté : PDF, DOCX.",
-    },
+
     {
       key: "listeFormateursSignee",
       name: "Liste des formateurs signée",
       documentType: "liste_formateurs_signee",
+      status: "Obligatoire",
+      statusColor: "required",
+      required: true,
+      description:
+        "Déposez la liste des formateurs signée pour permettre le contrôle final du dossier.",
+      notice: "Format accepté : PDF, DOCX.",
+    },
+    {
+      key: "statutsSociete",
+      name: "Statuts de la société",
+      documentType: "statuts_societe",
       status: "Si concerné",
       statusColor: "optional",
+      required: false,
       description:
-        "Déposez la liste des formateurs signée si elle fait partie de votre pack ou dès qu'elle est prête.",
+        "Déposez les statuts de la société uniquement si votre structure en dispose.",
       notice: "Format accepté : PDF, DOCX.",
     },
   ];
-  const activeStepNumber = !step1Submitted
-    ? 1
-    : isProgramRefused
-      ? 2
-      : !hasProgramProposal
-        ? 2
-        : isProgramPendingDecision
-          ? 3
-          : isProgramValidated
-            ? 4
-            : 2;
+  const activeStepNumber =
+    isNdaObtained || isNdaDepositSubmitted || isNdaRefused
+      ? 7
+      : isNdaDepositReady
+        ? 6
+        : isFinalReview
+          ? 5
+          : !step1Submitted
+            ? 1
+            : isProgramRefused
+              ? 2
+              : !hasProgramProposal
+                ? 2
+                : isProgramPendingDecision
+                  ? 3
+                  : isProgramValidated
+                    ? 4
+                    : 2;
 
   const steps = [
     {
       number: 1,
-      label: "Dépôt initial",
+      label: "Documents initiaux déposés",
       active: activeStepNumber === 1,
       status: step1Submitted ? "Terminé" : "En cours",
     },
     {
       number: 2,
-      label: "Analyse du programme",
+      label: "Programme en préparation",
       active: activeStepNumber === 2,
       status: isProgramRefused
         ? "Retour transmis"
@@ -615,31 +842,49 @@ export default function ClientNdaPage() {
     },
     {
       number: 4,
-      label: "Dossier NDA à compléter",
+      label: "Documents à signer et pièces finales",
       active: activeStepNumber === 4,
-      status: signingDocumentsReady
-        ? "Documents à signer"
-        : isProgramValidated
-          ? "Coordonnées à renseigner"
-          : "Disponible après validation du programme",
+      status:
+        isFinalReview || isNdaDepositReady
+          ? "Terminé"
+          : signingDocumentsReady
+            ? "Documents à signer"
+            : isProgramValidated
+              ? "Coordonnées à renseigner"
+              : "Disponible après validation du programme",
     },
     {
       number: 5,
-      label: "Vérification agent",
-      active: false,
-      status: "À venir",
+      label: "Vérification finale par Selen",
+      active: activeStepNumber === 5,
+      status: isNdaDepositReady
+        ? "Terminé"
+        : isFinalReview
+          ? "En cours"
+          : "À venir",
     },
     {
       number: 6,
-      label: "Dossier prêt pour dépôt",
-      active: false,
-      status: "À venir",
+      label: "Procédure de dépôt NDA",
+      active: activeStepNumber === 6,
+      status:
+        isNdaObtained || isNdaDepositSubmitted || isNdaRefused
+          ? "Terminé"
+          : isNdaDepositReady
+            ? "Disponible"
+            : "À venir",
     },
     {
       number: 7,
       label: "Résultat DREETS",
-      active: false,
-      status: "À venir",
+      active: activeStepNumber === 7,
+      status: isNdaObtained
+        ? "NDA obtenu"
+        : isNdaRefused
+          ? "Courrier transmis"
+          : isNdaDepositSubmitted
+            ? "En attente"
+            : "À venir",
     },
   ];
 
@@ -1481,7 +1726,34 @@ export default function ClientNdaPage() {
                 ) : null}
               </Card>
 
-              {!hasProgramProposal ? (
+              {isNdaDepositReady ||
+              isNdaDepositSubmitted ||
+              isNdaRefused ||
+              isNdaObtained ? (
+                <NdaDepositProcedureSection
+                  availableDocuments={publishedDocuments}
+                  dossierId={dossierId}
+                  specificCode={ndaDepositSpecificCode}
+                  depositSubmitting={depositSubmitting}
+                  refusalSubmitting={refusalSubmitting}
+                  isDepositSubmitted={isNdaDepositSubmitted}
+                  isNdaObtained={isNdaObtained}
+                  isNdaRefused={isNdaRefused}
+                  refusalLetterFile={refusalLetterFile}
+                  refusalMessage={refusalMessage}
+                  showRefusalUpload={showRefusalUpload}
+                  onDepositSubmitted={handleOfficialDepositSubmitted}
+                  onRefusalFileChange={setRefusalLetterFile}
+                  onRefusalSubmit={handleSubmitRefusalLetter}
+                  onToggleRefusalUpload={() =>
+                    setShowRefusalUpload((current) => !current)
+                  }
+                />
+              ) : isFinalReview ? (
+                <FinalReviewStatusSection />
+              ) : null}
+
+              {!isPastSigningWorkflow && !hasProgramProposal ? (
                 <Card>
                   <Badge>Travail du programme</Badge>
                   <h2 style={styles.cardTitle}>
@@ -1518,7 +1790,7 @@ export default function ClientNdaPage() {
                     vous avec une nouvelle proposition de programme.
                   </p>
                 </Card>
-              ) : isProgramValidated ? (
+              ) : isProgramValidated && !isPastSigningWorkflow ? (
                 <Card>
                   <Badge>Étape 2</Badge>
                   <h2 style={styles.cardTitle}>
@@ -1532,7 +1804,7 @@ export default function ClientNdaPage() {
                 </Card>
               ) : null}
 
-              {!hasProgramProposal ? (
+              {!isPastSigningWorkflow && !hasProgramProposal ? (
                 <Card>
                   <Badge>En attente</Badge>
                   <h2 style={styles.cardTitle}>Programme en cours d’étude</h2>
@@ -1558,7 +1830,7 @@ export default function ClientNdaPage() {
                     avec une nouvelle proposition de programme.
                   </p>
                 </Card>
-              ) : isProgramValidated ? (
+              ) : isProgramValidated && !isPastSigningWorkflow ? (
                 <>
                   {showStep2Form ? (
                     <>
@@ -1957,6 +2229,318 @@ export default function ClientNdaPage() {
 // DocDropZone
 // ---------------------------------------------------------------------------
 
+function FinalReviewStatusSection() {
+  return (
+    <Card>
+      <Badge>Vérification finale</Badge>
+      <h2 style={styles.cardTitle}>
+        Votre dossier est en vérification par Selen
+      </h2>
+      <p style={{ ...styles.body, margin: "12px 0 0" }}>
+        Vos documents signés et pièces finales ont été transmis. Votre
+        conseiller vérifie maintenant le dossier avant de vous indiquer la
+        procédure de dépôt NDA.
+      </p>
+      <Notice style={{ marginTop: 16 }}>
+        Vous n'avez rien d'autre à déposer pour le moment. Si une précision est
+        nécessaire, votre conseiller vous contactera depuis cet espace.
+      </Notice>
+    </Card>
+  );
+}
+
+function NdaDepositProcedureSection({
+  availableDocuments,
+  dossierId,
+  specificCode,
+  depositSubmitting,
+  refusalSubmitting,
+  isDepositSubmitted,
+  isNdaObtained,
+  isNdaRefused,
+  refusalLetterFile,
+  refusalMessage,
+  showRefusalUpload,
+  onDepositSubmitted,
+  onRefusalFileChange,
+  onRefusalSubmit,
+  onToggleRefusalUpload,
+}: {
+  availableDocuments: NdaDocument[];
+  dossierId: string;
+  specificCode: string | null;
+  depositSubmitting: boolean;
+  refusalSubmitting: boolean;
+  isDepositSubmitted: boolean;
+  isNdaObtained: boolean;
+  isNdaRefused: boolean;
+  refusalLetterFile: File | null;
+  refusalMessage: string | null;
+  showRefusalUpload: boolean;
+  onDepositSubmitted: () => void;
+  onRefusalFileChange: (file: File | null) => void;
+  onRefusalSubmit: () => void;
+  onToggleRefusalUpload: () => void;
+}) {
+  const displayedSpecificCode =
+    specificCode && specificCode.trim().length > 0
+      ? specificCode
+      : "À confirmer par Selen";
+
+  if (isNdaObtained) {
+    return (
+      <Card>
+        <Badge>NDA obtenu</Badge>
+        <h2 style={styles.cardTitle}>
+          🎉 Félicitations ! Votre numéro de déclaration d'activité est obtenu !
+          🎆✨
+        </h2>
+        <p style={{ ...styles.body, margin: "12px 0 0" }}>
+          Votre organisme apparaît désormais dans la liste publique des
+          organismes de formation. Votre démarche NDA est validée.
+        </p>
+
+        <div style={{ marginTop: 18 }}>
+          <h3 style={styles.subTitle}>Exonération de TVA formation</h3>
+          <Notice>
+            Vous pouvez télécharger le formulaire CERFA 3511-SD si vous
+            souhaitez demander l'exonération de TVA applicable aux activités de
+            formation. Il devra être complété puis envoyé par courrier à la
+            DREETS de votre région. L'envoi postal n'est pas automatisé par
+            Selen.
+          </Notice>
+          <a
+            href={TVA_EXEMPTION_CERFA_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="btn-ink"
+            style={{ marginTop: 14, display: "inline-flex" }}
+          >
+            <span>Télécharger le CERFA d'exonération de TVA</span>
+          </a>
+        </div>
+      </Card>
+    );
+  }
+
+  if (isDepositSubmitted || isNdaRefused) {
+    return (
+      <Card>
+        <Badge>Retour DREETS</Badge>
+        <h2 style={styles.cardTitle}>
+          Votre dossier est déposé, il ne reste plus qu'à patienter
+        </h2>
+        <p style={{ ...styles.body, margin: "12px 0 0" }}>
+          Bravo pour cette étape importante. Votre dossier a été déposé sur la
+          plateforme officielle. La DREETS va maintenant l'étudier et vous
+          transmettre une réponse.
+        </p>
+        <Notice style={{ marginTop: 16 }}>
+          Vous avez fait une grosse partie du chemin. Selen reste à vos côtés
+          pour la suite.
+        </Notice>
+
+        {refusalMessage ? (
+          <Notice
+            style={{
+              marginTop: 16,
+              border: "1px solid #cfe3c3",
+              background: "#f4fbef",
+              color: "#446236",
+            }}
+          >
+            {refusalMessage}
+          </Notice>
+        ) : null}
+
+        {isNdaRefused ? (
+          <Notice style={{ marginTop: 16 }}>
+            Votre courrier de refus a été transmis à Selen. Un agent va
+            l'étudier pour vous indiquer la suite.
+          </Notice>
+        ) : null}
+
+        <div style={{ marginTop: 18 }}>
+          <Btn variant="ghost" onClick={onToggleRefusalUpload}>
+            {showRefusalUpload
+              ? "Masquer le dépôt du courrier"
+              : "J'ai reçu un courrier de refus"}
+          </Btn>
+        </div>
+
+        {showRefusalUpload ? (
+          <div
+            style={{
+              marginTop: 16,
+              borderTop: "1px solid #ead9bf",
+              paddingTop: 16,
+            }}
+          >
+            <h3 style={styles.subTitle}>Déposer le courrier de refus</h3>
+            <p style={{ ...styles.body, margin: "0 0 12px" }}>
+              Ajoutez le courrier reçu de la DREETS. Selen l'analysera pour vous
+              indiquer les prochaines étapes.
+            </p>
+            <input
+              type="file"
+              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+              onChange={(event) =>
+                onRefusalFileChange(event.target.files?.[0] ?? null)
+              }
+              style={{
+                width: "100%",
+                border: "1px solid #d9ccb9",
+                background: "#fffdfa",
+                padding: "10px 12px",
+                fontFamily: "sans-serif",
+              }}
+            />
+            {refusalLetterFile ? (
+              <p style={{ ...styles.body, margin: "10px 0 0" }}>
+                Fichier sélectionné : <strong>{refusalLetterFile.name}</strong>
+              </p>
+            ) : null}
+            <div style={{ marginTop: 14 }}>
+              <Btn variant="primary" onClick={onRefusalSubmit}>
+                {refusalSubmitting
+                  ? "Transmission..."
+                  : "Transmettre le courrier à Selen"}
+              </Btn>
+            </div>
+          </div>
+        ) : null}
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <Badge>Procédure de dépôt NDA</Badge>
+      <h2 style={styles.cardTitle}>Votre dossier NDA est prêt à être déposé</h2>
+
+      <p style={{ ...styles.body, margin: "12px 0 0" }}>
+        Selen a vérifié les documents de votre dossier. Vous pouvez maintenant
+        déposer votre demande de déclaration d'activité sur la plateforme
+        officielle.
+      </p>
+
+      <a
+        href={OFFICIAL_NDA_DEPOSIT_URL}
+        target="_blank"
+        rel="noreferrer"
+        className="btn-ink"
+        style={{ marginTop: 18, display: "inline-flex" }}
+      >
+        <span>Accéder à la plateforme de dépôt</span>
+      </a>
+
+      <div style={{ marginTop: 18 }}>
+        <DocumentList
+          dossierId={dossierId}
+          title="Documents à déposer ou récupérer"
+          emptyText="Aucun document de dépôt n'est encore disponible dans cet espace."
+          documents={availableDocuments}
+          downloadable
+        />
+      </div>
+
+      <div style={{ marginTop: 18 }}>
+        <h3 style={styles.subTitle}>Codes à utiliser</h3>
+        <div style={{ display: "grid", gap: 10 }}>
+          <Notice>
+            <strong>Code général :</strong> 333 - Enseignements pour adultes
+          </Notice>
+          <Notice>
+            <strong>Code spécifique au domaine de formation :</strong>{" "}
+            {displayedSpecificCode}
+          </Notice>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 18 }}>
+        <h3 style={styles.subTitle}>Procédure de dépôt</h3>
+
+        <div style={{ display: "grid", gap: 12 }}>
+          <Notice>
+            <strong>1. Accédez à la plateforme officielle</strong>
+            <p style={{ ...styles.body, margin: "8px 0 0" }}>
+              Cliquez sur <strong>“Accéder à la plateforme de dépôt”</strong>,
+              puis connectez-vous à votre espace Mon Activité Formation ou créez
+              votre accès si nécessaire.
+            </p>
+          </Notice>
+
+          <Notice>
+            <strong>2. Lancez la démarche de déclaration d’activité</strong>
+            <p style={{ ...styles.body, margin: "8px 0 0" }}>
+              Choisissez la démarche liée à la déclaration d’activité d’un
+              organisme de formation, puis renseignez les informations de votre
+              organisme.
+            </p>
+          </Notice>
+
+          <Notice>
+            <strong>3. Renseignez les codes d’activité</strong>
+            <p style={{ ...styles.body, margin: "8px 0 0" }}>
+              Indiquez le code général{" "}
+              <strong>333 - Enseignements pour adultes</strong>, puis le code
+              spécifique au domaine de formation fourni par Selen.
+            </p>
+          </Notice>
+
+          <Notice>
+            <strong>4. Déposez les documents préparés</strong>
+            <p style={{ ...styles.body, margin: "8px 0 10px" }}>
+              Déposez les documents disponibles dans votre espace client Selen,
+              notamment :
+            </p>
+            <ul style={{ ...styles.body, margin: "0 0 0 18px", padding: 0 }}>
+              <li>la convention de formation signée ;</li>
+              <li>le programme de formation signé ;</li>
+              <li>la liste des formateurs signée ;</li>
+              <li>le CV, les diplômes ou attestations utiles ;</li>
+              <li>le casier judiciaire n°3 ;</li>
+              <li>le justificatif d’existence ou l’avis INSEE ;</li>
+              <li>toute autre pièce demandée selon votre situation.</li>
+            </ul>
+          </Notice>
+
+          <Notice>
+            <strong>5. Vérifiez et validez le dépôt</strong>
+            <p style={{ ...styles.body, margin: "8px 0 0" }}>
+              Relisez attentivement les informations saisies, puis validez le
+              dépôt sur la plateforme officielle. Conservez le récapitulatif ou
+              l’accusé de dépôt si la plateforme vous en fournit un.
+            </p>
+          </Notice>
+
+          <Notice>
+            <strong>
+              Important : surveillez votre messagerie Mon Activité Formation
+            </strong>
+            <p style={{ ...styles.body, margin: "8px 0 0" }}>
+              La DREETS peut vous envoyer un message directement dans la
+              messagerie interne de votre espace Mon Activité Formation, sans
+              toujours vous prévenir par email. Pensez à consulter régulièrement
+              cette messagerie après le dépôt.
+            </p>
+            <p style={{ ...styles.body, margin: "8px 0 0" }}>
+              Pour toute question ou en cas de doute, votre agent Selen reste
+              disponible via la messagerie de votre espace client Selen.
+            </p>
+          </Notice>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 18 }}>
+        <Btn variant="primary" onClick={onDepositSubmitted}>
+          {depositSubmitting ? "Enregistrement..." : "J'ai déposé mon dossier"}
+        </Btn>
+      </div>
+    </Card>
+  );
+}
+
 function DocumentSections({
   dossierId,
   clientUploadedDocuments,
@@ -2083,6 +2667,7 @@ function FinalDocumentsUploadSection({
     documentType: string;
     status: "Obligatoire" | "Si concerné";
     statusColor: "required" | "optional";
+    required: boolean;
     description: string;
     notice: string;
   }>;
@@ -2100,9 +2685,28 @@ function FinalDocumentsUploadSection({
         Déposer les documents signés et pièces finales
       </h2>
 
+      <Notice style={{ marginTop: 16, marginBottom: 18 }}>
+        Si vous avez plusieurs fichiers pour une même pièce justificative, vous
+        pouvez les regrouper en un seul PDF avant dépôt. Par exemple, vous
+        pouvez utiliser un outil comme{" "}
+        <a
+          href="https://www.ilovepdf.com/fr/fusionner_pdf"
+          target="_blank"
+          rel="noreferrer"
+          style={{
+            color: "#9c5a2e",
+            fontWeight: 600,
+            textDecoration: "underline",
+            textUnderlineOffset: 2,
+          }}
+        >
+          iLovePDF
+        </a>{" "}
+        pour fusionner plusieurs documents PDF en un seul fichier.
+      </Notice>
+
       <div
         style={{
-          marginTop: 18,
           display: "grid",
           gridTemplateColumns: "1fr 1fr",
           gap: 16,
@@ -2219,7 +2823,7 @@ function DocumentList({
 
       if (!res.ok || !data?.url) {
         throw new Error(
-          data?.error ?? "Impossible de générer le lien de téléchargement.",
+          data?.error ?? "Impossible de préparer le lien de téléchargement.",
         );
       }
 
@@ -2422,6 +3026,7 @@ function formatDocumentType(value?: string | null) {
     statut_activite_formation_adulte:
       "Justificatif / statut activité de formation adulte",
     liste_formateurs_signee: "Liste des formateurs signée",
+    statuts_societe: "Statuts de la société",
   };
 
   if (labels[value]) {
@@ -3015,6 +3620,14 @@ const styles = {
     textTransform: "uppercase" as const,
     color: "#9c5a2e",
     margin: 0,
+    fontFamily: "sans-serif",
+  } as React.CSSProperties,
+
+  subTitle: {
+    margin: "0 0 10px",
+    color: "#3a261a",
+    fontSize: 16,
+    fontWeight: 600,
     fontFamily: "sans-serif",
   } as React.CSSProperties,
 };

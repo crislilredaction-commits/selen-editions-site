@@ -53,7 +53,13 @@ export async function GET(req: Request) {
         date_formation_prevue,
         lieu_formation,
         lieu_signature_convention,
-        date_signature_convention
+        date_signature_convention,
+        nda_deposit_specific_code,
+        nda_deposit_specific_code_label,
+        nda_deposit_status,
+        nda_deposit_submitted_at,
+        nda_deposit_refusal_received_at,
+        nda_obtained_at
       `,
       )
       .eq("dossier_id", dossierId)
@@ -186,6 +192,18 @@ export async function GET(req: Request) {
         id: dossier.id,
         status: dossier.status,
         title: dossier.title,
+      },
+      ndaTracking: {
+        nda_deposit_specific_code:
+          ndaVariables?.nda_deposit_specific_code ?? null,
+        nda_deposit_specific_code_label:
+          ndaVariables?.nda_deposit_specific_code_label ?? null,
+        nda_deposit_status: ndaVariables?.nda_deposit_status ?? null,
+        nda_deposit_submitted_at:
+          ndaVariables?.nda_deposit_submitted_at ?? null,
+        nda_deposit_refusal_received_at:
+          ndaVariables?.nda_deposit_refusal_received_at ?? null,
+        nda_obtained_at: ndaVariables?.nda_obtained_at ?? null,
       },
       step1Submitted,
       programDecision,
