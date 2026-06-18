@@ -41,6 +41,10 @@ export default function ClientProgramProposal({
   const [replacementFile, setReplacementFile] = useState<File | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [confirmation, setConfirmation] = useState<{
+    title: string;
+    message: string;
+  } | null>(null);
 
   async function handleDecision(nextDecision: "validated" | "refused") {
     try {
@@ -90,8 +94,19 @@ export default function ClientProgramProposal({
           ? "Votre validation a bien été transmise à votre agent."
           : "Votre demande de modification a bien été transmise à votre agent.",
       );
-
-      window.location.reload();
+      setConfirmation(
+        nextDecision === "validated"
+          ? {
+              title: "Programme validé",
+              message:
+                "Votre validation du programme a bien été prise en compte. Selen poursuit la préparation de votre dossier NDA. Vous recevrez un email dès que la prochaine étape sera disponible.",
+            }
+          : {
+              title: "Correction demandée",
+              message:
+                "Votre demande de correction a bien été transmise. Selen va reprendre votre programme à partir de vos remarques. Vous recevrez un email lorsqu'une nouvelle version sera disponible.",
+            },
+      );
     } catch (error) {
       setErrorMessage(
         error instanceof Error ? error.message : "Erreur inconnue.",
@@ -722,6 +737,125 @@ export default function ClientProgramProposal({
         >
           {isSubmitting ? "Envoi..." : "Je valide ce programme"}
         </button>
+      </div>
+
+      {confirmation ? (
+        <ProgramConfirmationDialog
+          title={confirmation.title}
+          message={confirmation.message}
+          onClose={() => {
+            setConfirmation(null);
+            window.location.reload();
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function ProgramConfirmationDialog({
+  title,
+  message,
+  onClose,
+}: {
+  title: string;
+  message: string;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="program-confirmation-title"
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 80,
+        display: "grid",
+        placeItems: "center",
+        background: "rgba(58,38,26,0.38)",
+        padding: "1rem",
+      }}
+    >
+      <div
+        style={{
+          width: "min(560px, 100%)",
+          border: "1px solid #d8c3a8",
+          background: "#fffaf3",
+          boxShadow: "0 24px 70px rgba(58,38,26,0.28)",
+          padding: "1.4rem",
+          borderRadius: 4,
+        }}
+      >
+        <div
+          style={{
+            display: "inline-flex",
+            border: "1px solid #d8c3a8",
+            background: "#f7eee2",
+            padding: "3px 10px",
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: "0.18em",
+            textTransform: "uppercase",
+            color: "#9c5a2e",
+            fontFamily: "sans-serif",
+            borderRadius: 2,
+            marginBottom: 10,
+          }}
+        >
+          Bien reçu
+        </div>
+        <h2
+          id="program-confirmation-title"
+          style={{
+            fontSize: 22,
+            fontWeight: 600,
+            lineHeight: 1.2,
+            color: "#3a261a",
+            margin: 0,
+            letterSpacing: "-0.01em",
+          }}
+        >
+          {title}
+        </h2>
+        <p
+          style={{
+            fontSize: 14,
+            lineHeight: 1.7,
+            color: "#5f4d3d",
+            margin: "12px 0 0",
+            fontFamily: "sans-serif",
+          }}
+        >
+          {message}
+        </p>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            marginTop: 18,
+          }}
+        >
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              background: "#4b2e1e",
+              color: "white",
+              border: "1px solid #4b2e1e",
+              borderRadius: 3,
+              padding: "12px 18px",
+              fontSize: 12,
+              fontWeight: 600,
+              fontFamily: "sans-serif",
+              letterSpacing: "0.14em",
+              textTransform: "uppercase",
+              cursor: "pointer",
+            }}
+          >
+            J'ai compris
+          </button>
+        </div>
       </div>
     </div>
   );

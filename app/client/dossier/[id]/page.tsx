@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import ClientMessagingPanel from "@/components/ClientMessagingPanel";
 import ClientProgramProposal from "@/components/ClientProgramProposal";
 import { createSupabaseBrowserClient } from "@/app/lib/supabase/client";
@@ -28,6 +29,12 @@ type NdaTracking = {
   nda_deposit_refusal_received_at?: string | null;
   nda_obtained_at?: string | null;
 };
+
+type ConfirmationDialogState = {
+  title: string;
+  message: string;
+  actionLabel?: string;
+} | null;
 
 type MessageRow = {
   id: string;
@@ -139,6 +146,8 @@ export default function ClientNdaPage() {
   const [showRefusalUpload, setShowRefusalUpload] = useState(false);
   const [refusalLetterFile, setRefusalLetterFile] = useState<File | null>(null);
   const [refusalMessage, setRefusalMessage] = useState<string | null>(null);
+  const [confirmationDialog, setConfirmationDialog] =
+    useState<ConfirmationDialogState>(null);
   const [programProposal, setProgramProposal] = useState<any | null>(null);
   const [programDecision, setProgramDecision] = useState<string | null>(null);
   const [programVersionStatus, setProgramVersionStatus] = useState<
@@ -191,6 +200,14 @@ export default function ClientNdaPage() {
 
   function handleFileDrop(key: DocKey, file: File) {
     setDocs((prev) => ({ ...prev, [key]: { file, uploading: false } }));
+  }
+
+  function showConfirmation(
+    title: string,
+    message: string,
+    actionLabel = "J'ai compris",
+  ) {
+    setConfirmationDialog({ title, message, actionLabel });
   }
 
   function handleFinalFileDrop(key: FinalDocKey, file: File) {
@@ -442,6 +459,10 @@ export default function ClientNdaPage() {
           new Date().toISOString(),
       }));
       setSuccessMessage("Votre dépôt officiel a bien été enregistré.");
+      showConfirmation(
+        "Dépôt officiel enregistré",
+        "Nous avons bien noté que votre dossier NDA a été déposé sur la plateforme officielle. Selen reste à vos côtés pendant l'attente du retour DREETS. Vous serez informé par email dès qu'une action sera attendue de votre part.",
+      );
       await loadClientState({ showLoading: false });
     } catch (error) {
       setErrorMessage(
@@ -494,6 +515,10 @@ export default function ClientNdaPage() {
       setShowRefusalUpload(false);
       setRefusalMessage(
         "Votre courrier a été transmis à Selen. Un agent va l'étudier pour vous indiquer la suite.",
+      );
+      showConfirmation(
+        "Courrier transmis à Selen",
+        "Nous avons bien reçu votre courrier de refus. Selen va l'étudier pour comprendre les points à reprendre. Vous recevrez un email lorsqu'une suite sera disponible dans votre espace client.",
       );
       await loadClientState({ showLoading: false });
     } catch (error) {
@@ -570,6 +595,10 @@ export default function ClientNdaPage() {
       });
 
       setSuccessMessage("Vos informations essentielles ont bien été envoyées.");
+      showConfirmation(
+        "Informations reçues",
+        "Nous avons bien reçu vos informations essentielles et vos premiers documents. Selen va maintenant vérifier les éléments transmis. Vous recevrez un email dès que votre programme sera prêt à être consulté ou dès qu'une action sera attendue de votre part.",
+      );
     } catch (error) {
       setErrorMessage(
         error instanceof Error ? error.message : "Une erreur est survenue.",
@@ -624,6 +653,10 @@ export default function ClientNdaPage() {
       }
 
       setSuccessMessage("Les coordonnées du client ont bien été enregistrées.");
+      showConfirmation(
+        "Coordonnées transmises",
+        "Vos coordonnées client ont bien été transmises à Selen. Nous allons préparer les documents nécessaires à votre dossier. Vous recevrez un email dès qu'ils seront prêts et mis à disposition dans votre espace client.",
+      );
       router.refresh();
     } catch (error) {
       setErrorMessage(
@@ -691,6 +724,10 @@ export default function ClientNdaPage() {
       });
 
       setSuccessMessage("Vos documents signés ont bien été déposés.");
+      showConfirmation(
+        "Documents reçus",
+        "Nous avons bien reçu vos documents. Selen va effectuer la vérification finale de votre dossier. Vous recevrez un email dès que la suite sera disponible.",
+      );
     } catch (error) {
       setErrorMessage(
         error instanceof Error ? error.message : "Une erreur est survenue.",
@@ -1080,7 +1117,28 @@ export default function ClientNdaPage() {
           </div>
 
           {/* Nav droite */}
-          <div style={{ display: "flex", gap: 10 }}>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <Link
+              href="/client"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                border: "1px solid #d8c3a8",
+                background: "#fffaf3",
+                color: "#4b2e1e",
+                padding: "8px 12px",
+                borderRadius: 2,
+                fontSize: 11,
+                fontWeight: 700,
+                fontFamily: "sans-serif",
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                textDecoration: "none",
+              }}
+            >
+              Retour à mon espace client
+            </Link>
             <Btn variant="ghost" size="sm">
               Réserver un appel
             </Btn>
@@ -1887,73 +1945,13 @@ export default function ClientNdaPage() {
                       <Card>
                         <Badge>Étape 2</Badge>
                         <h2 style={styles.cardTitle}>
-                          Avant de renseigner votre client
-                        </h2>
-
-                        <div
-                          style={{
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: 12,
-                            marginTop: 16,
-                          }}
-                        >
-                          <p style={styles.body}>
-                            Maintenant que votre programme est validé, vous
-                            devez renseigner les coordonnées du client à qui
-                            vous allez dispenser cette formation.
-                          </p>
-
-                          <Notice>
-                            Le client doit être un{" "}
-                            <strong>professionnel</strong> disposant d’un
-                            <strong> numéro SIRET</strong>.
-                          </Notice>
-
-                          <Notice>
-                            Le client ne doit pas être un proche : évitez la
-                            famille et les amis proches.
-                          </Notice>
-
-                          <Notice>
-                            Les dates de formation doivent être prévues entre
-                            <strong> 1 mois minimum</strong> et
-                            <strong> 3 mois maximum</strong>.
-                          </Notice>
-
-                          <Notice>
-                            La formation peut avoir lieu{" "}
-                            <strong>en présentiel</strong> ou
-                            <strong> en visioconférence</strong>.
-                          </Notice>
-
-                          <Notice>
-                            Des contrôles de la DREETS sont possibles : contrôle
-                            sur place, contrôle à distance via votre lien de
-                            visioconférence, ou contrôle administratif avec
-                            demande de preuves de réalisation (émargements,
-                            évaluations, supports, etc.).
-                          </Notice>
-
-                          <Notice>
-                            Il est donc important d’indiquer une adresse précise
-                            ou un vrai lien de connexion utilisable.
-                          </Notice>
-
-                          <Notice>
-                            <strong>
-                              En cas de doute, réservez un appel afin d’échanger
-                              avec un conseiller expert.
-                            </strong>
-                          </Notice>
-                        </div>
-                      </Card>
-
-                      <Card>
-                        <Badge>Étape 2</Badge>
-                        <h2 style={styles.cardTitle}>
                           Coordonnées du client à former
                         </h2>
+                        <p style={{ ...styles.body, margin: "12px 0 0" }}>
+                          Renseignez les informations connues sur votre premier
+                          client professionnel. Les aides sont placées au fil du
+                          formulaire pour vous guider champ par champ.
+                        </p>
 
                         <div
                           style={{
@@ -1963,10 +1961,14 @@ export default function ClientNdaPage() {
                             marginTop: 20,
                           }}
                         >
-                          <Step2Section title="Client professionnel / signataire">
+                          <Step2Section
+                            title="Client professionnel / signataire"
+                            description="Indiquez ici l'identité du premier client ou bénéficiaire professionnel pour lequel vous allez réaliser votre première formation. Le client doit être un professionnel disposant d'un numéro SIRET."
+                          >
                             <Field
                               label="Nom / raison sociale du client"
                               placeholder="Ex. Atelier Martin SAS"
+                              help="Nom officiel ou raison sociale à reprendre dans les documents."
                               full
                               value={step2Form.client_nom}
                               onChange={(value) =>
@@ -1976,6 +1978,7 @@ export default function ClientNdaPage() {
                             <Field
                               label="Adresse du client professionnel"
                               placeholder="Adresse complète du client professionnel"
+                              help="Adresse qui devra apparaître dans les documents contractuels."
                               full
                               value={step2Form.client_adresse}
                               onChange={(value) =>
@@ -2007,6 +2010,7 @@ export default function ClientNdaPage() {
                             <Field
                               label="SIRET client"
                               placeholder="123 456 789 00012"
+                              help="Le SIRET confirme que le client est un professionnel."
                               value={step2Form.client_siret}
                               onChange={(value) =>
                                 updateStep2Form("client_siret", value)
@@ -2014,7 +2018,10 @@ export default function ClientNdaPage() {
                             />
                           </Step2Section>
 
-                          <Step2Section title="Stagiaire / bénéficiaire">
+                          <Step2Section
+                            title="Stagiaire / bénéficiaire"
+                            description="Ces informations permettront d'identifier la personne formée dans les documents préparés. L'email servira à reprendre correctement les coordonnées du bénéficiaire."
+                          >
                             <Field
                               label="Prénom stagiaire"
                               placeholder="Prénom"
@@ -2042,6 +2049,7 @@ export default function ClientNdaPage() {
                             <Field
                               label="Adresse stagiaire"
                               placeholder="Adresse complète du stagiaire"
+                              help="Adresse à utiliser si elle doit figurer dans les documents."
                               full
                               value={step2Form.stagiaire_adresse}
                               onChange={(value) =>
@@ -2052,6 +2060,7 @@ export default function ClientNdaPage() {
                               label="Email stagiaire"
                               placeholder="stagiaire@exemple.fr"
                               type="email"
+                              help="Cet email permettra d'identifier le bénéficiaire dans le dossier."
                               value={step2Form.stagiaire_email}
                               onChange={(value) =>
                                 updateStep2Form("stagiaire_email", value)
@@ -2067,7 +2076,10 @@ export default function ClientNdaPage() {
                             />
                           </Step2Section>
 
-                          <Step2Section title="Action de formation">
+                          <Step2Section
+                            title="Action de formation"
+                            description="Ces informations serviront à préparer les documents liés à votre première action de formation. Prévoyez une date réaliste et indiquez une adresse précise ou un lien de visioconférence utilisable."
+                          >
                             <Field
                               label="Date prévue de début"
                               placeholder="Sélectionnez une date"
@@ -2080,6 +2092,7 @@ export default function ClientNdaPage() {
                             <Field
                               label="Lieu ou lien de formation"
                               placeholder="Adresse précise ou lien Zoom / Meet / Teams"
+                              help="Indiquez un lieu précis ou un lien de connexion réellement utilisable en cas de contrôle."
                               full
                               value={step2Form.lieu_formation}
                               onChange={(value) =>
@@ -2088,7 +2101,10 @@ export default function ClientNdaPage() {
                             />
                           </Step2Section>
 
-                          <Step2Section title="Signature / règlement">
+                          <Step2Section
+                            title="Signature / règlement"
+                            description="Indiquez le lieu et la date qui devront apparaître dans les documents contractuels."
+                          >
                             <Field
                               label="Lieu de signature"
                               placeholder="Ex. Paris"
@@ -2271,6 +2287,15 @@ export default function ClientNdaPage() {
           </Card>
         </div>
       </main>
+
+      {confirmationDialog ? (
+        <ConfirmationDialog
+          title={confirmationDialog.title}
+          message={confirmationDialog.message}
+          actionLabel={confirmationDialog.actionLabel ?? "J'ai compris"}
+          onClose={() => setConfirmationDialog(null)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -2278,6 +2303,63 @@ export default function ClientNdaPage() {
 // ---------------------------------------------------------------------------
 // DocDropZone
 // ---------------------------------------------------------------------------
+
+function ConfirmationDialog({
+  title,
+  message,
+  actionLabel,
+  onClose,
+}: {
+  title: string;
+  message: string;
+  actionLabel: string;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="nda-confirmation-title"
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 80,
+        display: "grid",
+        placeItems: "center",
+        background: "rgba(58,38,26,0.38)",
+        padding: "1rem",
+      }}
+    >
+      <div
+        style={{
+          width: "min(560px, 100%)",
+          border: "1px solid #d8c3a8",
+          background: "#fffaf3",
+          boxShadow: "0 24px 70px rgba(58,38,26,0.28)",
+          padding: "1.4rem",
+          borderRadius: 4,
+        }}
+      >
+        <Badge>Bien reçu</Badge>
+        <h2 id="nda-confirmation-title" style={styles.cardTitle}>
+          {title}
+        </h2>
+        <p style={{ ...styles.body, margin: "12px 0 0" }}>{message}</p>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            marginTop: 18,
+          }}
+        >
+          <Btn variant="primary" onClick={onClose}>
+            {actionLabel}
+          </Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function FinalReviewStatusSection() {
   return (
@@ -3438,9 +3520,11 @@ function SimpleFormCard({
 
 function Step2Section({
   title,
+  description,
   children,
 }: {
   title: string;
+  description?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -3461,6 +3545,9 @@ function Step2Section({
       >
         {title}
       </h3>
+      {description ? (
+        <Notice style={{ marginBottom: 14 }}>{description}</Notice>
+      ) : null}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         {children}
       </div>
@@ -3471,6 +3558,7 @@ function Step2Section({
 function Field({
   label,
   placeholder,
+  help,
   type = "text",
   full = false,
   value,
@@ -3478,6 +3566,7 @@ function Field({
 }: {
   label: string;
   placeholder: string;
+  help?: string;
   type?: string;
   full?: boolean;
   value?: string;
@@ -3526,6 +3615,20 @@ function Field({
           e.target.style.boxShadow = "none";
         }}
       />
+      {help ? (
+        <span
+          style={{
+            display: "block",
+            marginTop: 6,
+            color: "#8b7a67",
+            fontSize: 12,
+            lineHeight: 1.45,
+            fontFamily: "sans-serif",
+          }}
+        >
+          {help}
+        </span>
+      ) : null}
     </label>
   );
 }
