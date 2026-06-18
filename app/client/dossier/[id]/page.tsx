@@ -60,6 +60,11 @@ type NdaDocument = {
 };
 
 const FINAL_REVIEW_STATUSES = ["under_review", "final_review"];
+const NDA_DEPOSIT_READY_STATUSES = [
+  "ready_for_deposit",
+  "deposit_procedure_ready",
+  "compliant",
+];
 const NDA_DEPOSIT_SUBMITTED_STATUSES = [
   "nda_deposit_submitted",
   "deposit_submitted",
@@ -86,6 +91,7 @@ const OFFICIAL_NDA_DEPOSIT_URL =
   "https://efpconnect.emploi.gouv.fr/auth/realms/efp/protocol/cas/login?TARGET=https%3A%2F%2Fwww.monactiviteformation.emploi.gouv.fr%2Fmon-activite-formation%2F";
 const TVA_EXEMPTION_CERFA_URL =
   "https://www.impots.gouv.fr/sites/default/files/formulaires/3511-sd/2026/3511-sd_4894.pdf";
+const CRIMINAL_RECORD_REQUEST_URL = "https://casier-judiciaire.justice.gouv.fr";
 
 // ---------------------------------------------------------------------------
 // Page principale
@@ -148,6 +154,9 @@ export default function ClientNdaPage() {
   const [refusalMessage, setRefusalMessage] = useState<string | null>(null);
   const [confirmationDialog, setConfirmationDialog] =
     useState<ConfirmationDialogState>(null);
+  const [lastAutoRefreshAt, setLastAutoRefreshAt] = useState<string | null>(
+    null,
+  );
   const [programProposal, setProgramProposal] = useState<any | null>(null);
   const [programDecision, setProgramDecision] = useState<string | null>(null);
   const [programVersionStatus, setProgramVersionStatus] = useState<
@@ -329,9 +338,33 @@ export default function ClientNdaPage() {
     [dossierId, router, supabase],
   );
 
+  async function closeConfirmationDialog() {
+    setConfirmationDialog(null);
+    await loadClientState({ showLoading: false });
+  }
+
   useEffect(() => {
     loadClientState();
   }, [loadClientState]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState !== "visible" || saving) {
+        return;
+      }
+
+      loadClientState({ showLoading: false }).then(() => {
+        setLastAutoRefreshAt(
+          new Intl.DateTimeFormat("fr-FR", {
+            hour: "2-digit",
+            minute: "2-digit",
+          }).format(new Date()),
+        );
+      });
+    }, 15000);
+
+    return () => window.clearInterval(intervalId);
+  }, [loadClientState, saving]);
 
   async function saveStep1() {
     if (!dossierId) {
@@ -767,7 +800,7 @@ export default function ClientNdaPage() {
     Boolean(ndaTracking?.nda_deposit_refusal_received_at) ||
     NDA_REFUSED_STATUSES.includes(normalizedDossierStatus);
   const isNdaDepositReady =
-    normalizedDossierStatus === "compliant" &&
+    NDA_DEPOSIT_READY_STATUSES.includes(normalizedDossierStatus) &&
     !isNdaObtained &&
     !isNdaDepositSubmitted &&
     !isNdaRefused;
@@ -783,11 +816,25 @@ export default function ClientNdaPage() {
     isNdaDepositSubmitted ||
     isNdaRefused ||
     isNdaObtained;
+  const isStep2Submitted = [
+    step2Form.client_nom,
+    step2Form.client_siret,
+    step2Form.stagiaire_prenom,
+    step2Form.stagiaire_nom,
+    step2Form.stagiaire_email,
+    step2Form.date_formation_prevue,
+    step2Form.lieu_formation,
+  ].every((value) => value.trim().length > 0);
   const showStep2 =
     step1Submitted && isProgramValidated && !isPastSigningWorkflow;
-  const showStep2Form = showStep2 && !signingDocumentsReady;
+  const showStep2Form = showStep2 && !isStep2Submitted;
   const showSigningDocumentsAction =
     showStep2 && signingDocumentsReady && !isFinalReview;
+  const showDocumentsPreparationWaiting =
+    showStep2 && isStep2Submitted && !signingDocumentsReady;
+  const hasStartedInitialInformation =
+    Object.values(form).some((value) => value.trim().length > 0) ||
+    Object.values(docs).some((document) => Boolean(document.file));
   const finalDocumentItems: Array<{
     key: FinalDocKey;
     name: string;
@@ -868,34 +915,42 @@ export default function ClientNdaPage() {
   ];
   const activeStepNumber =
     isNdaObtained || isNdaDepositSubmitted || isNdaRefused
-      ? 7
+      ? 8
       : isNdaDepositReady
-        ? 6
-        : isFinalReview
-          ? 5
+        ? 7
+        : isFinalReview || showSigningDocumentsAction || showDocumentsPreparationWaiting
+          ? 6
           : !step1Submitted
-            ? 1
+            ? hasStartedInitialInformation
+              ? 2
+              : 1
             : isProgramRefused
-              ? 3
+              ? 4
               : !isProgramSentToClient
-                ? 2
+                ? 3
                 : isProgramPendingDecision
-                  ? 3
+                  ? 4
                   : isProgramValidated
-                    ? 4
-                    : 2;
+                    ? 5
+                    : 3;
 
   const steps = [
     {
       number: 1,
-      label: "Documents initiaux déposés",
+      label: "Démarrage du dossier",
       active: activeStepNumber === 1,
-      status: step1Submitted ? "Terminé" : "En cours",
+      status: "À lire",
     },
     {
       number: 2,
-      label: "Programme en préparation",
+      label: "Informations et documents initiaux",
       active: activeStepNumber === 2,
+      status: step1Submitted ? "Terminé" : "Action requise",
+    },
+    {
+      number: 3,
+      label: "Analyse par Selen",
+      active: activeStepNumber === 3,
       status:
         isProgramSentToClient || isProgramValidated || isProgramRefused
           ? "Terminé"
@@ -904,9 +959,9 @@ export default function ClientNdaPage() {
             : "À venir",
     },
     {
-      number: 3,
+      number: 4,
       label: "Validation du programme",
-      active: activeStepNumber === 3,
+      active: activeStepNumber === 4,
       status: isProgramValidated
         ? "Terminé"
         : isProgramRefused
@@ -916,32 +971,33 @@ export default function ClientNdaPage() {
             : "À venir",
     },
     {
-      number: 4,
-      label: "Documents à signer et pièces finales",
-      active: activeStepNumber === 4,
-      status:
-        isFinalReview || isNdaDepositReady
-          ? "Terminé"
-          : signingDocumentsReady
-            ? "Documents à signer"
-            : isProgramValidated
-              ? "Coordonnées à renseigner"
-              : "Disponible après validation du programme",
-    },
-    {
       number: 5,
-      label: "Vérification finale par Selen",
+      label: "Premier client à former",
       active: activeStepNumber === 5,
-      status: isNdaDepositReady
+      status: isStep2Submitted
         ? "Terminé"
-        : isFinalReview
-          ? "En cours"
+        : isProgramValidated
+          ? "Action requise"
           : "À venir",
     },
     {
       number: 6,
-      label: "Procédure de dépôt NDA",
+      label: "Documents en préparation",
       active: activeStepNumber === 6,
+      status: isNdaDepositReady
+        ? "Terminé"
+        : isFinalReview
+          ? "Vérification finale"
+          : signingDocumentsReady
+            ? "Documents à signer"
+            : isStep2Submitted
+              ? "En cours"
+              : "À venir",
+    },
+    {
+      number: 7,
+      label: "Procédure de dépôt",
+      active: activeStepNumber === 7,
       status:
         isNdaObtained || isNdaDepositSubmitted || isNdaRefused
           ? "Terminé"
@@ -950,9 +1006,9 @@ export default function ClientNdaPage() {
             : "À venir",
     },
     {
-      number: 7,
-      label: "Résultat DREETS",
-      active: activeStepNumber === 7,
+      number: 8,
+      label: "Suivi du dépôt",
+      active: activeStepNumber === 8,
       status: isNdaObtained
         ? "NDA obtenu"
         : isNdaRefused
@@ -1292,7 +1348,7 @@ export default function ClientNdaPage() {
                 fontFamily: "sans-serif",
               }}
             >
-              {`Accompagnement NDA · Étape ${activeStepNumber} sur 7`}
+              {`Accompagnement NDA · Étape ${activeStepNumber} sur 8`}
             </p>
             <h1
               style={{
@@ -1383,6 +1439,8 @@ export default function ClientNdaPage() {
       >
         {/* ====================== COLONNE GAUCHE ========================= */}
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+          {!step1Submitted ? <NdaWelcomeCard /> : null}
+
           {!step1Submitted ? (
             <>
               <Card>
@@ -2172,6 +2230,24 @@ export default function ClientNdaPage() {
                       </Card>
                     </>
                   ) : null}
+                  {showDocumentsPreparationWaiting ? (
+                    <Card>
+                      <Badge>Documents en préparation</Badge>
+                      <h2 style={styles.cardTitle}>
+                        Vos documents sont en préparation
+                      </h2>
+                      <p style={{ ...styles.body, margin: "12px 0 0" }}>
+                        Les coordonnées du client ont bien été transmises à
+                        Selen. Nous préparons les documents nécessaires à votre
+                        dossier NDA.
+                      </p>
+                      <Notice style={{ marginTop: 16 }}>
+                        Vous recevrez un email dès que les documents à signer
+                        seront prêts et mis à disposition dans votre espace
+                        client.
+                      </Notice>
+                    </Card>
+                  ) : null}
                   {showSigningDocumentsAction ? (
                     <>
                       <SigningDocumentsSection
@@ -2274,6 +2350,20 @@ export default function ClientNdaPage() {
                 </div>
               ))}
             </div>
+            <p
+              style={{
+                ...styles.body,
+                marginTop: 14,
+                fontSize: 12,
+                color: "#8b7a67",
+              }}
+            >
+              Actualisation automatique activée
+              {lastAutoRefreshAt
+                ? ` · dernière mise à jour ${lastAutoRefreshAt}`
+                : ""}
+              .
+            </p>
           </Card>
 
           <Card>
@@ -2293,7 +2383,7 @@ export default function ClientNdaPage() {
           title={confirmationDialog.title}
           message={confirmationDialog.message}
           actionLabel={confirmationDialog.actionLabel ?? "J'ai compris"}
-          onClose={() => setConfirmationDialog(null)}
+          onClose={closeConfirmationDialog}
         />
       ) : null}
     </div>
@@ -2303,6 +2393,92 @@ export default function ClientNdaPage() {
 // ---------------------------------------------------------------------------
 // DocDropZone
 // ---------------------------------------------------------------------------
+
+function NdaWelcomeCard() {
+  return (
+    <Card>
+      <Badge>Démarrage du dossier</Badge>
+      <h2 style={styles.cardTitle}>Comment va se passer votre Prépa NDA ?</h2>
+      <p style={{ ...styles.body, margin: "12px 0 0" }}>
+        Votre dossier va être monté progressivement avec l'aide de Selen. À
+        chaque étape, nous vous indiquerons les informations à transmettre et
+        les actions attendues. Lorsque votre intervention sera nécessaire, vous
+        serez informé par email.
+      </p>
+
+      <div style={{ marginTop: 16, display: "grid", gap: 10 }}>
+        <Notice>Vous transmettez vos informations et documents initiaux.</Notice>
+        <Notice>
+          Selen analyse votre programme et votre parcours, puis peut vous
+          soumettre une proposition de programme pour validation.
+        </Notice>
+        <Notice>
+          Vous devrez ensuite disposer d'un premier client ou bénéficiaire
+          professionnel pour finaliser le dossier.
+        </Notice>
+        <Notice>
+          Selen préparera les documents nécessaires, puis vous serez guidé pour
+          déposer votre demande de déclaration d'activité.
+        </Notice>
+      </div>
+
+      <Notice style={{ marginTop: 16 }}>
+        Pour déposer une demande de NDA, vous devrez justifier d'une première
+        action de formation réelle ou prévue. Vous devrez donc identifier un
+        premier client ou bénéficiaire à former, idéalement dans les 1 à 3 mois
+        à venir. Vous pouvez commencer à le chercher dès maintenant.
+      </Notice>
+
+      <div
+        style={{
+          marginTop: 16,
+          borderTop: "1px solid #ead9bf",
+          paddingTop: 16,
+        }}
+      >
+        <h3 style={styles.subTitle}>À préparer dès maintenant</h3>
+        <ul
+          style={{
+            margin: "0 0 0 18px",
+            padding: 0,
+            color: "#5f4d3d",
+            lineHeight: 1.7,
+            fontFamily: "sans-serif",
+            fontSize: 14,
+          }}
+        >
+          <li>chercher un premier client ou bénéficiaire professionnel ;</li>
+          <li>rassembler les éléments liés à la première formation ;</li>
+          <li>conserver les documents transmis par Selen ;</li>
+          <li>
+            demander votre extrait de casier judiciaire bulletin n°3 si
+            nécessaire pour le dossier.
+          </li>
+        </ul>
+
+        <Notice style={{ marginTop: 14 }}>
+          Vous pouvez demander votre extrait de casier judiciaire bulletin n°3 en
+          ligne sur le site officiel du ministère de la Justice. La demande est
+          gratuite. Le document vous sera utile pour compléter votre dossier.
+          <br />
+          <a
+            href={CRIMINAL_RECORD_REQUEST_URL}
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              display: "inline-block",
+              marginTop: 8,
+              color: "#8a4b24",
+              fontWeight: 700,
+            }}
+          >
+            Demander mon bulletin n°3
+          </a>
+        </Notice>
+      </div>
+    </Card>
+  );
+}
 
 function ConfirmationDialog({
   title,
