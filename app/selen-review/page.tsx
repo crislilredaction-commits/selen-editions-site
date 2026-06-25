@@ -185,7 +185,7 @@ export default function SelenReviewPage() {
                   "Identification des écarts et points de vigilance",
                   "Conseils concrets pour sécuriser votre dossier",
                   "Rapport d’audit blanc prévu dans l’espace client",
-                  "Réservation via Calendly après paiement",
+                  "Réservation guidée après paiement",
                 ].map((item) => (
                   <li
                     key={item}

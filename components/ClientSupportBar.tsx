@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 type ClientSupportBarProps = {
   email?: string | null;
   context?: string;
@@ -66,17 +68,31 @@ export default function ClientSupportBar({
           Un bug, une difficulté ou une question pendant l’utilisation ?
         </p>
 
-        <button
-          type="button"
-          onClick={openSupportEmail}
-          className="btn-ink"
-          style={{
-            padding: "0.45rem 0.8rem",
-            fontSize: "0.82rem",
-          }}
-        >
-          <span>Prévenir Selen</span>
-        </button>
+        <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}>
+          <Link
+            href="/prendre-rendez-vous?source=client_space"
+            className="btn-ink"
+            style={{
+              padding: "0.45rem 0.8rem",
+              fontSize: "0.82rem",
+              textDecoration: "none",
+            }}
+          >
+            <span>Réserver un appel</span>
+          </Link>
+
+          <button
+            type="button"
+            onClick={openSupportEmail}
+            className="btn-ink"
+            style={{
+              padding: "0.45rem 0.8rem",
+              fontSize: "0.82rem",
+            }}
+          >
+            <span>Prévenir Selen</span>
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -59,6 +59,13 @@ type NdaDocument = {
   created_at: string | null;
 };
 
+type NdaProgressStep = {
+  number: number;
+  label: string;
+  active: boolean;
+  status: string;
+};
+
 const FINAL_REVIEW_STATUSES = ["under_review", "final_review"];
 const NDA_DEPOSIT_READY_STATUSES = [
   "ready_for_deposit",
@@ -143,6 +150,32 @@ export default function ClientNdaPage() {
   const [accessLoading, setAccessLoading] = useState(true);
   const [accessError, setAccessError] = useState<string | null>(null);
   const [dossierStatus, setDossierStatus] = useState<string | null>(null);
+  const [currentStep, setCurrentStep] = useState(1);
+  const [currentStepLabel, setCurrentStepLabel] = useState(
+    "Démarrage du dossier",
+  );
+  const [progressSteps, setProgressSteps] = useState<NdaProgressStep[]>([
+    {
+      number: 1,
+      label: "Démarrage du dossier",
+      active: true,
+      status: "À lire",
+    },
+  ]);
+  const [canShowDepositProcedure, setCanShowDepositProcedure] = useState(false);
+  const [isDepositProcedureOpen, setIsDepositProcedureOpen] = useState(false);
+  const [isInitialDocumentsSubmitted, setIsInitialDocumentsSubmitted] =
+    useState(false);
+  const [isProgramSentToClientFromState, setIsProgramSentToClientFromState] =
+    useState(false);
+  const [isProgramValidatedFromState, setIsProgramValidatedFromState] =
+    useState(false);
+  const [isProgramRefusedFromState, setIsProgramRefusedFromState] =
+    useState(false);
+  const [isClientDetailsSubmittedFromState, setIsClientDetailsSubmittedFromState] =
+    useState(false);
+  const [areDocumentsBeingPreparedFromState, setAreDocumentsBeingPreparedFromState] =
+    useState(false);
   const [ndaTracking, setNdaTracking] = useState<NdaTracking | null>(null);
   const [ndaDepositSpecificCode, setNdaDepositSpecificCode] = useState<
     string | null
@@ -170,6 +203,9 @@ export default function ClientNdaPage() {
   const [publishedDocuments, setPublishedDocuments] = useState<NdaDocument[]>(
     [],
   );
+  const [clientVisibleDocuments, setClientVisibleDocuments] = useState<
+    NdaDocument[]
+  >([]);
   const [signingDocuments, setSigningDocuments] = useState<NdaDocument[]>([]);
   const [signingDocumentsReady, setSigningDocumentsReady] = useState(false);
   const [finalReturnedDocuments, setFinalReturnedDocuments] = useState<
@@ -262,7 +298,42 @@ export default function ClientNdaPage() {
         }
 
         setStep1Submitted(Boolean(stateData?.step1Submitted));
-        setDossierStatus(stateData?.dossier?.status ?? null);
+        setDossierStatus(
+          stateData?.dossierStatus ?? stateData?.dossier?.status ?? null,
+        );
+        setCurrentStep(Number(stateData?.currentStep ?? 1));
+        setCurrentStepLabel(
+          stateData?.currentStepLabel ?? "Démarrage du dossier",
+        );
+        setProgressSteps(
+          Array.isArray(stateData?.steps) && stateData.steps.length > 0
+            ? (stateData.steps as NdaProgressStep[])
+            : [
+                {
+                  number: Number(stateData?.currentStep ?? 1),
+                  label:
+                    stateData?.currentStepLabel ?? "Démarrage du dossier",
+                  active: true,
+                  status: "En cours",
+                },
+              ],
+        );
+        setCanShowDepositProcedure(Boolean(stateData?.canShowDepositProcedure));
+        setIsDepositProcedureOpen(Boolean(stateData?.isDepositProcedureOpen));
+        setIsInitialDocumentsSubmitted(
+          Boolean(stateData?.isInitialDocumentsSubmitted),
+        );
+        setIsProgramSentToClientFromState(
+          Boolean(stateData?.isProgramSentToClient),
+        );
+        setIsProgramValidatedFromState(Boolean(stateData?.isProgramValidated));
+        setIsProgramRefusedFromState(Boolean(stateData?.isProgramRefused));
+        setIsClientDetailsSubmittedFromState(
+          Boolean(stateData?.isClientDetailsSubmitted),
+        );
+        setAreDocumentsBeingPreparedFromState(
+          Boolean(stateData?.areDocumentsBeingPrepared),
+        );
         setNdaTracking(stateData?.ndaTracking ?? null);
         setNdaDepositSpecificCode(
           stateData?.ndaTracking?.nda_deposit_specific_code ??
@@ -279,6 +350,11 @@ export default function ClientNdaPage() {
         );
         setPublishedDocuments(
           (stateData?.publishedDocuments ?? []) as NdaDocument[],
+        );
+        setClientVisibleDocuments(
+          (stateData?.clientVisibleDocuments ??
+            stateData?.publishedDocuments ??
+            []) as NdaDocument[],
         );
 
         setSigningDocuments(
@@ -777,12 +853,15 @@ export default function ClientNdaPage() {
   const normalizedProgramStatus =
     programVersionStatus ?? programProposal?.status ?? "";
   const isProgramValidated =
+    isProgramValidatedFromState ||
     clientDecision === "validated" ||
     PROGRAM_VALIDATED_STATUSES.includes(normalizedProgramStatus);
   const isProgramRefused =
+    isProgramRefusedFromState ||
     clientDecision === "refused" ||
     PROGRAM_REFUSED_STATUSES.includes(normalizedProgramStatus);
   const isProgramSentToClient =
+    isProgramSentToClientFromState ||
     hasProgramProposal || PROGRAM_SENT_STATUSES.includes(normalizedDossierStatus);
   const isProgramPendingDecision =
     isProgramSentToClient && !isProgramValidated && !isProgramRefused;
@@ -800,10 +879,11 @@ export default function ClientNdaPage() {
     Boolean(ndaTracking?.nda_deposit_refusal_received_at) ||
     NDA_REFUSED_STATUSES.includes(normalizedDossierStatus);
   const isNdaDepositReady =
-    NDA_DEPOSIT_READY_STATUSES.includes(normalizedDossierStatus) &&
-    !isNdaObtained &&
-    !isNdaDepositSubmitted &&
-    !isNdaRefused;
+    canShowDepositProcedure ||
+    (isDepositProcedureOpen &&
+      !isNdaObtained &&
+      !isNdaDepositSubmitted &&
+      !isNdaRefused);
   const isFinalReview =
     !isNdaObtained &&
     !isNdaDepositSubmitted &&
@@ -816,25 +896,28 @@ export default function ClientNdaPage() {
     isNdaDepositSubmitted ||
     isNdaRefused ||
     isNdaObtained;
-  const isStep2Submitted = [
-    step2Form.client_nom,
-    step2Form.client_siret,
-    step2Form.stagiaire_prenom,
-    step2Form.stagiaire_nom,
-    step2Form.stagiaire_email,
-    step2Form.date_formation_prevue,
-    step2Form.lieu_formation,
-  ].every((value) => value.trim().length > 0);
+  const isStep2Submitted =
+    isClientDetailsSubmittedFromState ||
+    [
+      step2Form.client_nom,
+      step2Form.client_siret,
+      step2Form.stagiaire_prenom,
+      step2Form.stagiaire_nom,
+      step2Form.stagiaire_email,
+      step2Form.date_formation_prevue,
+      step2Form.lieu_formation,
+    ].every((value) => value.trim().length > 0);
   const showStep2 =
     step1Submitted && isProgramValidated && !isPastSigningWorkflow;
   const showStep2Form = showStep2 && !isStep2Submitted;
   const showSigningDocumentsAction =
     showStep2 && signingDocumentsReady && !isFinalReview;
   const showDocumentsPreparationWaiting =
-    showStep2 && isStep2Submitted && !signingDocumentsReady;
-  const hasStartedInitialInformation =
-    Object.values(form).some((value) => value.trim().length > 0) ||
-    Object.values(docs).some((document) => Boolean(document.file));
+    areDocumentsBeingPreparedFromState &&
+    showStep2 &&
+    isStep2Submitted &&
+    !signingDocumentsReady &&
+    !isFinalReview;
   const finalDocumentItems: Array<{
     key: FinalDocKey;
     name: string;
@@ -913,111 +996,9 @@ export default function ClientNdaPage() {
       notice: "Format accepté : PDF, DOCX.",
     },
   ];
-  const activeStepNumber =
-    isNdaObtained || isNdaDepositSubmitted || isNdaRefused
-      ? 8
-      : isNdaDepositReady
-        ? 7
-        : isFinalReview || showSigningDocumentsAction || showDocumentsPreparationWaiting
-          ? 6
-          : !step1Submitted
-            ? hasStartedInitialInformation
-              ? 2
-              : 1
-            : isProgramRefused
-              ? 4
-              : !isProgramSentToClient
-                ? 3
-                : isProgramPendingDecision
-                  ? 4
-                  : isProgramValidated
-                    ? 5
-                    : 3;
+  const activeStepNumber = currentStep;
 
-  const steps = [
-    {
-      number: 1,
-      label: "Démarrage du dossier",
-      active: activeStepNumber === 1,
-      status: "À lire",
-    },
-    {
-      number: 2,
-      label: "Informations et documents initiaux",
-      active: activeStepNumber === 2,
-      status: step1Submitted ? "Terminé" : "Action requise",
-    },
-    {
-      number: 3,
-      label: "Analyse par Selen",
-      active: activeStepNumber === 3,
-      status:
-        isProgramSentToClient || isProgramValidated || isProgramRefused
-          ? "Terminé"
-          : step1Submitted
-            ? "En cours"
-            : "À venir",
-    },
-    {
-      number: 4,
-      label: "Validation du programme",
-      active: activeStepNumber === 4,
-      status: isProgramValidated
-        ? "Terminé"
-        : isProgramRefused
-          ? "Correction demandée"
-          : isProgramPendingDecision
-            ? "Action requise"
-            : "À venir",
-    },
-    {
-      number: 5,
-      label: "Premier client à former",
-      active: activeStepNumber === 5,
-      status: isStep2Submitted
-        ? "Terminé"
-        : isProgramValidated
-          ? "Action requise"
-          : "À venir",
-    },
-    {
-      number: 6,
-      label: "Documents en préparation",
-      active: activeStepNumber === 6,
-      status: isNdaDepositReady
-        ? "Terminé"
-        : isFinalReview
-          ? "Vérification finale"
-          : signingDocumentsReady
-            ? "Documents à signer"
-            : isStep2Submitted
-              ? "En cours"
-              : "À venir",
-    },
-    {
-      number: 7,
-      label: "Procédure de dépôt",
-      active: activeStepNumber === 7,
-      status:
-        isNdaObtained || isNdaDepositSubmitted || isNdaRefused
-          ? "Terminé"
-          : isNdaDepositReady
-            ? "Disponible"
-            : "À venir",
-    },
-    {
-      number: 8,
-      label: "Suivi du dépôt",
-      active: activeStepNumber === 8,
-      status: isNdaObtained
-        ? "NDA obtenu"
-        : isNdaRefused
-          ? "Courrier transmis"
-          : isNdaDepositSubmitted
-            ? "En attente"
-            : "À venir",
-    },
-  ];
+  const steps = progressSteps;
 
   if (accessLoading) {
     return (
@@ -1880,12 +1861,12 @@ export default function ClientNdaPage() {
                 ) : null}
               </Card>
 
-              {isNdaDepositReady ||
+              {canShowDepositProcedure ||
               isNdaDepositSubmitted ||
               isNdaRefused ||
               isNdaObtained ? (
                 <NdaDepositProcedureSection
-                  availableDocuments={publishedDocuments}
+                  availableDocuments={clientVisibleDocuments}
                   dossierId={dossierId}
                   specificCode={ndaDepositSpecificCode}
                   depositSubmitting={depositSubmitting}
@@ -2366,6 +2347,29 @@ export default function ClientNdaPage() {
             </p>
           </Card>
 
+          {process.env.NODE_ENV === "development" ? (
+            <Card>
+              <p style={styles.label}>Debug parcours</p>
+              <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
+                <p style={{ ...styles.body, fontSize: 12 }}>
+                  <strong>dossierStatus :</strong> {dossierStatus ?? "—"}
+                </p>
+                <p style={{ ...styles.body, fontSize: 12 }}>
+                  <strong>currentStep :</strong> {currentStep} ·{" "}
+                  {currentStepLabel}
+                </p>
+                <p style={{ ...styles.body, fontSize: 12 }}>
+                  <strong>canShowDepositProcedure :</strong>{" "}
+                  {canShowDepositProcedure ? "true" : "false"}
+                </p>
+                <p style={{ ...styles.body, fontSize: 12 }}>
+                  <strong>documents visibles :</strong>{" "}
+                  {clientVisibleDocuments.length}
+                </p>
+              </div>
+            </Card>
+          ) : null}
+
           <Card>
             <p style={styles.label}>Messagerie</p>
             <div style={{ marginTop: 14 }}>
@@ -2723,13 +2727,12 @@ function NdaDepositProcedureSection({
 
   return (
     <Card>
-      <Badge>Procédure de dépôt NDA</Badge>
+      <Badge>Procédure de dépôt</Badge>
       <h2 style={styles.cardTitle}>Votre dossier NDA est prêt à être déposé</h2>
 
       <p style={{ ...styles.body, margin: "12px 0 0" }}>
-        Selen a vérifié les documents de votre dossier. Vous pouvez maintenant
-        déposer votre demande de déclaration d'activité sur la plateforme
-        officielle.
+        Vos documents sont prêts. Vous pouvez maintenant déposer votre demande
+        de déclaration d’activité en suivant la procédure ci-dessous.
       </p>
 
       <a
@@ -2745,8 +2748,8 @@ function NdaDepositProcedureSection({
       <div style={{ marginTop: 18 }}>
         <DocumentList
           dossierId={dossierId}
-          title="Documents à déposer ou récupérer"
-          emptyText="Aucun document de dépôt n'est encore disponible dans cet espace."
+          title="Documents validés à télécharger"
+          emptyText="Les documents validés sont en cours de mise à disposition. Si le problème persiste, contactez Selen."
           documents={availableDocuments}
           downloadable
         />

@@ -108,14 +108,12 @@ export default function Header() {
               Espace agent
             </a>
 
-            <a
-              href="https://calendly.com/romaric-paymal/rdv-romaric-paymal"
-              target="_blank"
-              rel="noreferrer"
+            <Link
+              href="/prendre-rendez-vous"
               className="border border-[#3e2a1f] bg-[#3e2a1f] px-4 py-1.5 font-['Cinzel'] text-[0.62rem] uppercase tracking-[0.11em] text-[#f7ead6] transition-all duration-300 hover:bg-[#5a3520]"
             >
               Parlons de vos besoins
-            </a>
+            </Link>
           </div>
 
           <button
@@ -215,15 +213,13 @@ export default function Header() {
               Espace agent
             </a>
 
-            <a
-              href="https://calendly.com/romaric-paymal/rdv-romaric-paymal"
-              target="_blank"
-              rel="noreferrer"
+            <Link
+              href="/prendre-rendez-vous"
               onClick={() => setMenuOpen(false)}
               className="mt-7 flex items-center justify-center border border-[#3e2a1f] bg-[#3e2a1f] px-5 py-3 font-['Cinzel'] text-[0.68rem] uppercase tracking-[0.13em] text-[#f7ead6]"
             >
               Parlons de vos besoins
-            </a>
+            </Link>
 
             <div className="mt-10">
               <div className="gazette-dot-rule opacity-40">

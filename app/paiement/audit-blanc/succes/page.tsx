@@ -95,8 +95,18 @@ function AuditBlancSuccessContent() {
                 flexWrap: "wrap",
               }}
             >
-              <Link href="/client/audit-blanc" className="btn-ink">
-                <span>Planifier mon rendez-vous →</span>
+              <Link
+                href="/prendre-rendez-vous?source=client_space&appointmentType=audit_3h30"
+                className="btn-ink"
+              >
+                <span>Réserver 3h30 →</span>
+              </Link>
+
+              <Link
+                href="/prendre-rendez-vous?source=client_space&appointmentType=audit_2x1h45"
+                className="btn-ink"
+              >
+                <span>Réserver 2 × 1h45</span>
               </Link>
 
               <Link href="/client" className="btn-ink">

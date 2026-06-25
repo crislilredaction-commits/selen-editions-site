@@ -26,7 +26,7 @@ const OFFERS: Record<
     price: "397 €",
     description:
       "Audit blanc accompagné par un auditeur, sans passage préalable par l’auto-audit.",
-    note: "Après paiement, vous pourrez réserver votre rendez-vous Calendly depuis votre espace client.",
+    note: "Après paiement, vous pourrez réserver votre rendez-vous depuis votre espace client.",
   },
   reserved_after_auto_audit: {
     key: "reserved_after_auto_audit",
@@ -136,7 +136,7 @@ function AuditBlancPaymentContent() {
           >
             Après paiement, votre dossier audit blanc sera créé dans votre
             espace client. Vous pourrez ensuite choisir votre rendez-vous
-            Calendly.
+            depuis votre espace client.
           </p>
         </div>
       </header>

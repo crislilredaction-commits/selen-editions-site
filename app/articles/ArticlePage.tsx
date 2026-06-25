@@ -118,14 +118,12 @@ export default function ArticlePage({ article }: ArticlePageProps) {
               <span>Voir les prestations</span>
             </Link>
 
-            <a
-              href="https://calendly.com/romaric-paymal/rdv-romaric-paymal"
-              target="_blank"
-              rel="noreferrer"
+            <Link
+              href="/prendre-rendez-vous"
               className="btn-ink btn-ink-light"
             >
               <span>Réserver un appel</span>
-            </a>
+            </Link>
           </div>
         </div>
       </section>

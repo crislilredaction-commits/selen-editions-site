@@ -10,6 +10,7 @@ import { createSupabaseBrowserClient } from "../../lib/supabase/client";
 
 type AuditBlancCase = {
   id: string;
+  dossier_id: string | null;
   client_email: string;
   status: string;
   offer: string;
@@ -137,9 +138,6 @@ export default function ClientAuditBlancPage() {
   const router = useRouter();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
-  const calendlySingleUrl =
-    process.env.NEXT_PUBLIC_CALENDLY_AUDIT_BLANC_3H30_URL?.trim() || "";
-
   const [loading, setLoading] = useState(true);
   const [email, setEmail] = useState<string | null>(null);
   const [auditCase, setAuditCase] = useState<AuditBlancCase | null>(null);
@@ -200,7 +198,7 @@ export default function ClientAuditBlancPage() {
       const { data: caseData, error: caseError } = await supabase
         .from("audit_blanc_cases")
         .select(
-          "id, client_email, status, offer, price_paid, currency, calendly_mode, calendly_event_1_start, calendly_event_1_end, calendly_event_1_url, calendly_event_2_start, calendly_event_2_end, calendly_event_2_url, meeting_url, report_status, report_storage_path, created_at, updated_at",
+          "id, dossier_id, client_email, status, offer, price_paid, currency, calendly_mode, calendly_event_1_start, calendly_event_1_end, calendly_event_1_url, calendly_event_2_start, calendly_event_2_end, calendly_event_2_url, meeting_url, report_status, report_storage_path, created_at, updated_at",
         )
         .eq("client_email", cleanEmail)
         .order("created_at", { ascending: false })
@@ -479,10 +477,9 @@ export default function ClientAuditBlancPage() {
                         marginBottom: "1rem",
                       }}
                     >
-                      Réservez votre créneau d’audit blanc de 3h30. Si vous avez
-                      choisi un format en deux rendez-vous d’1h45, réservez ce
-                      premier créneau : le second rendez-vous sera programmé
-                      avec vous pendant la première session.
+                      Choisissez le format qui convient le mieux à votre audit
+                      blanc : une session complète de 3h30, ou deux rendez-vous
+                      séparés d’1h45.
                     </p>
 
                     <div
@@ -493,19 +490,31 @@ export default function ClientAuditBlancPage() {
                         gap: "0.8rem",
                       }}
                     >
-                      <a
-                        href={calendlySingleUrl || "#"}
-                        target={calendlySingleUrl ? "_blank" : undefined}
-                        rel="noreferrer"
+                      <Link
+                        href={`/prendre-rendez-vous?source=client_space&appointmentType=audit_3h30${
+                          auditCase.dossier_id
+                            ? `&dossierId=${encodeURIComponent(auditCase.dossier_id)}`
+                            : ""
+                        }`}
                         className="btn-ink"
                         style={{
                           textAlign: "center",
-                          opacity: calendlySingleUrl ? 1 : 0.55,
-                          pointerEvents: calendlySingleUrl ? "auto" : "none",
                         }}
                       >
-                        <span>Réserver mon audit blanc</span>
-                      </a>
+                        <span>Réserver 3h30</span>
+                      </Link>
+
+                      <Link
+                        href={`/prendre-rendez-vous?source=client_space&appointmentType=audit_2x1h45${
+                          auditCase.dossier_id
+                            ? `&dossierId=${encodeURIComponent(auditCase.dossier_id)}`
+                            : ""
+                        }`}
+                        className="btn-ink"
+                        style={{ textAlign: "center" }}
+                      >
+                        <span>Réserver 2 × 1h45</span>
+                      </Link>
                     </div>
 
                     <p
@@ -516,24 +525,9 @@ export default function ClientAuditBlancPage() {
                         marginTop: "0.8rem",
                       }}
                     >
-                      Note : si votre audit blanc est prévu en deux sessions, le
-                      second rendez-vous sera fixé directement avec l’auditeur
-                      lors du premier échange.
+                      Note : les créneaux proposés sont directement vérifiés
+                      dans l’agenda Selen.
                     </p>
-
-                    {!calendlySingleUrl && (
-                      <p
-                        style={{
-                          color: "var(--ink-faint)",
-                          fontSize: "0.88rem",
-                          lineHeight: 1.5,
-                          marginTop: "0.8rem",
-                        }}
-                      >
-                        Le lien de réservation Calendly sera ajouté très
-                        prochainement.
-                      </p>
-                    )}
                   </>
                 )}
               </article>

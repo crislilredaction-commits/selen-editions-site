@@ -619,14 +619,12 @@ export default function PrestationsPage() {
             <strong>des semaines de flou administratif.</strong>
           </p>
 
-          <a
-            href="https://calendly.com/romaric-paymal/rdv-romaric-paymal"
-            target="_blank"
-            rel="noreferrer"
+          <Link
+            href="/prendre-rendez-vous"
             className="relative mt-8 inline-flex items-center justify-center rounded-full bg-[#d4a85c] px-8 py-4 font-semibold text-[#3e2a1f] shadow-[0_10px_30px_rgba(0,0,0,0.25)] transition-all duration-300 hover:-translate-y-1 w-full sm:w-auto"
           >
             Réserver un appel
-          </a>
+          </Link>
         </div>
       </section>
 

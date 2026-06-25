@@ -62,14 +62,12 @@ export default function Footer() {
               Un projet, une question, un audit à venir ? Un échange simple peut
               déjà tout changer.
             </p>
-            <a
-              href="https://calendly.com/romaric-paymal/rdv-romaric-paymal"
-              target="_blank"
-              rel="noreferrer"
+            <Link
+              href="/prendre-rendez-vous"
               className="mt-5 inline-flex items-center gap-2 border border-[#8a4b24] px-4 py-2.5 font-['Cinzel'] text-[0.65rem] uppercase tracking-[0.12em] text-[#8a4b24] hover:bg-[#8a4b24] hover:text-[#f7ead6] transition-all duration-300 w-full sm:w-auto justify-center md:justify-start"
             >
               Réserver un appel <span className="text-[0.6rem]">→</span>
-            </a>
+            </Link>
           </div>
         </div>
       </div>

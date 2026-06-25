@@ -83,14 +83,12 @@ export default function Home() {
                 <span>Découvrir nos prestations</span>
               </Link>
 
-              <a
-                href="https://calendly.com/romaric-paymal/rdv-romaric-paymal"
-                target="_blank"
-                rel="noreferrer"
+              <Link
+                href="/prendre-rendez-vous"
                 className="btn-ink w-full sm:w-auto text-center"
               >
                 <span>Parlons de vos besoins</span>
-              </a>
+              </Link>
             </div>
 
             <img
@@ -414,14 +412,12 @@ export default function Home() {
                 vous aider à voir plus clair.
               </p>
 
-              <a
-                href="https://calendly.com/romaric-paymal/rdv-romaric-paymal"
-                target="_blank"
-                rel="noreferrer"
+              <Link
+                href="/prendre-rendez-vous"
                 className="mt-7 inline-block btn-ink btn-ink-light w-full sm:w-auto text-center"
               >
                 <span>Réserver un appel</span>
-              </a>
+              </Link>
             </div>
 
             <div className="hidden md:block relative">
