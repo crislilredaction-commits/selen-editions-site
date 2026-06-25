@@ -2,6 +2,9 @@
 
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import DiscountCodeBox, {
+  type AppliedDiscount,
+} from "@/components/DiscountCodeBox";
 import Link from "next/link";
 import { Suspense, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -15,6 +18,7 @@ const OFFERS: Record<
     label: string;
     title: string;
     price: string;
+    amountCents: number;
     description: string;
     note: string;
   }
@@ -24,6 +28,7 @@ const OFFERS: Record<
     label: "Audit blanc direct",
     title: "Audit blanc Qualiopi accompagné",
     price: "397 €",
+    amountCents: 39700,
     description:
       "Audit blanc accompagné par un auditeur, sans passage préalable par l’auto-audit.",
     note: "Après paiement, vous pourrez réserver votre rendez-vous depuis votre espace client.",
@@ -33,6 +38,7 @@ const OFFERS: Record<
     label: "Après auto-audit",
     title: "Audit blanc Qualiopi au tarif réservé",
     price: "199 €",
+    amountCents: 19900,
     description:
       "Tarif réservé aux clients ayant déjà acheté l’auto-audit Qualiopi.",
     note: "Ce tarif sera accessible depuis l’espace client après l’auto-audit.",
@@ -52,6 +58,8 @@ function AuditBlancPaymentContent() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [clientEmail, setClientEmail] = useState("");
+  const [discount, setDiscount] = useState<AppliedDiscount | null>(null);
 
   async function startStripeCheckout() {
     setLoading(true);
@@ -65,12 +73,14 @@ function AuditBlancPaymentContent() {
         },
         body: JSON.stringify({
           offer: selectedOffer.key,
+          clientEmail,
+          discountCode: discount?.code ?? null,
         }),
       });
 
       const rawResponse = await response.text();
 
-      let data: { url?: string; error?: string } = {};
+      let data: { url?: string; freeRedirectUrl?: string; error?: string } = {};
 
       try {
         data = JSON.parse(rawResponse);
@@ -88,6 +98,11 @@ function AuditBlancPaymentContent() {
           data?.error ||
             "Impossible de démarrer le paiement Stripe pour le moment.",
         );
+      }
+
+      if (data?.freeRedirectUrl) {
+        window.location.href = data.freeRedirectUrl;
+        return;
       }
 
       if (!data?.url) {
@@ -264,6 +279,14 @@ function AuditBlancPaymentContent() {
             >
               {selectedOffer.price}
             </p>
+
+            <DiscountCodeBox
+              amountCents={selectedOffer.amountCents}
+              clientEmail={clientEmail}
+              onClientEmailChange={setClientEmail}
+              discount={discount}
+              onDiscountChange={setDiscount}
+            />
 
             <button
               type="button"

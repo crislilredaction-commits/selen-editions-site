@@ -2,12 +2,19 @@
 
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import DiscountCodeBox, {
+  type AppliedDiscount,
+} from "@/components/DiscountCodeBox";
 import Link from "next/link";
 import { useState } from "react";
+
+const PREPA_NDA_AMOUNT_CENTS = 39000;
 
 export default function PrepaNdaPaymentPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [clientEmail, setClientEmail] = useState("");
+  const [discount, setDiscount] = useState<AppliedDiscount | null>(null);
 
   async function startStripeCheckout() {
     setLoading(true);
@@ -19,11 +26,15 @@ export default function PrepaNdaPaymentPage() {
         headers: {
           "Content-Type": "application/json",
         },
+        body: JSON.stringify({
+          clientEmail,
+          discountCode: discount?.code ?? null,
+        }),
       });
 
       const rawResponse = await response.text();
 
-      let data: { url?: string; error?: string } = {};
+      let data: { url?: string; freeRedirectUrl?: string; error?: string } = {};
 
       try {
         data = JSON.parse(rawResponse);
@@ -41,6 +52,11 @@ export default function PrepaNdaPaymentPage() {
           data?.error ||
             "Impossible de démarrer le paiement Stripe pour le moment.",
         );
+      }
+
+      if (data?.freeRedirectUrl) {
+        window.location.href = data.freeRedirectUrl;
+        return;
       }
 
       if (!data?.url) {
@@ -242,6 +258,14 @@ export default function PrepaNdaPaymentPage() {
                 <strong>390 €</strong>
               </div>
             </div>
+
+            <DiscountCodeBox
+              amountCents={PREPA_NDA_AMOUNT_CENTS}
+              clientEmail={clientEmail}
+              onClientEmailChange={setClientEmail}
+              discount={discount}
+              onDiscountChange={setDiscount}
+            />
 
             <button
               type="button"

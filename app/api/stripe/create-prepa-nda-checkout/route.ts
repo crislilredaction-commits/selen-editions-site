@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
+import {
+  markDiscountCodeUsed,
+  validateDiscountCode,
+} from "@/lib/server/discountCodes";
+import { fulfillFreePrepaNda } from "@/lib/server/paymentFulfillment";
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY?.trim();
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
@@ -12,8 +17,49 @@ if (!stripeSecretKey) {
 
 const stripe = new Stripe(stripeSecretKey);
 
-export async function POST() {
+const ORIGINAL_AMOUNT_CENTS = 39000;
+
+function clean(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+export async function POST(request: Request) {
   try {
+    const body = await request.json().catch(() => null);
+    const clientEmail = clean(body?.clientEmail).toLowerCase();
+    const discountCode = clean(body?.discountCode);
+    const discount = discountCode
+      ? await validateDiscountCode({
+          code: discountCode,
+          clientEmail,
+          amountCents: ORIGINAL_AMOUNT_CENTS,
+        })
+      : null;
+
+    if (discount && !discount.valid) {
+      return NextResponse.json({ error: discount.reason }, { status: 400 });
+    }
+
+    const discountAmountCents = discount?.valid
+      ? discount.discountAmountCents
+      : 0;
+    const finalAmountCents = discount?.valid
+      ? discount.finalAmountCents
+      : ORIGINAL_AMOUNT_CENTS;
+
+    if (finalAmountCents === 0) {
+      await fulfillFreePrepaNda({ email: clientEmail });
+      await markDiscountCodeUsed({
+        discountCodeId: discount!.discountCodeId,
+        clientEmail,
+      });
+
+      return NextResponse.json({
+        ok: true,
+        freeRedirectUrl: `${siteUrl}/paiement/prepa-nda/succes?discount=1`,
+      });
+    }
+
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
@@ -26,7 +72,7 @@ export async function POST() {
           quantity: 1,
           price_data: {
             currency: "eur",
-            unit_amount: 39000,
+            unit_amount: finalAmountCents,
             product_data: {
               name: "Prépa NDA - Déclaration d’activité",
               description:
@@ -39,6 +85,12 @@ export async function POST() {
       metadata: {
         product_key: "prepa_nda",
         offer: "standard",
+        discount_code: discount?.valid ? discount.code : "",
+        discount_code_id: discount?.valid ? discount.discountCodeId : "",
+        original_amount_cents: String(ORIGINAL_AMOUNT_CENTS),
+        discount_amount_cents: String(discountAmountCents),
+        final_amount_cents: String(finalAmountCents),
+        client_email: clientEmail,
       },
 
       success_url: `${siteUrl}/paiement/prepa-nda/succes?session_id={CHECKOUT_SESSION_ID}`,

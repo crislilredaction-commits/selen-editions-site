@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
+import {
+  markDiscountCodeUsed,
+  validateDiscountCode,
+} from "@/lib/server/discountCodes";
+import { fulfillFreeAuditBlanc } from "@/lib/server/paymentFulfillment";
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY?.trim();
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
@@ -36,6 +41,10 @@ const OFFERS: Record<
   },
 };
 
+function clean(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
 export async function POST(request: Request) {
   try {
     // Pour l’instant, seul l’audit blanc direct est ouvert publiquement.
@@ -44,6 +53,40 @@ export async function POST(request: Request) {
     const offerKey: AuditBlancOffer = "direct";
 
     const offer = OFFERS[offerKey];
+    const body = await request.json().catch(() => null);
+    const clientEmail = clean(body?.clientEmail).toLowerCase();
+    const discountCode = clean(body?.discountCode);
+    const discount = discountCode
+      ? await validateDiscountCode({
+          code: discountCode,
+          clientEmail,
+          amountCents: offer.amount,
+        })
+      : null;
+
+    if (discount && !discount.valid) {
+      return NextResponse.json({ error: discount.reason }, { status: 400 });
+    }
+
+    const discountAmountCents = discount?.valid
+      ? discount.discountAmountCents
+      : 0;
+    const finalAmountCents = discount?.valid
+      ? discount.finalAmountCents
+      : offer.amount;
+
+    if (finalAmountCents === 0) {
+      await fulfillFreeAuditBlanc({ email: clientEmail, offer: offerKey });
+      await markDiscountCodeUsed({
+        discountCodeId: discount!.discountCodeId,
+        clientEmail,
+      });
+
+      return NextResponse.json({
+        ok: true,
+        freeRedirectUrl: `${siteUrl}/paiement/audit-blanc/succes?discount=1`,
+      });
+    }
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
@@ -57,7 +100,7 @@ export async function POST(request: Request) {
           quantity: 1,
           price_data: {
             currency: "eur",
-            unit_amount: offer.amount,
+            unit_amount: finalAmountCents,
             product_data: {
               name: offer.label,
               description: offer.description,
@@ -69,6 +112,12 @@ export async function POST(request: Request) {
       metadata: {
         product_key: "audit_blanc_qualiopi",
         offer: offerKey,
+        discount_code: discount?.valid ? discount.code : "",
+        discount_code_id: discount?.valid ? discount.discountCodeId : "",
+        original_amount_cents: String(offer.amount),
+        discount_amount_cents: String(discountAmountCents),
+        final_amount_cents: String(finalAmountCents),
+        client_email: clientEmail,
       },
 
       success_url: `${siteUrl}/paiement/audit-blanc/succes?session_id={CHECKOUT_SESSION_ID}`,

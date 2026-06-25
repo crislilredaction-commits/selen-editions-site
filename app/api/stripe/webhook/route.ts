@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { Resend } from "resend";
 import { createClient } from "@supabase/supabase-js";
+import { markDiscountCodeUsed } from "@/lib/server/discountCodes";
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY?.trim();
 const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET?.trim();
@@ -39,6 +40,22 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
     autoRefreshToken: false,
   },
 });
+
+async function markSessionDiscountUsed(session: Stripe.Checkout.Session) {
+  const discountCodeId = session.metadata?.discount_code_id?.trim();
+  const clientEmail =
+    session.metadata?.client_email?.trim().toLowerCase() ||
+    getClientEmailFromSession(session);
+
+  if (!discountCodeId || !clientEmail) {
+    return;
+  }
+
+  await markDiscountCodeUsed({
+    discountCodeId,
+    clientEmail,
+  });
+}
 
 type DossierConfig = {
   dossierType: string;
@@ -875,13 +892,16 @@ export async function POST(request: Request) {
 
       if (session.metadata?.product_key === "preaudit_qualiopi") {
         await activateAutoAuditAccess(session);
+        await markSessionDiscountUsed(session);
       }
 
       if (session.metadata?.product_key === "audit_blanc_qualiopi") {
         await createAuditBlancCase(session);
+        await markSessionDiscountUsed(session);
       }
       if (session.metadata?.product_key === "prepa_nda") {
         await createPrepaNdaCase(session);
+        await markSessionDiscountUsed(session);
       }
     }
 

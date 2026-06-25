@@ -2,6 +2,9 @@
 
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import DiscountCodeBox, {
+  type AppliedDiscount,
+} from "@/components/DiscountCodeBox";
 import Link from "next/link";
 import { Suspense, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -13,6 +16,7 @@ type Offer = {
   label: string;
   title: string;
   price: string;
+  amountCents: number;
   description: string;
   stripeModeLabel: string;
 };
@@ -23,6 +27,7 @@ const OFFERS: Record<OfferKey, Offer> = {
     label: "Paiement unique",
     title: "Auto-audit Qualiopi",
     price: "99 €",
+    amountCents: 9900,
     description: "Accès complet à l’auto-audit Qualiopi pendant 3 mois.",
     stripeModeLabel: "Paiement en une fois",
   },
@@ -31,6 +36,7 @@ const OFFERS: Record<OfferKey, Offer> = {
     label: "Paiement en 3 fois",
     title: "Auto-audit Qualiopi",
     price: "3 × 33 €",
+    amountCents: 9900,
     description: "Même accès complet pendant 3 mois, avec paiement fractionné.",
     stripeModeLabel: "Paiement fractionné",
   },
@@ -51,6 +57,8 @@ function AutoAuditPaymentContent() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [clientEmail, setClientEmail] = useState("");
+  const [discount, setDiscount] = useState<AppliedDiscount | null>(null);
 
   async function startStripeCheckout() {
     setLoading(true);
@@ -64,12 +72,14 @@ function AutoAuditPaymentContent() {
         },
         body: JSON.stringify({
           offer: selectedOffer.key,
+          clientEmail,
+          discountCode: discount?.code ?? null,
         }),
       });
 
       const rawResponse = await response.text();
 
-      let data: { url?: string; error?: string } = {};
+      let data: { url?: string; freeRedirectUrl?: string; error?: string } = {};
 
       try {
         data = JSON.parse(rawResponse);
@@ -87,6 +97,11 @@ function AutoAuditPaymentContent() {
           data?.error ||
             "Impossible de démarrer le paiement Stripe pour le moment.",
         );
+      }
+
+      if (data?.freeRedirectUrl) {
+        window.location.href = data.freeRedirectUrl;
+        return;
       }
 
       if (!data?.url) {
@@ -348,6 +363,14 @@ function AutoAuditPaymentContent() {
             >
               Accès à l’auto-audit Qualiopi pendant 3 mois.
             </p>
+
+            <DiscountCodeBox
+              amountCents={selectedOffer.amountCents}
+              clientEmail={clientEmail}
+              onClientEmailChange={setClientEmail}
+              discount={discount}
+              onDiscountChange={setDiscount}
+            />
 
             <button
               type="button"

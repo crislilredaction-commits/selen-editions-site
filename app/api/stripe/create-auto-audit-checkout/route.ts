@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
+import {
+  markDiscountCodeUsed,
+  validateDiscountCode,
+} from "@/lib/server/discountCodes";
+import { fulfillFreeAutoAudit } from "@/lib/server/paymentFulfillment";
 
 type AutoAuditOffer = "unique" | "trois-fois";
 
@@ -13,9 +18,14 @@ if (!stripeSecretKey) {
 }
 
 const stripe = new Stripe(stripeSecretKey);
+const AUTO_AUDIT_AMOUNT_CENTS = 9900;
 
 function isValidOffer(value: unknown): value is AutoAuditOffer {
   return value === "unique" || value === "trois-fois";
+}
+
+function clean(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 export async function POST(request: Request) {
@@ -31,6 +41,42 @@ export async function POST(request: Request) {
     }
 
     const isThreePayments = offer === "trois-fois";
+    const clientEmail = clean(body?.clientEmail).toLowerCase();
+    const discountCode = clean(body?.discountCode);
+    const discount = discountCode
+      ? await validateDiscountCode({
+          code: discountCode,
+          clientEmail,
+          amountCents: AUTO_AUDIT_AMOUNT_CENTS,
+        })
+      : null;
+
+    if (discount && !discount.valid) {
+      return NextResponse.json({ error: discount.reason }, { status: 400 });
+    }
+
+    const discountAmountCents = discount?.valid
+      ? discount.discountAmountCents
+      : 0;
+    const finalAmountCents = discount?.valid
+      ? discount.finalAmountCents
+      : AUTO_AUDIT_AMOUNT_CENTS;
+    const stripeUnitAmount = isThreePayments
+      ? Math.max(0, Math.round(finalAmountCents / 3))
+      : finalAmountCents;
+
+    if (finalAmountCents === 0) {
+      await fulfillFreeAutoAudit({ email: clientEmail, offer });
+      await markDiscountCodeUsed({
+        discountCodeId: discount!.discountCodeId,
+        clientEmail,
+      });
+
+      return NextResponse.json({
+        ok: true,
+        freeRedirectUrl: `${siteUrl}/paiement/auto-audit/succes?discount=1`,
+      });
+    }
 
     const session = await stripe.checkout.sessions.create({
       mode: isThreePayments ? "subscription" : "payment",
@@ -48,7 +94,7 @@ export async function POST(request: Request) {
                 ? "Accès 3 mois à l’auto-audit Qualiopi, paiement fractionné en 3 échéances mensuelles."
                 : "Accès 3 mois à l’auto-audit Qualiopi.",
             },
-            unit_amount: isThreePayments ? 3300 : 9900,
+            unit_amount: stripeUnitAmount,
             ...(isThreePayments
               ? {
                   recurring: {
@@ -71,6 +117,12 @@ export async function POST(request: Request) {
         offer,
         access_months: "3",
         audit_blanc_reserved_price: "199",
+        discount_code: discount?.valid ? discount.code : "",
+        discount_code_id: discount?.valid ? discount.discountCodeId : "",
+        original_amount_cents: String(AUTO_AUDIT_AMOUNT_CENTS),
+        discount_amount_cents: String(discountAmountCents),
+        final_amount_cents: String(finalAmountCents),
+        client_email: clientEmail,
       },
 
       ...(isThreePayments
@@ -82,6 +134,12 @@ export async function POST(request: Request) {
                 access_months: "3",
                 max_payments: "3",
                 should_cancel_after_months: "3",
+                discount_code: discount?.valid ? discount.code : "",
+                discount_code_id: discount?.valid ? discount.discountCodeId : "",
+                original_amount_cents: String(AUTO_AUDIT_AMOUNT_CENTS),
+                discount_amount_cents: String(discountAmountCents),
+                final_amount_cents: String(finalAmountCents),
+                client_email: clientEmail,
               },
             },
           }
@@ -91,6 +149,12 @@ export async function POST(request: Request) {
                 product_key: "preaudit_qualiopi",
                 offer,
                 access_months: "3",
+                discount_code: discount?.valid ? discount.code : "",
+                discount_code_id: discount?.valid ? discount.discountCodeId : "",
+                original_amount_cents: String(AUTO_AUDIT_AMOUNT_CENTS),
+                discount_amount_cents: String(discountAmountCents),
+                final_amount_cents: String(finalAmountCents),
+                client_email: clientEmail,
               },
             },
           }),
