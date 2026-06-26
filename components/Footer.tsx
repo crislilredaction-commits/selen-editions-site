@@ -13,7 +13,6 @@ export default function Footer() {
         </div>
       </div>
 
-      {/* Colonnes — stack sur mobile, 3 cols sur md */}
       <div className="mx-auto max-w-6xl px-4 md:px-6 py-8 md:py-10">
         <div className="grid gap-8 md:grid-cols-3 md:gap-6">
           <div className="relative md:pl-4 md:before:absolute md:before:left-0 md:before:top-2 md:before:bottom-2 md:before:w-px md:before:bg-gradient-to-b md:before:from-transparent md:before:via-[#b28a62]/40 md:before:to-transparent">
@@ -62,17 +61,36 @@ export default function Footer() {
               Un projet, une question, un audit à venir ? Un échange simple peut
               déjà tout changer.
             </p>
-            <Link
-              href="/prendre-rendez-vous"
-              className="mt-5 inline-flex items-center gap-2 border border-[#8a4b24] px-4 py-2.5 font-['Cinzel'] text-[0.65rem] uppercase tracking-[0.12em] text-[#8a4b24] hover:bg-[#8a4b24] hover:text-[#f7ead6] transition-all duration-300 w-full sm:w-auto justify-center md:justify-start"
-            >
-              Réserver un appel <span className="text-[0.6rem]">→</span>
-            </Link>
+
+            <div className="mt-5 grid gap-3">
+              <Link
+                href="/prendre-rendez-vous"
+                className="inline-flex items-center justify-center gap-2 border border-[#8a4b24] px-4 py-2.5 font-['Cinzel'] text-[0.65rem] uppercase tracking-[0.12em] text-[#8a4b24] hover:bg-[#8a4b24] hover:text-[#f7ead6] transition-all duration-300 w-full sm:w-auto md:justify-start"
+              >
+                Réserver un appel <span className="text-[0.6rem]">→</span>
+              </Link>
+
+              <div className="border border-[#b28a62]/35 bg-[#f8efdf]/45 p-4">
+                <p className="font-['Playfair_Display'] text-lg font-semibold text-[#3e2a1f]">
+                  Prévenir Selen
+                </p>
+                <p className="mt-2 text-[0.88rem] leading-6 text-[#6e4a32]">
+                  Une question, un problème d'accès, une réclamation ou une
+                  demande particulière ? Nous vous répondrons dans les meilleurs
+                  délais.
+                </p>
+                <Link
+                  href="/support"
+                  className="mt-3 inline-flex items-center justify-center gap-2 border border-[#b28a62] px-4 py-2 font-['Cinzel'] text-[0.62rem] uppercase tracking-[0.12em] text-[#8a6243] hover:bg-[#f7ead6] transition-all duration-300 w-full sm:w-auto md:justify-start"
+                >
+                  Prévenir Selen <span className="text-[0.6rem]">→</span>
+                </Link>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Bottom strip */}
       <div className="border-t border-[#b28a62]/25 px-4 md:px-6 py-4">
         <div className="mx-auto max-w-6xl flex flex-col md:flex-row items-center justify-between gap-2 text-center md:text-left">
           <p className="gazette-byline" style={{ fontSize: "0.6rem" }}>

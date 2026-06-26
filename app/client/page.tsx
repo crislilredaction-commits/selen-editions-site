@@ -29,6 +29,15 @@ type NdaDossier = {
   updated_at: string | null;
 };
 
+type SupportTicket = {
+  id: string;
+  subject: string | null;
+  category: string | null;
+  status: string | null;
+  last_message_at: string | null;
+  created_at: string | null;
+};
+
 function formatDate(value?: string | null) {
   if (!value) return "Non renseignée";
 
@@ -65,6 +74,20 @@ function hasActiveToolAccess(access?: ToolAccess | null) {
   return false;
 }
 
+function hasExpiredToolAccess(access?: ToolAccess | null) {
+  if (!access) return false;
+  if (hasActiveToolAccess(access)) return false;
+  return access.status !== "cancelled";
+}
+
+function formatSupportStatus(status?: string | null) {
+  if (status === "open") return "Ouvert";
+  if (status === "pending") return "En attente";
+  if (status === "resolved") return "Résolu";
+  if (status === "closed") return "Fermé";
+  return "À suivre";
+}
+
 export default function ClientDashboardPage() {
   const router = useRouter();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -76,6 +99,7 @@ export default function ClientDashboardPage() {
     null,
   );
   const [ndaDossiers, setNdaDossiers] = useState<NdaDossier[]>([]);
+  const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
   const [error, setError] = useState("");
 
   const preauditRemainingDays = getRemainingDays(preauditAccess?.ends_at);
@@ -83,6 +107,9 @@ export default function ClientDashboardPage() {
 
   const hasActivePreauditAccess = hasActiveToolAccess(preauditAccess);
   const hasActiveAuditBlancAccess = hasActiveToolAccess(auditBlancAccess);
+  const hasPreauditReadAccess = Boolean(preauditAccess);
+  const hasAuditBlancReadAccess = Boolean(auditBlancAccess);
+  const hasExpiredPreauditAccess = hasExpiredToolAccess(preauditAccess);
 
   const isPreauditUnlimited = preauditAccess?.access_type === "unlimited";
   const isAuditBlancUnlimited = auditBlancAccess?.access_type === "unlimited";
@@ -147,6 +174,22 @@ export default function ClientDashboardPage() {
         console.warn("Erreur récupération dossiers NDA :", ndaError);
       }
 
+      try {
+        const supportRes = await fetch("/api/client/support-tickets", {
+          cache: "no-store",
+        });
+
+        const supportData = await supportRes.json().catch(() => null);
+
+        if (supportRes.ok) {
+          setSupportTickets((supportData?.tickets ?? []) as SupportTicket[]);
+        } else {
+          console.warn("Aucun ticket support récupéré :", supportData);
+        }
+      } catch (supportError) {
+        console.warn("Erreur récupération tickets support :", supportError);
+      }
+
       setLoading(false);
     }
 
@@ -158,16 +201,16 @@ export default function ClientDashboardPage() {
 
     if (
       ndaDossiers.length === 1 &&
-      !hasActivePreauditAccess &&
-      !hasActiveAuditBlancAccess
+      !hasPreauditReadAccess &&
+      !hasAuditBlancReadAccess
     ) {
       router.replace(`/client/dossier/${ndaDossiers[0].id}`);
     }
   }, [
     loading,
     ndaDossiers,
-    hasActivePreauditAccess,
-    hasActiveAuditBlancAccess,
+    hasPreauditReadAccess,
+    hasAuditBlancReadAccess,
     router,
   ]);
 
@@ -261,8 +304,8 @@ export default function ClientDashboardPage() {
         ) : null}
 
         {hasNdaDossier ||
-        hasActivePreauditAccess ||
-        hasActiveAuditBlancAccess ? (
+        hasPreauditReadAccess ||
+        hasAuditBlancReadAccess ? (
           <section
             style={{
               display: "grid",
@@ -317,7 +360,7 @@ export default function ClientDashboardPage() {
               </article>
             ) : null}
 
-            {hasActivePreauditAccess ? (
+            {hasPreauditReadAccess ? (
               <article
                 style={{
                   background: "var(--paper)",
@@ -329,7 +372,9 @@ export default function ClientDashboardPage() {
                 <p className="gazette-label">Auto-audit Qualiopi</p>
 
                 <h2 style={{ color: "var(--ink)", marginBottom: "0.5rem" }}>
-                  Votre auto-audit est actif
+                  {hasActivePreauditAccess
+                    ? "Votre auto-audit est actif"
+                    : "Votre auto-audit est en lecture seule"}
                 </h2>
 
                 <p
@@ -339,7 +384,13 @@ export default function ClientDashboardPage() {
                     marginBottom: "0.8rem",
                   }}
                 >
-                  {isPreauditUnlimited ? (
+                  {hasExpiredPreauditAccess ? (
+                    <>
+                      L'accès actif au préaudit est expiré. Votre bilan final
+                      reste consultable, mais les réponses et modifications ne
+                      sont plus disponibles gratuitement.
+                    </>
+                  ) : isPreauditUnlimited ? (
                     <>
                       Votre accès à l’auto-audit est actif en{" "}
                       <strong>illimité</strong>.
@@ -352,7 +403,7 @@ export default function ClientDashboardPage() {
                   )}
                 </p>
 
-                {!isPreauditUnlimited ? (
+                {hasActivePreauditAccess && !isPreauditUnlimited ? (
                   <p
                     style={{
                       color: "#6a8a4a",
@@ -366,6 +417,7 @@ export default function ClientDashboardPage() {
                 ) : null}
 
                 <div style={{ display: "grid", gap: "0.5rem" }}>
+                  {hasActivePreauditAccess ? (
                   <button
                     type="button"
                     className="btn-ink"
@@ -373,6 +425,7 @@ export default function ClientDashboardPage() {
                   >
                     <span>Commencer ou reprendre mon auto-audit →</span>
                   </button>
+                  ) : null}
 
                   <button
                     type="button"
@@ -385,7 +438,7 @@ export default function ClientDashboardPage() {
               </article>
             ) : null}
 
-            {hasActiveAuditBlancAccess ? (
+            {hasAuditBlancReadAccess ? (
               <article
                 style={{
                   background: "var(--paper)",
@@ -397,7 +450,9 @@ export default function ClientDashboardPage() {
                 <p className="gazette-label">Selen Review</p>
 
                 <h2 style={{ color: "var(--ink)", marginBottom: "0.5rem" }}>
-                  Votre audit blanc Qualiopi
+                  {hasActiveAuditBlancAccess
+                    ? "Votre audit blanc Qualiopi"
+                    : "Votre audit blanc est en lecture seule"}
                 </h2>
 
                 <p
@@ -412,7 +467,7 @@ export default function ClientDashboardPage() {
                   et les documents correctifs éventuels.
                 </p>
 
-                {!isAuditBlancUnlimited ? (
+                {hasActiveAuditBlancAccess && !isAuditBlancUnlimited ? (
                   <p
                     style={{
                       color: "#6a8a4a",
@@ -465,17 +520,131 @@ export default function ClientDashboardPage() {
                 marginTop: "0.8rem",
               }}
             >
-              En cas de doute, contactez Selen à{" "}
+              En cas de doute, passez par{" "}
               <a
-                href="mailto:hello@selen-editions.fr"
+                href="/support"
                 style={{ color: "var(--rust)" }}
               >
-                hello@selen-editions.fr
+                le bouton Prévenir Selen
               </a>
               .
             </p>
           </section>
         )}
+
+        <section
+          style={{
+            background: "var(--paper)",
+            border: "1px solid var(--sepia-mid)",
+            borderLeft: "4px solid var(--rust)",
+            padding: "1.2rem",
+            marginBottom: "1.5rem",
+          }}
+        >
+          <p className="gazette-label">Support</p>
+
+          <h2 style={{ color: "var(--ink)", marginBottom: "0.5rem" }}>
+            Prévenir Selen
+          </h2>
+
+          <p
+            style={{
+              color: "var(--ink-soft)",
+              lineHeight: 1.6,
+              marginBottom: "1rem",
+              maxWidth: 780,
+            }}
+          >
+            Une question, un problème d'accès, une réclamation ou une demande
+            particulière ? Votre message ouvre un ticket suivi par Selen dans
+            Studio.
+          </p>
+
+          <div
+            style={{
+              display: "flex",
+              gap: "0.6rem",
+              flexWrap: "wrap",
+              marginBottom: "1.2rem",
+            }}
+          >
+            <button
+              type="button"
+              className="btn-ink"
+              onClick={() => router.push("/support")}
+            >
+              <span>Prévenir Selen →</span>
+            </button>
+
+            <a
+              href="#historique-demandes"
+              className="btn-ghost"
+              style={{ textDecoration: "none" }}
+            >
+              <span>Historique des demandes</span>
+            </a>
+          </div>
+
+          <div id="historique-demandes">
+            <p className="gazette-label">Historique des demandes</p>
+
+            {supportTickets.length > 0 ? (
+              <div style={{ display: "grid", gap: "0.7rem" }}>
+                {supportTickets.map((ticket) => (
+                  <article
+                    key={ticket.id}
+                    style={{
+                      border: "1px solid rgba(178,138,98,0.35)",
+                      background: "rgba(248,239,223,0.45)",
+                      padding: "0.9rem",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: "0.8rem",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <strong style={{ color: "var(--ink)" }}>
+                        {ticket.subject || "Demande support"}
+                      </strong>
+                      <span
+                        className="gazette-label"
+                        style={{ color: "var(--rust)" }}
+                      >
+                        {formatSupportStatus(ticket.status)}
+                      </span>
+                    </div>
+
+                    <p
+                      style={{
+                        color: "var(--ink-soft)",
+                        fontSize: "0.9rem",
+                        marginTop: "0.4rem",
+                      }}
+                    >
+                      {ticket.category || "Support"} · dernière mise à jour le{" "}
+                      {formatDate(ticket.last_message_at ?? ticket.created_at)}
+                    </p>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p
+                style={{
+                  color: "var(--ink-soft)",
+                  lineHeight: 1.6,
+                  margin: 0,
+                }}
+              >
+                Aucune demande support n'a encore été ouverte avec cette
+                adresse.
+              </p>
+            )}
+          </div>
+        </section>
       </div>
     </main>
   );
