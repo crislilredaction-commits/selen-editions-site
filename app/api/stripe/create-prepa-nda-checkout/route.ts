@@ -5,6 +5,7 @@ import {
   validateDiscountCode,
 } from "@/lib/server/discountCodes";
 import { fulfillFreePrepaNda } from "@/lib/server/paymentFulfillment";
+import { recordSelenPayment } from "@/lib/server/selenPayments";
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY?.trim();
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
@@ -48,7 +49,28 @@ export async function POST(request: Request) {
       : ORIGINAL_AMOUNT_CENTS;
 
     if (finalAmountCents === 0) {
+      const freeSessionId = `free_${crypto.randomUUID()}`;
       await fulfillFreePrepaNda({ email: clientEmail });
+      await recordSelenPayment({
+        clientEmail,
+        prestationType: "prepa_nda",
+        amountCents: 0,
+        originalAmountCents: ORIGINAL_AMOUNT_CENTS,
+        discountAmountCents,
+        currency: "eur",
+        stripeSessionId: freeSessionId,
+        metadata: {
+          product_key: "prepa_nda",
+          offer: "standard",
+          discount_code: discount!.code,
+          discount_code_id: discount!.discountCodeId,
+          original_amount_cents: ORIGINAL_AMOUNT_CENTS,
+          discount_amount_cents: discountAmountCents,
+          final_amount_cents: finalAmountCents,
+          client_email: clientEmail,
+          free_checkout: true,
+        },
+      });
       await markDiscountCodeUsed({
         discountCodeId: discount!.discountCodeId,
         clientEmail,

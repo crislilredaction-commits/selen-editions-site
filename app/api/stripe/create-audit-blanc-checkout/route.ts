@@ -5,6 +5,7 @@ import {
   validateDiscountCode,
 } from "@/lib/server/discountCodes";
 import { fulfillFreeAuditBlanc } from "@/lib/server/paymentFulfillment";
+import { recordSelenPayment } from "@/lib/server/selenPayments";
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY?.trim();
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
@@ -76,7 +77,28 @@ export async function POST(request: Request) {
       : offer.amount;
 
     if (finalAmountCents === 0) {
+      const freeSessionId = `free_${crypto.randomUUID()}`;
       await fulfillFreeAuditBlanc({ email: clientEmail, offer: offerKey });
+      await recordSelenPayment({
+        clientEmail,
+        prestationType: "audit_blanc_qualiopi",
+        amountCents: 0,
+        originalAmountCents: offer.amount,
+        discountAmountCents,
+        currency: "eur",
+        stripeSessionId: freeSessionId,
+        metadata: {
+          product_key: "audit_blanc_qualiopi",
+          offer: offerKey,
+          discount_code: discount!.code,
+          discount_code_id: discount!.discountCodeId,
+          original_amount_cents: offer.amount,
+          discount_amount_cents: discountAmountCents,
+          final_amount_cents: finalAmountCents,
+          client_email: clientEmail,
+          free_checkout: true,
+        },
+      });
       await markDiscountCodeUsed({
         discountCodeId: discount!.discountCodeId,
         clientEmail,

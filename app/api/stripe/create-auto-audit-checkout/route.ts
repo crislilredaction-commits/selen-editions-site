@@ -5,6 +5,7 @@ import {
   validateDiscountCode,
 } from "@/lib/server/discountCodes";
 import { fulfillFreeAutoAudit } from "@/lib/server/paymentFulfillment";
+import { recordSelenPayment } from "@/lib/server/selenPayments";
 
 type AutoAuditOffer = "unique" | "trois-fois";
 
@@ -66,7 +67,29 @@ export async function POST(request: Request) {
       : finalAmountCents;
 
     if (finalAmountCents === 0) {
+      const freeSessionId = `free_${crypto.randomUUID()}`;
       await fulfillFreeAutoAudit({ email: clientEmail, offer });
+      await recordSelenPayment({
+        clientEmail,
+        prestationType: "preaudit_qualiopi",
+        amountCents: 0,
+        originalAmountCents: AUTO_AUDIT_AMOUNT_CENTS,
+        discountAmountCents,
+        currency: "eur",
+        stripeSessionId: freeSessionId,
+        metadata: {
+          product_key: "preaudit_qualiopi",
+          offer,
+          access_months: "3",
+          discount_code: discount!.code,
+          discount_code_id: discount!.discountCodeId,
+          original_amount_cents: AUTO_AUDIT_AMOUNT_CENTS,
+          discount_amount_cents: discountAmountCents,
+          final_amount_cents: finalAmountCents,
+          client_email: clientEmail,
+          free_checkout: true,
+        },
+      });
       await markDiscountCodeUsed({
         discountCodeId: discount!.discountCodeId,
         clientEmail,

@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { Resend } from "resend";
 import { createClient } from "@supabase/supabase-js";
 import { markDiscountCodeUsed } from "@/lib/server/discountCodes";
+import { recordStripeCheckoutPayment } from "@/lib/server/selenPayments";
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY?.trim();
 const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET?.trim();
@@ -892,15 +893,18 @@ export async function POST(request: Request) {
 
       if (session.metadata?.product_key === "preaudit_qualiopi") {
         await activateAutoAuditAccess(session);
+        await recordStripeCheckoutPayment(session);
         await markSessionDiscountUsed(session);
       }
 
       if (session.metadata?.product_key === "audit_blanc_qualiopi") {
         await createAuditBlancCase(session);
+        await recordStripeCheckoutPayment(session);
         await markSessionDiscountUsed(session);
       }
       if (session.metadata?.product_key === "prepa_nda") {
         await createPrepaNdaCase(session);
+        await recordStripeCheckoutPayment(session);
         await markSessionDiscountUsed(session);
       }
     }
