@@ -1429,7 +1429,10 @@ export default function IndicateurPage() {
       className="gazette-paper"
       style={{ minHeight: "100vh", padding: "2rem" }}
     >
-      <ClientSupportBar context="l’auto-audit Qualiopi" />
+      <ClientSupportBar
+        context="l’auto-audit Qualiopi"
+        toolSlug="preaudit-qualiopi"
+      />
       <div style={{ maxWidth: 1180, margin: "0 auto" }}>
         <header
           className="gazette-cta"

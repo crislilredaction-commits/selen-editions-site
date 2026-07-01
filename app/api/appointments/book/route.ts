@@ -270,7 +270,7 @@ async function verifyAuditBlancAccess({
 
   let accessQuery = supabase
     .from("selen_client_tool_access")
-    .select("id")
+    .select("id, status, access_type, starts_at, ends_at")
     .eq("user_id", client.id)
     .eq("tool_slug", "audit-blanc-qualiopi")
     .eq("status", "active")
@@ -302,9 +302,24 @@ async function verifyAuditBlancAccess({
 
   const auditCase = auditCases?.[0] ?? null;
 
-  if (!toolAccess?.length && !auditCase) {
+  const now = new Date();
+  const hasActiveToolAccess = (toolAccess ?? []).some((access) => {
+    if (access.status !== "active") return false;
+    if (access.access_type === "unlimited") return true;
+    if (
+      access.access_type !== "limited" ||
+      !access.starts_at ||
+      !access.ends_at
+    ) {
+      return false;
+    }
+
+    return new Date(access.starts_at) <= now && new Date(access.ends_at) >= now;
+  });
+
+  if (!hasActiveToolAccess) {
     return NextResponse.json(
-      { error: "Acces audit blanc actif introuvable." },
+      { error: "Acces audit blanc actif expire ou introuvable." },
       { status: 403 },
     );
   }

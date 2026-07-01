@@ -49,6 +49,23 @@ type ClientAuditSummary = {
   total_renseignes: number;
 };
 
+type ToolAccess = {
+  status: string;
+  access_type: string;
+  starts_at: string | null;
+  ends_at: string | null;
+};
+
+function hasActiveToolAccess(access?: ToolAccess | null) {
+  if (!access || access.status !== "active") return false;
+  if (access.access_type === "unlimited") return true;
+  if (access.access_type !== "limited" || !access.starts_at || !access.ends_at)
+    return false;
+
+  const now = new Date();
+  return new Date(access.starts_at) <= now && new Date(access.ends_at) >= now;
+}
+
 function formatDateTime(value?: string | null) {
   if (!value) return "Non planifié";
 
@@ -142,6 +159,7 @@ export default function ClientAuditBlancPage() {
   const [email, setEmail] = useState<string | null>(null);
   const [auditCase, setAuditCase] = useState<AuditBlancCase | null>(null);
   const [documents, setDocuments] = useState<AuditBlancDocument[]>([]);
+  const [auditAccess, setAuditAccess] = useState<ToolAccess | null>(null);
   const [error, setError] = useState("");
 
   const [summary, setSummary] = useState<ClientAuditSummary | null>(null);
@@ -153,6 +171,8 @@ export default function ClientAuditBlancPage() {
   const correctiveDocuments = documents.filter(
     (doc) => !isAuditReportDocument(doc),
   );
+  const hasActiveAuditAccess = hasActiveToolAccess(auditAccess);
+  const canBookAudit = hasActiveAuditAccess && !auditCase?.calendly_event_1_start;
 
   function getDocumentHref(doc: AuditBlancDocument) {
     const storagePath = extractStoragePath(doc.storage_path || doc.public_url);
@@ -188,6 +208,21 @@ export default function ClientAuditBlancPage() {
       const cleanEmail = userEmail?.trim().toLowerCase() ?? null;
 
       setEmail(cleanEmail);
+
+      const { data: accessData, error: accessError } = await supabase
+        .from("selen_client_tool_access")
+        .select("status, access_type, starts_at, ends_at")
+        .eq("user_id", authData.user.id)
+        .eq("tool_slug", "audit-blanc-qualiopi")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (accessError) {
+        console.warn("Impossible de vérifier l'accès audit blanc :", accessError);
+      } else {
+        setAuditAccess((accessData ?? null) as ToolAccess | null);
+      }
 
       if (!cleanEmail) {
         setError("Aucune adresse email n’est associée à votre compte client.");
@@ -269,7 +304,12 @@ export default function ClientAuditBlancPage() {
     return (
       <main className="gazette-paper" style={{ minHeight: "100vh" }}>
         <Header />
-        <ClientSupportBar email={email} context="l’espace audit blanc" />
+        <ClientSupportBar
+          email={email}
+          context="l’espace audit blanc"
+          dossierId={auditCase?.dossier_id}
+          toolSlug="audit-blanc-qualiopi"
+        />
 
         <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
           <p style={{ color: "var(--ink-faint)" }}>
@@ -285,7 +325,12 @@ export default function ClientAuditBlancPage() {
   return (
     <main className="gazette-paper" style={{ minHeight: "100vh" }}>
       <Header />
-      <ClientSupportBar email={email} context="l’espace audit blanc" />
+      <ClientSupportBar
+        email={email}
+        context="l’espace audit blanc"
+        dossierId={auditCase?.dossier_id}
+        toolSlug="audit-blanc-qualiopi"
+      />
 
       <div
         style={{
@@ -470,64 +515,79 @@ export default function ClientAuditBlancPage() {
                   </div>
                 ) : (
                   <>
-                    <p
-                      style={{
-                        color: "var(--ink-soft)",
-                        lineHeight: 1.65,
-                        marginBottom: "1rem",
-                      }}
-                    >
-                      Choisissez le format qui convient le mieux à votre audit
-                      blanc : une session complète de 3h30, ou deux rendez-vous
-                      séparés d’1h45.
-                    </p>
+                    {canBookAudit ? (
+                      <>
+                        <p
+                          style={{
+                            color: "var(--ink-soft)",
+                            lineHeight: 1.65,
+                            marginBottom: "1rem",
+                          }}
+                        >
+                          Choisissez le format qui convient le mieux à votre
+                          audit blanc : une session complète de 3h30, ou deux
+                          rendez-vous séparés d'1h45.
+                        </p>
 
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns:
-                          "repeat(auto-fit, minmax(220px, 1fr))",
-                        gap: "0.8rem",
-                      }}
-                    >
-                      <Link
-                        href={`/prendre-rendez-vous?source=client_space&appointmentType=audit_3h30${
-                          auditCase.dossier_id
-                            ? `&dossierId=${encodeURIComponent(auditCase.dossier_id)}`
-                            : ""
-                        }`}
-                        className="btn-ink"
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns:
+                              "repeat(auto-fit, minmax(220px, 1fr))",
+                            gap: "0.8rem",
+                          }}
+                        >
+                          <Link
+                            href={`/prendre-rendez-vous?source=client_space&appointmentType=audit_3h30${
+                              auditCase.dossier_id
+                                ? `&dossierId=${encodeURIComponent(auditCase.dossier_id)}`
+                                : ""
+                            }`}
+                            className="btn-ink"
+                            style={{ textAlign: "center" }}
+                          >
+                            <span>Réserver 3h30</span>
+                          </Link>
+
+                          <Link
+                            href={`/prendre-rendez-vous?source=client_space&appointmentType=audit_2x1h45${
+                              auditCase.dossier_id
+                                ? `&dossierId=${encodeURIComponent(auditCase.dossier_id)}`
+                                : ""
+                            }`}
+                            className="btn-ink"
+                            style={{ textAlign: "center" }}
+                          >
+                            <span>Réserver 2 x 1h45</span>
+                          </Link>
+                        </div>
+
+                        <p
+                          style={{
+                            color: "var(--ink-faint)",
+                            fontSize: "0.88rem",
+                            lineHeight: 1.5,
+                            marginTop: "0.8rem",
+                          }}
+                        >
+                          Note : les créneaux proposés sont directement
+                          vérifiés dans l'agenda Selen.
+                        </p>
+                      </>
+                    ) : (
+                      <p
                         style={{
-                          textAlign: "center",
+                          color: "var(--ink-soft)",
+                          lineHeight: 1.65,
+                          marginBottom: "1rem",
                         }}
                       >
-                        <span>Réserver 3h30</span>
-                      </Link>
-
-                      <Link
-                        href={`/prendre-rendez-vous?source=client_space&appointmentType=audit_2x1h45${
-                          auditCase.dossier_id
-                            ? `&dossierId=${encodeURIComponent(auditCase.dossier_id)}`
-                            : ""
-                        }`}
-                        className="btn-ink"
-                        style={{ textAlign: "center" }}
-                      >
-                        <span>Réserver 2 × 1h45</span>
-                      </Link>
-                    </div>
-
-                    <p
-                      style={{
-                        color: "var(--ink-faint)",
-                        fontSize: "0.88rem",
-                        lineHeight: 1.5,
-                        marginTop: "0.8rem",
-                      }}
-                    >
-                      Note : les créneaux proposés sont directement vérifiés
-                      dans l’agenda Selen.
-                    </p>
+                        L'accès actif à la réservation de l'audit blanc est
+                        expiré. Vos synthèses, rapports et documents publiés
+                        restent consultables, mais un nouveau créneau gratuit ne
+                        peut plus être réservé depuis cet espace.
+                      </p>
+                    )}
                   </>
                 )}
               </article>

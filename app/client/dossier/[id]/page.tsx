@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import ClientMessagingPanel from "@/components/ClientMessagingPanel";
@@ -66,9 +66,22 @@ type NdaProgressStep = {
   status: string;
 };
 
+type LoadClientStateOptions = {
+  showLoading?: boolean;
+  forceFormSync?: boolean;
+};
+
 const FINAL_REVIEW_STATUSES = ["under_review", "final_review"];
 const NDA_DEPOSIT_READY_STATUSES = [
   "ready_for_deposit",
+  "deposit_ready",
+  "nda_deposit_ready",
+  "ready_for_deposit_nda",
+  "ready_for_nda_deposit",
+  "ready_to_deposit",
+  "ready_for_submission",
+  "ready_for_nda_submission",
+  "nda_ready_for_deposit",
   "deposit_procedure_ready",
   "compliant",
 ];
@@ -93,12 +106,34 @@ const PROGRAM_REFUSED_STATUSES = [
   "correction_requested",
   "changes_requested",
 ];
-const PROGRAM_VALIDATED_STATUSES = ["validated_by_client", "validated"];
+const PROGRAM_VALIDATED_STATUSES = [
+  "validated_by_client",
+  "validated",
+  "program_validated",
+];
 const OFFICIAL_NDA_DEPOSIT_URL =
   "https://efpconnect.emploi.gouv.fr/auth/realms/efp/protocol/cas/login?TARGET=https%3A%2F%2Fwww.monactiviteformation.emploi.gouv.fr%2Fmon-activite-formation%2F";
 const TVA_EXEMPTION_CERFA_URL =
   "https://www.impots.gouv.fr/sites/default/files/formulaires/3511-sd/2026/3511-sd_4894.pdf";
 const CRIMINAL_RECORD_REQUEST_URL = "https://casier-judiciaire.justice.gouv.fr";
+
+const STEP_REASSURANCE_MESSAGES: Record<number, string> = {
+  1: "Vous pouvez quitter cette page dès que vous avez terminé votre lecture. Selen garde le fil, même si votre café refroidit moins vite que l'administration. Vous recevrez un email lorsqu'une nouvelle action sera nécessaire.",
+  2: "Une fois vos informations et documents envoyés, vous pouvez fermer la page sereinement. Nous prenons le relais, sans tambour ni formulaire caché. Un email vous préviendra dès que vous devrez intervenir.",
+  3: "Votre dossier est entre les mains de Selen. Vous pouvez quitter la page : l'analyse avance côté équipe, et un email vous réveillera doucement quand une action sera attendue.",
+  4: "Après votre validation ou votre demande de modification, vous pouvez souffler et fermer l'onglet. Nous nous occupons de la suite, avec sérieux et sans confettis administratifs. Vous recevrez un email au prochain mouvement.",
+  5: "Quand les coordonnées du client à former sont transmises, vous pouvez partir l'esprit léger. Selen prépare les documents, et promis, l'email fera signe quand ce sera à vous de jouer.",
+  6: "Vos documents sont en préparation ou en vérification. Vous pouvez quitter la page sans surveiller le four : nous vous enverrons un email dès qu'une nouvelle action sera nécessaire.",
+  7: "Une fois le dépôt effectué ou les documents récupérés, vous pouvez fermer la page tranquillement. Selen reste en veille élégante, et un email vous préviendra si une suite vous attend.",
+  8: "Le dossier est dans sa phase de suivi. Vous pouvez quitter la page : nous gardons un oeil sur la suite et vous recevrez un email dès qu'une action sera nécessaire.",
+};
+
+function getStepReassuranceMessage(stepNumber: number) {
+  return (
+    STEP_REASSURANCE_MESSAGES[stepNumber] ??
+    "Vous pouvez quitter cette page sereinement. Selen garde le fil et vous recevrez un email lorsqu'une nouvelle action sera nécessaire."
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Page principale
@@ -228,11 +263,14 @@ export default function ClientNdaPage() {
     lieu_signature_convention: "",
     date_signature_convention: "",
   });
+  const isStep1DirtyRef = useRef(false);
+  const isStep2DirtyRef = useRef(false);
 
   function updateStep2Form<K extends keyof typeof step2Form>(
     key: K,
     value: (typeof step2Form)[K],
   ) {
+    isStep2DirtyRef.current = true;
     setStep2Form((prev) => ({ ...prev, [key]: value }));
   }
 
@@ -240,6 +278,7 @@ export default function ClientNdaPage() {
     key: K,
     value: (typeof form)[K],
   ) {
+    isStep1DirtyRef.current = true;
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
@@ -260,7 +299,10 @@ export default function ClientNdaPage() {
   }
 
   const loadClientState = useCallback(
-    async ({ showLoading = true }: { showLoading?: boolean } = {}) => {
+    async ({
+      showLoading = true,
+      forceFormSync = false,
+    }: LoadClientStateOptions = {}) => {
       try {
         if (!dossierId) {
           setAccessLoading(false);
@@ -362,7 +404,24 @@ export default function ClientNdaPage() {
         );
         setSigningDocumentsReady(Boolean(stateData?.signingDocumentsReady));
 
-        if (stateData?.step2) {
+        if (stateData?.step1 && (forceFormSync || !isStep1DirtyRef.current)) {
+          setForm({
+            organisation_name: stateData.step1.organisation_name ?? "",
+            organisation_email: stateData.step1.organisation_email ?? "",
+            organisation_phone: stateData.step1.organisation_phone ?? "",
+            representant_prenom: stateData.step1.representant_prenom ?? "",
+            representant_nom: stateData.step1.representant_nom ?? "",
+            formateur_prenom: stateData.step1.formateur_prenom ?? "",
+            formateur_nom: stateData.step1.formateur_nom ?? "",
+            formateur_email: stateData.step1.formateur_email ?? "",
+            formation_intitule: stateData.step1.formation_intitule ?? "",
+            formation_duree: stateData.step1.formation_duree ?? "",
+            formation_tarif: stateData.step1.formation_tarif ?? "",
+            formation_modalite: stateData.step1.formation_modalite ?? "",
+          });
+        }
+
+        if (stateData?.step2 && (forceFormSync || !isStep2DirtyRef.current)) {
           setStep2Form({
             client_nom: stateData.step2.client_nom ?? "",
             client_adresse: stateData.step2.client_adresse ?? "",
@@ -424,7 +483,7 @@ export default function ClientNdaPage() {
   }, [loadClientState]);
 
   useEffect(() => {
-    const intervalId = window.setInterval(() => {
+    const refreshStateQuietly = () => {
       if (document.visibilityState !== "visible" || saving) {
         return;
       }
@@ -437,9 +496,17 @@ export default function ClientNdaPage() {
           }).format(new Date()),
         );
       });
-    }, 15000);
+    };
 
-    return () => window.clearInterval(intervalId);
+    const intervalId = window.setInterval(refreshStateQuietly, 8000);
+    window.addEventListener("focus", refreshStateQuietly);
+    document.addEventListener("visibilitychange", refreshStateQuietly);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshStateQuietly);
+      document.removeEventListener("visibilitychange", refreshStateQuietly);
+    };
   }, [loadClientState, saving]);
 
   async function saveStep1() {
@@ -694,7 +761,8 @@ export default function ClientNdaPage() {
         await uploadOneDocument("kbis", docs.kbis.file);
       }
 
-      await loadClientState({ showLoading: false });
+      isStep1DirtyRef.current = false;
+      await loadClientState({ showLoading: false, forceFormSync: true });
 
       setDocs({
         cv: { file: null, uploading: false },
@@ -724,6 +792,7 @@ export default function ClientNdaPage() {
       setSuccessMessage(null);
 
       await saveStep1();
+      isStep1DirtyRef.current = false;
 
       setSuccessMessage("Vos informations ont bien été enregistrées.");
     } catch (error) {
@@ -761,12 +830,14 @@ export default function ClientNdaPage() {
         );
       }
 
+      isStep2DirtyRef.current = false;
+      await loadClientState({ showLoading: false, forceFormSync: true });
+
       setSuccessMessage("Les coordonnées du client ont bien été enregistrées.");
       showConfirmation(
         "Coordonnées transmises",
         "Vos coordonnées client ont bien été transmises à Selen. Nous allons préparer les documents nécessaires à votre dossier. Vous recevrez un email dès qu'ils seront prêts et mis à disposition dans votre espace client.",
       );
-      router.refresh();
     } catch (error) {
       setErrorMessage(
         error instanceof Error ? error.message : "Une erreur est survenue.",
@@ -889,6 +960,7 @@ export default function ClientNdaPage() {
     !isNdaDepositSubmitted &&
     !isNdaRefused &&
     !isNdaDepositReady &&
+    finalReturnedDocuments.length > 0 &&
     FINAL_REVIEW_STATUSES.includes(normalizedDossierStatus);
   const isPastSigningWorkflow =
     isFinalReview ||
@@ -999,6 +1071,17 @@ export default function ClientNdaPage() {
   const activeStepNumber = currentStep;
 
   const steps = progressSteps;
+  const activeProgressStep =
+    steps.find((step) => step.active) ??
+    steps.find((step) => step.number === activeStepNumber) ??
+    steps[0];
+  const stepReassuranceMessage = getStepReassuranceMessage(activeStepNumber);
+  const completedProgressSteps = steps.filter(
+    (step) => step.number < activeStepNumber,
+  );
+  const upcomingProgressSteps = steps.filter(
+    (step) => step.number > activeStepNumber,
+  );
 
   if (accessLoading) {
     return (
@@ -1184,7 +1267,7 @@ export default function ClientNdaPage() {
       </header>
 
       {/* ------------------------------------------------------------------ */}
-      {/* BANDEAU PROGRESSION — ÉTAPE 1/4                                     */}
+      {/* BANDEAU PROGRESSION                                                 */}
       {/* ------------------------------------------------------------------ */}
       <div
         style={{
@@ -1199,101 +1282,74 @@ export default function ClientNdaPage() {
             padding: "0 2.5rem",
           }}
         >
-          {/* Stepper */}
           <div
             style={{
               display: "flex",
-              alignItems: "stretch",
-              overflowX: "auto",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 16,
+              padding: "14px 0",
+              flexWrap: "wrap",
             }}
           >
-            {steps.map((step, i) => (
-              <React.Fragment key={step.number}>
+            {activeProgressStep ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <div
                   style={{
+                    width: 30,
+                    height: 30,
+                    borderRadius: "50%",
+                    border: "2px solid #c98b49",
+                    background: "#c98b49",
                     display: "flex",
                     alignItems: "center",
-                    gap: 10,
-                    padding: "14px 0",
-                    flex: step.active ? "none" : "1 1 auto",
-                    minWidth: 0,
-                    opacity: step.active ? 1 : 0.45,
-                    position: "relative",
+                    justifyContent: "center",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: "#fff",
+                    flexShrink: 0,
+                    fontFamily: "sans-serif",
                   }}
                 >
-                  {/* Indicateur actif */}
-                  {step.active && (
-                    <div
-                      style={{
-                        position: "absolute",
-                        bottom: 0,
-                        left: 0,
-                        right: 0,
-                        height: 2,
-                        background: "#c98b49",
-                      }}
-                    />
-                  )}
-
-                  <div
-                    style={{
-                      width: 26,
-                      height: 26,
-                      borderRadius: "50%",
-                      border: step.active
-                        ? "2px solid #c98b49"
-                        : "1.5px solid rgba(255,255,255,0.3)",
-                      background: step.active ? "#c98b49" : "transparent",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 11,
-                      fontWeight: 700,
-                      color: step.active ? "#fff" : "rgba(255,255,255,0.7)",
-                      flexShrink: 0,
-                      fontFamily: "sans-serif",
-                    }}
-                  >
-                    {step.number}
-                  </div>
-                  <span
-                    style={{
-                      fontSize: 12,
-                      fontFamily: "sans-serif",
-                      fontWeight: step.active ? 600 : 400,
-                      color: step.active ? "#fff" : "rgba(255,255,255,0.65)",
-                      whiteSpace: "nowrap",
-                      letterSpacing: "0.02em",
-                    }}
-                  >
-                    {step.label}
-                  </span>
+                  {activeProgressStep.number}
                 </div>
-
-                {/* Séparateur */}
-                {i < steps.length - 1 && (
-                  <div
+                <div>
+                  <p
                     style={{
-                      width: 32,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flexShrink: 0,
+                      margin: 0,
+                      color: "#fff",
+                      fontSize: 13,
+                      fontWeight: 700,
+                      fontFamily: "sans-serif",
                     }}
                   >
-                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                      <path
-                        d="M4 2l4 4-4 4"
-                        stroke="rgba(255,255,255,0.25)"
-                        strokeWidth="1.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  </div>
-                )}
-              </React.Fragment>
-            ))}
+                    {activeProgressStep.label}
+                  </p>
+                  <p
+                    style={{
+                      margin: "3px 0 0",
+                      color: "#e9d2b5",
+                      fontSize: 11,
+                      fontFamily: "sans-serif",
+                    }}
+                  >
+                    {activeProgressStep.status}
+                  </p>
+                </div>
+              </div>
+            ) : null}
+            {upcomingProgressSteps.length > 0 ? (
+              <p
+                style={{
+                  margin: 0,
+                  color: "rgba(255,255,255,0.68)",
+                  fontSize: 11,
+                  fontFamily: "sans-serif",
+                }}
+              >
+                Ensuite : {upcomingProgressSteps[0].label}
+              </p>
+            ) : null}
           </div>
         </div>
       </div>
@@ -1420,6 +1476,13 @@ export default function ClientNdaPage() {
       >
         {/* ====================== COLONNE GAUCHE ========================= */}
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+          <Card>
+            <Badge>Suite du dossier</Badge>
+            <p style={{ ...styles.body, marginTop: 10 }}>
+              {stepReassuranceMessage}
+            </p>
+          </Card>
+
           {!step1Submitted ? <NdaWelcomeCard /> : null}
 
           {!step1Submitted ? (
@@ -2274,63 +2337,138 @@ export default function ClientNdaPage() {
           {/* Parcours */}
           <Card>
             <p style={styles.label}>Votre parcours</p>
-            <div
-              style={{
-                marginTop: 16,
-                display: "flex",
-                flexDirection: "column",
-                gap: 16,
-              }}
-            >
-              {steps.map((step) => (
-                <div key={step.number} style={{ display: "flex", gap: 12 }}>
-                  <div
+            {activeProgressStep ? (
+              <div
+                style={{
+                  marginTop: 16,
+                  display: "flex",
+                  gap: 12,
+                  border: "1px solid #d9c9b2",
+                  background: "#fff8ed",
+                  padding: 12,
+                }}
+              >
+                <div
+                  style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: "50%",
+                    border: "1.5px solid #4b2e1e",
+                    background: "#f6efe4",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: "#4b2e1e",
+                    flexShrink: 0,
+                    fontFamily: "sans-serif",
+                  }}
+                >
+                  {activeProgressStep.number}
+                </div>
+                <div style={{ paddingTop: 2 }}>
+                  <p
                     style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: "50%",
-                      border: step.active
-                        ? "1.5px solid #4b2e1e"
-                        : "1.5px solid #d9c9b2",
-                      background: step.active ? "#f6efe4" : "white",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: step.active ? "#4b2e1e" : "#8b7a67",
-                      flexShrink: 0,
+                      fontSize: 14,
+                      fontWeight: 700,
+                      color: "#3a261a",
+                      margin: 0,
                       fontFamily: "sans-serif",
                     }}
                   >
-                    {step.number}
-                  </div>
-                  <div style={{ paddingTop: 6 }}>
-                    <p
-                      style={{
-                        fontSize: 14,
-                        fontWeight: 600,
-                        color: step.active ? "#3a261a" : "#7a6b5d",
-                        margin: 0,
-                        fontFamily: "sans-serif",
-                      }}
-                    >
-                      {step.label}
-                    </p>
-                    <p
-                      style={{
-                        fontSize: 11,
-                        color: step.active ? "#9c5a2e" : "#9a8a78",
-                        margin: "4px 0 0",
-                        fontFamily: "sans-serif",
-                      }}
-                    >
-                      {step.status}
-                    </p>
-                  </div>
+                    {activeProgressStep.label}
+                  </p>
+                  <p
+                    style={{
+                      fontSize: 11,
+                      color: "#9c5a2e",
+                      margin: "4px 0 0",
+                      fontFamily: "sans-serif",
+                    }}
+                  >
+                    {activeProgressStep.status}
+                  </p>
                 </div>
-              ))}
-            </div>
+              </div>
+            ) : null}
+
+            {completedProgressSteps.length > 0 ? (
+              <details style={{ marginTop: 14 }}>
+                <summary
+                  style={{
+                    cursor: "pointer",
+                    color: "#6f5b49",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    fontFamily: "sans-serif",
+                  }}
+                >
+                  Historique des phases terminées
+                </summary>
+                <div
+                  style={{
+                    marginTop: 12,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 10,
+                  }}
+                >
+                  {completedProgressSteps.map((step) => (
+                    <div key={step.number} style={{ display: "flex", gap: 10 }}>
+                      <div
+                        style={{
+                          width: 24,
+                          height: 24,
+                          borderRadius: "50%",
+                          border: "1px solid #d9c9b2",
+                          background: "white",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: 10,
+                          fontWeight: 600,
+                          color: "#8b7a67",
+                          flexShrink: 0,
+                          fontFamily: "sans-serif",
+                        }}
+                      >
+                        {step.number}
+                      </div>
+                      <div>
+                        <p
+                          style={{
+                            fontSize: 12,
+                            fontWeight: 600,
+                            color: "#7a6b5d",
+                            margin: 0,
+                            fontFamily: "sans-serif",
+                          }}
+                        >
+                          {step.label}
+                        </p>
+                        <p
+                          style={{
+                            fontSize: 10,
+                            color: "#9a8a78",
+                            margin: "2px 0 0",
+                            fontFamily: "sans-serif",
+                          }}
+                        >
+                          {step.status}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            ) : null}
+
+            {upcomingProgressSteps.length > 0 ? (
+              <Notice style={{ marginTop: 14 }}>
+                Prochaine phase : {upcomingProgressSteps[0].label}.
+              </Notice>
+            ) : null}
             <p
               style={{
                 ...styles.body,
@@ -2440,7 +2578,9 @@ function NdaWelcomeCard() {
           paddingTop: 16,
         }}
       >
-        <h3 style={styles.subTitle}>À préparer dès maintenant</h3>
+        <h3 style={styles.subTitle}>
+          À préparer pour la suite du dossier
+        </h3>
         <ul
           style={{
             margin: "0 0 0 18px",
@@ -2451,11 +2591,11 @@ function NdaWelcomeCard() {
             fontSize: 14,
           }}
         >
-          <li>chercher un premier client ou bénéficiaire professionnel ;</li>
-          <li>rassembler les éléments liés à la première formation ;</li>
-          <li>conserver les documents transmis par Selen ;</li>
+          <li>Chercher un premier client ou bénéficiaire professionnel ;</li>
+          <li>Rassembler les éléments liés à la première formation ;</li>
+          <li>Conserver les documents transmis par Selen ;</li>
           <li>
-            demander votre extrait de casier judiciaire bulletin n°3 si
+            Demander votre extrait de casier judiciaire bulletin n°3 si
             nécessaire pour le dossier.
           </li>
         </ul>
@@ -2806,13 +2946,13 @@ function NdaDepositProcedureSection({
               notamment :
             </p>
             <ul style={{ ...styles.body, margin: "0 0 0 18px", padding: 0 }}>
-              <li>la convention de formation signée ;</li>
-              <li>le programme de formation signé ;</li>
-              <li>la liste des formateurs signée ;</li>
-              <li>le CV, les diplômes ou attestations utiles ;</li>
-              <li>le casier judiciaire n°3 ;</li>
-              <li>le justificatif d’existence ou l’avis INSEE ;</li>
-              <li>toute autre pièce demandée selon votre situation.</li>
+              <li>La convention de formation signée ;</li>
+              <li>Le programme de formation signé ;</li>
+              <li>La liste des formateurs signée ;</li>
+              <li>Le CV, les diplômes ou attestations utiles ;</li>
+              <li>Le casier judiciaire n°3 ;</li>
+              <li>Le justificatif d’existence ou l’avis INSEE ;</li>
+              <li>Toute autre pièce demandée selon votre situation.</li>
             </ul>
           </Notice>
 

@@ -39,10 +39,7 @@ export default function PrestationsPage() {
       <section className="mx-auto max-w-5xl px-4 md:px-6 pb-16 md:pb-20 pt-10 md:pt-14">
         <div className="reveal-stagger space-y-5">
           {/* SELEN REVIEW */}
-          <details
-            open
-            className="gazette-card relative overflow-hidden p-0 group"
-          >
+          <details className="gazette-card relative overflow-hidden p-0 group">
             <summary className="cursor-pointer list-none p-6 md:p-8">
               <div className="gazette-band" />
 

@@ -292,15 +292,14 @@ export default function ClientLoginPage() {
             </p>
 
             <p>
-              Si vous ne retrouvez pas votre accès, contactez Selen depuis la
-              barre d’aide ou écrivez à{" "}
+              Si vous ne retrouvez pas votre accès, retournez vers{" "}
               <a
-                href="mailto:hello@selen-editions.fr"
+                href="/client"
                 style={{ color: "var(--ocre-dark)", fontWeight: 700 }}
               >
-                hello@selen-editions.fr
+                l'espace client
               </a>
-              .
+              {" "}pour utiliser le bouton Prévenir Selen.
             </p>
 
             <Link

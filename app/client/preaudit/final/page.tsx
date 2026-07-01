@@ -339,11 +339,15 @@ export default function PreauditFinalPage() {
   const [certificationCategories, setCertificationCategories] = useState<
     string[]
   >([]);
+  const [canModifyPreaudit, setCanModifyPreaudit] = useState(false);
 
   const [contactName, setContactName] = useState("");
   const [contactEmail, setContactEmail] = useState("");
   const [contactPurpose, setContactPurpose] = useState("audit_blanc");
   const [contactMessage, setContactMessage] = useState("");
+  const [contactSending, setContactSending] = useState(false);
+  const [contactSent, setContactSent] = useState(false);
+  const [contactError, setContactError] = useState("");
 
   const defectiveRows = summaryRows.filter(
     (row) => row.diagnostic === "majeure" || row.diagnostic === "mineure",
@@ -370,11 +374,7 @@ export default function PreauditFinalPage() {
       }
 
       const accessCheck = await checkPreauditAccess(supabase);
-
-      if (!accessCheck.ok) {
-        router.push("/client");
-        return;
-      }
+      setCanModifyPreaudit(accessCheck.ok);
 
       const storedSessionId = localStorage.getItem("preaudit_session_id");
 
@@ -530,7 +530,7 @@ export default function PreauditFinalPage() {
     loadFinalSummary();
   }, [router, supabase]);
 
-  function openContactEmail() {
+  async function openContactEmail() {
     const purposeLabel =
       contactPurpose === "audit_blanc"
         ? "Demande de rendez-vous pour un audit blanc"
@@ -574,9 +574,51 @@ export default function PreauditFinalPage() {
       `Merci,`,
     ].join("\n");
 
-    window.location.href = `mailto:hello@selen-editions.fr?subject=${encodeURIComponent(
-      subject,
-    )}&body=${encodeURIComponent(body)}`;
+    setContactError("");
+    setContactSent(false);
+    setContactSending(true);
+
+    try {
+      const response = await fetch("/api/support/create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          clientName: contactName,
+          clientEmail: contactEmail,
+          subject,
+          category: contactPurpose === "audit_blanc" ? "audit" : "question",
+          toolSlug: "preaudit-qualiopi",
+          pageUrl:
+            typeof window !== "undefined"
+              ? window.location.href
+              : "Page bilan final préaudit",
+          message: body,
+          metadata: {
+            source: "preaudit_final_contact_form",
+            tool_slug: "preaudit-qualiopi",
+          },
+        }),
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(data?.error ?? "Impossible d'envoyer la demande.");
+      }
+
+      setContactSent(true);
+      setContactMessage("");
+    } catch (sendError) {
+      setContactError(
+        sendError instanceof Error
+          ? sendError.message
+          : "Impossible d'envoyer la demande.",
+      );
+    } finally {
+      setContactSending(false);
+    }
   }
 
   if (loading) {
@@ -594,7 +636,10 @@ export default function PreauditFinalPage() {
 
   return (
     <main className="gazette-paper" style={{ minHeight: "100vh" }}>
-      <ClientSupportBar context="l’auto-audit Qualiopi" />
+      <ClientSupportBar
+        context="l’auto-audit Qualiopi"
+        toolSlug="preaudit-qualiopi"
+      />
       <div
         style={{
           maxWidth: 1180,
@@ -835,7 +880,7 @@ export default function PreauditFinalPage() {
               )}
             </div>
 
-            {toVerifyRows.length > 0 && (
+            {canModifyPreaudit && toVerifyRows.length > 0 && (
               <div
                 style={{
                   background: "var(--paper)",
@@ -899,6 +944,7 @@ export default function PreauditFinalPage() {
                 vérifier que les points bloquants ont disparu.
               </p>
 
+              {canModifyPreaudit ? (
               <button
                 type="button"
                 className="btn-ink"
@@ -906,6 +952,7 @@ export default function PreauditFinalPage() {
               >
                 <span>Reprendre mon profil</span>
               </button>
+              ) : null}
             </div>
 
             <div
@@ -1009,9 +1056,24 @@ export default function PreauditFinalPage() {
                   type="button"
                   className="btn-ink"
                   onClick={openContactEmail}
+                  disabled={contactSending}
                 >
-                  <span>Envoyer ma demande par email</span>
+                  <span>
+                    {contactSending ? "Envoi..." : "Envoyer ma demande"}
+                  </span>
                 </button>
+
+                {contactSent ? (
+                  <p style={{ color: "#4f6f36", fontSize: "0.88rem" }}>
+                    Votre demande a bien été transmise à Selen.
+                  </p>
+                ) : null}
+
+                {contactError ? (
+                  <p style={{ color: "var(--rust)", fontSize: "0.88rem" }}>
+                    {contactError}
+                  </p>
+                ) : null}
               </div>
             </div>
 

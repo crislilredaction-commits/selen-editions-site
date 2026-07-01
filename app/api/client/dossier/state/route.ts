@@ -13,7 +13,15 @@ const SIGNING_DOCUMENT_TYPES = [
 
 const DEPOSIT_PROCEDURE_OPEN_STATUSES = [
   "compliant",
+  "deposit_ready",
+  "nda_deposit_ready",
   "ready_for_deposit",
+  "ready_for_deposit_nda",
+  "ready_for_nda_deposit",
+  "ready_to_deposit",
+  "ready_for_submission",
+  "ready_for_nda_submission",
+  "nda_ready_for_deposit",
   "deposit_procedure_ready",
 ];
 
@@ -26,7 +34,11 @@ const PROGRAM_SENT_STATUSES = [
   "pending_client",
   "waiting_client_validation",
 ];
-const PROGRAM_VALIDATED_STATUSES = ["program_validated", "validated"];
+const PROGRAM_VALIDATED_STATUSES = [
+  "program_validated",
+  "validated",
+  "validated_by_client",
+];
 const PROGRAM_REFUSED_STATUSES = [
   "refused_by_client",
   "correction_requested",
@@ -103,6 +115,15 @@ export async function GET(req: Request) {
         lieu_formation,
         lieu_signature_convention,
         date_signature_convention,
+        representant_prenom,
+        representant_nom,
+        formateur_prenom,
+        formateur_nom,
+        formateur_email,
+        intitule_formation,
+        duree_formation,
+        tarif_formation,
+        modalite,
         nda_deposit_specific_code,
         nda_deposit_specific_code_label,
         nda_deposit_status,
@@ -176,6 +197,18 @@ export async function GET(req: Request) {
       created_at: document.created_at,
     }));
 
+    const validatedSigningDocuments = safeDocuments.filter(
+      (document) =>
+        documents?.some(
+          (sourceDocument) =>
+            sourceDocument.id === document.id &&
+            sourceDocument.is_visible_to_client === true &&
+            sourceDocument.review_status === "validated" &&
+            sourceDocument.document_role !== "initial_client_document" &&
+            sourceDocument.document_role !== "client_returned_document",
+        ) ?? false,
+    );
+
     const clientUploadedDocuments = safeDocuments.filter(
       (document) =>
         documents?.some(
@@ -239,11 +272,6 @@ export async function GET(req: Request) {
       ...PROGRAM_SENT_STATUSES,
       ...PROGRAM_VALIDATED_STATUSES,
       ...CLIENT_DETAILS_SUBMITTED_STATUSES,
-      ...FINAL_REVIEW_STATUSES,
-      ...DEPOSIT_PROCEDURE_OPEN_STATUSES,
-      ...DEPOSIT_SUBMITTED_STATUSES,
-      ...DEPOSIT_REFUSED_STATUSES,
-      ...NDA_OBTAINED_STATUSES,
     ].includes(dossierStatus);
     const step1Submitted =
       (hasCv && hasProgramme && hasEntrepriseDoc) ||
@@ -254,15 +282,7 @@ export async function GET(req: Request) {
     const isProgramValidated =
       programDecision === "validated" ||
       PROGRAM_VALIDATED_STATUSES.includes(programVersionStatus ?? "") ||
-      [
-        ...PROGRAM_VALIDATED_STATUSES,
-        ...CLIENT_DETAILS_SUBMITTED_STATUSES,
-        ...FINAL_REVIEW_STATUSES,
-        ...DEPOSIT_PROCEDURE_OPEN_STATUSES,
-        ...DEPOSIT_SUBMITTED_STATUSES,
-        ...DEPOSIT_REFUSED_STATUSES,
-        ...NDA_OBTAINED_STATUSES,
-      ].includes(dossierStatus);
+      PROGRAM_VALIDATED_STATUSES.includes(dossierStatus);
     const isProgramRefused =
       programDecision === "refused" ||
       PROGRAM_REFUSED_STATUSES.includes(programVersionStatus ?? "");
@@ -278,15 +298,7 @@ export async function GET(req: Request) {
       ndaVariables?.stagiaire_email,
       ndaVariables?.date_formation_prevue,
       ndaVariables?.lieu_formation,
-    ].every(hasText) ||
-      [
-        ...CLIENT_DETAILS_SUBMITTED_STATUSES,
-        ...FINAL_REVIEW_STATUSES,
-        ...DEPOSIT_PROCEDURE_OPEN_STATUSES,
-        ...DEPOSIT_SUBMITTED_STATUSES,
-        ...DEPOSIT_REFUSED_STATUSES,
-        ...NDA_OBTAINED_STATUSES,
-      ].includes(dossierStatus);
+    ].every(hasText) || CLIENT_DETAILS_SUBMITTED_STATUSES.includes(dossierStatus);
     const isDepositSubmitted =
       ndaVariables?.nda_deposit_status === "dreets_pending" ||
       Boolean(ndaVariables?.nda_deposit_submitted_at) ||
@@ -300,7 +312,8 @@ export async function GET(req: Request) {
       Boolean(ndaVariables?.nda_obtained_at) ||
       NDA_OBTAINED_STATUSES.includes(dossierStatus);
     const isDepositProcedureOpen =
-      DEPOSIT_PROCEDURE_OPEN_STATUSES.includes(dossierStatus) &&
+      (DEPOSIT_PROCEDURE_OPEN_STATUSES.includes(dossierStatus) ||
+        validatedSigningDocuments.length > 0) &&
       !isDepositSubmitted &&
       !isDepositRefused &&
       !isNdaObtained;
@@ -310,6 +323,7 @@ export async function GET(req: Request) {
       !isDepositSubmitted &&
       !isDepositRefused &&
       !isNdaObtained &&
+      finalReturnedDocuments.length > 0 &&
       FINAL_REVIEW_STATUSES.includes(dossierStatus);
     const areDocumentsBeingPrepared =
       isClientDetailsSubmitted &&
@@ -444,6 +458,20 @@ export async function GET(req: Request) {
       programDecision,
       programVersionStatus,
       latestProgramVersion: latestProgramVersion ?? null,
+      step1: {
+        organisation_name: access.organisation?.name ?? "",
+        organisation_email: access.organisation?.email ?? "",
+        organisation_phone: access.organisation?.phone ?? "",
+        representant_prenom: ndaVariables?.representant_prenom ?? "",
+        representant_nom: ndaVariables?.representant_nom ?? "",
+        formateur_prenom: ndaVariables?.formateur_prenom ?? "",
+        formateur_nom: ndaVariables?.formateur_nom ?? "",
+        formateur_email: ndaVariables?.formateur_email ?? "",
+        formation_intitule: ndaVariables?.intitule_formation ?? "",
+        formation_duree: ndaVariables?.duree_formation ?? "",
+        formation_tarif: ndaVariables?.tarif_formation ?? "",
+        formation_modalite: ndaVariables?.modalite ?? "",
+      },
       signingDocumentsReady,
       clientVisibleDocuments,
       clientUploadedDocuments,

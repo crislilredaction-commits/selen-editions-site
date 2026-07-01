@@ -19,6 +19,7 @@ export type ClientNdaAccess =
         id: string;
         email: string | null;
         name?: string | null;
+        phone?: string | null;
       } | null;
     }
   | {
@@ -110,7 +111,7 @@ export async function verifyClientNdaDossierAccess(
 
   const { data: organisation, error: organisationError } = await supabase
     .from("organisations")
-    .select("id, email, name")
+    .select("id, email, name, phone")
     .eq("id", dossier.organisation_id)
     .maybeSingle();
 

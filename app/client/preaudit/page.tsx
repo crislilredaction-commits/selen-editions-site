@@ -283,7 +283,10 @@ export default function PreauditProfilePage() {
 
   return (
     <main className="gazette-paper" style={{ minHeight: "100vh" }}>
-      <ClientSupportBar context="l’auto-audit Qualiopi" />
+      <ClientSupportBar
+        context="l’auto-audit Qualiopi"
+        toolSlug="preaudit-qualiopi"
+      />
       <div
         style={{
           maxWidth: "900px",

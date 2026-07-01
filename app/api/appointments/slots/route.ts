@@ -19,6 +19,31 @@ async function hasClientSession() {
   return !error && Boolean(data.user);
 }
 
+async function hasActiveAuditBlancAccess() {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase.auth.getUser();
+  const user = data.user;
+
+  if (error || !user) return false;
+
+  const { data: access, error: accessError } = await supabase
+    .from("selen_client_tool_access")
+    .select("status, access_type, starts_at, ends_at")
+    .eq("user_id", user.id)
+    .eq("tool_slug", "audit-blanc-qualiopi")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (accessError || !access || access.status !== "active") return false;
+  if (access.access_type === "unlimited") return true;
+  if (access.access_type !== "limited" || !access.starts_at || !access.ends_at)
+    return false;
+
+  const now = new Date();
+  return new Date(access.starts_at) <= now && new Date(access.ends_at) >= now;
+}
+
 function addDays(date: string, days: number) {
   const current = new Date(`${date}T12:00:00.000Z`);
   current.setUTCDate(current.getUTCDate() + days);
@@ -66,6 +91,13 @@ export async function GET(request: Request) {
       if (source !== "client_space" || !(await hasClientSession())) {
         return NextResponse.json(
           { error: "Connexion client requise pour reserver un audit blanc." },
+          { status: 403 },
+        );
+      }
+
+      if (!(await hasActiveAuditBlancAccess())) {
+        return NextResponse.json(
+          { error: "Acces audit blanc actif expire ou introuvable." },
           { status: 403 },
         );
       }
