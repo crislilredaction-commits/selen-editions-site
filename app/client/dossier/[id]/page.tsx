@@ -71,36 +71,6 @@ type LoadClientStateOptions = {
   forceFormSync?: boolean;
 };
 
-const FINAL_REVIEW_STATUSES = ["under_review", "final_review"];
-const NDA_DEPOSIT_READY_STATUSES = [
-  "ready_for_deposit",
-  "deposit_ready",
-  "nda_deposit_ready",
-  "ready_for_deposit_nda",
-  "ready_for_nda_deposit",
-  "ready_to_deposit",
-  "ready_for_submission",
-  "ready_for_nda_submission",
-  "nda_ready_for_deposit",
-  "deposit_procedure_ready",
-  "compliant",
-];
-const NDA_DEPOSIT_SUBMITTED_STATUSES = [
-  "nda_deposit_submitted",
-  "deposit_submitted",
-  "submitted_to_dreets",
-  "waiting_dreets",
-];
-const NDA_REFUSED_STATUSES = ["nda_refused", "refused_by_dreets"];
-const NDA_OBTAINED_STATUSES = ["nda_obtained"];
-const PROGRAM_SENT_STATUSES = [
-  "program_sent_to_client",
-  "programme_sent_to_client",
-  "sent_to_client",
-  "client_sent",
-  "pending_client",
-  "waiting_client_validation",
-];
 const PROGRAM_REFUSED_STATUSES = [
   "refused_by_client",
   "correction_requested",
@@ -920,7 +890,6 @@ export default function ClientNdaPage() {
   const clientDecision =
     programDecision ?? programProposal?.client_decision ?? null;
   const hasProgramProposal = Boolean(programProposal);
-  const normalizedDossierStatus = dossierStatus ?? "";
   const normalizedProgramStatus =
     programVersionStatus ?? programProposal?.status ?? "";
   const isProgramValidated =
@@ -932,23 +901,19 @@ export default function ClientNdaPage() {
     clientDecision === "refused" ||
     PROGRAM_REFUSED_STATUSES.includes(normalizedProgramStatus);
   const isProgramSentToClient =
-    isProgramSentToClientFromState ||
-    hasProgramProposal || PROGRAM_SENT_STATUSES.includes(normalizedDossierStatus);
+    isProgramSentToClientFromState || hasProgramProposal;
   const isProgramPendingDecision =
     isProgramSentToClient && !isProgramValidated && !isProgramRefused;
   const ndaDepositStatus = ndaTracking?.nda_deposit_status ?? null;
   const isNdaObtained =
     ndaDepositStatus === "nda_obtained" ||
-    Boolean(ndaTracking?.nda_obtained_at) ||
-    NDA_OBTAINED_STATUSES.includes(normalizedDossierStatus);
+    Boolean(ndaTracking?.nda_obtained_at);
   const isNdaDepositSubmitted =
     ndaDepositStatus === "dreets_pending" ||
-    Boolean(ndaTracking?.nda_deposit_submitted_at) ||
-    NDA_DEPOSIT_SUBMITTED_STATUSES.includes(normalizedDossierStatus);
+    Boolean(ndaTracking?.nda_deposit_submitted_at);
   const isNdaRefused =
     ndaDepositStatus === "refusal_received" ||
-    Boolean(ndaTracking?.nda_deposit_refusal_received_at) ||
-    NDA_REFUSED_STATUSES.includes(normalizedDossierStatus);
+    Boolean(ndaTracking?.nda_deposit_refusal_received_at);
   const isNdaDepositReady =
     canShowDepositProcedure ||
     (isDepositProcedureOpen &&
@@ -960,8 +925,7 @@ export default function ClientNdaPage() {
     !isNdaDepositSubmitted &&
     !isNdaRefused &&
     !isNdaDepositReady &&
-    finalReturnedDocuments.length > 0 &&
-    FINAL_REVIEW_STATUSES.includes(normalizedDossierStatus);
+    finalReturnedDocuments.length > 0;
   const isPastSigningWorkflow =
     isFinalReview ||
     isNdaDepositReady ||

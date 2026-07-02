@@ -12,22 +12,13 @@ import {
 const DEPOSIT_SUBMITTED_MESSAGE =
   "Le client indique avoir déposé son dossier NDA sur la plateforme officielle.";
 
-const READY_STATUSES = [
-  "compliant",
-  "deposit_ready",
-  "nda_deposit_ready",
-  "ready_for_deposit",
-  "ready_for_deposit_nda",
-  "ready_for_nda_deposit",
-  "ready_to_deposit",
-  "ready_for_submission",
-  "ready_for_nda_submission",
-  "nda_ready_for_deposit",
-  "nda_deposit_submitted",
-  "deposit_submitted",
-  "submitted_to_dreets",
-  "waiting_dreets",
-];
+function isDepositProcedureOpen(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  return Boolean((value as Record<string, unknown>).ready_for_deposit);
+}
 
 export async function POST(req: Request) {
   try {
@@ -51,10 +42,20 @@ export async function POST(req: Request) {
       );
     }
 
-    if (
-      access.dossier.status &&
-      !READY_STATUSES.includes(access.dossier.status)
-    ) {
+    const { data: ndaVariables, error: ndaVariablesError } = await supabase
+      .from("nda_variables")
+      .select("nda_phase_validations")
+      .eq("dossier_id", dossierId)
+      .maybeSingle();
+
+    if (ndaVariablesError) {
+      return NextResponse.json(
+        { error: ndaVariablesError.message },
+        { status: 500 },
+      );
+    }
+
+    if (!isDepositProcedureOpen(ndaVariables?.nda_phase_validations)) {
       return NextResponse.json(
         { error: "Ce dossier n'est pas encore prêt pour le dépôt NDA." },
         { status: 409 },

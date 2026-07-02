@@ -11,29 +11,6 @@ const SIGNING_DOCUMENT_TYPES = [
   "liste_formateurs",
 ];
 
-const DEPOSIT_PROCEDURE_OPEN_STATUSES = [
-  "compliant",
-  "deposit_ready",
-  "nda_deposit_ready",
-  "ready_for_deposit",
-  "ready_for_deposit_nda",
-  "ready_for_nda_deposit",
-  "ready_to_deposit",
-  "ready_for_submission",
-  "ready_for_nda_submission",
-  "nda_ready_for_deposit",
-  "deposit_procedure_ready",
-];
-
-const FINAL_REVIEW_STATUSES = ["under_review", "final_review"];
-const PROGRAM_SENT_STATUSES = [
-  "program_sent_to_client",
-  "programme_sent_to_client",
-  "sent_to_client",
-  "client_sent",
-  "pending_client",
-  "waiting_client_validation",
-];
 const PROGRAM_VALIDATED_STATUSES = [
   "program_validated",
   "validated",
@@ -44,15 +21,16 @@ const PROGRAM_REFUSED_STATUSES = [
   "correction_requested",
   "changes_requested",
 ];
-const CLIENT_DETAILS_SUBMITTED_STATUSES = ["client_details_submitted"];
-const DEPOSIT_SUBMITTED_STATUSES = [
-  "nda_deposit_submitted",
-  "deposit_submitted",
-  "submitted_to_dreets",
-  "waiting_dreets",
-];
-const DEPOSIT_REFUSED_STATUSES = ["nda_refused", "refused_by_dreets"];
-const NDA_OBTAINED_STATUSES = ["nda_obtained"];
+const NDA_PHASE_KEYS = [
+  "initial_reception",
+  "program_analysis",
+  "signing_documents",
+  "final_return",
+  "ready_for_deposit",
+] as const;
+
+type NdaPhaseKey = (typeof NDA_PHASE_KEYS)[number];
+type NdaPhaseValidations = Partial<Record<NdaPhaseKey, unknown>>;
 
 function hasText(value: unknown) {
   return typeof value === "string" && value.trim().length > 0;
@@ -70,6 +48,24 @@ function buildStep(
     active: number === currentStep,
     status,
   };
+}
+
+function normalizeNdaPhaseValidations(value: unknown): NdaPhaseValidations {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  const source = value as Record<string, unknown>;
+  return Object.fromEntries(
+    NDA_PHASE_KEYS.flatMap((key) => (source[key] ? [[key, source[key]]] : [])),
+  ) as NdaPhaseValidations;
+}
+
+function hasValidatedPhase(
+  validations: NdaPhaseValidations,
+  phaseKey: NdaPhaseKey,
+) {
+  return Boolean(validations[phaseKey]);
 }
 
 export async function GET(req: Request) {
@@ -129,7 +125,8 @@ export async function GET(req: Request) {
         nda_deposit_status,
         nda_deposit_submitted_at,
         nda_deposit_refusal_received_at,
-        nda_obtained_at
+        nda_obtained_at,
+        nda_phase_validations
       `,
       )
       .eq("dossier_id", dossierId)
@@ -185,6 +182,9 @@ export async function GET(req: Request) {
     const programDecision = latestProgramVersion?.client_decision ?? null;
     const programVersionStatus = latestProgramVersion?.status ?? null;
     const dossierStatus = dossier.status ?? "";
+    const ndaPhaseValidations = normalizeNdaPhaseValidations(
+      ndaVariables?.nda_phase_validations,
+    );
 
     const safeDocuments = (documents ?? []).map((document) => ({
       id: document.id,
@@ -196,18 +196,6 @@ export async function GET(req: Request) {
       status: document.status,
       created_at: document.created_at,
     }));
-
-    const validatedSigningDocuments = safeDocuments.filter(
-      (document) =>
-        documents?.some(
-          (sourceDocument) =>
-            sourceDocument.id === document.id &&
-            sourceDocument.is_visible_to_client === true &&
-            sourceDocument.review_status === "validated" &&
-            sourceDocument.document_role !== "initial_client_document" &&
-            sourceDocument.document_role !== "client_returned_document",
-        ) ?? false,
-    );
 
     const clientUploadedDocuments = safeDocuments.filter(
       (document) =>
@@ -254,42 +242,22 @@ export async function GET(req: Request) {
         ) ?? false,
     );
 
-    const receivedInitialTypes = (documents ?? [])
-      .filter(
-        (document) =>
-          document.source === "client_upload" ||
-          document.document_role === "initial_client_document",
-      )
-      .map((document) => document.document_type);
-
-    const hasCv = receivedInitialTypes.includes("cv_formateur");
-    const hasProgramme = receivedInitialTypes.includes("programme_formation");
-    const hasEntrepriseDoc =
-      receivedInitialTypes.includes("avis_insee") ||
-      receivedInitialTypes.includes("kbis");
-
-    const hasProgressedPastInitialDocuments = [
-      ...PROGRAM_SENT_STATUSES,
-      ...PROGRAM_VALIDATED_STATUSES,
-      ...CLIENT_DETAILS_SUBMITTED_STATUSES,
-    ].includes(dossierStatus);
-    const step1Submitted =
-      (hasCv && hasProgramme && hasEntrepriseDoc) ||
-      hasProgressedPastInitialDocuments;
+    const step1Submitted = hasValidatedPhase(
+      ndaPhaseValidations,
+      "initial_reception",
+    );
     const signingDocumentsReady = signingDocuments.length > 0;
     const clientVisibleDocuments = publishedDocuments;
     const isInitialDocumentsSubmitted = step1Submitted;
     const isProgramValidated =
       programDecision === "validated" ||
-      PROGRAM_VALIDATED_STATUSES.includes(programVersionStatus ?? "") ||
-      PROGRAM_VALIDATED_STATUSES.includes(dossierStatus);
+      PROGRAM_VALIDATED_STATUSES.includes(programVersionStatus ?? "");
     const isProgramRefused =
       programDecision === "refused" ||
       PROGRAM_REFUSED_STATUSES.includes(programVersionStatus ?? "");
     const isProgramSentToClient =
       Boolean(latestProgramVersion) ||
-      isProgramValidated ||
-      PROGRAM_SENT_STATUSES.includes(dossierStatus);
+      isProgramValidated;
     const isClientDetailsSubmitted = [
       ndaVariables?.client_nom,
       ndaVariables?.client_siret,
@@ -298,22 +266,18 @@ export async function GET(req: Request) {
       ndaVariables?.stagiaire_email,
       ndaVariables?.date_formation_prevue,
       ndaVariables?.lieu_formation,
-    ].every(hasText) || CLIENT_DETAILS_SUBMITTED_STATUSES.includes(dossierStatus);
+    ].every(hasText);
     const isDepositSubmitted =
       ndaVariables?.nda_deposit_status === "dreets_pending" ||
-      Boolean(ndaVariables?.nda_deposit_submitted_at) ||
-      DEPOSIT_SUBMITTED_STATUSES.includes(dossierStatus);
+      Boolean(ndaVariables?.nda_deposit_submitted_at);
     const isDepositRefused =
       ndaVariables?.nda_deposit_status === "refusal_received" ||
-      Boolean(ndaVariables?.nda_deposit_refusal_received_at) ||
-      DEPOSIT_REFUSED_STATUSES.includes(dossierStatus);
+      Boolean(ndaVariables?.nda_deposit_refusal_received_at);
     const isNdaObtained =
       ndaVariables?.nda_deposit_status === "nda_obtained" ||
-      Boolean(ndaVariables?.nda_obtained_at) ||
-      NDA_OBTAINED_STATUSES.includes(dossierStatus);
+      Boolean(ndaVariables?.nda_obtained_at);
     const isDepositProcedureOpen =
-      (DEPOSIT_PROCEDURE_OPEN_STATUSES.includes(dossierStatus) ||
-        validatedSigningDocuments.length > 0) &&
+      hasValidatedPhase(ndaPhaseValidations, "ready_for_deposit") &&
       !isDepositSubmitted &&
       !isDepositRefused &&
       !isNdaObtained;
@@ -323,8 +287,7 @@ export async function GET(req: Request) {
       !isDepositSubmitted &&
       !isDepositRefused &&
       !isNdaObtained &&
-      finalReturnedDocuments.length > 0 &&
-      FINAL_REVIEW_STATUSES.includes(dossierStatus);
+      finalReturnedDocuments.length > 0;
     const areDocumentsBeingPrepared =
       isClientDetailsSubmitted &&
       !isDepositProcedureOpen &&
@@ -335,9 +298,9 @@ export async function GET(req: Request) {
       ? 8
       : isDepositProcedureOpen
         ? 7
-        : areDocumentsBeingPrepared || signingDocumentsReady || isFinalReview
+        : hasValidatedPhase(ndaPhaseValidations, "signing_documents")
           ? 6
-          : isProgramValidated
+          : hasValidatedPhase(ndaPhaseValidations, "program_analysis")
             ? 5
             : isProgramSentToClient || isProgramRefused
               ? 4
@@ -356,7 +319,7 @@ export async function GET(req: Request) {
         3,
         "Analyse par Selen",
         currentStep,
-        isProgramSentToClient || isProgramValidated || isProgramRefused
+        hasValidatedPhase(ndaPhaseValidations, "program_analysis")
           ? "Terminé"
           : isInitialDocumentsSubmitted
             ? "En cours"
@@ -378,9 +341,9 @@ export async function GET(req: Request) {
         5,
         "Premier client à former",
         currentStep,
-        isClientDetailsSubmitted
+        hasValidatedPhase(ndaPhaseValidations, "signing_documents")
           ? "Terminé"
-          : isProgramValidated
+          : hasValidatedPhase(ndaPhaseValidations, "program_analysis")
             ? "Action requise"
             : "À venir",
       ),
@@ -390,7 +353,9 @@ export async function GET(req: Request) {
         currentStep,
         isDepositProcedureOpen
           ? "Terminé"
-          : isFinalReview
+          : hasValidatedPhase(ndaPhaseValidations, "final_return")
+            ? "VÃ©rification finale"
+            : isFinalReview
             ? "Vérification finale"
             : signingDocumentsReady
               ? "Documents à signer"
@@ -442,6 +407,7 @@ export async function GET(req: Request) {
       areDocumentsBeingPrepared,
       isDepositProcedureOpen,
       canShowDepositProcedure,
+      ndaPhaseValidations,
       ndaTracking: {
         nda_deposit_specific_code:
           ndaVariables?.nda_deposit_specific_code ?? null,
