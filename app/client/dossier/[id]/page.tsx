@@ -2835,8 +2835,10 @@ function NdaDepositProcedureSection({
       <h2 style={styles.cardTitle}>Votre dossier NDA est prêt à être déposé</h2>
 
       <p style={{ ...styles.body, margin: "12px 0 0" }}>
-        Vos documents sont prêts. Vous pouvez maintenant déposer votre demande
-        de déclaration d’activité en suivant la procédure ci-dessous.
+        Téléchargez les documents préparés et vérifiés par Selen, puis
+        déposez-les sur la plateforme officielle. Une fois le dépôt effectué,
+        revenez ici pour nous l'indiquer : nous prendrons ensuite le relais
+        pour le suivi.
       </p>
 
       <a
@@ -2855,8 +2857,30 @@ function NdaDepositProcedureSection({
           title="Documents validés à télécharger"
           emptyText="Les documents validés sont en cours de mise à disposition. Si le problème persiste, contactez Selen."
           documents={availableDocuments}
+          statusContext="deposit"
           downloadable
         />
+      </div>
+
+      <div style={{ marginTop: 18 }}>
+        <h3 style={styles.subTitle}>Pièces à prévoir</h3>
+        <Notice>
+          <ul style={{ ...styles.body, margin: "0 0 0 18px", padding: 0 }}>
+            <li>Convention de formation signée ;</li>
+            <li>Liste des formateurs signée ;</li>
+            <li>Avis INSEE ou KBIS ;</li>
+            <li>Extrait de casier judiciaire ;</li>
+            <li>
+              Copie de votre pièce d'identité à ajouter directement sur la
+              plateforme officielle.
+            </li>
+          </ul>
+        </Notice>
+        <Notice style={{ marginTop: 10 }}>
+          Vous devrez également ajouter une copie de votre pièce d'identité
+          directement sur la plateforme officielle. Cette pièce n'est pas
+          collectée par Selen.
+        </Notice>
       </div>
 
       <div style={{ marginTop: 18 }}>
@@ -2907,16 +2931,15 @@ function NdaDepositProcedureSection({
             <strong>4. Déposez les documents préparés</strong>
             <p style={{ ...styles.body, margin: "8px 0 10px" }}>
               Déposez les documents disponibles dans votre espace client Selen,
-              notamment :
+              puis ajoutez directement votre pièce d'identité sur la plateforme
+              officielle. Les pièces à prévoir sont :
             </p>
             <ul style={{ ...styles.body, margin: "0 0 0 18px", padding: 0 }}>
               <li>La convention de formation signée ;</li>
-              <li>Le programme de formation signé ;</li>
               <li>La liste des formateurs signée ;</li>
-              <li>Le CV, les diplômes ou attestations utiles ;</li>
-              <li>Le casier judiciaire n°3 ;</li>
-              <li>Le justificatif d’existence ou l’avis INSEE ;</li>
-              <li>Toute autre pièce demandée selon votre situation.</li>
+              <li>L'avis INSEE ou le KBIS ;</li>
+              <li>L'extrait de casier judiciaire ;</li>
+              <li>La copie de votre pièce d'identité.</li>
             </ul>
           </Notice>
 
@@ -3210,6 +3233,7 @@ function DocumentList({
   showClientAction = false,
   downloadable = false,
   preferTypeLabel = false,
+  statusContext = "default",
 }: {
   dossierId: string;
   title: string;
@@ -3218,6 +3242,7 @@ function DocumentList({
   showClientAction?: boolean;
   downloadable?: boolean;
   preferTypeLabel?: boolean;
+  statusContext?: "default" | "deposit";
 }) {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
@@ -3341,8 +3366,10 @@ function DocumentList({
                   <DocumentBadge tone="warning">Action requise</DocumentBadge>
                 ) : null}
 
-                <DocumentBadge tone={getDocumentStatusTone(document)}>
-                  {formatDocumentStatus(document)}
+                <DocumentBadge
+                  tone={getDocumentStatusTone(document, statusContext)}
+                >
+                  {formatDocumentStatus(document, statusContext)}
                 </DocumentBadge>
 
                 {downloadable ? (
@@ -3407,7 +3434,16 @@ function DocumentBadge({
   );
 }
 
-function formatDocumentStatus(document: NdaDocument) {
+function formatDocumentStatus(
+  document: NdaDocument,
+  context: "default" | "deposit" = "default",
+) {
+  if (context === "deposit" && !document.requires_client_action) {
+    return document.review_status === "validated"
+      ? "Validé par Selen"
+      : "Prêt pour dépôt";
+  }
+
   if (document.review_status === "received") return "Reçu";
   if (document.review_status === "needs_correction") return "À corriger";
   if (document.review_status === "validated") return "Validé";
@@ -3417,7 +3453,14 @@ function formatDocumentStatus(document: NdaDocument) {
   return "En attente";
 }
 
-function getDocumentStatusTone(document: NdaDocument) {
+function getDocumentStatusTone(
+  document: NdaDocument,
+  context: "default" | "deposit" = "default",
+) {
+  if (context === "deposit" && !document.requires_client_action) {
+    return "success";
+  }
+
   if (document.review_status === "validated") return "success";
   if (
     document.review_status === "needs_correction" ||
@@ -3435,6 +3478,8 @@ function formatDocumentType(value?: string | null) {
   const labels: Record<string, string> = {
     convention_signee: "Convention de formation signée",
     programme_formation_signe: "Programme de formation signé",
+    avis_insee: "Avis INSEE / KBIS",
+    kbis: "Avis INSEE / KBIS",
     diplomes_formateur_principal:
       "Copies des diplômes / attestations de formation",
     casier_judiciaire_n3: "Casier judiciaire n°3",

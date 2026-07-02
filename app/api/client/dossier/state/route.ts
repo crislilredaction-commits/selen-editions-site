@@ -247,7 +247,14 @@ export async function GET(req: Request) {
       "initial_reception",
     );
     const signingDocumentsReady = signingDocuments.length > 0;
-    const clientVisibleDocuments = publishedDocuments;
+    const clientVisibleDocuments = safeDocuments.filter(
+      (document) =>
+        documents?.some(
+          (sourceDocument) =>
+            sourceDocument.id === document.id &&
+            sourceDocument.is_visible_to_client === true,
+        ) ?? false,
+    );
     const isInitialDocumentsSubmitted = step1Submitted;
     const isProgramValidated =
       programDecision === "validated" ||
