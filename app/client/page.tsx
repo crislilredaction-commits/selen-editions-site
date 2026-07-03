@@ -98,6 +98,7 @@ export default function ClientDashboardPage() {
   const [auditBlancAccess, setAuditBlancAccess] = useState<ToolAccess | null>(
     null,
   );
+  const [dailyAccess, setDailyAccess] = useState<ToolAccess | null>(null);
   const [ndaDossiers, setNdaDossiers] = useState<NdaDossier[]>([]);
   const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
   const [error, setError] = useState("");
@@ -110,6 +111,7 @@ export default function ClientDashboardPage() {
   const hasPreauditReadAccess = Boolean(preauditAccess);
   const hasAuditBlancReadAccess = Boolean(auditBlancAccess);
   const hasExpiredPreauditAccess = hasExpiredToolAccess(preauditAccess);
+  const hasDailyAccess = hasActiveToolAccess(dailyAccess);
 
   const isPreauditUnlimited = preauditAccess?.access_type === "unlimited";
   const isAuditBlancUnlimited = auditBlancAccess?.access_type === "unlimited";
@@ -138,7 +140,11 @@ export default function ClientDashboardPage() {
           "id, user_id, tool_slug, status, access_type, starts_at, ends_at, created_at, updated_at",
         )
         .eq("user_id", data.user.id)
-        .in("tool_slug", ["preaudit-qualiopi", "audit-blanc-qualiopi"])
+        .in("tool_slug", [
+          "preaudit-qualiopi",
+          "audit-blanc-qualiopi",
+          "selen-daily",
+        ])
         .order("created_at", { ascending: false });
 
       if (accessError) {
@@ -156,6 +162,33 @@ export default function ClientDashboardPage() {
             (access) => access.tool_slug === "audit-blanc-qualiopi",
           ) ?? null,
         );
+
+        const daily =
+          accesses.find((access) => access.tool_slug === "selen-daily") ?? null;
+
+        setDailyAccess(daily);
+
+        if (hasActiveToolAccess(daily)) {
+          try {
+            const onboardingRes = await fetch("/api/client/daily/onboarding", {
+              cache: "no-store",
+            });
+            const onboardingData = await onboardingRes.json().catch(() => null);
+
+            if (
+              onboardingRes.ok &&
+              onboardingData?.onboarding?.status !== "completed"
+            ) {
+              router.replace("/client/daily/onboarding");
+              return;
+            }
+          } catch (dailyError) {
+            console.warn(
+              "Impossible de vérifier le paramétrage Selen Daily :",
+              dailyError,
+            );
+          }
+        }
       }
 
       try {
@@ -303,7 +336,8 @@ export default function ClientDashboardPage() {
           </div>
         ) : null}
 
-        {hasNdaDossier ||
+        {hasDailyAccess ||
+        hasNdaDossier ||
         hasPreauditReadAccess ||
         hasAuditBlancReadAccess ? (
           <section
@@ -386,7 +420,7 @@ export default function ClientDashboardPage() {
                 >
                   {hasExpiredPreauditAccess ? (
                     <>
-                      L'accès actif au préaudit est expiré. Votre bilan final
+                      L&apos;accès actif au préaudit est expiré. Votre bilan final
                       reste consultable, mais les réponses et modifications ne
                       sont plus disponibles gratuitement.
                     </>
@@ -490,6 +524,41 @@ export default function ClientDashboardPage() {
                 </button>
               </article>
             ) : null}
+
+            <article
+              style={{
+                background: "var(--paper)",
+                border: "1px solid var(--sepia-mid)",
+                borderLeft: "4px solid var(--rust)",
+                padding: "1.2rem",
+              }}
+            >
+              <p className="gazette-label">Selen Daily</p>
+
+              <h2 style={{ color: "var(--ink)", marginBottom: "0.5rem" }}>
+                Vos formations et sessions
+              </h2>
+
+              <p
+                style={{
+                  color: "var(--ink-soft)",
+                  lineHeight: 1.6,
+                  marginBottom: "1rem",
+                }}
+              >
+                Créez vos formations, préparez les sessions associées et laissez
+                Selen vérifier les éléments avant l’envoi des documents
+                officiels.
+              </p>
+
+              <button
+                type="button"
+                className="btn-ink"
+                onClick={() => router.push("/client/daily")}
+              >
+                <span>Accéder à Selen Daily →</span>
+              </button>
+            </article>
           </section>
         ) : (
           <section className="gazette-card" style={{ padding: "1.5rem" }}>
@@ -555,7 +624,7 @@ export default function ClientDashboardPage() {
               maxWidth: 780,
             }}
           >
-            Une question, un problème d'accès, une réclamation ou une demande
+            Une question, un problème d&apos;accès, une réclamation ou une demande
             particulière ? Votre message ouvre un ticket suivi par Selen dans
             Studio.
           </p>
@@ -639,7 +708,7 @@ export default function ClientDashboardPage() {
                   margin: 0,
                 }}
               >
-                Aucune demande support n'a encore été ouverte avec cette
+                Aucune demande support n&apos;a encore été ouverte avec cette
                 adresse.
               </p>
             )}

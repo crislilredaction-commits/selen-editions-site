@@ -114,6 +114,16 @@ const TOOL_DOSSIER_CONFIG: Record<string, DossierConfig> = {
     title: "Prépa NDA - Déclaration d’activité",
     status: "draft",
   },
+  selen_daily: {
+    dossierType: "daily",
+    title: "Selen Daily",
+    status: "in_progress",
+  },
+  daily: {
+    dossierType: "daily",
+    title: "Selen Daily",
+    status: "in_progress",
+  },
 };
 
 function addThreeMonths(date: Date) {
@@ -154,6 +164,28 @@ function getClientNameFromSession(session: Stripe.Checkout.Session) {
     session.metadata?.name ||
     null
   );
+}
+
+async function findAuthUserIdByEmail(email: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+  let page = 1;
+  const perPage = 1000;
+
+  while (page <= 20) {
+    const { data, error } = await supabaseAdmin.auth.admin.listUsers({
+      page,
+      perPage,
+    });
+    if (error) throw new Error(error.message);
+    const found = data.users.find(
+      (user) => user.email?.trim().toLowerCase() === normalizedEmail,
+    );
+    if (found?.id) return found.id;
+    if (data.users.length < perPage) break;
+    page += 1;
+  }
+
+  return null;
 }
 
 async function ensureOrganisationForClient({
@@ -713,7 +745,7 @@ async function activateAutoAuditAccess(session: Stripe.Checkout.Session) {
     throw new Error(`Erreur Supabase activation accès : ${error.message}`);
   }
 
-  const { dossier } = await ensureStudioClientAndDossier({
+  await ensureStudioClientAndDossier({
     session,
     toolSlug: "prepa_nda",
   });
@@ -856,6 +888,101 @@ async function createAuditBlancCase(session: Stripe.Checkout.Session) {
   return data;
 }
 
+async function sendDailyAccessEmail({ email }: { email: string }) {
+  if (!resend) {
+    console.warn("RESEND_API_KEY absente : email Daily non envoyé.");
+    return;
+  }
+
+  const loginLink = await generateClientLoginLink(email, "/client/daily/onboarding");
+  await resend.emails.send({
+    from: resendFromEmail,
+    to: email,
+    subject: "Bienvenue dans Selen Daily",
+    text: `Bienvenue dans Selen Daily. Vous pouvez terminer le paramétrage initial ici : ${loginLink}`,
+    html: `
+      <div style="font-family: Georgia, serif; color:#3e2a1f; line-height:1.6;">
+        <h1>Bienvenue dans Selen Daily</h1>
+        <p>On va préparer votre espace en quelques étapes pour que vos formations, documents et suivis soient bien rangés dès le départ.</p>
+        <p>
+          <a href="${loginLink}" style="background:#3e2a1f; color:#f7ead6; padding:12px 18px; text-decoration:none; border-radius:999px; display:inline-block;">
+            Paramétrer mon espace Daily
+          </a>
+        </p>
+        <p>À très bientôt,<br />L'équipe Selen Editions</p>
+      </div>
+    `,
+    replyTo: "hello@selen-editions.fr",
+  });
+}
+
+async function activateDailyAccess(session: Stripe.Checkout.Session) {
+  const email = getClientEmailFromSession(session);
+  if (!email) throw new Error("Aucun email client trouvé dans la session Stripe.");
+
+  await ensureStudioClientAndDossier({ session, toolSlug: "selen_daily" });
+
+  const userId = await findAuthUserIdByEmail(email);
+  const stripeCustomerId =
+    typeof session.customer === "string" ? session.customer : session.customer?.id;
+  const stripeSubscriptionId =
+    typeof session.subscription === "string"
+      ? session.subscription
+      : session.subscription?.id;
+
+  if (userId) {
+    const now = new Date().toISOString();
+    await supabaseAdmin.from("selen_client_tool_access").upsert(
+      {
+        user_id: userId,
+        tool_slug: "selen-daily",
+        status: "active",
+        access_type: "unlimited",
+        starts_at: now,
+        ends_at: null,
+        updated_at: now,
+      },
+      { onConflict: "user_id,tool_slug" },
+    );
+
+    await supabaseAdmin.from("daily_subscriptions").upsert(
+      {
+        user_id: userId,
+        status: "active",
+        annual_learner_limit: Number(session.metadata?.annual_learner_limit ?? 150),
+        base_monthly_amount_cents: Number(session.metadata?.base_monthly_amount_cents ?? 8900),
+        upper_monthly_amount_cents: Number(session.metadata?.upper_monthly_amount_cents ?? 14900),
+        stripe_customer_id: stripeCustomerId ?? null,
+        stripe_subscription_id: stripeSubscriptionId ?? null,
+        stripe_checkout_session_id: session.id,
+        pricing_rule_accepted_at: now,
+        pricing_rule_accepted_version:
+          session.metadata?.pricing_rule_version ?? "daily_150_2026_07",
+      },
+      { onConflict: "user_id" },
+    );
+
+    await supabaseAdmin.from("daily_onboarding").upsert(
+      {
+        user_id: userId,
+        status: "not_started",
+        current_step: 1,
+      },
+      { onConflict: "user_id" },
+    );
+  }
+
+  // TODO paiement: lorsque STRIPE_DAILY_PRICE_ID_UPPER est disponible,
+  // le passage automatique au palier 149 EUR devra appeler
+  // stripe.subscriptions.update(stripeSubscriptionId, { items: [...] }).
+
+  try {
+    await sendDailyAccessEmail({ email });
+  } catch (emailError) {
+    console.error("Accès Daily activé, mais email non envoyé :", emailError);
+  }
+}
+
 export async function POST(request: Request) {
   const body = await request.text();
   const signature = request.headers.get("stripe-signature");
@@ -906,6 +1033,10 @@ export async function POST(request: Request) {
         await createPrepaNdaCase(session);
         await recordStripeCheckoutPayment(session);
         await markSessionDiscountUsed(session);
+      }
+      if (session.metadata?.product_key === "selen_daily") {
+        await activateDailyAccess(session);
+        await recordStripeCheckoutPayment(session);
       }
     }
 

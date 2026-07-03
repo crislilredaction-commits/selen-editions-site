@@ -1,4 +1,4 @@
-import Header from "@/components/Header";
+﻿import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import ScrollReveal from "@/components/ScrollReveal";
 import Link from "next/link";
@@ -38,6 +38,117 @@ export default function PrestationsPage() {
       {/* ═══ CATALOGUE EN DÉROULANT ═══ */}
       <section className="mx-auto max-w-5xl px-4 md:px-6 pb-16 md:pb-20 pt-10 md:pt-14">
         <div className="reveal-stagger space-y-5">
+          {/* SELEN DAILY */}
+          <details className="gazette-card relative overflow-hidden p-0 group" open>
+            <summary className="cursor-pointer list-none p-6 md:p-8">
+              <div className="gazette-band" />
+
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3 md:gap-4">
+                  <img
+                    src="/Logo_Selen_Daily.png"
+                    className="w-16 md:w-24 selen-float-delay selen-hover"
+                    alt="Selen Daily"
+                  />
+
+                  <div>
+                    <span className="gazette-label block mb-2">
+                      Service récurrent
+                    </span>
+
+                    <h2 className="font-['Playfair_Display'] text-2xl md:text-4xl font-bold">
+                      Selen Daily
+                    </h2>
+
+                    <p className="mt-2 text-[#6e4a32] text-sm md:text-base">
+                      Gestion administrative Qualiopi avec un agent dédié.
+                    </p>
+                  </div>
+                </div>
+
+                <span className="text-[#8a6243] font-['Cinzel'] text-xs uppercase tracking-[0.25em]">
+                  Déplier
+                </span>
+              </div>
+            </summary>
+
+            <div className="px-6 md:px-8 pb-8 md:pb-10">
+              <div className="border-t border-[#b28a62]/30 pt-6">
+                <p className="leading-7 text-[#5a4031] text-[0.95rem]">
+                  Selen Daily prend en charge votre gestion Qualiopi au fil de
+                  l&apos;eau : formations, sessions, documents, suivi et rappels
+                  utiles, avec un agent Selen pour garder le dossier clair.
+                </p>
+
+                <ul className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[#5a4031]">
+                  {[
+                    "Création de formations et sessions",
+                    "Suivi humain et structuré",
+                    "Documents préparés au bon moment",
+                    "Rappels utiles sans surcharge",
+                  ].map((item) => (
+                    <li
+                      key={item}
+                      className="flex items-center gap-3 text-[0.9rem]"
+                    >
+                      <span className="text-[#b28a62] text-xs shrink-0">✦</span>
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+
+                <div className="mt-6 border border-[#b28a62]/30 bg-white/40 p-5">
+                  <p className="gazette-byline text-center mb-4">Abonnement</p>
+
+                  <div className="grid gap-3 md:grid-cols-2 text-center">
+                    <div className="border border-[#b28a62]/20 bg-white/35 p-5">
+                      <p className="text-[#6e4a32] text-sm">
+                        Jusqu&apos;à 150 apprenants par an
+                      </p>
+
+                      <p className="mt-2 font-['Playfair_Display'] text-4xl font-semibold text-[#3e2a1f]">
+                        89{" "}
+                        <span className="text-xl text-[#6e4a32]">
+                          € TTC/mois
+                        </span>
+                      </p>
+                    </div>
+
+                    <div className="border border-[#b28a62]/20 bg-white/35 p-5">
+                      <p className="text-[#6e4a32] text-sm">
+                        À partir du 151e apprenant inscrit sur l&apos;année
+                      </p>
+
+                      <p className="mt-2 font-['Playfair_Display'] text-4xl font-semibold text-[#3e2a1f]">
+                        149{" "}
+                        <span className="text-xl text-[#6e4a32]">
+                          € TTC/mois
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+
+                  <p className="mt-5 text-[#5a4031] leading-7 text-[0.93rem]">
+                    L&apos;abonnement Selen Daily est à 89 € TTC/mois jusqu&apos;à
+                    150 apprenants par an. À partir du 151e apprenant inscrit
+                    sur l&apos;année, l&apos;abonnement passera automatiquement à
+                    149 € TTC/mois.
+                  </p>
+                </div>
+
+                <div className="mt-5 flex flex-col sm:flex-row gap-3">
+                  <Link href="/paiement/selen-daily" className="btn-ink text-center">
+                    <span>Commencer Selen Daily</span>
+                  </Link>
+
+                  <Link href="/prendre-rendez-vous" className="btn-ghost text-center">
+                    <span>En parler avec Selen</span>
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </details>
+
           {/* SELEN REVIEW */}
           <details className="gazette-card relative overflow-hidden p-0 group">
             <summary className="cursor-pointer list-none p-6 md:p-8">
@@ -415,93 +526,6 @@ export default function PrestationsPage() {
                       </p>
                     </div>
                   </article>
-                </div>
-              </div>
-            </div>
-          </details>
-
-          {/* SELEN DAILY */}
-          <details className="gazette-card relative overflow-hidden p-0 group">
-            <summary className="cursor-pointer list-none p-6 md:p-8">
-              <div className="gazette-band" />
-
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3 md:gap-4">
-                  <img
-                    src="/Logo_Selen_Daily.png"
-                    className="w-16 md:w-24 selen-float-delay selen-hover"
-                    alt="Selen Daily"
-                  />
-
-                  <div>
-                    <span className="gazette-label block mb-2">
-                      Service récurrent
-                    </span>
-
-                    <h2 className="font-['Playfair_Display'] text-2xl md:text-4xl font-bold">
-                      Selen Daily
-                    </h2>
-
-                    <p className="mt-2 text-[#6e4a32] text-sm md:text-base">
-                      Gestion administrative quotidienne avec un agent dédié.
-                    </p>
-                  </div>
-                </div>
-
-                <span className="text-[#8a6243] font-['Cinzel'] text-xs uppercase tracking-[0.25em]">
-                  Déplier
-                </span>
-              </div>
-            </summary>
-
-            <div className="px-6 md:px-8 pb-8 md:pb-10">
-              <div className="border-t border-[#b28a62]/30 pt-6">
-                <p className="leading-7 text-[#5a4031] text-[0.95rem]">
-                  Gestion administrative quotidienne avec un agent dédié — pour
-                  vous recentrer sur votre vrai métier.
-                </p>
-
-                <ul className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[#5a4031]">
-                  {[
-                    "Création et envoi des documents",
-                    "Relances apprenants",
-                    "Suivi administratif complet",
-                    "Classement et organisation",
-                  ].map((item) => (
-                    <li
-                      key={item}
-                      className="flex items-center gap-3 text-[0.9rem]"
-                    >
-                      <span className="text-[#b28a62] text-xs shrink-0">✦</span>
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-
-                <div className="mt-6 border border-[#b28a62]/30 bg-white/40 p-5">
-                  <p className="gazette-byline text-center mb-4">Tarifs</p>
-
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3 text-center">
-                    {[
-                      { volume: "< 25 apprenants/mois", price: "160 €" },
-                      { volume: "< 50 apprenants/mois", price: "320 €" },
-                      { volume: "> 50 apprenants/mois", price: "560 €" },
-                      { volume: "Volume supérieur", price: "Sur devis" },
-                    ].map(({ volume, price }) => (
-                      <div
-                        key={volume}
-                        className="border border-[#b28a62]/20 bg-white/30 p-3 md:p-4"
-                      >
-                        <p className="text-[0.72rem] md:text-[0.78rem] text-[#6e4a32] leading-4 md:leading-5">
-                          {volume}
-                        </p>
-
-                        <p className="mt-2 font-['Playfair_Display'] text-xl md:text-2xl font-semibold text-[#3e2a1f]">
-                          {price}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
                 </div>
               </div>
             </div>
