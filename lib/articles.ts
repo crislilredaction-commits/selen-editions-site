@@ -62,11 +62,11 @@ export const articles: Article[] = [
       },
       {
         title: "Reprendre le contrôle sans tout faire soi-même",
-        body: "Reprendre le contrôle ne signifie pas tout porter seul. Cela peut vouloir dire poser une organisation claire, automatiser les tâches répétitives, savoir ce qui manque et garder une vue fiable sur chaque session. L'objectif n'est pas d'ajouter une couche de gestion, mais de rendre le suivi plus léger.",
+        body: "Reprendre le contrôle ne signifie pas tout porter seul. Cela peut vouloir dire poser une organisation claire, savoir ce qui manque, garder une vue fiable sur chaque session et être accompagné au bon moment. L'objectif n'est pas d'ajouter une couche de gestion, mais de rendre le suivi plus léger.",
       },
       {
         title: "Ce que Selen veut changer",
-        body: "Selen veut remettre l'administratif à sa juste place : en arrière-plan, structuré, suivi et vérifié. Les documents récurrents, les relances et les preuves peuvent être mieux gérés, pendant que les points sensibles restent sous contrôle humain.",
+        body: "Selen veut remettre l'administratif à sa juste place : en arrière-plan, structuré, suivi et rassurant. Les documents récurrents, les relances et les preuves sont mieux organisés, avec un accompagnement humain sur les moments qui comptent.",
       },
     ],
     conclusion:
@@ -114,40 +114,40 @@ export const articles: Article[] = [
     slug: "automatiser-administratif-controle-humain",
     category: "Vision Selen",
     title:
-      "Automatiser l'administratif sans perdre le contrôle humain : le pari de Selen",
+      "Alléger l'administratif Qualiopi sans laisser les organismes seuls",
     excerpt:
-      "Automatiser ne veut pas dire tout abandonner à une machine. Chez Selen, l'outil travaille, l'humain sécurise.",
+      "Selen structure le suivi Qualiopi, prépare les éléments utiles et garde un agent dédié au cœur de l'accompagnement.",
     publishedAt: "2026-06-08",
     coverImage: "/Logo_Selen_Daily.png",
     coverAlt: "Mascotte Selen Daily pour la gestion administrative",
     featured: true,
     readingTime: "5 min",
     introduction:
-      "L'automatisation peut faire peur. On imagine vite un outil froid, impersonnel, qui décide à la place des humains. Chez Selen, l'idée est différente : automatiser ce qui est répétitif, mais garder l'humain là où il apporte de la valeur.",
+      "La gestion Qualiopi peut vite prendre trop de place dans le quotidien d'un organisme de formation. Chez Selen, l'idée est simple : organiser le suivi, préparer les éléments nécessaires et laisser un agent dédié accompagner le dossier avec attention.",
     sections: [
       {
-        title: "Automatiser ce qui use inutilement",
-        body: "Certaines tâches reviennent sans cesse : générer un document, préparer une relance, classer une preuve, signaler une pièce manquante. Elles demandent de l'attention, mais rarement du jugement profond. Ce sont ces gestes répétitifs que Selen cherche à alléger.",
+        title: "Alléger ce qui use inutilement",
+        body: "Certaines tâches reviennent sans cesse : préparer un document, relancer une signature, classer une preuve, repérer une pièce manquante. Elles demandent de l'attention et finissent par peser sur les journées. Selen aide à rendre ce suivi plus clair, plus régulier et moins envahissant.",
       },
       {
-        title: "Garder l'humain sur les points sensibles",
-        body: "Tout ne doit pas être automatisé aveuglément. Les situations atypiques, les risques Qualiopi, les incohérences de dossier ou les choix d'organisation demandent encore un regard humain. L'outil aide à repérer, l'humain décide et sécurise.",
+        title: "Un agent dédié suit le dossier",
+        body: "Votre agent Selen veille à ce que les documents soient complets, signés et prêts au bon moment. Il suit les étapes importantes, repère les incohérences et rappelle au client uniquement les actions qui nécessitent réellement son intervention.",
       },
       {
-        title: "Un outil pour alerter, pas pour remplacer le jugement",
-        body: "Selen n'a pas vocation à prendre la place de celles et ceux qui connaissent leur organisme. Il sert à rendre visibles les oublis, les retards et les pièces fragiles. Une bonne alerte au bon moment vaut souvent mieux qu'un grand tableau que personne n'ouvre.",
+        title: "Des rappels utiles, sans surcharge",
+        body: "Selen n'a pas vocation à noyer les organismes sous les notifications. Le suivi sert à rendre visibles les oublis, les retards et les pièces fragiles, puis à rappeler les étapes importantes au bon moment, avec un message clair.",
       },
       {
         title: "Pourquoi c'est adapté aux petits organismes de formation",
-        body: "Les petits OF ont besoin d'outils qui font gagner du temps sans imposer une usine à gaz. L'automatisation doit rester lisible, utile et proportionnée. Elle doit soutenir une structure légère, pas lui demander de fonctionner comme une grande administration.",
+        body: "Les petits OF ont besoin d'un accompagnement qui fait gagner du temps sans imposer une usine à gaz. Le suivi doit rester lisible, utile et proportionné. Il doit soutenir une structure légère, pas lui demander de fonctionner comme une grande administration.",
       },
       {
-        title: "Le bon équilibre : 80 % automatisé, 20 % vérifié",
-        body: "L'ambition de Selen est d'automatiser environ 80 % de la gestion administrative courante, tout en gardant une vérification humaine sur les points qui comptent. C'est cet équilibre qui permet de gagner du temps sans perdre la maîtrise.",
+        title: "Un suivi humain et structuré",
+        body: "Selen s'occupe de l'administratif Qualiopi pour que le client n'ait pas à tout gérer seul. Les documents sont préparés, suivis et contrôlés avec méthode, pendant que l'organisme intervient seulement lorsque sa validation est réellement nécessaire.",
       },
     ],
     conclusion:
-      "Selen n'a pas vocation à remplacer le formateur ni l'agent administratif. Il sert à rendre leur travail plus fluide, plus fiable et moins envahissant.",
+      "Selen n'a pas vocation à remplacer le formateur ni l'agent administratif. Il sert à rendre leur travail plus fluide, plus fiable et moins envahissant, avec un accompagnement humain à chaque étape importante.",
   },
 ];
 

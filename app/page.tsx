@@ -14,12 +14,12 @@ const aboutBlocks = [
     text: "Une approche pensée pour les structures légères, les indépendants et les organismes qui veulent rester agiles.",
   },
   {
-    title: "80 % automatisé",
-    text: "Les tâches répétitives sont générées, suivies, classées et signalées automatiquement.",
+    title: "Suivi structuré",
+    text: "Votre agent Selen veille à ce que les documents soient complets, signés et prêts au bon moment.",
   },
   {
-    title: "Contrôle humain",
-    text: "Les points sensibles restent vérifiés pour sécuriser les dossiers et préparer les audits.",
+    title: "Actions utiles",
+    text: "Vous intervenez seulement quand une action nécessite réellement votre validation.",
   },
 ];
 
@@ -223,11 +223,10 @@ export default function Home() {
 
               <p className="leading-7 md:leading-8 text-[#5a4031]">
                 Notre rôle est de remettre l&apos;administratif à sa juste
-                place. Les documents, les relances, les preuves, le suivi des
-                sessions et les alertes peuvent être largement automatisés. Mais
-                les points sensibles doivent rester vérifiés par un humain, pour
-                éviter les oublis, les incohérences et les mauvaises surprises
-                en audit.
+                place. Selen prend en charge votre gestion Qualiopi avec un
+                suivi humain et structuré : un agent dédié suit le dossier,
+                prépare les éléments nécessaires et vous rappelle uniquement les
+                actions qui nécessitent réellement votre intervention.
               </p>
             </div>
 
