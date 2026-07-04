@@ -131,9 +131,11 @@ export default function DailyRegistrationPage({ params }: { params: { token: str
         admin_contact_name: form.admin_contact_name,
         admin_contact_role: form.admin_contact_role,
         admin_contact_email: form.admin_contact_email,
+        admin_contact_phone: form.admin_contact_phone,
         training_contact_name: form.training_contact_name,
         training_contact_role: form.training_contact_role,
         training_contact_email: form.training_contact_email,
+        training_contact_phone: form.training_contact_phone,
         funding: form.funding,
         funding_other: form.funding_other,
         expressed_need: form.expressed_need,
@@ -195,7 +197,16 @@ export default function DailyRegistrationPage({ params }: { params: { token: str
     return true;
   }
 
+  function validateContactDetails() {
+    if (mode === "beneficiary" && !String(form.phone ?? "").trim()) {
+      setError("Merci d'ajouter un telephone. Il permettra a Selen ou a l'organisme de formation de vous recontacter si le dossier reste incomplet.");
+      return false;
+    }
+    return true;
+  }
+
   async function submit() {
+    if (!validateContactDetails()) return;
     if (!validatePositioning()) return;
     setSaving(true);
     setError("");
@@ -342,7 +353,7 @@ function BeneficiaryStep({
           <Input label="Prénom" value={form.first_name} onChange={(value) => update("first_name", value)} />
           <Input label="Nom" value={form.last_name} onChange={(value) => update("last_name", value)} />
           <Input label="Date de naissance" type="date" value={form.birth_date} onChange={(value) => update("birth_date", value)} />
-          <Input label="Téléphone" value={form.phone} onChange={(value) => update("phone", value)} />
+          <Input label="Téléphone fortement recommandé" value={form.phone} onChange={(value) => update("phone", value)} required />
           <Input label="Email" type="email" value={form.email} onChange={(value) => update("email", value)} />
         </div>
       </div>
@@ -434,9 +445,11 @@ function CompanyStep({
           <Input label="Contact administratif - nom" value={form.admin_contact_name} onChange={(value) => update("admin_contact_name", value)} />
           <Input label="Fonction" value={form.admin_contact_role} onChange={(value) => update("admin_contact_role", value)} />
           <Input label="Email" type="email" value={form.admin_contact_email} onChange={(value) => update("admin_contact_email", value)} />
+          <Input label="Téléphone" value={form.admin_contact_phone} onChange={(value) => update("admin_contact_phone", value)} />
           <Input label="Contact formation - nom" value={form.training_contact_name} onChange={(value) => update("training_contact_name", value)} />
           <Input label="Fonction" value={form.training_contact_role} onChange={(value) => update("training_contact_role", value)} />
           <Input label="Email" type="email" value={form.training_contact_email} onChange={(value) => update("training_contact_email", value)} />
+          <Input label="Téléphone" value={form.training_contact_phone} onChange={(value) => update("training_contact_phone", value)} />
         </div>
       </div>
     );
@@ -573,11 +586,11 @@ function ParticipantRows({ rows, setRows, updateParticipant }: { rows: Participa
   );
 }
 
-function Input({ label, value, onChange, type = "text" }: { label: string; value?: string; onChange: (value: string) => void; type?: string }) {
+function Input({ label, value, onChange, type = "text", required = false }: { label: string; value?: string; onChange: (value: string) => void; type?: string; required?: boolean }) {
   return (
     <label style={s.field}>
       <span>{label}</span>
-      <input style={s.input} type={type} value={value ?? ""} onChange={(event) => onChange(event.target.value)} />
+      <input style={s.input} type={type} value={value ?? ""} required={required} onChange={(event) => onChange(event.target.value)} />
     </label>
   );
 }

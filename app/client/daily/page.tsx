@@ -36,8 +36,10 @@ type DailySession = {
   registration_summary?: Record<string, unknown> | null;
   adaptation_needed?: boolean | null;
   daily_registration_recipients?: RegistrationRecipient[] | null;
+  daily_conventions?: DailyConvention[] | null;
+  daily_portal_access_tokens?: DailyPortalAccess[] | null;
   daily_formations?: Pick<Formation, "id" | "title" | "status" | "version"> | null;
-  [key: string]: string | number | boolean | ScheduleBlock[] | Company[] | Participant[] | RegistrationRecipient[] | Pick<Formation, "id" | "title" | "status" | "version"> | Record<string, unknown> | null | undefined;
+  [key: string]: string | number | boolean | ScheduleBlock[] | Company[] | Participant[] | RegistrationRecipient[] | DailyConvention[] | DailyPortalAccess[] | Pick<Formation, "id" | "title" | "status" | "version"> | Record<string, unknown> | null | undefined;
 };
 type ScheduleBlock = { date: string; start: string; end: string; note: string };
 type Participant = { first_name: string; last_name: string; email: string };
@@ -50,6 +52,34 @@ type RegistrationRecipient = {
   status: string;
   sent_at: string | null;
   last_error: string | null;
+};
+type DailyConvention = {
+  id: string;
+  recipient_type: string;
+  recipient_key: string;
+  recipient_name: string | null;
+  company_name: string | null;
+  version: number;
+  document_name: string | null;
+  status: string | null;
+  generated_at: string | null;
+  daily_convention_signatures?: DailyConventionSignature[] | null;
+};
+type DailyConventionSignature = {
+  id: string;
+  signatory_type: string;
+  signatory_name: string | null;
+  status: string | null;
+  signed_at: string | null;
+};
+type DailyPortalAccess = {
+  id: string;
+  portal_type: "learner" | "enterprise" | "trainer";
+  entity_name: string | null;
+  entity_email: string | null;
+  token: string;
+  status: string | null;
+  viewed_at: string | null;
 };
 type PositioningQuestion = {
   id: string;
@@ -137,6 +167,37 @@ function formatRecipientStatus(status?: string | null) {
   if (status === "error") return "erreur";
   if (status === "skipped") return "non envoyé";
   return "en attente";
+}
+
+function formatConventionSignatureStatus(convention: DailyConvention) {
+  const signatures = convention.daily_convention_signatures ?? [];
+  if (signatures.length === 0) return "Signature a preparer";
+  if (signatures.every((signature) => signature.status === "signed")) return "Signee";
+  if (signatures.some((signature) => signature.status === "signed")) return "Signature partielle";
+  return "A signer";
+}
+
+function portalUrl(type: DailyPortalAccess["portal_type"], token: string) {
+  const role = type === "learner" ? "apprenant" : type === "enterprise" ? "entreprise" : "formateur";
+  if (typeof window === "undefined") return `/daily/portail/${role}/${token}`;
+  return `${window.location.origin}/daily/portail/${role}/${token}`;
+}
+
+function sessionTimeline(session: DailySession) {
+  const recipients = session.daily_registration_recipients ?? [];
+  const conventions = session.daily_conventions ?? [];
+  const signatures = conventions.flatMap((convention) => convention.daily_convention_signatures ?? []);
+  const hasSent = recipients.some((recipient) => recipient.status === "sent");
+  const allSentCompleted = recipients.length > 0 && recipients.every((recipient) => recipient.status === "sent");
+  const allSigned = signatures.length > 0 && signatures.every((signature) => signature.status === "signed");
+  return [
+    ["Dossiers envoyes", hasSent ? "termine" : "en attente"],
+    ["Dossiers completes", allSentCompleted ? "termine" : hasSent ? "a suivre" : "a venir"],
+    ["Conventions", conventions.length > 0 ? "termine" : "en attente"],
+    ["Signatures", allSigned ? "termine" : signatures.length > 0 ? "a faire" : "a venir"],
+    ["Convocations", "a venir"],
+    ["Formation", "a venir"],
+  ];
 }
 
 function help(text: string) {
@@ -718,6 +779,12 @@ export default function ClientDailyPage() {
                   {(session.individual_beneficiaries ?? []).length} apprenant(s) individuel(s) ·{" "}
                   {(session.companies ?? []).length} entreprise(s)
                 </p>
+                <div style={s.linkBox}>
+                  <strong>Timeline globale</strong>
+                  {sessionTimeline(session).map(([label, status]) => (
+                    <span key={label}>{label} : {status}</span>
+                  ))}
+                </div>
                 {session.registration_token ? (
                   <div style={s.linkBox}>
                     <strong>Lien d&apos;inscription</strong>
@@ -746,6 +813,49 @@ export default function ClientDailyPage() {
                 ) : (
                   <p style={s.muted}>Dossiers en attente de validation Selen avant envoi.</p>
                 )}
+                <div style={s.linkBox}>
+                  <strong>Conventions</strong>
+                  {session.daily_conventions?.length ? (
+                    session.daily_conventions.map((convention) => (
+                      <div key={convention.id} style={s.signatureMiniBox}>
+                        <a
+                          href={`/api/client/daily/conventions/download?id=${convention.id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={s.inlineLink}
+                        >
+                          {convention.recipient_type === "company" ? "Entreprise" : "Beneficiaire"}{" "}
+                          {convention.company_name || convention.recipient_name || "Daily"} - v{convention.version}
+                          {convention.generated_at ? ` - ${new Date(convention.generated_at).toLocaleDateString("fr-FR")}` : ""}
+                          {" - "}{formatConventionSignatureStatus(convention)}
+                        </a>
+                        {convention.daily_convention_signatures?.map((signature) => (
+                          <span key={signature.id}>
+                            {signature.signatory_type} : {signature.status === "signed" ? "signee" : "en attente"}
+                            {signature.signed_at ? ` le ${new Date(signature.signed_at).toLocaleDateString("fr-FR")}` : ""}
+                          </span>
+                        ))}
+                      </div>
+                    ))
+                  ) : (
+                    <span>Non generee. Selen la prepare apres verification des informations utiles.</span>
+                  )}
+                </div>
+                {session.daily_portal_access_tokens?.length ? (
+                  <div style={s.linkBox}>
+                    <strong>Portails</strong>
+                    {session.daily_portal_access_tokens.map((portal) => (
+                      <span key={portal.id}>
+                        {portal.portal_type === "learner" ? "Apprenant" : portal.portal_type === "enterprise" ? "Entreprise" : "Formateur"}{" "}
+                        {portal.entity_name || portal.entity_email || ""} :{" "}
+                        <a href={portalUrl(portal.portal_type, portal.token)} target="_blank" rel="noreferrer" style={s.inlineLink}>
+                          ouvrir
+                        </a>
+                        {portal.status === "viewed" ? " - consulte" : " - a transmettre"}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
                 {session.registration_status === "summary_to_review" || session.registration_status === "summary_validated" ? (
                   <p style={s.notice}>Des réponses ont été reçues et sont en cours de suivi par Selen.</p>
                 ) : null}
@@ -1069,5 +1179,7 @@ const s: Record<string, React.CSSProperties> = {
   rowGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "0.5rem", alignItems: "center" },
   companyBox: { display: "grid", gap: "0.55rem", border: "1px solid rgba(178,138,98,0.22)", padding: "0.7rem", background: "rgba(255,250,239,0.42)" },
   linkBox: { display: "grid", gap: "0.5rem", border: "1px solid rgba(106,138,74,0.35)", background: "rgba(106,138,74,0.06)", padding: "0.75rem" },
+  signatureMiniBox: { display: "grid", gap: "0.3rem", borderTop: "1px solid rgba(106,138,74,0.22)", paddingTop: "0.45rem" },
+  inlineLink: { color: "var(--rust)", fontWeight: 800, textDecoration: "none" },
   listItem: { display: "grid", gap: "0.35rem", border: "1px solid rgba(178,138,98,0.32)", background: "rgba(248,239,223,0.45)", padding: "0.9rem", color: "var(--ink-soft)" },
 };
