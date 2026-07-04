@@ -55,7 +55,7 @@ export async function GET() {
     { onConflict: "user_id" },
   );
 
-  const [onboardingRes, trainersRes, subscriptionRes] = await Promise.all([
+  const [onboardingRes, trainersRes, subscriptionRes, templatesRes] = await Promise.all([
     supabase
       .from("daily_onboarding")
       .select("*")
@@ -71,16 +71,23 @@ export async function GET() {
       .select("*")
       .eq("user_id", auth.user.id)
       .maybeSingle(),
+    supabase
+      .from("daily_document_templates")
+      .select("*")
+      .eq("user_id", auth.user.id)
+      .eq("status", "active"),
   ]);
 
   if (onboardingRes.error) return NextResponse.json({ error: onboardingRes.error.message }, { status: 500 });
   if (trainersRes.error) return NextResponse.json({ error: trainersRes.error.message }, { status: 500 });
   if (subscriptionRes.error) return NextResponse.json({ error: subscriptionRes.error.message }, { status: 500 });
+  if (templatesRes.error) return NextResponse.json({ error: templatesRes.error.message }, { status: 500 });
 
   return NextResponse.json({
     onboarding: onboardingRes.data,
     trainers: trainersRes.data ?? [],
     subscription: subscriptionRes.data,
+    documentTemplates: templatesRes.data ?? [],
   });
 }
 
@@ -115,6 +122,7 @@ export async function PATCH(req: Request) {
     platform_contact_last_name: clean(body.platform_contact_last_name) || null,
     platform_contact_role: clean(body.platform_contact_role) || null,
     platform_contact_email: clean(body.platform_contact_email).toLowerCase() || null,
+    organisation_logo_url: clean(body.organisation_logo_url) || null,
     completed_at: status === "completed" ? now : null,
   };
 
@@ -160,6 +168,27 @@ export async function PATCH(req: Request) {
       } else {
         await supabase.from("daily_trainers").insert(trainerPayload);
       }
+    }
+  }
+
+  if (Array.isArray(body.document_templates)) {
+    const templateRows = (body.document_templates as unknown[])
+      .map((row: unknown) => {
+        const item = row && typeof row === "object" ? (row as Record<string, unknown>) : {};
+        return {
+          user_id: auth.user.id,
+          document_type: clean(item.document_type),
+          template_source: "CLIENT",
+          template_name: clean(item.template_name) || clean(item.document_type),
+          public_url: clean(item.public_url) || null,
+          status: clean(item.public_url) ? "active" : "archived",
+        };
+      })
+      .filter((row: { document_type: string; template_name: string }) => row.document_type && row.template_name);
+    if (templateRows.length > 0) {
+      await supabase.from("daily_document_templates").upsert(templateRows, {
+        onConflict: "user_id,document_type,template_source,template_name,template_version",
+      });
     }
   }
 

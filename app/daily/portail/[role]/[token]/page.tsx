@@ -44,6 +44,13 @@ type PortalData = {
       signed_at?: string | null;
     }> | null;
   }>;
+  convocations?: Array<JsonRecord & {
+    id: string;
+    version?: number | null;
+    document_name?: string | null;
+    status?: string | null;
+    sent_at?: string | null;
+  }>;
 };
 
 function text(value: unknown) {
@@ -86,6 +93,8 @@ function timelineFor(data: PortalData) {
     return positioning && typeof positioning === "object" && Object.keys(positioning).length > 0;
   });
   const hasConvention = conventions.length > 0;
+  const hasConvocation = (data.convocations ?? []).length > 0;
+  const hasSentConvocation = (data.convocations ?? []).some((convocation) => convocation.status === "sent" || convocation.status === "viewed");
   const signature = signatureStatus(conventions);
 
   if (data.access.portalType === "enterprise") {
@@ -94,7 +103,7 @@ function timelineFor(data: PortalData) {
       ["Participants", (data.participants ?? []).length > 0 ? "termine" : "a_faire"],
       ["Conventions", hasConvention ? "termine" : "en_attente"],
       ["Signatures", signature],
-      ["Convocations", "a_venir"],
+      ["Convocations", hasSentConvocation ? "termine" : hasConvocation ? "a_faire" : "a_venir"],
       ["Formation", "a_venir"],
       ["Certificats", "a_venir"],
     ];
@@ -107,7 +116,7 @@ function timelineFor(data: PortalData) {
       ["Positionnements recus", hasPositioning ? "termine" : "en_attente"],
       ["Adaptations a traiter", data.session.adaptation_needed ? "a_faire" : "en_attente"],
       ["Convention/signatures", signature],
-      ["Convocation", "a_venir"],
+      ["Convocation", hasSentConvocation ? "termine" : hasConvocation ? "a_faire" : "a_venir"],
       ["Formation", "a_venir"],
     ];
   }
@@ -117,7 +126,7 @@ function timelineFor(data: PortalData) {
     ["Positionnement", hasPositioning ? "termine" : "en_attente"],
     ["Convention", hasConvention ? "termine" : "en_attente"],
     ["Signature", signature],
-    ["Convocation", "a_venir"],
+    ["Convocation", hasSentConvocation ? "termine" : hasConvocation ? "a_faire" : "a_venir"],
     ["Formation", "a_venir"],
     ["Evaluation", "a_venir"],
     ["Satisfaction", "a_venir"],
@@ -149,6 +158,7 @@ export default function DailyPortalPage({ params }: { params: { role: string; to
   const formation = data?.session.daily_formations;
   const trainers = data?.trainers ?? [];
   const conventions = data?.conventions ?? [];
+  const convocations = data?.convocations ?? [];
   const pendingSignature = conventions
     .flatMap((convention) => convention.daily_convention_signatures ?? [])
     .find((signature) => signature.status !== "signed" && signature.token);
@@ -195,6 +205,7 @@ export default function DailyPortalPage({ params }: { params: { role: string; to
               <a href={`/daily-signature/${pendingSignature.token}`} style={s.link}>Signer la convention</a>
             ) : null}
             {conventions.length > 0 ? <span>Consulter ou telecharger la convention disponible.</span> : null}
+            {convocations.length > 0 ? <span>Consulter ou telecharger la convocation.</span> : null}
             {data.session.adaptation_needed && data.access.portalType === "trainer" ? <span>Verifier les adaptations utiles a la session.</span> : null}
             {data.responses?.length && !pendingSignature && conventions.length === 0 ? <span>Aucune action immediate.</span> : null}
           </article>
@@ -206,8 +217,13 @@ export default function DailyPortalPage({ params }: { params: { role: string; to
                 {convention.document_name ?? `Convention v${convention.version ?? 1}`}
               </a>
             ))}
+            {convocations.map((convocation) => (
+              <a key={convocation.id} href={`/api/daily-portal/${token}/convocation?id=${convocation.id}`} target="_blank" rel="noreferrer" style={s.link}>
+                {convocation.document_name ?? `Convocation v${convocation.version ?? 1}`}
+              </a>
+            ))}
             {conventions.length === 0 ? <span>Convention a venir.</span> : null}
-            <span>Convocation a venir</span>
+            {convocations.length === 0 ? <span>Convocation a venir</span> : null}
             <span>Certificat a venir</span>
           </article>
 

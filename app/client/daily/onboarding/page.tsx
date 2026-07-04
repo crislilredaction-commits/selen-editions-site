@@ -32,6 +32,10 @@ type OnboardingForm = {
   platform_contact_last_name: string;
   platform_contact_role: string;
   platform_contact_email: string;
+  organisation_logo_url: string;
+  convocation_template_url: string;
+  convention_template_url: string;
+  politique_handicap_template_url: string;
 };
 
 const emptyForm: OnboardingForm = {
@@ -52,6 +56,10 @@ const emptyForm: OnboardingForm = {
   platform_contact_last_name: "",
   platform_contact_role: "",
   platform_contact_email: "",
+  organisation_logo_url: "",
+  convocation_template_url: "",
+  convention_template_url: "",
+  politique_handicap_template_url: "",
 };
 
 const blankTrainer: Trainer = {
@@ -90,7 +98,15 @@ export default function DailyOnboardingPage() {
     const res = await fetch("/api/client/daily/onboarding", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...nextForm, trainers: nextTrainers }),
+      body: JSON.stringify({
+        ...nextForm,
+        trainers: nextTrainers,
+        document_templates: [
+          { document_type: "convocation", template_name: "Modele convocation client", public_url: nextForm.convocation_template_url },
+          { document_type: "convention", template_name: "Modele convention client", public_url: nextForm.convention_template_url },
+          { document_type: "politique_handicap", template_name: "Politique handicap client", public_url: nextForm.politique_handicap_template_url },
+        ],
+      }),
     });
     const data = await res.json().catch(() => null);
     if (!res.ok) {
@@ -114,12 +130,19 @@ export default function DailyOnboardingPage() {
       const res = await fetch("/api/client/daily/onboarding", { cache: "no-store" });
       const payload = await res.json().catch(() => null);
       if (res.ok && payload?.onboarding) {
+        const templates = Array.isArray(payload.documentTemplates) ? payload.documentTemplates : [];
+        const templateUrl = (type: string) =>
+          text(templates.find((template: Record<string, unknown>) => template.document_type === type)?.public_url);
         setForm({
           ...emptyForm,
           ...payload.onboarding,
           setup_choice: payload.onboarding.setup_choice ?? "",
           qualiopi_status: payload.onboarding.qualiopi_status ?? "",
           platform_contact_email: payload.onboarding.platform_contact_email ?? data.user.email ?? "",
+          organisation_logo_url: payload.onboarding.organisation_logo_url ?? "",
+          convocation_template_url: templateUrl("convocation"),
+          convention_template_url: templateUrl("convention"),
+          politique_handicap_template_url: templateUrl("politique_handicap"),
         });
       } else {
         setForm((current) => ({
@@ -242,6 +265,7 @@ export default function DailyOnboardingPage() {
               <Input label="Nom de l&apos;organisme de formation" value={form.organisation_name} onChange={(value) => update("organisation_name", value)} />
               <Input label="SIRET" value={form.siret} onChange={(value) => update("siret", value)} />
               <Input label="Numéro NDA, facultatif" value={form.nda_number} onChange={(value) => update("nda_number", value)} />
+              <Input label="Logo de l'organisme, URL du fichier" value={form.organisation_logo_url} onChange={(value) => update("organisation_logo_url", value)} />
               <Textarea label="Adresse" value={form.address} onChange={(value) => update("address", value)} />
               <div style={s.twoCols}>
                 <Input label="Prénom du dirigeant" value={form.manager_first_name} onChange={(value) => update("manager_first_name", value)} />
@@ -257,6 +281,13 @@ export default function DailyOnboardingPage() {
               {form.qualiopi_status === "planned" ? (
                 <p style={s.notice}>{"Aucun souci. Quand le moment viendra, Selen pourra t'aider à préparer le chemin vers Qualiopi."}</p>
               ) : null}
+              <div style={s.stackSmall}>
+                <strong>Bibliotheque documentaire</strong>
+                <p style={s.muted}>Les modeles client sont prioritaires. Si aucun modele n&apos;est renseigne, Selen utilise son modele par defaut.</p>
+                <Input label="Modele client - convocation" value={form.convocation_template_url} onChange={(value) => update("convocation_template_url", value)} />
+                <Input label="Modele client - convention" value={form.convention_template_url} onChange={(value) => update("convention_template_url", value)} />
+                <Input label="Politique handicap / document client" value={form.politique_handicap_template_url} onChange={(value) => update("politique_handicap_template_url", value)} />
+              </div>
               <div style={s.stackSmall}>
                 <label style={s.check}><input type="checkbox" checked={form.insee_document_pending} onChange={(event) => update("insee_document_pending", event.target.checked)} /> Avis INSEE à fournir plus tard</label>
                 <label style={s.check}><input type="checkbox" checked={form.qualiopi_certificate_pending} onChange={(event) => update("qualiopi_certificate_pending", event.target.checked)} /> Certificat Qualiopi à fournir plus tard</label>

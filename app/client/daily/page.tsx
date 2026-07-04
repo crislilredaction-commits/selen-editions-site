@@ -37,9 +37,10 @@ type DailySession = {
   adaptation_needed?: boolean | null;
   daily_registration_recipients?: RegistrationRecipient[] | null;
   daily_conventions?: DailyConvention[] | null;
+  daily_convocations?: DailyConvocation[] | null;
   daily_portal_access_tokens?: DailyPortalAccess[] | null;
   daily_formations?: Pick<Formation, "id" | "title" | "status" | "version"> | null;
-  [key: string]: string | number | boolean | ScheduleBlock[] | Company[] | Participant[] | RegistrationRecipient[] | DailyConvention[] | DailyPortalAccess[] | Pick<Formation, "id" | "title" | "status" | "version"> | Record<string, unknown> | null | undefined;
+  [key: string]: string | number | boolean | ScheduleBlock[] | Company[] | Participant[] | RegistrationRecipient[] | DailyConvention[] | DailyConvocation[] | DailyPortalAccess[] | Pick<Formation, "id" | "title" | "status" | "version"> | Record<string, unknown> | null | undefined;
 };
 type ScheduleBlock = { date: string; start: string; end: string; note: string };
 type Participant = { first_name: string; last_name: string; email: string };
@@ -80,6 +81,18 @@ type DailyPortalAccess = {
   token: string;
   status: string | null;
   viewed_at: string | null;
+};
+type DailyConvocation = {
+  id: string;
+  recipient_type: string;
+  recipient_key: string;
+  recipient_name: string | null;
+  company_name: string | null;
+  version: number;
+  document_name: string | null;
+  status: string | null;
+  sent_at: string | null;
+  generated_at: string | null;
 };
 type PositioningQuestion = {
   id: string;
@@ -190,12 +203,15 @@ function sessionTimeline(session: DailySession) {
   const hasSent = recipients.some((recipient) => recipient.status === "sent");
   const allSentCompleted = recipients.length > 0 && recipients.every((recipient) => recipient.status === "sent");
   const allSigned = signatures.length > 0 && signatures.every((signature) => signature.status === "signed");
+  const convocations = session.daily_convocations ?? [];
+  const sentConvocations = convocations.filter((convocation) => convocation.status === "sent");
   return [
     ["Dossiers envoyes", hasSent ? "termine" : "en attente"],
     ["Dossiers completes", allSentCompleted ? "termine" : hasSent ? "a suivre" : "a venir"],
     ["Conventions", conventions.length > 0 ? "termine" : "en attente"],
     ["Signatures", allSigned ? "termine" : signatures.length > 0 ? "a faire" : "a venir"],
-    ["Convocations", "a venir"],
+    ["Convocations generees", convocations.length > 0 ? "termine" : "en attente"],
+    ["Convocations envoyees", sentConvocations.length > 0 ? "termine" : convocations.length > 0 ? "a faire" : "a venir"],
     ["Formation", "a venir"],
   ];
 }
@@ -839,6 +855,26 @@ export default function ClientDailyPage() {
                     ))
                   ) : (
                     <span>Non generee. Selen la prepare apres verification des informations utiles.</span>
+                  )}
+                </div>
+                <div style={s.linkBox}>
+                  <strong>Convocations</strong>
+                  {session.daily_convocations?.length ? (
+                    session.daily_convocations.map((convocation) => (
+                      <a
+                        key={convocation.id}
+                        href={`/api/client/daily/convocations/download?id=${convocation.id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={s.inlineLink}
+                      >
+                        {convocation.recipient_type === "trainer" ? "Formateur" : convocation.recipient_type === "company" ? "Entreprise" : "Beneficiaire"}{" "}
+                        {convocation.company_name || convocation.recipient_name || "Daily"} - v{convocation.version}
+                        {convocation.status === "sent" && convocation.sent_at ? ` - envoyee le ${new Date(convocation.sent_at).toLocaleDateString("fr-FR")}` : " - generee"}
+                      </a>
+                    ))
+                  ) : (
+                    <span>A venir apres generation par Selen.</span>
                   )}
                 </div>
                 {session.daily_portal_access_tokens?.length ? (

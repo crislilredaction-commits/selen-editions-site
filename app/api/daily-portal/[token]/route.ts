@@ -62,6 +62,7 @@ export async function GET(_request: Request, { params }: Params) {
     { data: responses },
     { data: conventions },
     { data: trainers },
+    { data: convocations },
   ] = await Promise.all([
     supabase
       .from("daily_sessions")
@@ -86,6 +87,10 @@ export async function GET(_request: Request, { params }: Params) {
       .from("daily_trainers")
       .select("id,first_name,last_name,email")
       .eq("user_id", access.user_id),
+    supabase
+      .from("daily_convocations")
+      .select("id,recipient_type,recipient_key,recipient_name,recipient_email,company_name,version,document_name,status,sent_at,generated_at")
+      .eq("session_id", access.session_id),
   ]);
 
   if (sessionError) return NextResponse.json({ error: sessionError.message }, { status: 500 });
@@ -132,6 +137,20 @@ export async function GET(_request: Request, { params }: Params) {
           return convention.recipient_type === "company" && ((entityEmail && email === entityEmail) || (entityName && name === entityName));
         })
       : [];
+  const convocationRows = convocations ?? [];
+  const filteredConvocations = access.portal_type === "learner"
+    ? convocationRows.filter((convocation) => {
+        const email = normalizedEmail(convocation.recipient_email);
+        const name = String(convocation.recipient_name ?? "").trim().toLowerCase();
+        return convocation.recipient_type === "beneficiary" && ((entityEmail && email === entityEmail) || (entityName && name === entityName));
+      })
+    : access.portal_type === "enterprise"
+      ? convocationRows.filter((convocation) => {
+          const email = normalizedEmail(convocation.recipient_email);
+          const name = String(convocation.company_name ?? "").trim().toLowerCase();
+          return convocation.recipient_type === "company" && ((entityEmail && email === entityEmail) || (entityName && name === entityName));
+        })
+      : convocationRows.filter((convocation) => convocation.recipient_type === "trainer");
 
   return NextResponse.json({
     access: {
@@ -154,5 +173,6 @@ export async function GET(_request: Request, { params }: Params) {
     trainers: access.portal_type === "learner" || access.portal_type === "enterprise" ? trainers ?? [] : trainers ?? [],
     responses: filteredResponses,
     conventions: filteredConventions,
+    convocations: filteredConvocations,
   });
 }
