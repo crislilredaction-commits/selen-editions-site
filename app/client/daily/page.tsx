@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import ClientSupportBar from "@/components/ClientSupportBar";
 import { createSupabaseBrowserClient } from "@/app/lib/supabase/client";
 
@@ -543,6 +544,7 @@ export default function ClientDailyPage() {
     <main className="gazette-paper" style={{ minHeight: "100vh" }}>
       <ClientSupportBar email={email} context="Selen Daily" />
       <div style={s.page}>
+        <Link href="/client" style={s.homeLink}>Retour au bureau Selen</Link>
         <header className="gazette-cta" style={s.hero}>
           <p className="gazette-label">Selen Daily</p>
           <h1 className="gazette-hero-title" style={s.heroTitle}>Formations et sessions</h1>
@@ -1193,6 +1195,7 @@ function ListCard({ title, empty, children }: { title: string; empty: string; ch
 
 const s: Record<string, React.CSSProperties> = {
   page: { maxWidth: 1220, margin: "0 auto", padding: "2rem 1.5rem 4rem" },
+  homeLink: { display: "inline-flex", marginBottom: "1rem", color: "var(--rust)", fontWeight: 800, textDecoration: "none" },
   hero: { padding: "2rem", marginBottom: "1.5rem" },
   heroTitle: { color: "var(--parchment)", marginBottom: "0.5rem" },
   heroText: { color: "var(--sepia-mid)", lineHeight: 1.65, maxWidth: 760 },

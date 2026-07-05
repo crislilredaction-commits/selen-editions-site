@@ -1464,7 +1464,7 @@ export default function IndicateurPage() {
               }}
             >
               <span style={{ color: "var(--parchment)", opacity: 1 }}>
-                &larr; Retour &agrave; mon espace client
+                &larr; Retour au bureau Selen
               </span>
             </button>
           </div>

@@ -1082,7 +1082,7 @@ export default function PreauditFinalPage() {
               className="btn-ink"
               onClick={() => router.push("/client")}
             >
-              <span>Retour espace client</span>
+              <span>Retour au bureau Selen</span>
             </button>
           </aside>
         </div>

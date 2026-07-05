@@ -1113,7 +1113,7 @@ export default function ClientNdaPage() {
             className="btn-ink"
             onClick={() => router.push("/client")}
           >
-            <span>Retour a mon espace client</span>
+            <span>Retour au bureau Selen</span>
           </button>
         </section>
       </main>
@@ -1195,7 +1195,7 @@ export default function ClientNdaPage() {
                   fontFamily: "sans-serif",
                 }}
               >
-                Espace client
+                Le bureau Selen
               </p>
             </div>
           </div>
@@ -1221,7 +1221,7 @@ export default function ClientNdaPage() {
                 textDecoration: "none",
               }}
             >
-              Retour à mon espace client
+              Retour au bureau Selen
             </Link>
             <Btn variant="ghost" size="sm">
               Réserver un appel

@@ -47,7 +47,6 @@ function formatDate(value?: string | null) {
     year: "numeric",
   }).format(new Date(value));
 }
-
 function getRemainingDays(value?: string | null) {
   if (!value) return null;
 
@@ -168,27 +167,6 @@ export default function ClientDashboardPage() {
 
         setDailyAccess(daily);
 
-        if (hasActiveToolAccess(daily)) {
-          try {
-            const onboardingRes = await fetch("/api/client/daily/onboarding", {
-              cache: "no-store",
-            });
-            const onboardingData = await onboardingRes.json().catch(() => null);
-
-            if (
-              onboardingRes.ok &&
-              onboardingData?.onboarding?.status !== "completed"
-            ) {
-              router.replace("/client/daily/onboarding");
-              return;
-            }
-          } catch (dailyError) {
-            console.warn(
-              "Impossible de vérifier le paramétrage Selen Daily :",
-              dailyError,
-            );
-          }
-        }
       }
 
       try {
@@ -229,23 +207,6 @@ export default function ClientDashboardPage() {
     loadClientSpace();
   }, [router, supabase]);
 
-  useEffect(() => {
-    if (loading) return;
-
-    if (
-      ndaDossiers.length === 1 &&
-      !hasPreauditReadAccess &&
-      !hasAuditBlancReadAccess
-    ) {
-      router.replace(`/client/dossier/${ndaDossiers[0].id}`);
-    }
-  }, [
-    loading,
-    ndaDossiers,
-    hasPreauditReadAccess,
-    hasAuditBlancReadAccess,
-    router,
-  ]);
 
   async function signOut() {
     await supabase.auth.signOut();
@@ -259,7 +220,7 @@ export default function ClientDashboardPage() {
         style={{ minHeight: "100vh", padding: "3rem 1.5rem" }}
       >
         <p style={{ textAlign: "center", color: "var(--ink-faint)" }}>
-          Ouverture de votre espace client…
+          Ouverture du bureau Selen…
         </p>
       </main>
     );
@@ -269,7 +230,7 @@ export default function ClientDashboardPage() {
     <main className="gazette-paper" style={{ minHeight: "100vh" }}>
       <ClientSupportBar
         email={userInfo?.email}
-        context="l’espace client Selen"
+        context="Le bureau Selen"
       />
 
       <div
@@ -284,13 +245,13 @@ export default function ClientDashboardPage() {
           style={{ padding: "2rem", marginBottom: "1.5rem" }}
         >
           <div style={{ position: "relative", zIndex: 1 }}>
-            <p className="gazette-label">Espace client</p>
+            <p className="gazette-label">Le bureau Selen</p>
 
             <h1
               className="gazette-hero-title"
               style={{ color: "var(--parchment)", marginBottom: "0.5rem" }}
             >
-              Bienvenue dans votre espace Selen
+              Bienvenue dans le bureau Selen
             </h1>
 
             <p style={{ color: "var(--sepia-mid)", lineHeight: 1.65 }}>
@@ -525,7 +486,8 @@ export default function ClientDashboardPage() {
               </article>
             ) : null}
 
-            <article
+            {hasDailyAccess ? (
+              <article
               style={{
                 background: "var(--paper)",
                 border: "1px solid var(--sepia-mid)",
@@ -558,7 +520,8 @@ export default function ClientDashboardPage() {
               >
                 <span>Accéder à Selen Daily →</span>
               </button>
-            </article>
+              </article>
+            ) : null}
           </section>
         ) : (
           <section className="gazette-card" style={{ padding: "1.5rem" }}>

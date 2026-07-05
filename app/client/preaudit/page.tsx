@@ -633,7 +633,7 @@ export default function PreauditProfilePage() {
             onClick={() => router.push("/client")}
             className="btn-ink"
           >
-            <span>← Retour espace client</span>
+            <span>← Retour au bureau Selen</span>
           </button>
 
           <button

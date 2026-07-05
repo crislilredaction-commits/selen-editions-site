@@ -90,7 +90,7 @@ export default function ClientLoginPage() {
                 marginBottom: "0.6rem",
               }}
             >
-              Accéder à votre espace Selen
+              Accéder au bureau Selen
             </h1>
 
             <p
@@ -134,7 +134,7 @@ export default function ClientLoginPage() {
           >
             <p className="gazette-label">Client</p>
             <h2 style={{ color: "var(--ink)", marginTop: "0.35rem" }}>
-              Espace client
+              Le bureau Selen
             </h2>
             <p
               style={{
@@ -196,7 +196,7 @@ export default function ClientLoginPage() {
           <h2 style={{ color: "var(--ink)", marginBottom: "0.7rem" }}>
             {mode === "agent"
               ? "Accéder à l’espace agent"
-              : "Accéder à l’espace client"}
+              : "Accéder au bureau Selen"}
           </h2>
 
           <form onSubmit={handleLogin} style={{ display: "grid", gap: "1rem" }}>
@@ -251,7 +251,7 @@ export default function ClientLoginPage() {
                   ? "Connexion..."
                   : mode === "agent"
                     ? "Entrer dans l’espace agent"
-                    : "Entrer dans l’espace client"}
+                    : "Entrer dans le bureau Selen"}
               </span>
             </button>
           </form>
@@ -297,7 +297,7 @@ export default function ClientLoginPage() {
                 href="/client"
                 style={{ color: "var(--ocre-dark)", fontWeight: 700 }}
               >
-                l'espace client
+                le bureau Selen
               </a>
               {" "}pour utiliser le bouton Prévenir Selen.
             </p>
@@ -310,7 +310,7 @@ export default function ClientLoginPage() {
                 textDecoration: "none",
               }}
             >
-              Retourner à l’espace client
+              Retourner au bureau Selen
             </Link>
           </div>
         </section>

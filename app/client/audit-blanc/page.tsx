@@ -414,7 +414,7 @@ export default function ClientAuditBlancPage() {
               </Link>
 
               <Link href="/client" className="btn-ink">
-                <span>Retour espace client</span>
+                <span>Retour au bureau Selen</span>
               </Link>
             </div>
           </section>
@@ -526,7 +526,7 @@ export default function ClientAuditBlancPage() {
                         >
                           Choisissez le format qui convient le mieux à votre
                           audit blanc : une session complète de 3h30, ou deux
-                          rendez-vous séparés d'1h45.
+                          rendez-vous séparés d&apos;1h45.
                         </p>
 
                         <div
@@ -571,7 +571,7 @@ export default function ClientAuditBlancPage() {
                           }}
                         >
                           Note : les créneaux proposés sont directement
-                          vérifiés dans l'agenda Selen.
+                          vérifiés dans l&apos;agenda Selen.
                         </p>
                       </>
                     ) : (
@@ -582,7 +582,7 @@ export default function ClientAuditBlancPage() {
                           marginBottom: "1rem",
                         }}
                       >
-                        L'accès actif à la réservation de l'audit blanc est
+                        L&apos;accès actif à la réservation de l&apos;audit blanc est
                         expiré. Vos synthèses, rapports et documents publiés
                         restent consultables, mais un nouveau créneau gratuit ne
                         peut plus être réservé depuis cet espace.
@@ -899,7 +899,7 @@ export default function ClientAuditBlancPage() {
 
               <div style={{ display: "grid", gap: "0.5rem" }}>
                 <Link href="/client" className="btn-ink">
-                  <span>Retour espace client</span>
+                  <span>Retour au bureau Selen</span>
                 </Link>
 
                 <Link href="/client/preaudit/final" className="btn-ink">
