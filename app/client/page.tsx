@@ -38,6 +38,13 @@ type SupportTicket = {
   created_at: string | null;
 };
 
+type DailySubscription = {
+  id: string;
+  user_id: string;
+  status: string;
+  updated_at: string | null;
+};
+
 function formatDate(value?: string | null) {
   if (!value) return "Non renseignée";
 
@@ -98,6 +105,8 @@ export default function ClientDashboardPage() {
     null,
   );
   const [dailyAccess, setDailyAccess] = useState<ToolAccess | null>(null);
+  const [dailySubscription, setDailySubscription] =
+    useState<DailySubscription | null>(null);
   const [ndaDossiers, setNdaDossiers] = useState<NdaDossier[]>([]);
   const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
   const [error, setError] = useState("");
@@ -110,7 +119,8 @@ export default function ClientDashboardPage() {
   const hasPreauditReadAccess = Boolean(preauditAccess);
   const hasAuditBlancReadAccess = Boolean(auditBlancAccess);
   const hasExpiredPreauditAccess = hasExpiredToolAccess(preauditAccess);
-  const hasDailyAccess = hasActiveToolAccess(dailyAccess);
+  const hasDailyAccess =
+    hasActiveToolAccess(dailyAccess) || dailySubscription?.status === "active";
 
   const isPreauditUnlimited = preauditAccess?.access_type === "unlimited";
   const isAuditBlancUnlimited = auditBlancAccess?.access_type === "unlimited";
@@ -166,7 +176,25 @@ export default function ClientDashboardPage() {
           accesses.find((access) => access.tool_slug === "selen-daily") ?? null;
 
         setDailyAccess(daily);
+      }
 
+      const { data: dailySubscriptionData, error: dailySubscriptionError } =
+        await supabase
+          .from("daily_subscriptions")
+          .select("id, user_id, status, updated_at")
+          .eq("user_id", data.user.id)
+          .eq("status", "active")
+          .maybeSingle();
+
+      if (dailySubscriptionError) {
+        console.warn(
+          "Impossible de vérifier l'abonnement Selen Daily :",
+          dailySubscriptionError,
+        );
+      } else {
+        setDailySubscription(
+          (dailySubscriptionData as DailySubscription | null) ?? null,
+        );
       }
 
       try {

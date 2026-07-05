@@ -188,6 +188,47 @@ async function findAuthUserIdByEmail(email: string) {
   return null;
 }
 
+async function ensureAuthUserIdByEmail(email: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+  const existingUserId = await findAuthUserIdByEmail(normalizedEmail);
+
+  if (existingUserId) {
+    return existingUserId;
+  }
+
+  const { data, error } = await supabaseAdmin.auth.admin.createUser({
+    email: normalizedEmail,
+    password: `Selen-${crypto.randomUUID()}!`,
+    email_confirm: true,
+    user_metadata: {
+      source: "stripe_selen_daily",
+    },
+  });
+
+  if (error) {
+    const userIdAfterRace = await findAuthUserIdByEmail(normalizedEmail);
+
+    if (userIdAfterRace) {
+      return userIdAfterRace;
+    }
+
+    throw new Error(
+      `Impossible de créer le compte client Daily. ${error.message}`,
+    );
+  }
+
+  if (!data.user?.id) {
+    throw new Error("Compte client Daily créé sans identifiant Supabase.");
+  }
+
+  console.info("Webhook Stripe Daily : compte client créé.", {
+    email: normalizedEmail,
+    userId: data.user.id,
+  });
+
+  return data.user.id;
+}
+
 async function ensureOrganisationForClient({
   email,
   fullName,
@@ -920,19 +961,25 @@ async function activateDailyAccess(session: Stripe.Checkout.Session) {
   const email = getClientEmailFromSession(session);
   if (!email) throw new Error("Aucun email client trouvé dans la session Stripe.");
 
+  console.info("Webhook Stripe Daily : paiement reçu.", {
+    sessionId: session.id,
+    email,
+  });
+
   await ensureStudioClientAndDossier({ session, toolSlug: "selen_daily" });
 
-  const userId = await findAuthUserIdByEmail(email);
+  const userId = await ensureAuthUserIdByEmail(email);
   const stripeCustomerId =
     typeof session.customer === "string" ? session.customer : session.customer?.id;
   const stripeSubscriptionId =
     typeof session.subscription === "string"
       ? session.subscription
       : session.subscription?.id;
+  const now = new Date().toISOString();
 
-  if (userId) {
-    const now = new Date().toISOString();
-    await supabaseAdmin.from("selen_client_tool_access").upsert(
+  const { error: accessError } = await supabaseAdmin
+    .from("selen_client_tool_access")
+    .upsert(
       {
         user_id: userId,
         tool_slug: "selen-daily",
@@ -945,7 +992,26 @@ async function activateDailyAccess(session: Stripe.Checkout.Session) {
       { onConflict: "user_id,tool_slug" },
     );
 
-    await supabaseAdmin.from("daily_subscriptions").upsert(
+  if (accessError) {
+    console.error("Webhook Stripe Daily : accès non créé.", {
+      sessionId: session.id,
+      email,
+      userId,
+      error: accessError.message,
+    });
+    throw new Error(`Erreur création accès Daily : ${accessError.message}`);
+  }
+
+  console.info("Webhook Stripe Daily : accès créé ou mis à jour.", {
+    sessionId: session.id,
+    email,
+    userId,
+    toolSlug: "selen-daily",
+  });
+
+  const { error: subscriptionError } = await supabaseAdmin
+    .from("daily_subscriptions")
+    .upsert(
       {
         user_id: userId,
         status: "active",
@@ -962,7 +1028,27 @@ async function activateDailyAccess(session: Stripe.Checkout.Session) {
       { onConflict: "user_id" },
     );
 
-    await supabaseAdmin.from("daily_onboarding").upsert(
+  if (subscriptionError) {
+    console.error("Webhook Stripe Daily : abonnement non créé.", {
+      sessionId: session.id,
+      email,
+      userId,
+      error: subscriptionError.message,
+    });
+    throw new Error(
+      `Erreur création abonnement Daily : ${subscriptionError.message}`,
+    );
+  }
+
+  console.info("Webhook Stripe Daily : abonnement créé ou mis à jour.", {
+    sessionId: session.id,
+    email,
+    userId,
+  });
+
+  const { error: onboardingError } = await supabaseAdmin
+    .from("daily_onboarding")
+    .upsert(
       {
         user_id: userId,
         status: "not_started",
@@ -970,7 +1056,24 @@ async function activateDailyAccess(session: Stripe.Checkout.Session) {
       },
       { onConflict: "user_id" },
     );
+
+  if (onboardingError) {
+    console.error("Webhook Stripe Daily : onboarding non créé.", {
+      sessionId: session.id,
+      email,
+      userId,
+      error: onboardingError.message,
+    });
+    throw new Error(
+      `Erreur création onboarding Daily : ${onboardingError.message}`,
+    );
   }
+
+  console.info("Webhook Stripe Daily : onboarding créé ou vérifié.", {
+    sessionId: session.id,
+    email,
+    userId,
+  });
 
   // TODO paiement: lorsque STRIPE_DAILY_PRICE_ID_UPPER est disponible,
   // le passage automatique au palier 149 EUR devra appeler
