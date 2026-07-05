@@ -256,6 +256,7 @@ export default function ClientDailyPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [openError, setOpenError] = useState("");
   const [formationAutosaveStatus, setFormationAutosaveStatus] = useState<SaveStatus>("idle");
   const [email, setEmail] = useState<string | null>(null);
   const [formations, setFormations] = useState<Formation[]>([]);
@@ -295,48 +296,93 @@ export default function ClientDailyPage() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+
     async function boot() {
-      const { data, error: authError } = await supabase.auth.getUser();
-      if (authError || !data.user) {
-        router.replace("/client/login");
-        return;
-      }
-      const userEmail = data.user.email ?? null;
-      setEmail(userEmail);
       try {
-        const draft = window.localStorage.getItem("selen-daily-formation-draft");
-        if (draft) {
-          setFormationForm({ ...emptyFormation, ...JSON.parse(draft), contact_email: userEmail ?? "" });
-          setFormationAutosaveStatus("saved");
-        } else {
+        const { data, error: authError } = await supabase.auth.getUser();
+        if (authError || !data.user) {
+          router.replace("/client/login");
+          return;
+        }
+        const userEmail = data.user.email ?? null;
+        if (cancelled) return;
+        setEmail(userEmail);
+        try {
+          const draft = window.localStorage.getItem("selen-daily-formation-draft");
+          if (draft) {
+            setFormationForm({ ...emptyFormation, ...JSON.parse(draft), contact_email: userEmail ?? "" });
+            setFormationAutosaveStatus("saved");
+          } else {
+            setFormationForm((current) => ({
+              ...current,
+              contact_email: userEmail ?? "",
+            }));
+          }
+        } catch {
+          setFormationAutosaveStatus("error");
           setFormationForm((current) => ({
             ...current,
             contact_email: userEmail ?? "",
           }));
         }
-      } catch {
-        setFormationAutosaveStatus("error");
-        setFormationForm((current) => ({
-          ...current,
-          contact_email: userEmail ?? "",
-        }));
+
+        const onboardingRes = await fetch("/api/client/daily/onboarding", {
+          cache: "no-store",
+        });
+        const onboardingData = await onboardingRes.json().catch(() => null);
+
+        if (!onboardingRes.ok) {
+          console.warn("Selen Daily : accès ou onboarding indisponible.", {
+            status: onboardingRes.status,
+            error: onboardingData?.error,
+          });
+          if (!cancelled) {
+            setOpenError(
+              onboardingData?.error ??
+                "Impossible d'ouvrir Selen Daily. Revenez au bureau Selen ou contactez Selen.",
+            );
+            setLoading(false);
+          }
+          return;
+        }
+
+        if (onboardingData?.onboarding?.status !== "completed") {
+          console.info("Selen Daily : onboarding incomplet, redirection.", {
+            status: onboardingData?.onboarding?.status ?? "absent",
+          });
+          router.replace("/client/daily/onboarding");
+          return;
+        }
+
+        console.info("Selen Daily : onboarding terminé, ouverture du dashboard.");
+
+        if (!cancelled) {
+          setDailyTrainers((onboardingData?.trainers ?? []) as DailyTrainer[]);
+        }
+
+        await loadDaily();
+        if (!cancelled) {
+          setLoading(false);
+        }
+      } catch (bootError) {
+        console.error("Selen Daily : chargement impossible.", bootError);
+        if (!cancelled) {
+          setOpenError(
+            bootError instanceof Error
+              ? bootError.message
+              : "Impossible d'ouvrir Selen Daily pour le moment.",
+          );
+          setLoading(false);
+        }
       }
-      const onboardingRes = await fetch("/api/client/daily/onboarding", {
-        cache: "no-store",
-      });
-      const onboardingData = await onboardingRes.json().catch(() => null);
-      if (
-        onboardingRes.ok &&
-        onboardingData?.onboarding?.status !== "completed"
-      ) {
-        router.replace("/client/daily/onboarding");
-        return;
-      }
-      setDailyTrainers((onboardingData?.trainers ?? []) as DailyTrainer[]);
-      await loadDaily();
-      setLoading(false);
     }
+
     void boot();
+
+    return () => {
+      cancelled = true;
+    };
   }, [loadDaily, router, supabase]);
 
   useEffect(() => {
@@ -536,6 +582,29 @@ export default function ClientDailyPage() {
     return (
       <main className="gazette-paper" style={s.page}>
         <p style={s.muted}>Ouverture de Selen Daily...</p>
+      </main>
+    );
+  }
+
+  if (openError) {
+    return (
+      <main className="gazette-paper" style={{ minHeight: "100vh" }}>
+        <ClientSupportBar email={email} context="Selen Daily" />
+        <div style={s.page}>
+          <Link href="/client" style={s.homeLink}>Retour au bureau Selen</Link>
+          <section style={s.card}>
+            <p className="gazette-label">Selen Daily</p>
+            <h1 style={s.cardTitle}>Ouverture impossible</h1>
+            <p style={s.error}>{openError}</p>
+            <button
+              type="button"
+              className="btn-ink"
+              onClick={() => router.push("/client")}
+            >
+              <span>Retour au bureau Selen</span>
+            </button>
+          </section>
+        </div>
       </main>
     );
   }

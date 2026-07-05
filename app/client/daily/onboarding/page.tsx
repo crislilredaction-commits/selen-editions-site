@@ -119,42 +119,79 @@ export default function DailyOnboardingPage() {
   }, []);
 
   useEffect(() => {
-    async function boot() {
-      const { data, error: authError } = await supabase.auth.getUser();
-      if (authError || !data.user) {
-        router.replace("/client/login");
-        return;
-      }
-      setEmail(data.user.email ?? null);
+    let cancelled = false;
 
-      const res = await fetch("/api/client/daily/onboarding", { cache: "no-store" });
-      const payload = await res.json().catch(() => null);
-      if (res.ok && payload?.onboarding) {
-        const templates = Array.isArray(payload.documentTemplates) ? payload.documentTemplates : [];
-        const templateUrl = (type: string) =>
-          text(templates.find((template: Record<string, unknown>) => template.document_type === type)?.public_url);
-        setForm({
-          ...emptyForm,
-          ...payload.onboarding,
-          setup_choice: payload.onboarding.setup_choice ?? "",
-          qualiopi_status: payload.onboarding.qualiopi_status ?? "",
-          platform_contact_email: payload.onboarding.platform_contact_email ?? data.user.email ?? "",
-          organisation_logo_url: payload.onboarding.organisation_logo_url ?? "",
-          convocation_template_url: templateUrl("convocation"),
-          convention_template_url: templateUrl("convention"),
-          politique_handicap_template_url: templateUrl("politique_handicap"),
-        });
-      } else {
-        setForm((current) => ({
-          ...current,
-          platform_contact_email: data.user?.email ?? "",
-        }));
+    async function boot() {
+      try {
+        const { data, error: authError } = await supabase.auth.getUser();
+        if (authError || !data.user) {
+          router.replace("/client/login");
+          return;
+        }
+        if (cancelled) return;
+        setEmail(data.user.email ?? null);
+
+        const res = await fetch("/api/client/daily/onboarding", { cache: "no-store" });
+        const payload = await res.json().catch(() => null);
+
+        if (!res.ok) {
+          console.warn("Selen Daily onboarding : ouverture impossible.", {
+            status: res.status,
+            error: payload?.error,
+          });
+          if (!cancelled) {
+            setError(
+              payload?.error ??
+                "Impossible d'ouvrir le paramétrage Selen Daily. Revenez au bureau Selen ou contactez Selen.",
+            );
+            setForm((current) => ({
+              ...current,
+              platform_contact_email: data.user?.email ?? "",
+            }));
+          }
+          return;
+        }
+
+        if (payload?.onboarding) {
+          const templates = Array.isArray(payload.documentTemplates) ? payload.documentTemplates : [];
+          const templateUrl = (type: string) =>
+            text(templates.find((template: Record<string, unknown>) => template.document_type === type)?.public_url);
+          if (!cancelled) {
+            setForm({
+              ...emptyForm,
+              ...payload.onboarding,
+              setup_choice: payload.onboarding.setup_choice ?? "",
+              qualiopi_status: payload.onboarding.qualiopi_status ?? "",
+              platform_contact_email: payload.onboarding.platform_contact_email ?? data.user.email ?? "",
+              organisation_logo_url: payload.onboarding.organisation_logo_url ?? "",
+              convocation_template_url: templateUrl("convocation"),
+              convention_template_url: templateUrl("convention"),
+              politique_handicap_template_url: templateUrl("politique_handicap"),
+            });
+          }
+        }
+
+        if (!cancelled && payload?.trainers?.length) setTrainers(payload.trainers);
+        loadedRef.current = true;
+      } catch (bootError) {
+        console.error("Selen Daily onboarding : chargement impossible.", bootError);
+        if (!cancelled) {
+          setError(
+            bootError instanceof Error
+              ? bootError.message
+              : "Impossible d'ouvrir le paramétrage Selen Daily.",
+          );
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-      if (payload?.trainers?.length) setTrainers(payload.trainers);
-      loadedRef.current = true;
-      setLoading(false);
     }
+
     void boot();
+
+    return () => {
+      cancelled = true;
+    };
   }, [router, supabase]);
 
   useEffect(() => {
@@ -194,6 +231,28 @@ export default function DailyOnboardingPage() {
     return (
       <main className="gazette-paper" style={s.page}>
         <p style={s.muted}>Ouverture du grimoire Daily...</p>
+      </main>
+    );
+  }
+
+  if (error && !loadedRef.current) {
+    return (
+      <main className="gazette-paper" style={{ minHeight: "100vh" }}>
+        <ClientSupportBar email={email} context="le paramétrage Selen Daily" />
+        <div style={s.page}>
+          <section style={s.card}>
+            <p className="gazette-label">Selen Daily</p>
+            <h1 style={s.title}>Paramétrage indisponible</h1>
+            <p style={s.error}>{error}</p>
+            <button
+              type="button"
+              className="btn-ink"
+              onClick={() => router.push("/client")}
+            >
+              <span>Retour au bureau Selen</span>
+            </button>
+          </section>
+        </div>
       </main>
     );
   }

@@ -37,14 +37,56 @@ function trainerRows(value: unknown) {
     .filter((row) => row.first_name || row.last_name || row.email);
 }
 
-export async function GET() {
-  const auth = await requireClient();
-  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
-
+async function getDailyAccessState(userId: string) {
   const supabase = getAdminSupabase();
-  await supabase.from("daily_subscriptions").upsert(
+
+  const [accessRes, subscriptionRes] = await Promise.all([
+    supabase
+      .from("selen_client_tool_access")
+      .select("id,status,access_type,starts_at,ends_at")
+      .eq("user_id", userId)
+      .eq("tool_slug", "selen-daily")
+      .eq("status", "active")
+      .maybeSingle(),
+    supabase
+      .from("daily_subscriptions")
+      .select("id,status")
+      .eq("user_id", userId)
+      .eq("status", "active")
+      .maybeSingle(),
+  ]);
+
+  if (accessRes.error) {
+    return { ok: false as const, error: accessRes.error.message };
+  }
+
+  if (subscriptionRes.error) {
+    return { ok: false as const, error: subscriptionRes.error.message };
+  }
+
+  const access = accessRes.data;
+  const now = new Date();
+  const accessIsActive =
+    Boolean(access) &&
+    (access?.access_type === "unlimited" ||
+      (!access?.starts_at ||
+        new Date(access.starts_at) <= now) &&
+        (!access?.ends_at || new Date(access.ends_at) >= now));
+  const subscriptionIsActive = Boolean(subscriptionRes.data);
+
+  return {
+    ok: true as const,
+    hasAccess: accessIsActive || subscriptionIsActive,
+    hasCatalogAccess: accessIsActive,
+    hasSubscription: subscriptionIsActive,
+  };
+}
+
+async function ensureDailySubscription(userId: string) {
+  const supabase = getAdminSupabase();
+  const { error } = await supabase.from("daily_subscriptions").upsert(
     {
-      user_id: auth.user.id,
+      user_id: userId,
       status: "active",
       annual_learner_limit: 150,
       base_monthly_amount_cents: 8900,
@@ -55,12 +97,79 @@ export async function GET() {
     { onConflict: "user_id" },
   );
 
-  const [onboardingRes, trainersRes, subscriptionRes, templatesRes] = await Promise.all([
-    supabase
-      .from("daily_onboarding")
-      .select("*")
-      .eq("user_id", auth.user.id)
-      .maybeSingle(),
+  return error;
+}
+
+async function ensureDailyOnboarding(userId: string) {
+  const supabase = getAdminSupabase();
+
+  const { data: existing, error: existingError } = await supabase
+    .from("daily_onboarding")
+    .select("*")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (existingError) {
+    return { data: null, error: existingError };
+  }
+
+  if (existing) {
+    return { data: existing, error: null };
+  }
+
+  return supabase
+    .from("daily_onboarding")
+    .upsert(
+      {
+        user_id: userId,
+        status: "not_started",
+        current_step: 1,
+      },
+      { onConflict: "user_id" },
+    )
+    .select("*")
+    .single();
+}
+
+export async function GET() {
+  const auth = await requireClient();
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
+  const supabase = getAdminSupabase();
+  const access = await getDailyAccessState(auth.user.id);
+
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: 500 });
+  }
+
+  if (!access.hasAccess) {
+    console.warn("Selen Daily onboarding : accès absent.", {
+      userId: auth.user.id,
+      email: auth.user.email,
+    });
+    return NextResponse.json(
+      {
+        error:
+          "Aucun accès Selen Daily actif n'est associé à ce compte. Revenez au bureau Selen ou contactez Selen.",
+      },
+      { status: 403 },
+    );
+  }
+
+  if (!access.hasSubscription) {
+    const subscriptionError = await ensureDailySubscription(auth.user.id);
+    if (subscriptionError) {
+      return NextResponse.json({ error: subscriptionError.message }, { status: 500 });
+    }
+  }
+
+  const onboardingInit = await ensureDailyOnboarding(auth.user.id);
+
+  if (onboardingInit.error) {
+    return NextResponse.json({ error: onboardingInit.error.message }, { status: 500 });
+  }
+
+  const [trainersRes, subscriptionRes, templatesRes] = await Promise.all([
     supabase
       .from("daily_trainers")
       .select("*")
@@ -78,22 +187,42 @@ export async function GET() {
       .eq("status", "active"),
   ]);
 
-  if (onboardingRes.error) return NextResponse.json({ error: onboardingRes.error.message }, { status: 500 });
   if (trainersRes.error) return NextResponse.json({ error: trainersRes.error.message }, { status: 500 });
   if (subscriptionRes.error) return NextResponse.json({ error: subscriptionRes.error.message }, { status: 500 });
-  if (templatesRes.error) return NextResponse.json({ error: templatesRes.error.message }, { status: 500 });
+
+  const templatesMissing = templatesRes.error?.code === "42P01";
+  if (templatesRes.error && !templatesMissing) {
+    return NextResponse.json({ error: templatesRes.error.message }, { status: 500 });
+  }
 
   return NextResponse.json({
-    onboarding: onboardingRes.data,
+    hasAccess: true,
+    onboarding: onboardingInit.data,
     trainers: trainersRes.data ?? [],
     subscription: subscriptionRes.data,
-    documentTemplates: templatesRes.data ?? [],
+    documentTemplates: templatesMissing ? [] : templatesRes.data ?? [],
   });
 }
 
 export async function PATCH(req: Request) {
   const auth = await requireClient();
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
+  const access = await getDailyAccessState(auth.user.id);
+
+  if (!access.ok) {
+    return NextResponse.json({ error: access.error }, { status: 500 });
+  }
+
+  if (!access.hasAccess) {
+    return NextResponse.json(
+      {
+        error:
+          "Aucun accès Selen Daily actif n'est associé à ce compte. Revenez au bureau Selen ou contactez Selen.",
+      },
+      { status: 403 },
+    );
+  }
 
   const body = await req.json().catch(() => ({}));
   const step = Math.max(1, Math.min(7, Number(body.current_step ?? 1) || 1));
