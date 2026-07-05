@@ -572,3 +572,86 @@ body::after {
   background: linear-gradient(to bottom, var(--ocre), var(--ocre-dark));
   border-radius: 4px;
 }
+
+/* LoadingMascot — animation douce de Sélion */
+@keyframes floatMascot {
+  0%,
+  100% {
+    transform: translateY(0px) rotate(-2deg);
+  }
+  50% {
+    transform: translateY(-14px) rotate(2deg);
+  }
+}
+
+.animate-float-soft {
+  animation: floatMascot 5s ease-in-out infinite;
+}
+
+/* LoadingMascot — fondu du message */
+@keyframes messageFade {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  12% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  88% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+.loading-message {
+  animation: messageFade 2.6s ease-in-out;
+}
+
+/* Sceau gazette — utilisé sur les pages prestations */
+.gazette-seal {
+  position: absolute;
+  top: -20px;
+  right: -14px;
+  width: 96px;
+  height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  border: 2px solid var(--ocre-dark);
+  border-radius: 50%;
+  transform: rotate(-11deg);
+  background: rgba(248, 239, 223, 0.65);
+  box-shadow: 0 6px 16px rgba(62, 42, 31, 0.14);
+  font-family: "Cinzel", serif;
+  font-size: 0.55rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ocre-dark);
+  line-height: 1.25;
+}
+
+.gazette-seal::before {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  border: 1px solid var(--ocre-dark);
+  border-radius: 50%;
+  opacity: 0.5;
+}
+
+.gazette-label--on-dark {
+  border-color: rgba(201, 160, 85, 0.4);
+  background: linear-gradient(
+    to right,
+    rgba(201, 160, 85, 0.1),
+    rgba(201, 160, 85, 0.03)
+  );
+  color: var(--gold-shimmer);
+}

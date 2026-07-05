@@ -30,11 +30,35 @@ function trainerRows(value: unknown) {
         first_name: clean(item.first_name),
         last_name: clean(item.last_name),
         email: clean(item.email).toLowerCase() || null,
+        cv_url: clean(item.cv_url) || null,
         cv_pending: boolValue(item.cv_pending),
-        trainer_access_planned: boolValue(item.trainer_access_planned),
+        trainer_access_planned: true,
+        trainer_access_status: clean(item.trainer_access_status) || "to_prepare",
       };
     })
     .filter((row) => row.first_name || row.last_name || row.email);
+}
+
+function buildSupportTasks(payload: {
+  insee_document_pending: boolean;
+  qualiopi_certificate_pending: boolean;
+  nda_or_bpf_document_pending: boolean;
+  welcome_booklet_pending: boolean;
+}) {
+  return [
+    payload.insee_document_pending
+      ? { key: "insee", label: "Avis INSEE à fournir", status: "todo" }
+      : null,
+    payload.qualiopi_certificate_pending
+      ? { key: "qualiopi_certificate", label: "Certificat Qualiopi à fournir", status: "todo" }
+      : null,
+    payload.nda_or_bpf_document_pending
+      ? { key: "nda_or_bpf", label: "Attestation NDA ou dernier BPF à fournir", status: "todo" }
+      : null,
+    payload.welcome_booklet_pending
+      ? { key: "welcome_booklet", label: "Livret d'accueil à fournir", status: "todo" }
+      : null,
+  ].filter(Boolean);
 }
 
 async function getDailyAccessState(userId: string) {
@@ -247,11 +271,22 @@ export async function PATCH(req: Request) {
     insee_document_pending: boolValue(body.insee_document_pending),
     qualiopi_certificate_pending: boolValue(body.qualiopi_certificate_pending),
     nda_or_bpf_document_pending: boolValue(body.nda_or_bpf_document_pending),
+    welcome_booklet_pending: boolValue(body.welcome_booklet_pending),
+    insee_document_url: clean(body.insee_document_url) || null,
+    qualiopi_certificate_url: clean(body.qualiopi_certificate_url) || null,
+    nda_or_bpf_document_url: clean(body.nda_or_bpf_document_url) || null,
+    welcome_booklet_url: clean(body.welcome_booklet_url) || null,
     platform_contact_first_name: clean(body.platform_contact_first_name) || null,
     platform_contact_last_name: clean(body.platform_contact_last_name) || null,
     platform_contact_role: clean(body.platform_contact_role) || null,
     platform_contact_email: clean(body.platform_contact_email).toLowerCase() || null,
     organisation_logo_url: clean(body.organisation_logo_url) || null,
+    support_tasks: buildSupportTasks({
+      insee_document_pending: boolValue(body.insee_document_pending),
+      qualiopi_certificate_pending: boolValue(body.qualiopi_certificate_pending),
+      nda_or_bpf_document_pending: boolValue(body.nda_or_bpf_document_pending),
+      welcome_booklet_pending: boolValue(body.welcome_booklet_pending),
+    }),
     completed_at: status === "completed" ? now : null,
   };
 
@@ -284,8 +319,10 @@ export async function PATCH(req: Request) {
         first_name: row.first_name || "À compléter",
         last_name: row.last_name || "À compléter",
         email: row.email,
+        cv_url: row.cv_url,
         cv_pending: row.cv_pending,
-        trainer_access_planned: row.trainer_access_planned,
+        trainer_access_planned: true,
+        trainer_access_status: row.trainer_access_status,
       };
 
       if (row.id) {

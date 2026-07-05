@@ -18,7 +18,8 @@ function normalizeAppointmentType(value?: string | null) {
   if (
     value === "simple_30" ||
     value === "audit_3h30" ||
-    value === "audit_2x1h45"
+    value === "audit_2x1h45" ||
+    value === "daily_setup_1h30"
   ) {
     return value;
   }
@@ -43,7 +44,7 @@ export default async function PrendreRendezVousPage({
   const isReschedule = getParam(resolvedSearchParams, "rescheduled") === "1";
   const allowedAppointmentTypes =
     source === "client_space"
-      ? (["audit_3h30", "audit_2x1h45"] as const)
+      ? (["audit_3h30", "audit_2x1h45", "daily_setup_1h30"] as const)
       : (["simple_30"] as const);
   const defaultAppointmentType =
     source === "client_space" && requestedType !== "simple_30"

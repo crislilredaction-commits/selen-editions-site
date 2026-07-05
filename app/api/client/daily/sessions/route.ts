@@ -25,6 +25,11 @@ function nullableText(body: Record<string, unknown>, key: string) {
   return value || null;
 }
 
+function nullableDate(body: Record<string, unknown>, key: string) {
+  const value = text(body, key);
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+}
+
 function jsonArray(value: unknown) {
   return Array.isArray(value) ? value : [];
 }
@@ -40,13 +45,15 @@ function participantRow(value: unknown) {
   const firstName = text(row, "first_name") || legacyName.split(" ").slice(0, -1).join(" ");
   const lastName = text(row, "last_name") || legacyName.split(" ").slice(-1).join(" ");
   const email = text(row, "email").toLowerCase();
+  const phone = text(row, "phone");
 
-  if (!firstName && !lastName && !email) return null;
+  if (!firstName && !lastName && !email && !phone) return null;
 
   return {
     first_name: firstName,
     last_name: lastName,
     email,
+    phone,
   };
 }
 
@@ -77,12 +84,20 @@ function buildPayload(body: Record<string, unknown>, userId: string) {
   const modality = text(body, "modality");
   const status = text(body, "status") || "ready";
   const distanceMode = text(body, "distance_mode");
+  const startDate = nullableDate(body, "start_date");
+  const endDate = nullableDate(body, "end_date");
 
   if (!formationId) return { error: "Selectionnez une formation." };
   if (!MODALITIES.has(modality)) return { error: "Modalite de session invalide." };
   if (!STATUSES.has(status)) return { error: "Statut de session invalide." };
   if (modality === "distanciel" && !DISTANCE_MODES.has(distanceMode)) {
     return { error: "Precisez si la session a distance est en direct ou a son rythme." };
+  }
+  if (!startDate || !endDate) {
+    return { error: "Renseignez la date de debut et la date de fin de la session." };
+  }
+  if (endDate < startDate) {
+    return { error: "La date de fin doit etre posterieure ou egale a la date de debut." };
   }
 
   const scheduleBlocks = jsonArray(body.schedule_blocks).filter((block) => {
@@ -99,6 +114,8 @@ function buildPayload(body: Record<string, unknown>, userId: string) {
     user_id: userId,
     formation_id: formationId,
     modality,
+    start_date: startDate,
+    end_date: endDate,
     distance_mode: modality === "distanciel" ? distanceMode : null,
     blended_elearning_periods:
       modality === "mixte" ? nullableText(body, "blended_elearning_periods") : null,

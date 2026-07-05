@@ -19,6 +19,10 @@ type Formation = {
   result_satisfaction_rate?: number | string | null;
   result_success_rate?: number | string | null;
   contact_email?: string | null;
+  detailed_program_document_url?: string | null;
+  public_registration_token?: string | null;
+  public_registration_enabled?: boolean | null;
+  spontaneous_registration_task_status?: string | null;
   positioning_mode?: string | null;
   positioning_questions?: PositioningQuestion[] | null;
   [key: string]: string | number | boolean | PositioningQuestion[] | null | undefined;
@@ -28,6 +32,8 @@ type DailySession = {
   formation_id: string;
   modality: string;
   status: string;
+  start_date?: string | null;
+  end_date?: string | null;
   schedule_blocks?: ScheduleBlock[] | null;
   companies?: Company[] | null;
   beneficiaries?: Participant[] | null;
@@ -44,7 +50,7 @@ type DailySession = {
   [key: string]: string | number | boolean | ScheduleBlock[] | Company[] | Participant[] | RegistrationRecipient[] | DailyConvention[] | DailyConvocation[] | DailyPortalAccess[] | Pick<Formation, "id" | "title" | "status" | "version"> | Record<string, unknown> | null | undefined;
 };
 type ScheduleBlock = { date: string; start: string; end: string; note: string };
-type Participant = { first_name: string; last_name: string; email: string };
+type Participant = { first_name: string; last_name: string; email: string; phone?: string };
 type Company = { name: string; address: string; siret: string; email: string; participants: Participant[] };
 type RegistrationRecipient = {
   id: string;
@@ -127,6 +133,7 @@ const emptyFormation = {
   registration_methods: "",
   price: "",
   detailed_program: "",
+  detailed_program_document_url: "",
   accessibility: "",
   disability_referent: "",
   pedagogical_resources: "",
@@ -146,6 +153,8 @@ const emptyFormation = {
 
 const emptySession = {
   formation_id: "",
+  start_date: "",
+  end_date: "",
   modality: "presentiel",
   distance_mode: "synchrone",
   blended_elearning_periods: "",
@@ -266,6 +275,8 @@ export default function ClientDailyPage() {
   const [editingFormationId, setEditingFormationId] = useState("");
   const [sessionForm, setSessionForm] = useState<FormState>(emptySession);
   const [editingSessionId, setEditingSessionId] = useState("");
+  const [showSessionForm, setShowSessionForm] = useState(false);
+  const [lastCreatedFormationId, setLastCreatedFormationId] = useState("");
   const [scheduleBlocks, setScheduleBlocks] = useState<ScheduleBlock[]>([
     { date: "", start: "", end: "", note: "" },
   ]);
@@ -273,10 +284,10 @@ export default function ClientDailyPage() {
     { name: "", address: "", siret: "", email: "", participants: [{ first_name: "", last_name: "", email: "" }] },
   ]);
   const [beneficiaries, setBeneficiaries] = useState<Participant[]>([
-    { first_name: "", last_name: "", email: "" },
+    { first_name: "", last_name: "", email: "", phone: "" },
   ]);
   const [individualBeneficiaries, setIndividualBeneficiaries] = useState<Participant[]>([
-    { first_name: "", last_name: "", email: "" },
+    { first_name: "", last_name: "", email: "", phone: "" },
   ]);
   const [selectedTrainerIds, setSelectedTrainerIds] = useState<string[]>([]);
 
@@ -430,7 +441,16 @@ export default function ClientDailyPage() {
       setError(data?.error ?? "Sauvegarde impossible.");
       return;
     }
+    const savedFormation = data?.formation as Formation | undefined;
     setMessage(data?.versioned ? "Nouvelle version créée et envoyée en validation Selen." : "Formation enregistrée.");
+    if (!editingFormationId && savedFormation?.id) {
+      setLastCreatedFormationId(savedFormation.id);
+      setShowSessionForm(false);
+      setSessionForm((current) => ({
+        ...current,
+        formation_id: savedFormation.id,
+      }));
+    }
     window.localStorage.removeItem("selen-daily-formation-draft");
     setFormationAutosaveStatus("idle");
     setFormationForm({ ...emptyFormation, contact_email: email ?? "" });
@@ -519,19 +539,23 @@ export default function ClientDailyPage() {
     setMessage(data?.validationWarning ?? "Session enregistrée.");
     setSessionForm(emptySession);
     setEditingSessionId("");
+    setShowSessionForm(false);
     setScheduleBlocks([{ date: "", start: "", end: "", note: "" }]);
     setCompanies([{ name: "", address: "", siret: "", email: "", participants: [{ first_name: "", last_name: "", email: "" }] }]);
-    setBeneficiaries([{ first_name: "", last_name: "", email: "" }]);
-    setIndividualBeneficiaries([{ first_name: "", last_name: "", email: "" }]);
+    setBeneficiaries([{ first_name: "", last_name: "", email: "", phone: "" }]);
+    setIndividualBeneficiaries([{ first_name: "", last_name: "", email: "", phone: "" }]);
     setSelectedTrainerIds([]);
     await loadDaily();
   }
 
   function editSession(session: DailySession) {
     setEditingSessionId(session.id);
+    setShowSessionForm(true);
     setSessionForm({
       ...emptySession,
       formation_id: session.formation_id,
+      start_date: String(session.start_date ?? ""),
+      end_date: String(session.end_date ?? ""),
       modality: session.modality,
       distance_mode: String(session.distance_mode ?? "synchrone"),
       blended_elearning_periods: String(session.blended_elearning_periods ?? ""),
@@ -571,11 +595,22 @@ export default function ClientDailyPage() {
     return `${window.location.origin}/daily-inscription/${token}`;
   }
 
+  function getFormationRegistrationUrl(token?: string | null) {
+    return getRegistrationUrl(token);
+  }
+
   async function copyRegistrationLink(token?: string | null) {
     const url = getRegistrationUrl(token);
     if (!url) return;
     await navigator.clipboard.writeText(url);
     setMessage("Lien d'inscription copié.");
+  }
+
+  async function copyFormationRegistrationLink(token?: string | null) {
+    const url = getFormationRegistrationUrl(token);
+    if (!url) return;
+    await navigator.clipboard.writeText(url);
+    setMessage("Lien d'inscription spontané copié.");
   }
 
   if (loading) {
@@ -623,8 +658,6 @@ export default function ClientDailyPage() {
           </p>
         </header>
 
-        {message ? <p style={s.notice}>{message}</p> : null}
-        {error ? <p style={s.error}>{error}</p> : null}
         <p style={formationAutosaveStatus === "error" ? s.warning : s.muted}>
           {formationAutosaveStatus === "saving"
             ? "Enregistrement du brouillon..."
@@ -656,27 +689,22 @@ export default function ClientDailyPage() {
               <option value="distanciel">Distanciel</option>
               <option value="mixte">Mixte</option>
             </select>
+            <p style={s.helpText}>Indiquez comment la formation se déroule : en présentiel, à distance ou avec un mélange des deux.</p>
             <Textarea label="Précisions sur les modalités" value={formationForm.modality_details} onChange={(value) => updateFormation("modality_details", value)} required />
             <Input label={"Délais d'accès"} value={formationForm.access_delays} onChange={(value) => updateFormation("access_delays", value)} required />
-            <Textarea label={"Modalités d'inscription"} value={formationForm.registration_methods} onChange={(value) => updateFormation("registration_methods", value)} required />
+            <p style={s.helpText}>Indiquez le délai habituel entre la demande d&apos;inscription et l&apos;entrée en formation.</p>
             <Input label="Tarif" value={formationForm.price} onChange={(value) => updateFormation("price", value)} required />
             <Textarea label="Contenu / programme détaillé" value={formationForm.detailed_program} onChange={(value) => updateFormation("detailed_program", value)} required rows={6} />
-            <Textarea
-              label="Accessibilité handicap"
-              helpText={"Indiquez les modalités d'accueil, d'adaptation ou d'orientation prévues pour les personnes en situation de handicap."}
-              value={formationForm.accessibility}
-              onChange={(value) => updateFormation("accessibility", value)}
-              required
-            />
-            <Input label="Référent handicap si existant" value={formationForm.disability_referent} onChange={(value) => updateFormation("disability_referent", value)} />
+            <Input label="Document programme déjà existant, URL du fichier" value={formationForm.detailed_program_document_url} onChange={(value) => updateFormation("detailed_program_document_url", value)} />
             <Textarea label="Moyens pédagogiques et techniques mobilisés" value={formationForm.pedagogical_resources} onChange={(value) => updateFormation("pedagogical_resources", value)} required />
+            <p style={s.helpText}>Exemples : supports PDF, exercices, cas pratiques, visio, plateforme e-learning, matériel utilisé.</p>
             <Textarea
               label={"Modalités d'évaluation des acquis"}
-              helpText="Expliquez comment vous vérifiez que les objectifs de la formation sont atteints."
               value={formationForm.evaluation_methods}
               onChange={(value) => updateFormation("evaluation_methods", value)}
               required
             />
+            <p style={s.helpText}>Expliquez comment les acquis sont vérifiés : questionnaire, mise en situation, exercice pratique, étude de cas...</p>
 
             <PositioningQuestionnaireEditor
               mode={String(formationForm.positioning_mode ?? "off_platform")}
@@ -708,9 +736,30 @@ export default function ClientDailyPage() {
               <Input label="Email" type="email" value={formationForm.contact_email} onChange={(value) => updateFormation("contact_email", value)} required />
               <Input label="Site internet" value={formationForm.contact_website} onChange={(value) => updateFormation("contact_website", value)} />
             </div>
-            <Input label={"Date d'actualisation visible"} type="date" value={formationForm.updated_visible_at} onChange={(value) => updateFormation("updated_visible_at", value)} required />
+            <p style={s.helpText}>La date de génération du document sera ajoutée automatiquement par Selen.</p>
 
             <div style={s.actions}>
+              <div style={s.actionMessages}>
+                {message ? <p style={s.notice}>{message}</p> : null}
+                {error ? <p style={s.error}>{error}</p> : null}
+                {lastCreatedFormationId ? (
+                  <div style={s.linkBox}>
+                    <strong>Formation créée</strong>
+                    <span>Vous pouvez créer une session maintenant ou revenir plus tard depuis le dashboard Daily.</span>
+                    <div style={s.actions}>
+                      <button type="button" className="btn-ghost" onClick={() => setLastCreatedFormationId("")}>
+                        <span>Accéder au dashboard Daily</span>
+                      </button>
+                      <button type="button" className="btn-ink" onClick={() => { setShowSessionForm(true); setSessionForm((current) => ({ ...current, formation_id: lastCreatedFormationId })); }}>
+                        <span>Créer une session maintenant</span>
+                      </button>
+                      <button type="button" className="btn-ghost" onClick={() => setLastCreatedFormationId("")}>
+                        <span>Créer plus tard</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
               <button className="btn-ink" type="submit" disabled={saving}>
                 <span>{saving ? "Enregistrement..." : editingFormationId ? "Enregistrer la modification" : "Créer la formation"}</span>
               </button>
@@ -722,6 +771,7 @@ export default function ClientDailyPage() {
             </div>
           </form>
 
+          {showSessionForm || editingSessionId ? (
           <form onSubmit={submitSession} style={s.card}>
             <p className="gazette-label">Session associée</p>
             <h2 style={s.cardTitle}>{editingSessionId ? "Modifier la session" : "Créer une session"}</h2>
@@ -735,6 +785,11 @@ export default function ClientDailyPage() {
                 </option>
               ))}
             </select>
+
+            <div style={s.twoCols}>
+              <Input label="Date de début" type="date" value={sessionForm.start_date} onChange={(value) => updateSession("start_date", value)} required />
+              <Input label="Date de fin" type="date" value={sessionForm.end_date} onChange={(value) => updateSession("end_date", value)} required />
+            </div>
 
             {sessionForm.formation_id && activeFormations.find((formation) => formation.id === sessionForm.formation_id)?.status !== "validated" ? (
               <p style={s.notice}>
@@ -791,15 +846,15 @@ export default function ClientDailyPage() {
               title="Bénéficiaires rattachés à une entreprise"
               rows={beneficiaries}
               setRows={setBeneficiaries}
-              fields={[["first_name", "Prénom"], ["last_name", "Nom"], ["email", "Email"]]}
-              blank={{ first_name: "", last_name: "", email: "" }}
+              fields={[["first_name", "Prénom"], ["last_name", "Nom"], ["email", "Email"], ["phone", "Téléphone"]]}
+              blank={{ first_name: "", last_name: "", email: "", phone: "" }}
             />
             <DynamicRows
               title="Bénéficiaires individuels"
               rows={individualBeneficiaries}
               setRows={setIndividualBeneficiaries}
-              fields={[["first_name", "Prénom"], ["last_name", "Nom"], ["email", "Email"]]}
-              blank={{ first_name: "", last_name: "", email: "" }}
+              fields={[["first_name", "Prénom"], ["last_name", "Nom"], ["email", "Email"], ["phone", "Téléphone"]]}
+              blank={{ first_name: "", last_name: "", email: "", phone: "" }}
             />
 
             {dailyTrainers.length > 0 ? (
@@ -828,6 +883,10 @@ export default function ClientDailyPage() {
             ) : null}
 
             <div style={s.actions}>
+              <div style={s.actionMessages}>
+                {message ? <p style={s.notice}>{message}</p> : null}
+                {error ? <p style={s.error}>{error}</p> : null}
+              </div>
               <button className="btn-ink" type="submit" disabled={saving || activeFormations.length === 0}>
                 <span>{editingSessionId ? "Enregistrer la session" : "Créer la session"}</span>
               </button>
@@ -835,9 +894,30 @@ export default function ClientDailyPage() {
                 <button type="button" className="btn-ghost" onClick={() => setEditingSessionId("")}>
                   <span>Annuler</span>
                 </button>
-              ) : null}
+              ) : (
+                <button type="button" className="btn-ghost" onClick={() => setShowSessionForm(false)}>
+                  <span>Créer plus tard</span>
+                </button>
+              )}
             </div>
           </form>
+          ) : (
+            <section style={s.card}>
+              <p className="gazette-label">Session associée</p>
+              <h2 style={s.cardTitle}>Créer une session quand vous êtes prêt</h2>
+              <p style={s.muted}>
+                Commencez par créer votre formation. Vous pourrez ensuite créer une session maintenant, ou plus tard depuis cette page.
+              </p>
+              <button
+                type="button"
+                className="btn-ink"
+                disabled={activeFormations.length === 0}
+                onClick={() => setShowSessionForm(true)}
+              >
+                <span>Créer une session</span>
+              </button>
+            </section>
+          )}
         </section>
 
         <section style={s.grid}>
@@ -847,8 +927,24 @@ export default function ClientDailyPage() {
                 <strong>{formation.title}</strong>
                 <span>{formatStatus(formation.status)} - v{formation.version ?? 1}</span>
                 <p>{formation.duration_hours} h / {formation.duration_days} j - {formation.modality}</p>
+                {formation.public_registration_token ? (
+                  <div style={s.linkBox}>
+                    <strong>Lien d&apos;inscription spontanée</strong>
+                    <input style={s.input} readOnly value={getFormationRegistrationUrl(formation.public_registration_token)} />
+                    <p style={s.muted}>
+                      Vous pouvez copier ce lien sur votre site, vos réseaux sociaux ou dans vos emails. Les demandes reçues apparaîtront dans Selen afin que vous puissiez créer ou compléter une session.
+                    </p>
+                    {formation.spontaneous_registration_task_status === "to_attach" ? (
+                      <p style={s.warning}>Créer une session ou rattacher cette demande à une session.</p>
+                    ) : null}
+                    <button type="button" className="btn-ghost" onClick={() => void copyFormationRegistrationLink(formation.public_registration_token)}>
+                      <span>Copier le lien</span>
+                    </button>
+                  </div>
+                ) : null}
                 <div style={s.actions}>
                   <button type="button" className="btn-ghost" onClick={() => editFormation(formation)}><span>Modifier</span></button>
+                  <button type="button" className="btn-ghost" onClick={() => { setShowSessionForm(true); setSessionForm((current) => ({ ...current, formation_id: formation.id })); }}><span>Créer une session</span></button>
                   <button type="button" className="btn-ghost" onClick={() => archiveFormation(formation.id)}><span>Archiver / supprimer</span></button>
                 </div>
               </article>

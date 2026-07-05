@@ -1,6 +1,7 @@
 ﻿import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import ScrollReveal from "@/components/ScrollReveal";
+import Image from "next/image";
 import Link from "next/link";
 
 export default function PrestationsPage() {
@@ -10,30 +11,46 @@ export default function PrestationsPage() {
       <ScrollReveal />
 
       {/* ═══ HERO ═══ */}
-      <section className="relative border-b border-[#b28a62]/40 pb-10 md:pb-14 pt-8 md:pt-10 text-center">
-        <div className="gazette-masthead-rule px-4 md:px-6 mb-5 max-w-4xl mx-auto">
-          <span className="font-['Cinzel'] text-[0.52rem] md:text-[0.58rem] uppercase tracking-[0.4em] text-[#8a6243]">
-            Édition spéciale · Nos prestations
-          </span>
+      <section className="relative overflow-hidden px-4 md:px-6 pt-16 md:pt-24 pb-14 md:pb-20">
+        <div className="pointer-events-none absolute -right-6 top-8 hidden w-28 opacity-90 md:block lg:right-4 lg:w-36 selen-float-delay2">
+          <Image
+            src="/selion.png"
+            alt=""
+            width={160}
+            height={160}
+            aria-hidden="true"
+          />
         </div>
 
-        <h1 className="font-['Playfair_Display'] text-4xl sm:text-5xl md:text-7xl font-black text-[#3e2a1f] px-4">
-          Nos prestations
-          <sup className="text-xl md:text-2xl text-[#b28a62] ml-1">✨</sup>
-        </h1>
+        <div className="mx-auto max-w-5xl text-center reveal is-visible">
+          <p className="gazette-label mx-auto w-fit">
+            Gazette Selen · Catalogue des prestations
+          </p>
 
-        <div className="gazette-masthead-rule mt-5 max-w-xs md:max-w-3xl mx-auto px-4 md:px-6">
-          <span className="font-['EB_Garamond'] text-sm italic text-[#6e4a32] px-3">
-            Un catalogue clair, à ouvrir selon vos besoins
-          </span>
+          <div className="gazette-hero-border mt-6">
+            <h1 className="gazette-hero-title text-4xl md:text-6xl">
+              Choisir la bonne{" "}
+              <span className="gold-shimmer">prestation Selen</span>
+            </h1>
+          </div>
+
+          <p className="mx-auto mt-6 max-w-3xl text-base md:text-lg leading-8 text-[#5a4031]">
+            Auto-audit, audit blanc, préparation Qualiopi, gestion quotidienne,
+            veille ou plateforme complète : ouvrez uniquement les rubriques qui
+            vous concernent.
+          </p>
+
+          <p className="gazette-byline mt-8">
+            Un catalogue clair · À ouvrir selon vos besoins
+          </p>
         </div>
-
-        <p className="mx-auto mt-5 max-w-2xl px-5 text-base md:text-lg leading-7 md:leading-8 text-[#5a4031]">
-          Auto-audit, audit blanc, préparation Qualiopi, gestion quotidienne,
-          veille ou plateforme complète : ouvrez uniquement les rubriques qui
-          vous concernent.
-        </p>
       </section>
+
+      <div className="mx-auto max-w-5xl px-4 md:px-6">
+        <div className="gazette-dot-rule">
+          <span>✦</span>
+        </div>
+      </div>
 
       {/* ═══ CATALOGUE EN DÉROULANT ═══ */}
       <section className="mx-auto max-w-5xl px-4 md:px-6 pb-16 md:pb-20 pt-10 md:pt-14">
@@ -45,8 +62,10 @@ export default function PrestationsPage() {
 
               <div className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3 md:gap-4">
-                  <img
+                  <Image
                     src="/Logo_Selen_Daily.png"
+                    width={120}
+                    height={120}
                     className="w-16 md:w-24 selen-float-delay selen-hover"
                     alt="Selen Daily"
                   />
@@ -156,8 +175,10 @@ export default function PrestationsPage() {
 
               <div className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3 md:gap-4">
-                  <img
+                  <Image
                     src="/Logo_Selen_Review.png"
+                    width={120}
+                    height={120}
                     className="w-16 md:w-24 selen-float selen-hover"
                     alt="Selen Review"
                   />
@@ -352,8 +373,10 @@ export default function PrestationsPage() {
 
               <div className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3 md:gap-4">
-                  <img
+                  <Image
                     src="/Logo_Selen_Prepa.png"
+                    width={120}
+                    height={120}
                     className="w-16 md:w-24 selen-float-delay selen-hover"
                     alt="Selen Prepa"
                   />
@@ -536,8 +559,10 @@ export default function PrestationsPage() {
             <summary className="cursor-pointer list-none p-6 md:p-8">
               <div className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
-                  <img
+                  <Image
                     src="/Logo_Selen_News.png"
+                    width={96}
+                    height={96}
                     className="w-14 md:w-20 selen-float-delay2 selen-hover"
                     alt="Selen News"
                   />
@@ -581,8 +606,10 @@ export default function PrestationsPage() {
             <summary className="cursor-pointer list-none p-6 md:p-8">
               <div className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
-                  <img
+                  <Image
                     src="/Logo_Selen_Studio.png"
+                    width={96}
+                    height={96}
                     className="w-14 md:w-20 selen-float selen-hover"
                     alt="Selen Studio"
                   />
@@ -626,25 +653,23 @@ export default function PrestationsPage() {
 
       {/* ═══ CTA ═══ */}
       <section className="mx-auto max-w-5xl px-4 md:px-6 pb-20 md:pb-24">
-        <div className="reveal relative overflow-hidden border border-[#bfa77f] bg-[#3e2a1f] px-6 md:px-10 py-12 md:py-16 text-center shadow-[0_30px_80px_rgba(62,42,31,0.35)]">
-          <div className="pointer-events-none absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_50%_0%,#d6b98a,transparent_60%)]" />
+        <div className="gazette-cta p-8 md:p-12 text-center reveal is-visible">
+          <p className="gazette-label gazette-label--on-dark">Dernière page</p>
 
-          <h2 className="relative font-['Playfair_Display'] text-3xl md:text-5xl font-bold leading-tight text-[#f7ead6]">
-            Parlons simplement
-            <br />
-            <em className="text-[#d4a85c] not-italic">de votre situation ✨</em>
+          <h2 className="mt-4 font-['Playfair_Display'] text-3xl md:text-4xl font-bold text-[#f8f0e3]">
+            Parlons simplement de votre situation
           </h2>
 
-          <p className="relative mx-auto mt-5 max-w-xl text-base md:text-lg leading-7 md:leading-8 text-[#e6d5bb]">
+          <p className="mx-auto mt-4 max-w-2xl leading-7 text-[#e0d0b8]">
             Un échange rapide peut souvent faire gagner{" "}
             <strong>des semaines de flou administratif.</strong>
           </p>
 
           <Link
             href="/prendre-rendez-vous"
-            className="relative mt-8 inline-flex items-center justify-center rounded-full bg-[#d4a85c] px-8 py-4 font-semibold text-[#3e2a1f] shadow-[0_10px_30px_rgba(0,0,0,0.25)] transition-all duration-300 hover:-translate-y-1 w-full sm:w-auto"
+            className="btn-ink-light mt-8 inline-flex text-center"
           >
-            Réserver un appel
+            <span>Réserver un appel</span>
           </Link>
         </div>
       </section>

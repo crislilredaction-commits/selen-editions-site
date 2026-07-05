@@ -1,6 +1,7 @@
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import ScrollReveal from "@/components/ScrollReveal";
+import Image from "next/image";
 import Link from "next/link";
 
 export default function SelenReviewPage() {
@@ -10,50 +11,59 @@ export default function SelenReviewPage() {
       <ScrollReveal />
 
       {/* ═══ HERO ═══ */}
-      <section className="relative border-b border-[#b28a62]/40 pb-10 md:pb-14 pt-8 md:pt-10 text-center">
-        <div className="gazette-masthead-rule px-4 md:px-6 mb-5 max-w-4xl mx-auto">
-          <span className="font-['Cinzel'] text-[0.52rem] md:text-[0.58rem] uppercase tracking-[0.4em] text-[#8a6243]">
-            Selen Review · Préparation à l&apos;audit Qualiopi
-          </span>
+      <section className="relative overflow-hidden px-4 md:px-6 pt-16 md:pt-24 pb-14 md:pb-20">
+        <div className="pointer-events-none absolute -right-6 top-8 hidden w-28 opacity-90 md:block lg:right-4 lg:w-36 selen-float">
+          <Image
+            src="/Logo_Selen_Review.png"
+            alt=""
+            width={160}
+            height={160}
+            aria-hidden="true"
+          />
         </div>
 
-        <h1 className="font-['Playfair_Display'] text-4xl sm:text-5xl md:text-7xl font-black text-[#3e2a1f] px-4">
-          Préparer votre audit
-          <br />
-          <em className="text-[#8a4b24] not-italic">
-            sans avancer à l’aveugle
-          </em>
-          <sup className="text-xl md:text-2xl text-[#b28a62] ml-1">✨</sup>
-        </h1>
+        <div className="mx-auto max-w-5xl text-center reveal is-visible">
+          <p className="gazette-label mx-auto w-fit">
+            Gazette Selen · Édition Review
+          </p>
 
-        <div className="gazette-masthead-rule mt-5 max-w-xs md:max-w-3xl mx-auto px-4 md:px-6">
-          <span className="font-['EB_Garamond'] text-sm italic text-[#6e4a32] px-3">
-            En autonomie avec l&apos;auto-audit, ou accompagné avec un auditeur
-          </span>
-        </div>
+          <div className="gazette-hero-border mt-6">
+            <h1 className="gazette-hero-title text-4xl md:text-6xl">
+              Préparer votre audit{" "}
+              <span className="gold-shimmer">sans avancer à l’aveugle</span>
+            </h1>
+          </div>
 
-        <p className="mx-auto mt-5 max-w-2xl px-5 text-base md:text-lg leading-7 md:leading-8 text-[#5a4031]">
-          Selen Review vous aide à faire le point avant votre audit Qualiopi :
-          vérifier vos preuves, repérer les écarts, structurer vos corrections
-          et choisir le bon niveau d&apos;accompagnement.
-        </p>
+          <p className="mx-auto mt-6 max-w-3xl text-base md:text-lg leading-8 text-[#5a4031]">
+            Selen Review vous aide à faire le point avant votre audit Qualiopi :
+            vérifier vos preuves, repérer les écarts, structurer vos corrections
+            et choisir le bon niveau d&apos;accompagnement.
+          </p>
 
-        <div className="mt-8 flex flex-col sm:flex-row flex-wrap justify-center gap-3 px-4">
-          <Link
-            href="/auto-audit-qualiopi"
-            className="btn-ink w-full sm:w-auto text-center"
-          >
-            <span>Commencer par l&apos;auto-audit</span>
-          </Link>
+          <div className="mt-8 flex flex-col sm:flex-row flex-wrap justify-center gap-4">
+            <Link href="/auto-audit-qualiopi" className="btn-ink text-center">
+              <span>Commencer par l&apos;auto-audit</span>
+            </Link>
 
-          <Link
-            href="/paiement/auto-audit?offre=unique"
-            className="btn-ink w-full sm:w-auto text-center"
-          >
-            <span>Accéder pour 99 €</span>
-          </Link>
+            <Link
+              href="/paiement/auto-audit?offre=unique"
+              className="btn-ghost text-center"
+            >
+              <span>Accéder pour 99 €</span>
+            </Link>
+          </div>
+
+          <p className="gazette-byline mt-8">
+            En autonomie avec l&apos;auto-audit · accompagné avec un auditeur
+          </p>
         </div>
       </section>
+
+      <div className="mx-auto max-w-5xl px-4 md:px-6">
+        <div className="gazette-dot-rule">
+          <span>✦</span>
+        </div>
+      </div>
 
       {/* ═══ INTRO ═══ */}
       <section className="mx-auto max-w-6xl px-4 md:px-6 py-10 md:py-14">
@@ -139,13 +149,6 @@ export default function SelenReviewPage() {
               </div>
 
               <div className="mt-5 flex flex-col sm:flex-row gap-3">
-                <Link
-                  href="/auto-audit-qualiopi"
-                  className="btn-ink text-center"
-                >
-                  <span>Voir la page auto-audit</span>
-                </Link>
-
                 <Link
                   href="/paiement/auto-audit?offre=unique"
                   className="btn-ink text-center"
@@ -236,7 +239,7 @@ export default function SelenReviewPage() {
                     href="/paiement/audit-blanc"
                     className="btn-ink text-center inline-block"
                   >
-                    <span>Réserver un audit blanc direct — 397 €</span>
+                    <span>Réserver un audit blanc directement</span>
                   </Link>
                 </div>
               </div>
@@ -305,56 +308,47 @@ export default function SelenReviewPage() {
       {/* ═══ NOTE PRODUIT FUTUR ═══ */}
       <section className="mx-auto max-w-6xl px-4 md:px-6 py-8 md:py-12">
         <div className="reveal border border-dashed border-[#b28a62]/50 bg-[#f8efdf]/70 p-6 md:p-8">
-          <span className="gazette-label">À venir</span>
+          <span className="gazette-label">Important</span>
 
           <h2 className="mt-4 font-['Playfair_Display'] text-2xl md:text-3xl font-bold">
-            Une brique audit blanc dédiée
+            Se préparer avant l'audit change tout
           </h2>
 
           <p className="mt-4 leading-7 text-[#5a4031]">
-            L’audit blanc accompagné sera progressivement intégré dans Selen
-            Studio avec une version agent pour traiter les dossiers et un espace
-            client dédié pour retrouver le rapport d’audit blanc.
-          </p>
-
-          <p className="mt-3 leading-7 text-[#6e4a32] italic">
-            Pour le moment, la priorité est de mettre en ligne l’auto-audit et
-            son accès client sécurisé.
+            L'audit blanc Selen permet d'identifier les points à renforcer avant
+            le passage de l'auditeur et d'aborder votre audit avec plus de
+            sérénité
           </p>
         </div>
       </section>
 
       {/* ═══ CTA FINAL ═══ */}
-      <section className="mx-auto max-w-5xl px-4 md:px-6 pb-20 md:pb-24 pt-4">
-        <div className="reveal relative overflow-hidden border border-[#bfa77f] bg-[#3e2a1f] px-6 md:px-10 py-12 md:py-16 text-center shadow-[0_30px_80px_rgba(62,42,31,0.35)]">
-          <div className="pointer-events-none absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_50%_0%,#d6b98a,transparent_60%)]" />
+      <section className="px-4 md:px-6 pb-16 md:pb-20 pt-4">
+        <div className="gazette-cta mx-auto max-w-5xl p-8 md:p-12 text-center reveal is-visible">
+          <p className="gazette-label gazette-label--on-dark">Dernière page</p>
 
-          <h2 className="relative font-['Playfair_Display'] text-3xl md:text-5xl font-bold leading-tight text-[#f7ead6]">
-            Commencer
-            <br />
-            <em className="text-[#d4a85c] not-italic">
-              par clarifier votre dossier ✨
-            </em>
+          <h2 className="mt-4 font-['Playfair_Display'] text-3xl md:text-4xl font-bold text-[#f8f0e3]">
+            Commencer par clarifier votre dossier
           </h2>
 
-          <p className="relative mx-auto mt-5 max-w-xl text-base md:text-lg leading-7 md:leading-8 text-[#e6d5bb]">
+          <p className="mx-auto mt-4 max-w-2xl leading-7 text-[#e0d0b8]">
             L’auto-audit vous permet de faire le premier tri avant de demander
             un accompagnement plus poussé.
           </p>
 
-          <div className="relative mt-8 flex flex-col sm:flex-row justify-center gap-3">
+          <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link
               href="/auto-audit-qualiopi"
-              className="inline-flex items-center justify-center rounded-full bg-[#d4a85c] px-8 py-4 font-semibold text-[#3e2a1f] shadow-[0_10px_30px_rgba(0,0,0,0.25)] transition-all duration-300 hover:-translate-y-1 w-full sm:w-auto"
+              className="btn-ink-light text-center"
             >
-              Découvrir l’auto-audit
+              <span>Découvrir l’auto-audit</span>
             </Link>
 
             <Link
               href="/paiement/auto-audit?offre=unique"
-              className="inline-flex items-center justify-center rounded-full border border-[#d4a85c]/70 px-8 py-4 font-semibold text-[#f7ead6] transition-all duration-300 hover:-translate-y-1 w-full sm:w-auto"
+              className="btn-ink-light text-center"
             >
-              Accéder pour 99 €
+              <span>Accéder pour 99 €</span>
             </Link>
           </div>
         </div>

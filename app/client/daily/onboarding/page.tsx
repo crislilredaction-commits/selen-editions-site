@@ -11,6 +11,7 @@ type Trainer = {
   first_name: string;
   last_name: string;
   email: string;
+  cv_url: string;
   cv_pending: boolean;
   trainer_access_planned: boolean;
 };
@@ -26,8 +27,13 @@ type OnboardingForm = {
   manager_last_name: string;
   qualiopi_status: "yes" | "no" | "planned" | "";
   insee_document_pending: boolean;
+  insee_document_url: string;
   qualiopi_certificate_pending: boolean;
+  qualiopi_certificate_url: string;
   nda_or_bpf_document_pending: boolean;
+  nda_or_bpf_document_url: string;
+  welcome_booklet_pending: boolean;
+  welcome_booklet_url: string;
   platform_contact_first_name: string;
   platform_contact_last_name: string;
   platform_contact_role: string;
@@ -35,7 +41,7 @@ type OnboardingForm = {
   organisation_logo_url: string;
   convocation_template_url: string;
   convention_template_url: string;
-  politique_handicap_template_url: string;
+  welcome_booklet_template_url: string;
 };
 
 const emptyForm: OnboardingForm = {
@@ -50,8 +56,13 @@ const emptyForm: OnboardingForm = {
   manager_last_name: "",
   qualiopi_status: "",
   insee_document_pending: false,
+  insee_document_url: "",
   qualiopi_certificate_pending: false,
+  qualiopi_certificate_url: "",
   nda_or_bpf_document_pending: false,
+  nda_or_bpf_document_url: "",
+  welcome_booklet_pending: false,
+  welcome_booklet_url: "",
   platform_contact_first_name: "",
   platform_contact_last_name: "",
   platform_contact_role: "",
@@ -59,15 +70,16 @@ const emptyForm: OnboardingForm = {
   organisation_logo_url: "",
   convocation_template_url: "",
   convention_template_url: "",
-  politique_handicap_template_url: "",
+  welcome_booklet_template_url: "",
 };
 
 const blankTrainer: Trainer = {
   first_name: "",
   last_name: "",
   email: "",
+  cv_url: "",
   cv_pending: false,
-  trainer_access_planned: false,
+  trainer_access_planned: true,
 };
 
 function statusLabel(status: SaveStatus) {
@@ -104,7 +116,7 @@ export default function DailyOnboardingPage() {
         document_templates: [
           { document_type: "convocation", template_name: "Modele convocation client", public_url: nextForm.convocation_template_url },
           { document_type: "convention", template_name: "Modele convention client", public_url: nextForm.convention_template_url },
-          { document_type: "politique_handicap", template_name: "Politique handicap client", public_url: nextForm.politique_handicap_template_url },
+          { document_type: "livret_accueil", template_name: "Livret d'accueil client", public_url: nextForm.welcome_booklet_template_url },
         ],
       }),
     });
@@ -166,7 +178,7 @@ export default function DailyOnboardingPage() {
               organisation_logo_url: payload.onboarding.organisation_logo_url ?? "",
               convocation_template_url: templateUrl("convocation"),
               convention_template_url: templateUrl("convention"),
-              politique_handicap_template_url: templateUrl("politique_handicap"),
+              welcome_booklet_template_url: templateUrl("livret_accueil"),
             });
           }
         }
@@ -307,11 +319,16 @@ export default function DailyOnboardingPage() {
                 </button>
               </div>
               {form.setup_choice === "video" ? (
-                <div style={s.notice}>
-                  <p>{"On prépare tout ensemble, tu n'as pas besoin de savoir où ranger chaque document."}</p>
-                  <a href="/prendre-rendez-vous" className="btn-ink">
-                    <span>Prendre rendez-vous</span>
+                <div style={s.appointmentBox}>
+                  <strong>Vous préférez être accompagné ?</strong>
+                  <p>
+                    Nous pouvons configurer Selen Daily ensemble lors d'un rendez-vous d'environ 1 h 30.
+                    Nous préparerons votre espace, vos documents et votre première formation.
+                  </p>
+                  <a href="/prendre-rendez-vous?source=client_space&appointmentType=daily_setup_1h30" className="btn-ink">
+                    <span>Choisir un créneau</span>
                   </a>
+                  <a href="/support" style={s.inlineLink}>Demander un rendez-vous à Selen</a>
                 </div>
               ) : null}
             </div>
@@ -325,6 +342,7 @@ export default function DailyOnboardingPage() {
               <Input label="SIRET" value={form.siret} onChange={(value) => update("siret", value)} />
               <Input label="Numéro NDA, facultatif" value={form.nda_number} onChange={(value) => update("nda_number", value)} />
               <Input label="Logo de l'organisme, URL du fichier" value={form.organisation_logo_url} onChange={(value) => update("organisation_logo_url", value)} />
+              <p style={s.muted}>Le logo sera utilisé sur les documents générés avec une taille maîtrisée, environ 60 à 70 mm de large au maximum.</p>
               <Textarea label="Adresse" value={form.address} onChange={(value) => update("address", value)} />
               <div style={s.twoCols}>
                 <Input label="Prénom du dirigeant" value={form.manager_first_name} onChange={(value) => update("manager_first_name", value)} />
@@ -342,15 +360,22 @@ export default function DailyOnboardingPage() {
               ) : null}
               <div style={s.stackSmall}>
                 <strong>Bibliotheque documentaire</strong>
-                <p style={s.muted}>Les modeles client sont prioritaires. Si aucun modele n&apos;est renseigne, Selen utilise son modele par defaut.</p>
+                <p style={s.muted}>
+                  Si vous avez déjà vos propres documents, vous pouvez les déposer ici. Selen les utilisera en priorité. Si vous préférez, nous pouvons aussi préparer les documents avec les modèles Selen.
+                </p>
                 <Input label="Modele client - convocation" value={form.convocation_template_url} onChange={(value) => update("convocation_template_url", value)} />
                 <Input label="Modele client - convention" value={form.convention_template_url} onChange={(value) => update("convention_template_url", value)} />
-                <Input label="Politique handicap / document client" value={form.politique_handicap_template_url} onChange={(value) => update("politique_handicap_template_url", value)} />
+                <Input label="Livret d'accueil client" value={form.welcome_booklet_template_url} onChange={(value) => update("welcome_booklet_template_url", value)} />
               </div>
               <div style={s.stackSmall}>
+                <Input label="Avis INSEE, URL du fichier" value={form.insee_document_url} onChange={(value) => update("insee_document_url", value)} />
                 <label style={s.check}><input type="checkbox" checked={form.insee_document_pending} onChange={(event) => update("insee_document_pending", event.target.checked)} /> Avis INSEE à fournir plus tard</label>
+                <Input label="Certificat Qualiopi, URL du fichier si concerné" value={form.qualiopi_certificate_url} onChange={(value) => update("qualiopi_certificate_url", value)} />
                 <label style={s.check}><input type="checkbox" checked={form.qualiopi_certificate_pending} onChange={(event) => update("qualiopi_certificate_pending", event.target.checked)} /> Certificat Qualiopi à fournir plus tard</label>
+                <Input label="Attestation NDA ou dernier BPF, URL du fichier" value={form.nda_or_bpf_document_url} onChange={(value) => update("nda_or_bpf_document_url", value)} />
                 <label style={s.check}><input type="checkbox" checked={form.nda_or_bpf_document_pending} onChange={(event) => update("nda_or_bpf_document_pending", event.target.checked)} /> Attestation NDA ou dernier BPF à fournir plus tard</label>
+                <Input label="Livret d'accueil, URL du fichier" value={form.welcome_booklet_url} onChange={(value) => update("welcome_booklet_url", value)} />
+                <label style={s.check}><input type="checkbox" checked={form.welcome_booklet_pending} onChange={(event) => update("welcome_booklet_pending", event.target.checked)} /> Livret d'accueil à fournir plus tard</label>
               </div>
             </div>
           ) : null}
@@ -364,8 +389,7 @@ export default function DailyOnboardingPage() {
               <p className="gazette-label">Étape 4</p>
               <h2 style={s.title}>Formateurs</h2>
               <p style={s.muted}>
-                Ces formateurs pourront ensuite être sélectionnés lors de la création
-                d&apos;une session. L&apos;accès formateur est seulement préparé pour la suite.
+                Un accès formateur sera créé pour chaque formateur afin qu'il puisse consulter les informations utiles à ses sessions : dates, participants, besoins d'adaptation et documents de préparation.
               </p>
               {trainers.map((trainer, index) => (
                 <div key={trainer.id ?? index} style={s.trainer}>
@@ -374,8 +398,9 @@ export default function DailyOnboardingPage() {
                     <Input label="Nom" value={trainer.last_name} onChange={(value) => updateTrainer(index, { last_name: value })} />
                   </div>
                   <Input label="Email" value={trainer.email} onChange={(value) => updateTrainer(index, { email: value })} />
+                  <Input label="CV du formateur, URL du fichier" value={trainer.cv_url} onChange={(value) => updateTrainer(index, { cv_url: value })} />
                   <label style={s.check}><input type="checkbox" checked={trainer.cv_pending} onChange={(event) => updateTrainer(index, { cv_pending: event.target.checked })} /> CV à fournir si Qualiopi</label>
-                  <label style={s.check}><input type="checkbox" checked={trainer.trainer_access_planned} onChange={(event) => updateTrainer(index, { trainer_access_planned: event.target.checked })} /> Prévoir un accès formateur plus tard</label>
+                  <p style={s.muted}>Accès formateur préparé : l'envoi email sera branché quand le portail formateur sera finalisé.</p>
                 </div>
               ))}
               <button type="button" className="btn-ghost" onClick={() => setTrainers((current) => [...current, { ...blankTrainer }])}>
@@ -484,6 +509,8 @@ const s: Record<string, React.CSSProperties> = {
   choice: { border: "1px solid rgba(178,138,98,0.45)", background: "rgba(255,255,255,0.35)", color: "var(--ink)", padding: "1rem", fontWeight: 800 },
   choiceOn: { border: "1px solid var(--rust)", background: "rgba(138,75,36,0.1)", color: "var(--rust)", padding: "1rem", fontWeight: 900 },
   notice: { border: "1px solid rgba(106,138,74,0.45)", background: "rgba(106,138,74,0.08)", color: "#496532", padding: "0.8rem", lineHeight: 1.55 },
+  appointmentBox: { border: "1px solid rgba(106,138,74,0.45)", background: "rgba(106,138,74,0.08)", color: "var(--ink)", padding: "1rem", lineHeight: 1.55, display: "grid", gap: "0.75rem" },
+  inlineLink: { color: "var(--rust)", fontWeight: 800, textDecoration: "none" },
   twoCols: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "0.75rem" },
   field: { display: "grid", gap: "0.35rem" },
   label: { color: "var(--ink)", fontWeight: 800 },

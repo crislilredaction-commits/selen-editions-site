@@ -12,10 +12,8 @@ const REQUIRED_FIELDS = [
   "modality",
   "modality_details",
   "access_delays",
-  "registration_methods",
   "price",
   "detailed_program",
-  "accessibility",
   "pedagogical_resources",
   "evaluation_methods",
   "contact_phone",
@@ -26,6 +24,10 @@ const STATUSES = new Set(["draft", "review", "validated", "correction_requested"
 const MODALITIES = new Set(["presentiel", "distanciel", "mixte"]);
 const POSITIONING_MODES = new Set(["off_platform", "selen"]);
 const POSITIONING_TYPES = new Set(["single_choice", "multiple_choice", "free_text", "scale_1_5"]);
+
+function registrationToken() {
+  return crypto.randomUUID().replaceAll("-", "");
+}
 
 async function requireClient() {
   const authSupabase = await createServerSupabaseClient();
@@ -151,10 +153,15 @@ function buildPayload(body: Record<string, unknown>, userId: string) {
     modality,
     modality_details: text(body, "modality_details"),
     access_delays: text(body, "access_delays"),
-    registration_methods: text(body, "registration_methods"),
+    registration_methods:
+      text(body, "registration_methods") ||
+      "Les modalités d'inscription sont préparées et suivies par Selen Daily.",
     price: text(body, "price"),
     detailed_program: text(body, "detailed_program"),
-    accessibility: text(body, "accessibility"),
+    detailed_program_document_url: nullableText(body, "detailed_program_document_url"),
+    accessibility:
+      text(body, "accessibility") ||
+      "La formation est accessible aux personnes en situation de handicap. Les besoins d'adaptation sont analysés dans le dossier d'inscription et suivis par Selen.",
     disability_referent: nullableText(body, "disability_referent"),
     pedagogical_resources: text(body, "pedagogical_resources"),
     evaluation_methods: text(body, "evaluation_methods"),
@@ -165,7 +172,7 @@ function buildPayload(body: Record<string, unknown>, userId: string) {
     contact_phone: text(body, "contact_phone"),
     contact_email: text(body, "contact_email").toLowerCase(),
     contact_website: nullableText(body, "contact_website"),
-    updated_visible_at: text(body, "updated_visible_at") || new Date().toISOString().slice(0, 10),
+    updated_visible_at: new Date().toISOString().slice(0, 10),
     positioning_mode: positioningMode,
     positioning_questions: positioningMode === "selen" ? positioningQuestions : [],
     status,
@@ -205,7 +212,11 @@ export async function POST(req: Request) {
   const supabase = getAdminSupabase();
   const { data, error } = await supabase
     .from("daily_formations")
-    .insert(built.payload)
+    .insert({
+      ...built.payload,
+      public_registration_token: registrationToken(),
+      public_registration_enabled: true,
+    })
     .select("*")
     .single();
 

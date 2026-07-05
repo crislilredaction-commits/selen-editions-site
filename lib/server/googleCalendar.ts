@@ -2,13 +2,13 @@ const DEFAULT_TIMEZONE = "Europe/Paris";
 const DEFAULT_CALENDAR_ID = "crislil.redaction@gmail.com";
 const SLOT_STEP_MINUTES = 30;
 
-export type AppointmentType = "simple_30" | "audit_3h30" | "audit_2x1h45";
+export type AppointmentType = "simple_30" | "audit_3h30" | "audit_2x1h45" | "daily_setup_1h30";
 
 type AppointmentTypeConfig = {
   label: string;
   durationMinutes: number;
   eventPrefix: string;
-  bookingKind: "simple" | "audit_blanc";
+  bookingKind: "simple" | "audit_blanc" | "daily_setup";
 };
 
 export const APPOINTMENT_TYPE_CONFIG: Record<
@@ -32,6 +32,12 @@ export const APPOINTMENT_TYPE_CONFIG: Record<
     durationMinutes: 105,
     eventPrefix: "Audit blanc Selen",
     bookingKind: "audit_blanc",
+  },
+  daily_setup_1h30: {
+    label: "Paramétrage Selen Daily - 1h30",
+    durationMinutes: 90,
+    eventPrefix: "Paramétrage Selen Daily",
+    bookingKind: "daily_setup",
   },
 };
 
@@ -107,7 +113,8 @@ export function normalizeAppointmentType(
   if (
     value === "simple_30" ||
     value === "audit_3h30" ||
-    value === "audit_2x1h45"
+    value === "audit_2x1h45" ||
+    value === "daily_setup_1h30"
   ) {
     return value;
   }

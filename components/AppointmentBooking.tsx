@@ -3,7 +3,7 @@
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
 
-type AppointmentType = "simple_30" | "audit_3h30" | "audit_2x1h45";
+type AppointmentType = "simple_30" | "audit_3h30" | "audit_2x1h45" | "daily_setup_1h30";
 
 type AppointmentSource = "public_site" | "client_space";
 
@@ -41,13 +41,19 @@ const APPOINTMENT_OPTIONS: Array<{
     label: "Audit blanc 2 x 1h45",
     helper: "Deux sessions en visioconference",
   },
+  {
+    value: "daily_setup_1h30",
+    label: "Paramétrage Selen Daily",
+    helper: "1 h 30 en visioconference",
+  },
 ];
 
 function normalizeAppointmentType(value?: string | null): AppointmentType {
   if (
     value === "simple_30" ||
     value === "audit_3h30" ||
-    value === "audit_2x1h45"
+    value === "audit_2x1h45" ||
+    value === "daily_setup_1h30"
   ) {
     return value;
   }
@@ -81,7 +87,7 @@ export default function AppointmentBooking({
     const fallback =
       source === "public_site"
         ? (["simple_30"] as AppointmentType[])
-        : (["simple_30", "audit_3h30", "audit_2x1h45"] as AppointmentType[]);
+        : (["simple_30", "audit_3h30", "audit_2x1h45", "daily_setup_1h30"] as AppointmentType[]);
 
     return allowedAppointmentTypes?.length ? allowedAppointmentTypes : fallback;
   }, [allowedAppointmentTypes, source]);
