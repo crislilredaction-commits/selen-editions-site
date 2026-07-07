@@ -62,11 +62,11 @@ function fullName(row?: JsonRecord | null) {
 }
 
 function scheduleText(blocks?: JsonRecord[] | null) {
-  if (!Array.isArray(blocks) || blocks.length === 0) return "Dates a venir";
+  if (!Array.isArray(blocks) || blocks.length === 0) return "Dates à venir";
   return blocks
     .map((block) => [block.date, block.start && block.end ? `${block.start}-${block.end}` : "", block.note].map(text).filter(Boolean).join(" "))
     .filter(Boolean)
-    .join("\n") || "Dates a venir";
+    .join("\n") || "Dates à venir";
 }
 
 function signatureStatus(conventions: PortalData["conventions"] = []) {
@@ -78,10 +78,10 @@ function signatureStatus(conventions: PortalData["conventions"] = []) {
 }
 
 function statusLabel(status: string) {
-  if (status === "termine") return "termine";
-  if (status === "a_faire") return "a faire";
+  if (status === "termine") return "terminé";
+  if (status === "a_faire") return "à faire";
   if (status === "en_attente") return "en attente";
-  return "a venir";
+  return "à venir";
 }
 
 function timelineFor(data: PortalData) {
@@ -111,10 +111,10 @@ function timelineFor(data: PortalData) {
 
   if (data.access.portalType === "trainer") {
     return [
-      ["Session creee", "termine"],
-      ["Dossiers recus", hasResponse ? "termine" : "en_attente"],
-      ["Positionnements recus", hasPositioning ? "termine" : "en_attente"],
-      ["Adaptations a traiter", data.session.adaptation_needed ? "a_faire" : "en_attente"],
+      ["Session créée", "termine"],
+      ["Dossiers reçus", hasResponse ? "termine" : "en_attente"],
+      ["Positionnements reçus", hasPositioning ? "termine" : "en_attente"],
+      ["Adaptations à traiter", data.session.adaptation_needed ? "a_faire" : "en_attente"],
       ["Convention/signatures", signature],
       ["Convocation", hasSentConvocation ? "termine" : hasConvocation ? "a_faire" : "a_venir"],
       ["Formation", "a_venir"],
@@ -146,7 +146,7 @@ export default function DailyPortalPage({ params }: { params: { role: string; to
       const payload = await res.json().catch(() => null);
       setLoading(false);
       if (!res.ok) {
-        setError(payload?.error ?? "Portail indisponible.");
+        setError(payload?.error ?? "Ce portail n'est pas disponible pour le moment. Vous pouvez contacter Selen si besoin.");
         return;
       }
       setData(payload);
@@ -170,11 +170,11 @@ export default function DailyPortalPage({ params }: { params: { role: string; to
         <p className="gazette-label">Portail Selen Daily</p>
         <h1 style={s.title}>{data?.access.entityName || formation?.title || "Session Daily"}</h1>
         <p style={s.subtitle}>
-          {data ? `Vue ${data.access.roleLabel} pour ${formation?.title ?? "votre formation"}.` : "Chargement du portail..."}
+          {data ? `Vue ${data.access.roleLabel} pour ${formation?.title ?? "votre formation"}.` : "Ouverture de votre portail..."}
         </p>
       </section>
 
-      {loading ? <p style={s.muted}>Ouverture du portail...</p> : null}
+      {loading ? <p style={s.muted}>Ouverture de votre portail Selen Daily...</p> : null}
       {error ? <p style={s.error}>{error}</p> : null}
 
       {data ? (
@@ -183,7 +183,7 @@ export default function DailyPortalPage({ params }: { params: { role: string; to
             <strong>Session</strong>
             <span>{formation?.title ?? "Formation Daily"}</span>
             <span>{scheduleText(data.session.schedule_blocks)}</span>
-            <span>{text(data.session.location_address) || text(data.session.remote_url) || "Lieu a venir"}</span>
+            <span>{text(data.session.location_address) || text(data.session.remote_url) || "Lieu à venir"}</span>
             <span>Organisme : {data.onboarding?.organisation_name ?? "Organisme de formation"}</span>
             {trainers.length > 0 ? <span>Formateur : {trainers.map(fullName).filter(Boolean).join(", ")}</span> : null}
           </article>
@@ -199,15 +199,15 @@ export default function DailyPortalPage({ params }: { params: { role: string; to
           </article>
 
           <article style={s.card}>
-            <strong>Taches</strong>
-            {data.responses?.length ? null : <span>Completer le dossier d&apos;inscription si Selen vous a transmis le lien.</span>}
+            <strong>À prévoir</strong>
+            {data.responses?.length ? null : <span>Compléter le dossier d&apos;inscription si Selen vous a transmis le lien.</span>}
             {pendingSignature?.token ? (
               <a href={`/daily-signature/${pendingSignature.token}`} style={s.link}>Signer la convention</a>
             ) : null}
-            {conventions.length > 0 ? <span>Consulter ou telecharger la convention disponible.</span> : null}
-            {convocations.length > 0 ? <span>Consulter ou telecharger la convocation.</span> : null}
-            {data.session.adaptation_needed && data.access.portalType === "trainer" ? <span>Verifier les adaptations utiles a la session.</span> : null}
-            {data.responses?.length && !pendingSignature && conventions.length === 0 ? <span>Aucune action immediate.</span> : null}
+            {conventions.length > 0 ? <span>Consulter ou télécharger la convention disponible.</span> : null}
+            {convocations.length > 0 ? <span>Consulter ou télécharger la convocation.</span> : null}
+            {data.session.adaptation_needed && data.access.portalType === "trainer" ? <span>Vérifier les adaptations utiles à la session.</span> : null}
+            {data.responses?.length && !pendingSignature && conventions.length === 0 ? <span>Aucune action immédiate pour le moment.</span> : null}
           </article>
 
           <article style={s.card}>
@@ -222,9 +222,9 @@ export default function DailyPortalPage({ params }: { params: { role: string; to
                 {convocation.document_name ?? `Convocation v${convocation.version ?? 1}`}
               </a>
             ))}
-            {conventions.length === 0 ? <span>Convention a venir.</span> : null}
-            {convocations.length === 0 ? <span>Convocation a venir</span> : null}
-            <span>Certificat a venir</span>
+            {conventions.length === 0 ? <span>Convention à venir.</span> : null}
+            {convocations.length === 0 ? <span>Convocation à venir.</span> : null}
+            <span>Certificat à venir.</span>
           </article>
 
           {data.access.portalType !== "learner" ? (
@@ -232,10 +232,10 @@ export default function DailyPortalPage({ params }: { params: { role: string; to
               <strong>Participants</strong>
               {(data.participants ?? []).map((participant, index) => (
                 <span key={`${text(participant.email)}_${index}`}>
-                  {fullName(participant) || text(participant.email) || "Participant"} - dossier {data.responses?.some((response) => text(response.respondent_email).toLowerCase() === text(participant.email).toLowerCase()) ? "recu" : "en attente"}
+                  {fullName(participant) || text(participant.email) || "Participant"} - dossier {data.responses?.some((response) => text(response.respondent_email).toLowerCase() === text(participant.email).toLowerCase()) ? "reçu" : "en attente"}
                 </span>
               ))}
-              {(data.participants ?? []).length === 0 ? <span>Participants a venir.</span> : null}
+              {(data.participants ?? []).length === 0 ? <span>Participants à venir.</span> : null}
             </article>
           ) : null}
 
@@ -244,10 +244,10 @@ export default function DailyPortalPage({ params }: { params: { role: string; to
               <strong>Besoins et positionnements</strong>
               {(data.responses ?? []).map((response) => (
                 <span key={text(response.id)}>
-                  {fullName(response) || text(response.company_name) || "Reponse recue"} - {response.adaptation_needed ? "adaptation signalee" : "a consulter"}
+                  {fullName(response) || text(response.company_name) || "Réponse reçue"} - {response.adaptation_needed ? "adaptation signalée" : "à consulter"}
                 </span>
               ))}
-              {(data.responses ?? []).length === 0 ? <span>Aucune reponse recue pour le moment.</span> : null}
+              {(data.responses ?? []).length === 0 ? <span>Aucune réponse reçue pour le moment.</span> : null}
             </article>
           ) : null}
         </section>

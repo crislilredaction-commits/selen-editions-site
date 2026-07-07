@@ -88,13 +88,13 @@ const TVA_EXEMPTION_CERFA_URL =
 const CRIMINAL_RECORD_REQUEST_URL = "https://casier-judiciaire.justice.gouv.fr";
 
 const STEP_REASSURANCE_MESSAGES: Record<number, string> = {
-  1: "Vous pouvez quitter cette page dès que vous avez terminé votre lecture. Selen garde le fil, même si votre café refroidit moins vite que l'administration. Vous recevrez un email lorsqu'une nouvelle action sera nécessaire.",
-  2: "Une fois vos informations et documents envoyés, vous pouvez fermer la page sereinement. Nous prenons le relais, sans tambour ni formulaire caché. Un email vous préviendra dès que vous devrez intervenir.",
-  3: "Votre dossier est entre les mains de Selen. Vous pouvez quitter la page : l'analyse avance côté équipe, et un email vous réveillera doucement quand une action sera attendue.",
-  4: "Après votre validation ou votre demande de modification, vous pouvez souffler et fermer l'onglet. Nous nous occupons de la suite, avec sérieux et sans confettis administratifs. Vous recevrez un email au prochain mouvement.",
-  5: "Quand les coordonnées du client à former sont transmises, vous pouvez partir l'esprit léger. Selen prépare les documents, et promis, l'email fera signe quand ce sera à vous de jouer.",
-  6: "Vos documents sont en préparation ou en vérification. Vous pouvez quitter la page sans surveiller le four : nous vous enverrons un email dès qu'une nouvelle action sera nécessaire.",
-  7: "Une fois le dépôt effectué ou les documents récupérés, vous pouvez fermer la page tranquillement. Selen reste en veille élégante, et un email vous préviendra si une suite vous attend.",
+  1: "Vous pouvez quitter cette page dès que votre lecture est terminée. Selen garde le fil et vous préviendra par email lorsqu'une nouvelle action sera nécessaire.",
+  2: "Une fois vos informations et documents envoyés, vous pouvez fermer la page sereinement. Nous prenons le relais et nous vous préviendrons si une étape nécessite votre intervention.",
+  3: "Votre dossier est entre les mains de Selen. L'analyse avance côté équipe, et vous recevrez un email dès qu'une action sera attendue de votre part.",
+  4: "Après votre validation ou votre demande de modification, vous pouvez fermer l'onglet sereinement. Nous préparons la suite et nous vous préviendrons au prochain mouvement.",
+  5: "Quand les coordonnées du client à former sont transmises, Selen prépare les documents nécessaires. Vous recevrez un email lorsqu'une action sera attendue de votre part.",
+  6: "Vos documents sont en préparation ou en vérification. Vous pouvez quitter la page : nous vous enverrons un email dès qu'une nouvelle action sera nécessaire.",
+  7: "Une fois le dépôt effectué ou les documents récupérés, vous pouvez fermer la page tranquillement. Selen reste en suivi et vous préviendra si une suite vous attend.",
   8: "Le dossier est dans sa phase de suivi. Vous pouvez quitter la page : nous gardons un oeil sur la suite et vous recevrez un email dès qu'une action sera nécessaire.",
 };
 
@@ -523,7 +523,8 @@ export default function ClientNdaPage() {
 
     if (!res.ok) {
       throw new Error(
-        data?.error ?? `Erreur lors de l'upload du document ${documentType}.`,
+        data?.error ??
+          `Le document ${documentType} n'a pas pu être transmis. Vous pouvez réessayer dans un instant ou nous contacter si le problème persiste.`,
       );
     }
   }
@@ -547,7 +548,8 @@ export default function ClientNdaPage() {
 
     if (!res.ok || !data?.ok) {
       throw new Error(
-        data?.error ?? `Erreur lors de l'upload du document ${documentType}.`,
+        data?.error ??
+          `Le document ${documentType} n'a pas pu être transmis. Vous pouvez réessayer dans un instant ou nous contacter si le problème persiste.`,
       );
     }
   }
@@ -3363,7 +3365,7 @@ function DocumentList({
                 }}
               >
                 {showClientAction && document.requires_client_action ? (
-                  <DocumentBadge tone="warning">Action requise</DocumentBadge>
+                  <DocumentBadge tone="warning">Petite étape à prévoir</DocumentBadge>
                 ) : null}
 
                 <DocumentBadge
@@ -3444,13 +3446,13 @@ function formatDocumentStatus(
       : "Prêt pour dépôt";
   }
 
-  if (document.review_status === "received") return "Reçu";
-  if (document.review_status === "needs_correction") return "À corriger";
-  if (document.review_status === "validated") return "Validé";
-  if (document.review_status === "not_reviewed") return "En attente";
+  if (document.review_status === "received") return "Bien reçu";
+  if (document.review_status === "needs_correction") return "Nouvelle version attendue";
+  if (document.review_status === "validated") return "Validé par Selen";
+  if (document.review_status === "not_reviewed") return "En vérification";
   if (document.review_status === "pending_client") return "À compléter";
-  if (document.status === "uploaded") return "Reçu";
-  return "En attente";
+  if (document.status === "uploaded") return "Bien reçu";
+  return "En vérification";
 }
 
 function getDocumentStatusTone(

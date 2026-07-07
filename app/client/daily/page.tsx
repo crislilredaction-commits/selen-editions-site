@@ -186,18 +186,18 @@ function formatRegistrationStatus(status?: string | null) {
 }
 
 function formatRecipientStatus(status?: string | null) {
-  if (status === "sent") return "envoyé";
-  if (status === "error") return "erreur";
-  if (status === "skipped") return "non envoyé";
-  return "en attente";
+  if (status === "sent") return "envoyé avec soin";
+  if (status === "error") return "à reprendre";
+  if (status === "skipped") return "à compléter avant envoi";
+  return "en préparation";
 }
 
 function formatConventionSignatureStatus(convention: DailyConvention) {
   const signatures = convention.daily_convention_signatures ?? [];
-  if (signatures.length === 0) return "Signature a preparer";
-  if (signatures.every((signature) => signature.status === "signed")) return "Signee";
+  if (signatures.length === 0) return "Signature en préparation";
+  if (signatures.every((signature) => signature.status === "signed")) return "Signée";
   if (signatures.some((signature) => signature.status === "signed")) return "Signature partielle";
-  return "A signer";
+  return "À signer";
 }
 
 function portalUrl(type: DailyPortalAccess["portal_type"], token: string) {
@@ -216,13 +216,13 @@ function sessionTimeline(session: DailySession) {
   const convocations = session.daily_convocations ?? [];
   const sentConvocations = convocations.filter((convocation) => convocation.status === "sent");
   return [
-    ["Dossiers envoyes", hasSent ? "termine" : "en attente"],
-    ["Dossiers completes", allSentCompleted ? "termine" : hasSent ? "a suivre" : "a venir"],
-    ["Conventions", conventions.length > 0 ? "termine" : "en attente"],
-    ["Signatures", allSigned ? "termine" : signatures.length > 0 ? "a faire" : "a venir"],
-    ["Convocations generees", convocations.length > 0 ? "termine" : "en attente"],
-    ["Convocations envoyees", sentConvocations.length > 0 ? "termine" : convocations.length > 0 ? "a faire" : "a venir"],
-    ["Formation", "a venir"],
+    ["Dossiers envoyés", hasSent ? "terminé" : "en attente"],
+    ["Dossiers complétés", allSentCompleted ? "terminé" : hasSent ? "à suivre" : "à venir"],
+    ["Conventions", conventions.length > 0 ? "terminé" : "en attente"],
+    ["Signatures", allSigned ? "terminé" : signatures.length > 0 ? "à faire" : "à venir"],
+    ["Convocations générées", convocations.length > 0 ? "terminé" : "en attente"],
+    ["Convocations envoyées", sentConvocations.length > 0 ? "terminé" : convocations.length > 0 ? "à faire" : "à venir"],
+    ["Formation", "à venir"],
   ];
 }
 
@@ -438,11 +438,15 @@ export default function ClientDailyPage() {
     const data = await res.json().catch(() => null);
     setSaving(false);
     if (!res.ok) {
-      setError(data?.error ?? "Sauvegarde impossible.");
+      setError(data?.error ?? "L'enregistrement n'a pas abouti. Vous pouvez réessayer dans un instant.");
       return;
     }
     const savedFormation = data?.formation as Formation | undefined;
-    setMessage(data?.versioned ? "Nouvelle version créée et envoyée en validation Selen." : "Formation enregistrée.");
+    setMessage(
+      data?.versioned
+        ? "Nouvelle version bien reçue. Selen va la relire avant validation."
+        : "Formation enregistrée. Vous pouvez poursuivre tranquillement.",
+    );
     if (!editingFormationId && savedFormation?.id) {
       setLastCreatedFormationId(savedFormation.id);
       setShowSessionForm(false);
@@ -467,10 +471,10 @@ export default function ClientDailyPage() {
     });
     const data = await res.json().catch(() => null);
     if (!res.ok) {
-      setError(data?.error ?? "Action impossible.");
+      setError(data?.error ?? "Cette action n'a pas pu être réalisée pour le moment.");
       return;
     }
-    setMessage(data?.archived ? "Formation archivée car une session y est associée." : "Formation supprimée.");
+    setMessage(data?.archived ? "Formation archivée, son historique reste conservé." : "Formation retirée.");
     await loadDaily();
   }
 
@@ -533,10 +537,10 @@ export default function ClientDailyPage() {
     const data = await res.json().catch(() => null);
     setSaving(false);
     if (!res.ok) {
-      setError(data?.error ?? "Sauvegarde session impossible.");
+      setError(data?.error ?? "La session n'a pas pu être enregistrée. Vous pouvez réessayer dans un instant.");
       return;
     }
-    setMessage(data?.validationWarning ?? "Session enregistrée.");
+    setMessage(data?.validationWarning ?? "Session enregistrée. Selen peut maintenant préparer la suite.");
     setSessionForm(emptySession);
     setEditingSessionId("");
     setShowSessionForm(false);
@@ -583,10 +587,10 @@ export default function ClientDailyPage() {
     });
     const data = await res.json().catch(() => null);
     if (!res.ok) {
-      setError(data?.error ?? "Archivage impossible.");
+      setError(data?.error ?? "L'archivage n'a pas pu être effectué pour le moment.");
       return;
     }
-    setMessage("Session archivée.");
+    setMessage("Session archivée. Son historique reste disponible.");
     await loadDaily();
   }
 
@@ -603,14 +607,14 @@ export default function ClientDailyPage() {
     const url = getRegistrationUrl(token);
     if (!url) return;
     await navigator.clipboard.writeText(url);
-    setMessage("Lien d'inscription copié.");
+    setMessage("Lien d'inscription copié. Vous pouvez le transmettre aux personnes concernées.");
   }
 
   async function copyFormationRegistrationLink(token?: string | null) {
     const url = getFormationRegistrationUrl(token);
     if (!url) return;
     await navigator.clipboard.writeText(url);
-    setMessage("Lien d'inscription spontané copié.");
+    setMessage("Lien d'inscription spontané copié. Vous pouvez le partager sur votre site, vos réseaux ou par email.");
   }
 
   if (loading) {
@@ -664,7 +668,7 @@ export default function ClientDailyPage() {
             : formationAutosaveStatus === "saved"
               ? "Brouillon enregistre"
               : formationAutosaveStatus === "error"
-                ? "Erreur d'enregistrement du brouillon"
+                ? "Le brouillon n'a pas pu être enregistré"
                 : ""}
         </p>
 
@@ -994,7 +998,7 @@ export default function ClientDailyPage() {
                     ))}
                   </div>
                 ) : (
-                  <p style={s.muted}>Dossiers en attente de validation Selen avant envoi.</p>
+                  <p style={s.muted}>Les dossiers seront envoyés après la vérification Selen.</p>
                 )}
                 <div style={s.linkBox}>
                   <strong>Conventions</strong>
@@ -1014,14 +1018,14 @@ export default function ClientDailyPage() {
                         </a>
                         {convention.daily_convention_signatures?.map((signature) => (
                           <span key={signature.id}>
-                            {signature.signatory_type} : {signature.status === "signed" ? "signee" : "en attente"}
+                            {signature.signatory_type} : {signature.status === "signed" ? "signée" : "signature attendue"}
                             {signature.signed_at ? ` le ${new Date(signature.signed_at).toLocaleDateString("fr-FR")}` : ""}
                           </span>
                         ))}
                       </div>
                     ))
                   ) : (
-                    <span>Non generee. Selen la prepare apres verification des informations utiles.</span>
+                    <span>Non générée. Selen la prépare après vérification des informations utiles.</span>
                   )}
                 </div>
                 <div style={s.linkBox}>
@@ -1037,11 +1041,11 @@ export default function ClientDailyPage() {
                       >
                         {convocation.recipient_type === "trainer" ? "Formateur" : convocation.recipient_type === "company" ? "Entreprise" : "Beneficiaire"}{" "}
                         {convocation.company_name || convocation.recipient_name || "Daily"} - v{convocation.version}
-                        {convocation.status === "sent" && convocation.sent_at ? ` - envoyee le ${new Date(convocation.sent_at).toLocaleDateString("fr-FR")}` : " - generee"}
+                        {convocation.status === "sent" && convocation.sent_at ? ` - envoyée le ${new Date(convocation.sent_at).toLocaleDateString("fr-FR")}` : " - générée"}
                       </a>
                     ))
                   ) : (
-                    <span>A venir apres generation par Selen.</span>
+                    <span>À venir après préparation par Selen.</span>
                   )}
                 </div>
                 {session.daily_portal_access_tokens?.length ? (
@@ -1054,7 +1058,7 @@ export default function ClientDailyPage() {
                         <a href={portalUrl(portal.portal_type, portal.token)} target="_blank" rel="noreferrer" style={s.inlineLink}>
                           ouvrir
                         </a>
-                        {portal.status === "viewed" ? " - consulte" : " - a transmettre"}
+                        {portal.status === "viewed" ? " - consulté" : " - à transmettre"}
                       </span>
                     ))}
                   </div>
@@ -1066,7 +1070,7 @@ export default function ClientDailyPage() {
                   <p style={s.warning}>Une adaptation ou un point d&apos;attention a été signalé.</p>
                 ) : null}
                 {session.daily_formations?.status !== "validated" ? (
-                  <p style={s.warning}>Documents officiels en attente de validation Selen.</p>
+                  <p style={s.warning}>Selen finalise la vérification des documents officiels.</p>
                 ) : null}
                 <div style={s.actions}>
                   <button type="button" className="btn-ghost" onClick={() => editSession(session)}><span>Modifier</span></button>

@@ -17,7 +17,7 @@ export async function POST(req: Request) {
 
     if (!file || !dossierId || !documentType) {
       return NextResponse.json(
-        { error: "file, dossierId ou documentType manquant." },
+        { error: "Le document n'a pas pu être transmis : une information est manquante." },
         { status: 400 },
       );
     }
@@ -50,7 +50,7 @@ export async function POST(req: Request) {
 
     if (uploadError) {
       return NextResponse.json(
-        { error: `Storage: ${uploadError.message}` },
+        { error: "Le document n'a pas pu être transmis. Vous pouvez réessayer dans un instant ou contacter Selen si le problème persiste." },
         { status: 500 },
       );
     }
@@ -73,7 +73,7 @@ export async function POST(req: Request) {
 
     if (insertError) {
       return NextResponse.json(
-        { error: `Database: ${insertError.message}` },
+        { error: "Le document a été reçu, mais son rattachement au dossier n'a pas abouti. Contactez Selen pour que nous vérifiions votre dossier." },
         { status: 500 },
       );
     }

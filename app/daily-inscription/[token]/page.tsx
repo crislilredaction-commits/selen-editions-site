@@ -191,7 +191,7 @@ export default function DailyRegistrationPage({ params }: { params: { token: str
       return !String(form[`positioning_${question.id}`] ?? "").trim();
     });
     if (missing) {
-      setError("Certaines questions de positionnement sont obligatoires. Prenez le temps de les completer, puis envoyez vos reponses.");
+      setError("Quelques questions de positionnement restent à compléter. Prenez le temps de les renseigner, puis envoyez vos réponses.");
       return false;
     }
     return true;
@@ -199,7 +199,7 @@ export default function DailyRegistrationPage({ params }: { params: { token: str
 
   function validateContactDetails() {
     if (mode === "beneficiary" && !String(form.phone ?? "").trim()) {
-      setError("Merci d'ajouter un telephone. Il permettra a Selen ou a l'organisme de formation de vous recontacter si le dossier reste incomplet.");
+      setError("Merci d'ajouter un téléphone. Il permettra à Selen ou à l'organisme de formation de vous recontacter facilement si une précision est nécessaire.");
       return false;
     }
     return true;
@@ -227,14 +227,14 @@ export default function DailyRegistrationPage({ params }: { params: { token: str
     const data = await res.json().catch(() => null);
     setSaving(false);
     if (!res.ok) {
-      setError(data?.error ?? "Envoi impossible.");
+      setError(data?.error ?? "Vos réponses n'ont pas pu être transmises. Vous pouvez réessayer dans un instant.");
       return;
     }
     window.localStorage.removeItem(`selen-daily-registration-${token}`);
     setSaved(true);
   }
 
-  if (loading) return <main className="gazette-paper" style={s.page}>Chargement...</main>;
+  if (loading) return <main className="gazette-paper" style={s.page}>Ouverture de votre dossier d&apos;inscription...</main>;
   if (error && !session) return <main className="gazette-paper" style={s.page}>{error}</main>;
 
   if (saved) {
@@ -244,8 +244,8 @@ export default function DailyRegistrationPage({ params }: { params: { token: str
         <section style={s.page}>
           <article style={s.card}>
             <p className="gazette-label">Selen Daily</p>
-            <h1 style={s.title}>Merci, vos réponses sont transmises</h1>
-            <p style={s.muted}>Selen va les relire pour préparer la formation dans de bonnes conditions.</p>
+            <h1 style={s.title}>Merci, vos réponses sont bien transmises</h1>
+            <p style={s.muted}>Selen va les relire avec l&apos;organisme de formation pour préparer votre entrée en formation dans de bonnes conditions.</p>
           </article>
         </section>
       </main>
@@ -267,7 +267,7 @@ export default function DailyRegistrationPage({ params }: { params: { token: str
               : autosaveStatus === "saved"
                 ? "Enregistré"
                 : autosaveStatus === "error"
-                  ? "Erreur d'enregistrement"
+                  ? "Le brouillon n'a pas pu être enregistré"
                   : ""}
           </p>
         </article>
@@ -302,7 +302,7 @@ export default function DailyRegistrationPage({ params }: { params: { token: str
               <button type="button" className="btn-ink" onClick={() => setStep(step + 1)}><span>Continuer</span></button>
             ) : (
               <button type="button" className="btn-ink" disabled={saving} onClick={() => void submit()}>
-                <span>{saving ? "Envoi..." : "Envoyer mes réponses"}</span>
+                <span>{saving ? "Transmission..." : "Envoyer mes réponses"}</span>
               </button>
             )}
           </div>

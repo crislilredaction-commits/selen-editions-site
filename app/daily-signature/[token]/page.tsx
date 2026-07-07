@@ -43,7 +43,7 @@ export default function DailySignaturePage({ params }: { params: { token: string
       const data = await res.json().catch(() => null);
       setLoading(false);
       if (!res.ok) {
-        setError(data?.error ?? "Lien de signature indisponible.");
+        setError(data?.error ?? "Ce lien de signature n'est pas disponible pour le moment. Vous pouvez contacter Selen si le problème persiste.");
         return;
       }
       setSignature(data.signature);
@@ -114,11 +114,11 @@ export default function DailySignaturePage({ params }: { params: { token: string
 
   async function submit() {
     if (!consent) {
-      setError("Merci de cocher le consentement avant de signer.");
+      setError("Merci de confirmer votre accord avant de signer.");
       return;
     }
     if (!hasDrawnRef.current || !canvasRef.current) {
-      setError("Merci de dessiner votre signature.");
+      setError("Merci de dessiner votre signature dans l'encadré prévu.");
       return;
     }
     setSaving(true);
@@ -134,11 +134,11 @@ export default function DailySignaturePage({ params }: { params: { token: string
     const data = await res.json().catch(() => null);
     setSaving(false);
     if (!res.ok) {
-      setError(data?.error ?? "Signature impossible.");
+      setError(data?.error ?? "La signature n'a pas pu être transmise. Vous pouvez réessayer dans un instant.");
       return;
     }
     setSignature((current) => current ? { ...current, status: "signed", signed_at: data.signature?.signed_at ?? new Date().toISOString() } : current);
-    setSuccess("Convention signee. Merci, la preuve est horodatee et conservee dans le dossier.");
+    setSuccess("Merci, votre convention est signée. La preuve est horodatée et conservée dans le dossier.");
   }
 
   const convention = Array.isArray(signature?.daily_conventions)
@@ -153,24 +153,24 @@ export default function DailySignaturePage({ params }: { params: { token: string
       <section style={s.card}>
         <p className="gazette-label">Signature Selen Daily</p>
         <h1 style={s.title}>{formationTitle}</h1>
-        {loading ? <p style={s.muted}>Chargement du lien de signature...</p> : null}
+        {loading ? <p style={s.muted}>Ouverture du lien de signature...</p> : null}
         {error ? <p style={s.error}>{error}</p> : null}
         {success ? <p style={s.notice}>{success}</p> : null}
         {signature ? (
           <>
             <div style={s.summary}>
-              <p><strong>Signataire</strong><span>{signature.signatory_name || signature.signatory_email || "Non renseigne"}</span></p>
-              <p><strong>Role</strong><span>{signature.signatory_type}</span></p>
+              <p><strong>Signataire</strong><span>{signature.signatory_name || signature.signatory_email || "Non renseigné"}</span></p>
+              <p><strong>Rôle</strong><span>{signature.signatory_type}</span></p>
               <p><strong>Convention</strong><span>{convention?.document_name ?? "Convention Daily"}</span></p>
             </div>
 
             <a href={`/api/daily-signature/${token}/download`} target="_blank" rel="noreferrer" style={s.download}>
-              Consulter / telecharger la convention
+              Consulter / télécharger la convention
             </a>
 
             {alreadySigned ? (
               <p style={s.notice}>
-                Cette convention a deja ete signee le {signature.signed_at ? new Date(signature.signed_at).toLocaleString("fr-FR") : "date conservee"}.
+                Cette convention a déjà été signée le {signature.signed_at ? new Date(signature.signed_at).toLocaleString("fr-FR") : "date conservée"}.
               </p>
             ) : (
               <>
@@ -192,7 +192,7 @@ export default function DailySignaturePage({ params }: { params: { token: string
                     <span>Effacer la signature</span>
                   </button>
                   <button type="button" className="btn-ink" onClick={() => void submit()} disabled={saving}>
-                    <span>{saving ? "Signature..." : "Signer la convention"}</span>
+                    <span>{saving ? "Transmission..." : "Signer la convention"}</span>
                   </button>
                 </div>
               </>
