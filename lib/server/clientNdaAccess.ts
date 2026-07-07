@@ -1,13 +1,20 @@
 import { createClient as createSupabaseAdmin } from "@supabase/supabase-js";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient as createServerSupabaseClient } from "@/lib/supabase/server";
+import {
+  getAssistanceTokenFromRequest,
+  type AgentAssistanceContext,
+  verifyAgentAssistance,
+} from "@/lib/server/agentAssistance";
 
-type AdminSupabaseClient = SupabaseClient<any>;
+type AdminSupabaseClient = SupabaseClient;
 
 export type ClientNdaAccess =
   | {
       ok: true;
       userEmail: string;
+      mode: "client" | "agent_assistance";
+      assistance?: AgentAssistanceContext | null;
       dossier: {
         id: string;
         title: string | null;
@@ -37,7 +44,7 @@ export function getAdminSupabase() {
     throw new Error("SUPABASE_SERVICE_ROLE_KEY manquante.");
   }
 
-  return createSupabaseAdmin<any>(
+  return createSupabaseAdmin(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
     process.env.SUPABASE_SERVICE_ROLE_KEY,
     {
@@ -56,7 +63,54 @@ function normalizeEmail(email?: string | null) {
 export async function verifyClientNdaDossierAccess(
   supabase: AdminSupabaseClient,
   dossierId: string,
+  req?: Request,
 ): Promise<ClientNdaAccess> {
+  const assistance = req
+    ? await verifyAgentAssistance(supabase, getAssistanceTokenFromRequest(req), {
+        dossierId,
+      })
+    : null;
+
+  if (assistance) {
+    const { data: dossier, error: dossierError } = await supabase
+      .from("dossiers")
+      .select("id, title, status, type, organisation_id")
+      .eq("id", dossierId)
+      .eq("organisation_id", assistance.organisation_id)
+      .maybeSingle();
+
+    if (dossierError) {
+      return { ok: false, status: 500, error: dossierError.message };
+    }
+
+    if (!dossier) {
+      return {
+        ok: false,
+        status: 404,
+        error: "Dossier introuvable pour cette assistance agent.",
+      };
+    }
+
+    const { data: organisation, error: organisationError } = await supabase
+      .from("organisations")
+      .select("id, email, name, phone")
+      .eq("id", assistance.organisation_id)
+      .maybeSingle();
+
+    if (organisationError) {
+      return { ok: false, status: 500, error: organisationError.message };
+    }
+
+    return {
+      ok: true,
+      userEmail: assistance.agent_email ?? "agent-assistance@selen.local",
+      mode: "agent_assistance",
+      assistance,
+      dossier,
+      organisation,
+    };
+  }
+
   const authSupabase = await createServerSupabaseClient();
   const { data: authData, error: authError } =
     await authSupabase.auth.getUser();
@@ -134,12 +188,45 @@ export async function verifyClientNdaDossierAccess(
   return {
     ok: true,
     userEmail,
+    mode: "client",
+    assistance: null,
     dossier,
     organisation,
   };
 }
 
-export async function listClientNdaDossiers(supabase: AdminSupabaseClient) {
+export async function listClientNdaDossiers(
+  supabase: AdminSupabaseClient,
+  req?: Request,
+) {
+  const assistance = req
+    ? await verifyAgentAssistance(supabase, getAssistanceTokenFromRequest(req))
+    : null;
+
+  if (assistance) {
+    const query = supabase
+      .from("dossiers")
+      .select("id, title, status, organisation_id, created_at, updated_at")
+      .eq("type", "nda")
+      .eq("organisation_id", assistance.organisation_id)
+      .order("created_at", { ascending: false });
+
+    const { data: dossiers, error } = assistance.dossier_id
+      ? await query.eq("id", assistance.dossier_id)
+      : await query;
+
+    if (error) {
+      return { ok: false as const, status: 500, error: error.message };
+    }
+
+    return {
+      ok: true as const,
+      dossiers: dossiers ?? [],
+      mode: "agent_assistance" as const,
+      assistance,
+    };
+  }
+
   const authSupabase = await createServerSupabaseClient();
   const { data: authData, error: authError } =
     await authSupabase.auth.getUser();

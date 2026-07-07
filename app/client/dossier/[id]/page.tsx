@@ -6,6 +6,11 @@ import Link from "next/link";
 import ClientMessagingPanel from "@/components/ClientMessagingPanel";
 import ClientProgramProposal from "@/components/ClientProgramProposal";
 import { createSupabaseBrowserClient } from "@/app/lib/supabase/client";
+import {
+  assistanceFetch,
+  getStoredAssistanceToken,
+  withAssistanceToken,
+} from "@/components/AgentAssistanceBanner";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -285,14 +290,17 @@ export default function ClientNdaPage() {
         }
         setAccessError(null);
 
-        const { data: authData } = await supabase.auth.getUser();
+        const assistanceToken = getStoredAssistanceToken();
+        const { data: authData } = assistanceToken
+          ? { data: { user: { id: "agent-assistance" } } }
+          : await supabase.auth.getUser();
 
         if (!authData.user) {
           router.replace("/client/login");
           return;
         }
 
-        const stateRes = await fetch(
+        const stateRes = await assistanceFetch(
           `/api/client/dossier/state?dossierId=${encodeURIComponent(dossierId)}`,
           {
             cache: "no-store",
@@ -415,7 +423,7 @@ export default function ClientNdaPage() {
           });
         }
 
-        const programRes = await fetch(
+        const programRes = await assistanceFetch(
           `/api/client/program/latest?dossierId=${encodeURIComponent(dossierId)}`,
           {
             cache: "no-store",
@@ -484,7 +492,7 @@ export default function ClientNdaPage() {
       throw new Error("Aucun dossierId trouvé dans l'URL.");
     }
 
-    const res = await fetch("/api/client/dossier/step-1", {
+    const res = await assistanceFetch("/api/client/dossier/step-1", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -514,7 +522,7 @@ export default function ClientNdaPage() {
     formData.append("dossierId", dossierId);
     formData.append("documentType", documentType);
 
-    const res = await fetch("/api/client/upload", {
+    const res = await assistanceFetch("/api/client/upload", {
       method: "POST",
       body: formData,
     });
@@ -539,7 +547,7 @@ export default function ClientNdaPage() {
     formData.append("dossierId", dossierId);
     formData.append("documentType", documentType);
 
-    const res = await fetch("/api/client/dossier/final-upload", {
+    const res = await assistanceFetch("/api/client/dossier/final-upload", {
       method: "POST",
       body: formData,
     });
@@ -556,7 +564,7 @@ export default function ClientNdaPage() {
 
   async function notifyFinalDocumentsSubmitted() {
     try {
-      const res = await fetch("/api/client/nda/final-documents-submitted", {
+      const res = await assistanceFetch("/api/client/nda/final-documents-submitted", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -582,7 +590,7 @@ export default function ClientNdaPage() {
       setErrorMessage(null);
       setSuccessMessage(null);
 
-      const res = await fetch("/api/client/nda/deposit-submitted", {
+      const res = await assistanceFetch("/api/client/nda/deposit-submitted", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -638,7 +646,7 @@ export default function ClientNdaPage() {
       formData.append("file", refusalLetterFile);
       formData.append("dossierId", dossierId);
 
-      const res = await fetch("/api/client/nda/refusal-letter", {
+      const res = await assistanceFetch("/api/client/nda/refusal-letter", {
         method: "POST",
         body: formData,
       });
@@ -782,7 +790,7 @@ export default function ClientNdaPage() {
       setErrorMessage(null);
       setSuccessMessage(null);
 
-      const res = await fetch("/api/client/dossier/step-2", {
+      const res = await assistanceFetch("/api/client/dossier/step-2", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1113,7 +1121,7 @@ export default function ClientNdaPage() {
           <button
             type="button"
             className="btn-ink"
-            onClick={() => router.push("/client")}
+            onClick={() => router.push(withAssistanceToken("/client"))}
           >
             <span>Retour au bureau Selen</span>
           </button>
@@ -3254,7 +3262,7 @@ function DocumentList({
       setDownloadingId(document.id);
       setDownloadError(null);
 
-      const res = await fetch(
+      const res = await assistanceFetch(
         `/api/client/documents/download?dossierId=${encodeURIComponent(
           dossierId,
         )}&documentId=${encodeURIComponent(document.id)}`,

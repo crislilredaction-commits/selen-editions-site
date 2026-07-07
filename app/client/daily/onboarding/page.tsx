@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import ClientSupportBar from "@/components/ClientSupportBar";
+import { assistanceFetch } from "@/components/AgentAssistanceBanner";
 import { createSupabaseBrowserClient } from "@/app/lib/supabase/client";
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
@@ -107,7 +108,7 @@ export default function DailyOnboardingPage() {
   const save = useCallback(async (nextForm: OnboardingForm, nextTrainers: Trainer[]) => {
     setSaveStatus("saving");
     setError("");
-    const res = await fetch("/api/client/daily/onboarding", {
+    const res = await assistanceFetch("/api/client/daily/onboarding", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -143,7 +144,7 @@ export default function DailyOnboardingPage() {
         if (cancelled) return;
         setEmail(data.user.email ?? null);
 
-        const res = await fetch("/api/client/daily/onboarding", { cache: "no-store" });
+        const res = await assistanceFetch("/api/client/daily/onboarding", { cache: "no-store" });
         const payload = await res.json().catch(() => null);
 
         if (!res.ok) {

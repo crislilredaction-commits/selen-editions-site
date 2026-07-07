@@ -4,6 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "../lib/supabase/client";
 import ClientSupportBar from "@/components/ClientSupportBar";
+import {
+  assistanceFetch,
+  getStoredAssistanceToken,
+  withAssistanceToken,
+} from "@/components/AgentAssistanceBanner";
 
 type UserInfo = {
   email?: string | null;
@@ -132,6 +137,28 @@ export default function ClientDashboardPage() {
       setLoading(true);
       setError("");
 
+      const assistanceToken = getStoredAssistanceToken();
+
+      if (assistanceToken) {
+        setUserInfo({
+          email: "Mode assistance agent",
+        });
+
+        const ndaRes = await assistanceFetch("/api/client/nda-dossiers", {
+          cache: "no-store",
+        });
+        const ndaData = await ndaRes.json().catch(() => null);
+
+        if (ndaRes.ok) {
+          setNdaDossiers((ndaData?.dossiers ?? []) as NdaDossier[]);
+        } else {
+          setError(ndaData?.error ?? "Lien d'assistance invalide ou expiré.");
+        }
+
+        setLoading(false);
+        return;
+      }
+
       const { data, error: authError } = await supabase.auth.getUser();
 
       if (authError || !data.user) {
@@ -198,7 +225,7 @@ export default function ClientDashboardPage() {
       }
 
       try {
-        const ndaRes = await fetch("/api/client/nda-dossiers", {
+        const ndaRes = await assistanceFetch("/api/client/nda-dossiers", {
           cache: "no-store",
         });
 
@@ -371,7 +398,9 @@ export default function ClientDashboardPage() {
                       type="button"
                       className="btn-ink"
                       onClick={() =>
-                        router.push(`/client/dossier/${dossier.id}`)
+                        router.push(
+                          withAssistanceToken(`/client/dossier/${dossier.id}`),
+                        )
                       }
                     >
                       <span>
@@ -444,7 +473,7 @@ export default function ClientDashboardPage() {
                   <button
                     type="button"
                     className="btn-ink"
-                    onClick={() => router.push("/client/preaudit")}
+                    onClick={() => router.push(withAssistanceToken("/client/preaudit"))}
                   >
                     <span>Commencer ou reprendre mon auto-audit →</span>
                   </button>
@@ -453,7 +482,9 @@ export default function ClientDashboardPage() {
                   <button
                     type="button"
                     className="btn-ink"
-                    onClick={() => router.push("/client/preaudit/final")}
+                    onClick={() =>
+                      router.push(withAssistanceToken("/client/preaudit/final"))
+                    }
                   >
                     <span>Voir mon bilan final</span>
                   </button>
@@ -507,7 +538,9 @@ export default function ClientDashboardPage() {
                 <button
                   type="button"
                   className="btn-ink"
-                  onClick={() => router.push("/client/audit-blanc")}
+                  onClick={() =>
+                    router.push(withAssistanceToken("/client/audit-blanc"))
+                  }
                 >
                   <span>Accéder à mon audit blanc →</span>
                 </button>
@@ -544,7 +577,7 @@ export default function ClientDashboardPage() {
               <button
                 type="button"
                 className="btn-ink"
-                onClick={() => router.push("/client/daily")}
+                onClick={() => router.push(withAssistanceToken("/client/daily"))}
               >
                 <span>Accéder à Selen Daily →</span>
               </button>

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import ClientSupportBar from "@/components/ClientSupportBar";
+import { assistanceFetch, withAssistanceToken } from "@/components/AgentAssistanceBanner";
 import { createSupabaseBrowserClient } from "@/app/lib/supabase/client";
 
 type DailyStatus = "draft" | "review" | "validated" | "correction_requested" | "archived";
@@ -295,8 +296,8 @@ export default function ClientDailyPage() {
 
   const loadDaily = useCallback(async () => {
     const [formationRes, sessionRes] = await Promise.all([
-      fetch("/api/client/daily/formations", { cache: "no-store" }),
-      fetch("/api/client/daily/sessions", { cache: "no-store" }),
+      assistanceFetch("/api/client/daily/formations", { cache: "no-store" }),
+      assistanceFetch("/api/client/daily/sessions", { cache: "no-store" }),
     ]);
     const formationData = await formationRes.json().catch(() => null);
     const sessionData = await sessionRes.json().catch(() => null);
@@ -338,7 +339,7 @@ export default function ClientDailyPage() {
           }));
         }
 
-        const onboardingRes = await fetch("/api/client/daily/onboarding", {
+        const onboardingRes = await assistanceFetch("/api/client/daily/onboarding", {
           cache: "no-store",
         });
         const onboardingData = await onboardingRes.json().catch(() => null);
@@ -427,7 +428,7 @@ export default function ClientDailyPage() {
     setSaving(true);
     setError("");
     setMessage("");
-    const res = await fetch("/api/client/daily/formations", {
+    const res = await assistanceFetch("/api/client/daily/formations", {
       method: editingFormationId ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -464,7 +465,7 @@ export default function ClientDailyPage() {
 
   async function archiveFormation(id: string) {
     if (!window.confirm("Archiver ou supprimer cette formation selon les sessions associées ?")) return;
-    const res = await fetch("/api/client/daily/formations", {
+    const res = await assistanceFetch("/api/client/daily/formations", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id }),
@@ -521,7 +522,7 @@ export default function ClientDailyPage() {
     setSaving(true);
     setError("");
     setMessage("");
-    const res = await fetch("/api/client/daily/sessions", {
+    const res = await assistanceFetch("/api/client/daily/sessions", {
       method: editingSessionId ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -580,7 +581,7 @@ export default function ClientDailyPage() {
 
   async function archiveSession(id: string) {
     if (!window.confirm("Archiver cette session ?")) return;
-    const res = await fetch("/api/client/daily/sessions", {
+    const res = await assistanceFetch("/api/client/daily/sessions", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id }),
@@ -1006,7 +1007,7 @@ export default function ClientDailyPage() {
                     session.daily_conventions.map((convention) => (
                       <div key={convention.id} style={s.signatureMiniBox}>
                         <a
-                          href={`/api/client/daily/conventions/download?id=${convention.id}`}
+                          href={withAssistanceToken(`/api/client/daily/conventions/download?id=${convention.id}`)}
                           target="_blank"
                           rel="noreferrer"
                           style={s.inlineLink}
@@ -1034,7 +1035,7 @@ export default function ClientDailyPage() {
                     session.daily_convocations.map((convocation) => (
                       <a
                         key={convocation.id}
-                        href={`/api/client/daily/convocations/download?id=${convocation.id}`}
+                        href={withAssistanceToken(`/api/client/daily/convocations/download?id=${convocation.id}`)}
                         target="_blank"
                         rel="noreferrer"
                         style={s.inlineLink}
