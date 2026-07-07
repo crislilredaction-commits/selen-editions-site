@@ -115,6 +115,7 @@ export default function ClientDashboardPage() {
   const [ndaDossiers, setNdaDossiers] = useState<NdaDossier[]>([]);
   const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
   const [error, setError] = useState("");
+  const [authRequired, setAuthRequired] = useState(false);
 
   const preauditRemainingDays = getRemainingDays(preauditAccess?.ends_at);
   const auditBlancRemainingDays = getRemainingDays(auditBlancAccess?.ends_at);
@@ -136,6 +137,7 @@ export default function ClientDashboardPage() {
     async function loadClientSpace() {
       setLoading(true);
       setError("");
+      setAuthRequired(false);
 
       const assistanceToken = getStoredAssistanceToken();
 
@@ -162,7 +164,8 @@ export default function ClientDashboardPage() {
       const { data, error: authError } = await supabase.auth.getUser();
 
       if (authError || !data.user) {
-        router.replace("/client/login");
+        setAuthRequired(true);
+        setLoading(false);
         return;
       }
 
@@ -277,6 +280,54 @@ export default function ClientDashboardPage() {
         <p style={{ textAlign: "center", color: "var(--ink-faint)" }}>
           Ouverture du bureau Selen…
         </p>
+      </main>
+    );
+  }
+
+  if (authRequired) {
+    return (
+      <main className="gazette-paper" style={{ minHeight: "100vh" }}>
+        <div
+          style={{
+            maxWidth: 760,
+            margin: "0 auto",
+            padding: "3rem 1.5rem",
+          }}
+        >
+          <section className="gazette-card" style={{ padding: "1.5rem" }}>
+            <p className="gazette-label">Connexion requise</p>
+            <h1 style={{ color: "var(--ink)", marginBottom: "0.7rem" }}>
+              Ouvrir votre Bureau Selen
+            </h1>
+            <p
+              style={{
+                color: "var(--ink-soft)",
+                lineHeight: 1.7,
+                marginBottom: "1rem",
+              }}
+            >
+              Connectez-vous avec votre email et votre mot de passe. Si vous
+              venez de recevoir votre accès, utilisez le lien de l’email pour
+              créer votre mot de passe Bureau Selen.
+            </p>
+            <div style={{ display: "flex", gap: "0.7rem", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className="btn-ink"
+                onClick={() => router.push("/client/login")}
+              >
+                <span>Se connecter</span>
+              </button>
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() => router.push("/support")}
+              >
+                <span>Demander un nouveau lien</span>
+              </button>
+            </div>
+          </section>
+        </div>
       </main>
     );
   }
@@ -589,7 +640,7 @@ export default function ClientDashboardPage() {
             <p className="gazette-label">Aucun espace actif</p>
 
             <h2 style={{ color: "var(--ink)", marginBottom: "0.5rem" }}>
-              Aucun dossier ou outil actif n’est associé à ce compte
+              Aucun accès actif n’est associé à ce compte.
             </h2>
 
             <p

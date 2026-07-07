@@ -5,6 +5,7 @@ import Footer from "@/components/Footer";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/app/lib/supabase/client";
+import type { EmailOtpType } from "@supabase/supabase-js";
 
 function sanitizeNextPath(value: string | null) {
   if (!value || !value.startsWith("/") || value.startsWith("//")) {
@@ -38,17 +39,17 @@ function ClientActivationContent() {
       const tokenHash = searchParams.get("token_hash");
       const type = searchParams.get("type");
       const otpType =
-        type === "invite" || type === "recovery" ? type : null;
+        type === "invite" || type === "recovery" ? (type as EmailOtpType) : null;
 
       if (tokenHash && otpType) {
         const { error } = await supabase.auth.verifyOtp({
           token_hash: tokenHash,
-          type: otpType as any,
+          type: otpType,
         });
 
         if (error) {
           setMessage(
-            "Le lien d'activation est invalide ou a expiré. Demandez un nouveau lien à Selen.",
+            "Ce lien n’est plus valide ou a expiré. Contactez Selen pour recevoir un nouveau lien.",
           );
           setCheckingSession(false);
           return;
@@ -58,7 +59,7 @@ function ClientActivationContent() {
 
         if (error) {
           setMessage(
-            "Le lien d'activation est invalide ou a expiré. Demandez un nouveau lien à Selen.",
+            "Ce lien n’est plus valide ou a expiré. Contactez Selen pour recevoir un nouveau lien.",
           );
           setCheckingSession(false);
           return;
@@ -76,7 +77,7 @@ function ClientActivationContent() {
 
           if (error) {
             setMessage(
-              "Le lien d'activation est invalide ou a expiré. Demandez un nouveau lien à Selen.",
+              "Ce lien n’est plus valide ou a expiré. Contactez Selen pour recevoir un nouveau lien.",
             );
             setCheckingSession(false);
             return;
@@ -88,7 +89,7 @@ function ClientActivationContent() {
 
       if (!data.session) {
         setMessage(
-          "Aucune session d'activation n'a été trouvée. Ouvrez cette page depuis le lien reçu par email.",
+          "Ce lien n’est plus valide ou a expiré. Contactez Selen pour recevoir un nouveau lien.",
         );
         setCheckingSession(false);
         return;
@@ -125,14 +126,17 @@ function ClientActivationContent() {
 
     if (error) {
       setMessage(
-        "Impossible d'enregistrer votre mot de passe. Le lien a peut-être expiré.",
+        "Ce lien n’est plus valide ou a expiré. Contactez Selen pour recevoir un nouveau lien.",
       );
       setLoading(false);
       return;
     }
 
-    router.replace(nextPath);
-    router.refresh();
+    setMessage("Votre mot de passe est créé. Nous ouvrons votre Bureau Selen.");
+    window.setTimeout(() => {
+      router.replace(nextPath);
+      router.refresh();
+    }, 900);
   }
 
   return (
@@ -142,7 +146,7 @@ function ClientActivationContent() {
       <section className="mx-auto max-w-3xl px-4 md:px-6 py-12 md:py-16">
         <div className="gazette-cta px-6 md:px-10 py-10 md:py-14">
           <div style={{ position: "relative", zIndex: 1, textAlign: "center" }}>
-            <p className="gazette-label">Activation du compte</p>
+            <p className="gazette-label">Bureau Selen</p>
 
             <h1
               className="gazette-hero-title"
@@ -151,7 +155,7 @@ function ClientActivationContent() {
                 marginBottom: "0.6rem",
               }}
             >
-              Créer votre mot de passe
+              Créez votre mot de passe Bureau Selen
             </h1>
 
             <p
@@ -162,8 +166,8 @@ function ClientActivationContent() {
                 margin: "0 auto",
               }}
             >
-              Choisissez le mot de passe qui vous permettra ensuite de vous
-              connecter à votre espace client Selen avec votre email.
+              Bienvenue dans votre Bureau Selen. Choisissez un mot de passe
+              pour accéder à vos documents et suivre votre dossier.
             </p>
           </div>
         </div>
@@ -178,7 +182,7 @@ function ClientActivationContent() {
         >
           {checkingSession ? (
             <p style={{ color: "var(--ink-soft)", lineHeight: 1.6 }}>
-              Vérification du lien d'activation...
+              Vérification du lien d’activation...
             </p>
           ) : activationReady ? (
             <form
