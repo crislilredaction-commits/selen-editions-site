@@ -4,6 +4,7 @@ import {
   getAdminSupabase,
   verifyClientNdaDossierAccess,
 } from "@/lib/server/clientNdaAccess";
+import { logAgentAssistanceAction } from "@/lib/server/agentAssistance";
 import { createUniqueStorageFileName } from "@/lib/server/storageFileNames";
 
 export async function POST(req: Request) {
@@ -22,7 +23,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const access = await verifyClientNdaDossierAccess(supabase, dossierId);
+    const access = await verifyClientNdaDossierAccess(supabase, dossierId, req);
 
     if (!access.ok) {
       return NextResponse.json(
@@ -83,7 +84,32 @@ export async function POST(req: Request) {
       );
     }
 
-    return NextResponse.json({ ok: true, document });
+    if (access.mode === "agent_assistance" && access.assistance) {
+      await logAgentAssistanceAction({
+        supabase,
+        req,
+        assistance: access.assistance,
+        dossierId,
+        action: "replace_or_upload_final_document",
+        actionLabel:
+          "Document final déposé/remplacé en mode assistance agent",
+        newState: {
+          document_id: document.id,
+          name: file.name,
+          document_type: documentType,
+        },
+      });
+    }
+
+    return NextResponse.json({
+      ok: true,
+      document,
+      assistanceMode: access.mode === "agent_assistance",
+      message:
+        access.mode === "agent_assistance"
+          ? "Action réalisée en mode assistance agent."
+          : undefined,
+    });
   } catch (error) {
     return NextResponse.json(
       {

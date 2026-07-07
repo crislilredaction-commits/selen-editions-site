@@ -8,6 +8,7 @@ import {
   getAdminSupabase,
   verifyClientNdaDossierAccess,
 } from "@/lib/server/clientNdaAccess";
+import { blockedAgentAssistanceResponse } from "@/lib/server/agentAssistance";
 
 const DEPOSIT_SUBMITTED_MESSAGE =
   "Le client indique avoir déposé son dossier NDA sur la plateforme officielle.";
@@ -33,13 +34,17 @@ export async function POST(req: Request) {
     }
 
     const supabase = getAdminSupabase();
-    const access = await verifyClientNdaDossierAccess(supabase, dossierId);
+    const access = await verifyClientNdaDossierAccess(supabase, dossierId, req);
 
     if (!access.ok) {
       return NextResponse.json(
         { error: access.error },
         { status: access.status },
       );
+    }
+
+    if (access.mode === "agent_assistance") {
+      return blockedAgentAssistanceResponse();
     }
 
     const { data: ndaVariables, error: ndaVariablesError } = await supabase

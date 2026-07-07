@@ -4,6 +4,7 @@ import {
   getAdminSupabase,
   verifyClientNdaDossierAccess,
 } from "@/lib/server/clientNdaAccess";
+import { logAgentAssistanceAction } from "@/lib/server/agentAssistance";
 
 const STEP_2_COMPLETED_MESSAGE =
   "Le client a complété les informations nécessaires à la convention de formation. Vous pouvez vérifier les coordonnées et préparer la génération des documents à signer.";
@@ -65,7 +66,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const access = await verifyClientNdaDossierAccess(supabase, dossierId);
+    const access = await verifyClientNdaDossierAccess(supabase, dossierId, req);
 
     if (!access.ok) {
       return NextResponse.json(
@@ -199,7 +200,27 @@ export async function POST(req: Request) {
       }
     }
 
-    return NextResponse.json({ success: true });
+    if (access.mode === "agent_assistance" && access.assistance) {
+      await logAgentAssistanceAction({
+        supabase,
+        req,
+        assistance: access.assistance,
+        dossierId,
+        action: "update_nda_step_2",
+        actionLabel: "Informations administratives corrigées en mode assistance agent",
+        oldState: previousStep2 ?? null,
+        newState: nextStep2Values,
+      });
+    }
+
+    return NextResponse.json({
+      success: true,
+      assistanceMode: access.mode === "agent_assistance",
+      message:
+        access.mode === "agent_assistance"
+          ? "Action réalisée en mode assistance agent."
+          : undefined,
+    });
   } catch (error) {
     return NextResponse.json(
       {

@@ -81,7 +81,7 @@ export async function GET(req: Request) {
     }
 
     const supabase = getAdminSupabase();
-    const access = await verifyClientNdaDossierAccess(supabase, dossierId);
+    const access = await verifyClientNdaDossierAccess(supabase, dossierId, req);
 
     if (!access.ok) {
       return NextResponse.json(
@@ -428,6 +428,7 @@ export async function GET(req: Request) {
         nda_obtained_at: ndaVariables?.nda_obtained_at ?? null,
       },
       step1Submitted,
+      assistanceMode: access.mode === "agent_assistance",
       programDecision,
       programVersionStatus,
       latestProgramVersion: latestProgramVersion ?? null,

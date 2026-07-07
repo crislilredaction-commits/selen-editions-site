@@ -13,6 +13,17 @@ function escapeHtml(input: string) {
     .replaceAll("'", "&#039;");
 }
 
+type ProgramChapter = {
+  title?: string | null;
+};
+
+type ProgramModule = {
+  title?: string | null;
+  duration?: string | null;
+  objective?: string | null;
+  chapters?: ProgramChapter[] | null;
+};
+
 export async function GET(req: Request) {
   try {
     const supabase = getAdminSupabase();
@@ -28,7 +39,7 @@ export async function GET(req: Request) {
       );
     }
 
-    const access = await verifyClientNdaDossierAccess(supabase, dossierId);
+    const access = await verifyClientNdaDossierAccess(supabase, dossierId, req);
 
     if (!access.ok) {
       return NextResponse.json(
@@ -51,17 +62,19 @@ export async function GET(req: Request) {
       );
     }
 
-    const modules = Array.isArray(version.modules) ? version.modules : [];
+    const modules: ProgramModule[] = Array.isArray(version.modules)
+      ? version.modules
+      : [];
     const vigilancePoints = Array.isArray(version.vigilance_points)
       ? version.vigilance_points
       : [];
 
     const modulesHtml = modules
-      .map((module: any, index: number) => {
+      .map((module, index) => {
         const chaptersHtml = Array.isArray(module.chapters)
           ? module.chapters
               .map(
-                (chapter: any) => `<li>${escapeHtml(chapter.title ?? "")}</li>`,
+                (chapter) => `<li>${escapeHtml(chapter.title ?? "")}</li>`,
               )
               .join("")
           : "";

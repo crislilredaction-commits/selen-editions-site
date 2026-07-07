@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
+import { getAssistedClientUser, logAgentAssistanceAction } from "@/lib/server/agentAssistance";
 import { createClient as createServerSupabaseClient } from "@/lib/supabase/server";
 
 async function requireClient() {
@@ -13,13 +14,14 @@ async function requireClient() {
 }
 
 export async function GET(req: Request) {
-  const auth = await requireClient();
+  const supabase = getAdminSupabase();
+  const assisted = await getAssistedClientUser(supabase, req);
+  const auth = assisted ? { ok: true as const, user: assisted.user } : await requireClient();
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const id = new URL(req.url).searchParams.get("id")?.trim();
   if (!id) return NextResponse.json({ error: "Convocation introuvable." }, { status: 400 });
 
-  const supabase = getAdminSupabase();
   const { data: convocation, error } = await supabase
     .from("daily_convocations")
     .select("id,document_name,storage_path,user_id")
@@ -43,6 +45,17 @@ export async function GET(req: Request) {
       { error: signedUrlError?.message ?? "Impossible de generer le lien." },
       { status: 500 },
     );
+  }
+
+  if (assisted) {
+    await logAgentAssistanceAction({
+      supabase,
+      req,
+      assistance: assisted.assistance,
+      action: "download_daily_convocation",
+      actionLabel: "Convocation Daily téléchargée en mode assistance agent",
+      metadata: { convocation_id: convocation.id },
+    });
   }
 
   return NextResponse.redirect(data.signedUrl);

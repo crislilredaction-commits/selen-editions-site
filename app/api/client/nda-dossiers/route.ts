@@ -4,10 +4,10 @@ import {
   listClientNdaDossiers,
 } from "@/lib/server/clientNdaAccess";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const supabase = getAdminSupabase();
-    const result = await listClientNdaDossiers(supabase);
+    const result = await listClientNdaDossiers(supabase, req);
 
     if (!result.ok) {
       return NextResponse.json(

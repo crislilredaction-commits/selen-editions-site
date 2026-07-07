@@ -4,6 +4,7 @@ import {
   getAdminSupabase,
   verifyClientNdaDossierAccess,
 } from "@/lib/server/clientNdaAccess";
+import { logAgentAssistanceAction } from "@/lib/server/agentAssistance";
 
 export async function GET(req: Request) {
   try {
@@ -19,7 +20,7 @@ export async function GET(req: Request) {
     }
 
     const supabase = getAdminSupabase();
-    const access = await verifyClientNdaDossierAccess(supabase, dossierId);
+    const access = await verifyClientNdaDossierAccess(supabase, dossierId, req);
 
     if (!access.ok) {
       return NextResponse.json(
@@ -89,6 +90,21 @@ export async function GET(req: Request) {
         },
         { status: 500 },
       );
+    }
+
+    if (access.mode === "agent_assistance" && access.assistance) {
+      await logAgentAssistanceAction({
+        supabase,
+        req,
+        assistance: access.assistance,
+        dossierId,
+        action: "download_document",
+        actionLabel: "Document téléchargé en mode assistance agent",
+        newState: {
+          document_id: document.id,
+          name: document.name,
+        },
+      });
     }
 
     return NextResponse.json({

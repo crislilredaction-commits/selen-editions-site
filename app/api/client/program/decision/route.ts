@@ -4,6 +4,7 @@ import {
   getAdminSupabase,
   verifyClientNdaDossierAccess,
 } from "@/lib/server/clientNdaAccess";
+import { blockedAgentAssistanceResponse } from "@/lib/server/agentAssistance";
 import { createUniqueStorageFileName } from "@/lib/server/storageFileNames";
 
 export async function POST(req: Request) {
@@ -54,13 +55,17 @@ export async function POST(req: Request) {
       );
     }
 
-    const access = await verifyClientNdaDossierAccess(supabase, dossierId);
+    const access = await verifyClientNdaDossierAccess(supabase, dossierId, req);
 
     if (!access.ok) {
       return NextResponse.json(
         { error: access.error },
         { status: access.status },
       );
+    }
+
+    if (access.mode === "agent_assistance") {
+      return blockedAgentAssistanceResponse();
     }
 
     const dossier = access.dossier;

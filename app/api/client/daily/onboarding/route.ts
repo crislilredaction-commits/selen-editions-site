@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import { createClient as createServerSupabaseClient } from "@/lib/supabase/server";
+import {
+  blockedAgentAssistanceResponse,
+  getAssistanceTokenFromRequest,
+  getAssistedClientUser,
+} from "@/lib/server/agentAssistance";
 
 async function requireClient() {
   const authSupabase = await createServerSupabaseClient();
@@ -154,12 +159,14 @@ async function ensureDailyOnboarding(userId: string) {
     .select("*")
     .single();
 }
-
-export async function GET() {
-  const auth = await requireClient();
+export async function GET(req: Request) {
+  const supabase = getAdminSupabase();
+  const assisted = await getAssistedClientUser(supabase, req);
+  const auth = assisted
+    ? { ok: true as const, user: assisted.user }
+    : await requireClient();
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-  const supabase = getAdminSupabase();
   const access = await getDailyAccessState(auth.user.id);
 
   if (!access.ok) {
@@ -229,6 +236,8 @@ export async function GET() {
 }
 
 export async function PATCH(req: Request) {
+  if (getAssistanceTokenFromRequest(req)) return blockedAgentAssistanceResponse();
+
   const auth = await requireClient();
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 

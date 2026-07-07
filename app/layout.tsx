@@ -1,6 +1,6 @@
 import "./globals.css";
-import type { Metadata } from "next";
 import { Playfair_Display, EB_Garamond, Cinzel } from "next/font/google";
+import AgentAssistanceBanner from "@/components/AgentAssistanceBanner";
 
 const playfair = Playfair_Display({
   subsets: ["latin"],
@@ -36,6 +36,7 @@ export default function RootLayout({
         suppressHydrationWarning
         className={`${playfair.variable} ${ebGaramond.variable} ${cinzel.variable}`}
       >
+        <AgentAssistanceBanner />
         {children}
       </body>
     </html>

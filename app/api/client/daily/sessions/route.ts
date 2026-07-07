@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import { createClient as createServerSupabaseClient } from "@/lib/supabase/server";
+import {
+  blockedAgentAssistanceResponse,
+  getAssistanceTokenFromRequest,
+  getAssistedClientUser,
+} from "@/lib/server/agentAssistance";
 
 const MODALITIES = new Set(["presentiel", "distanciel", "mixte"]);
 const DISTANCE_MODES = new Set(["synchrone", "asynchrone"]);
@@ -142,12 +147,14 @@ function buildPayload(body: Record<string, unknown>, userId: string) {
 
   return { payload };
 }
-
-export async function GET() {
-  const auth = await requireClient();
+export async function GET(req: Request) {
+  const supabase = getAdminSupabase();
+  const assisted = await getAssistedClientUser(supabase, req);
+  const auth = assisted
+    ? { ok: true as const, user: assisted.user }
+    : await requireClient();
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-  const supabase = getAdminSupabase();
   const { data, error } = await supabase
     .from("daily_sessions")
     .select("*, daily_formations(id,title,status,version), daily_registration_recipients(id,recipient_type,recipient_name,recipient_email,status,sent_at,last_error), daily_conventions(id,recipient_type,recipient_key,recipient_name,company_name,version,document_name,status,generated_at,daily_convention_signatures(id,signatory_type,signatory_name,status,signed_at)), daily_convocations(id,recipient_type,recipient_key,recipient_name,company_name,version,document_name,status,sent_at,generated_at), daily_portal_access_tokens(id,portal_type,entity_name,entity_email,token,status,viewed_at)")
@@ -159,6 +166,8 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  if (getAssistanceTokenFromRequest(req)) return blockedAgentAssistanceResponse();
+
   const auth = await requireClient();
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
@@ -203,6 +212,8 @@ export async function POST(req: Request) {
 }
 
 export async function PATCH(req: Request) {
+  if (getAssistanceTokenFromRequest(req)) return blockedAgentAssistanceResponse();
+
   const auth = await requireClient();
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
@@ -230,6 +241,8 @@ export async function PATCH(req: Request) {
 }
 
 export async function DELETE(req: Request) {
+  if (getAssistanceTokenFromRequest(req)) return blockedAgentAssistanceResponse();
+
   const auth = await requireClient();
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 

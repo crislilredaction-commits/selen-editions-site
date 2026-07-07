@@ -1,6 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import {
+  assistanceFetch,
+  withAssistanceToken,
+} from "@/components/AgentAssistanceBanner";
 
 type ProgramChapter = {
   title: string;
@@ -75,7 +79,7 @@ export default function ClientProgramProposal({
         formData.append("file", replacementFile);
       }
 
-      const res = await fetch("/api/client/program/decision", {
+      const res = await assistanceFetch("/api/client/program/decision", {
         method: "POST",
         body: formData,
       });
@@ -116,7 +120,9 @@ export default function ClientProgramProposal({
     }
   }
 
-  const downloadUrl = `/api/client/program/download?programVersionId=${encodeURIComponent(program.id)}&dossierId=${encodeURIComponent(dossierId)}`;
+  const downloadUrl = withAssistanceToken(
+    `/api/client/program/download?programVersionId=${encodeURIComponent(program.id)}&dossierId=${encodeURIComponent(dossierId)}`,
+  );
 
   return (
     <div
@@ -458,7 +464,7 @@ export default function ClientProgramProposal({
         }}
       >
         <a
-          href={`/api/client/program/download?programVersionId=${program.id}&dossierId=${dossierId}`}
+          href={downloadUrl}
           target="_blank"
           rel="noreferrer"
           style={{

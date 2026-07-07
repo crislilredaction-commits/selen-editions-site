@@ -4,6 +4,7 @@ import {
   getAdminSupabase,
   verifyClientNdaDossierAccess,
 } from "@/lib/server/clientNdaAccess";
+import { logAgentAssistanceAction } from "@/lib/server/agentAssistance";
 
 export async function POST(req: Request) {
   try {
@@ -33,7 +34,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const access = await verifyClientNdaDossierAccess(supabase, dossierId);
+    const access = await verifyClientNdaDossierAccess(supabase, dossierId, req);
 
     if (!access.ok) {
       return NextResponse.json(
@@ -120,10 +121,27 @@ export async function POST(req: Request) {
         "Le client a complété l’étape 1 et transmis ses documents essentiels.",
     });
 
+    if (access.mode === "agent_assistance" && access.assistance) {
+      await logAgentAssistanceAction({
+        supabase,
+        req,
+        assistance: access.assistance,
+        dossierId,
+        action: "update_nda_step_1",
+        actionLabel: "Informations simples corrigées en mode assistance agent",
+        newState: ndaPayload,
+      });
+    }
+
     return NextResponse.json({
       success: true,
       organisationId: dossier.organisation_id,
       dossierId,
+      assistanceMode: access.mode === "agent_assistance",
+      message:
+        access.mode === "agent_assistance"
+          ? "Action réalisée en mode assistance agent."
+          : undefined,
     });
   } catch (error) {
     return NextResponse.json(

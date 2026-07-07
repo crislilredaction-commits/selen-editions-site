@@ -7,6 +7,7 @@ import {
   getAdminSupabase,
   verifyClientNdaDossierAccess,
 } from "@/lib/server/clientNdaAccess";
+import { logAgentAssistanceAction } from "@/lib/server/agentAssistance";
 
 const FINAL_DOCUMENTS_SUBMITTED_MESSAGE =
   "Le client a déposé ses documents finaux pour vérification du dossier NDA.";
@@ -24,7 +25,7 @@ export async function POST(req: Request) {
     }
 
     const supabase = getAdminSupabase();
-    const access = await verifyClientNdaDossierAccess(supabase, dossierId);
+    const access = await verifyClientNdaDossierAccess(supabase, dossierId, req);
 
     if (!access.ok) {
       return NextResponse.json(
@@ -129,11 +130,32 @@ export async function POST(req: Request) {
       }
     }
 
+    if (access.mode === "agent_assistance" && access.assistance) {
+      await logAgentAssistanceAction({
+        supabase,
+        req,
+        assistance: access.assistance,
+        dossierId,
+        action: "mark_final_documents_submitted",
+        actionLabel:
+          "Documents finaux marqués comme déposés en mode assistance agent",
+        newState: {
+          message_id: messageId,
+          dossier_status: "under_review",
+        },
+      });
+    }
+
     return NextResponse.json({
       ok: true,
       messageId,
       notificationCreated,
       deduped: Boolean(recentMessage),
+      assistanceMode: access.mode === "agent_assistance",
+      message:
+        access.mode === "agent_assistance"
+          ? "Action réalisée en mode assistance agent."
+          : undefined,
     });
   } catch (error) {
     return NextResponse.json(

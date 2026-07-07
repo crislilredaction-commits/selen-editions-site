@@ -1,6 +1,11 @@
 import { createHash } from "crypto";
 import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
+import {
+  blockedAgentAssistanceResponse,
+  getAssistanceTokenFromRequest,
+  verifyAgentAssistance,
+} from "@/lib/server/agentAssistance";
 
 type Params = { params: Promise<{ token: string }> };
 
@@ -52,6 +57,15 @@ export async function GET(_request: Request, { params }: Params) {
   if (!clean) return NextResponse.json({ error: "Lien invalide." }, { status: 400 });
 
   const supabase = getAdminSupabase();
+  const assistance = await verifyAgentAssistance(
+    supabase,
+    getAssistanceTokenFromRequest(_request),
+  );
+
+  if (assistance) {
+    return blockedAgentAssistanceResponse();
+  }
+
   const signature = await findSignature(clean);
   if (!signature) return NextResponse.json({ error: "Lien de signature introuvable." }, { status: 404 });
 

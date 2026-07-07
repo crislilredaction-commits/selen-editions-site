@@ -3,6 +3,7 @@ import {
   getAdminSupabase,
   verifyClientNdaDossierAccess,
 } from "@/lib/server/clientNdaAccess";
+import { logAgentAssistanceAction } from "@/lib/server/agentAssistance";
 import { createUniqueStorageFileName } from "@/lib/server/storageFileNames";
 
 export async function POST(req: Request) {
@@ -22,7 +23,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const access = await verifyClientNdaDossierAccess(supabase, dossierId);
+    const access = await verifyClientNdaDossierAccess(supabase, dossierId, req);
 
     if (!access.ok) {
       return NextResponse.json(
@@ -55,7 +56,9 @@ export async function POST(req: Request) {
       );
     }
 
-    const { error: insertError } = await supabase.from("documents").insert({
+    const { data: insertedDocument, error: insertError } = await supabase
+      .from("documents")
+      .insert({
       name: file.name,
       document_type: documentType,
       status: "uploaded",
@@ -69,7 +72,9 @@ export async function POST(req: Request) {
       organisation_id: organisationId,
       dossier_id: dossierId,
       scope: "dossier",
-    });
+      })
+      .select("id, name, document_type")
+      .single();
 
     if (insertError) {
       return NextResponse.json(
@@ -78,7 +83,30 @@ export async function POST(req: Request) {
       );
     }
 
-    return NextResponse.json({ success: true });
+    if (access.mode === "agent_assistance" && access.assistance) {
+      await logAgentAssistanceAction({
+        supabase,
+        req,
+        assistance: access.assistance,
+        dossierId,
+        action: "upload_document",
+        actionLabel: "Document déposé en mode assistance agent",
+        newState: {
+          document_id: insertedDocument?.id,
+          name: file.name,
+          document_type: documentType,
+        },
+      });
+    }
+
+    return NextResponse.json({
+      success: true,
+      assistanceMode: access.mode === "agent_assistance",
+      message:
+        access.mode === "agent_assistance"
+          ? "Action réalisée en mode assistance agent."
+          : undefined,
+    });
   } catch (error) {
     return NextResponse.json(
       {

@@ -17,7 +17,7 @@ export async function GET(req: Request) {
     }
 
     const supabase = getAdminSupabase();
-    const access = await verifyClientNdaDossierAccess(supabase, dossierId);
+    const access = await verifyClientNdaDossierAccess(supabase, dossierId, req);
 
     if (!access.ok) {
       return NextResponse.json(

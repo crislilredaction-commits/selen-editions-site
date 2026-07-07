@@ -9,6 +9,7 @@ import {
   verifyClientNdaDossierAccess,
 } from "@/lib/server/clientNdaAccess";
 import { createUniqueStorageFileName } from "@/lib/server/storageFileNames";
+import { logAgentAssistanceAction } from "@/lib/server/agentAssistance";
 
 const REFUSAL_LETTER_MESSAGE =
   "Le client a déposé un courrier de refus DREETS pour étude.";
@@ -27,7 +28,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const access = await verifyClientNdaDossierAccess(supabase, dossierId);
+    const access = await verifyClientNdaDossierAccess(supabase, dossierId, req);
 
     if (!access.ok) {
       return NextResponse.json(
@@ -155,6 +156,22 @@ export async function POST(req: Request) {
       );
     }
 
+    if (access.mode === "agent_assistance" && access.assistance) {
+      await logAgentAssistanceAction({
+        supabase,
+        req,
+        assistance: access.assistance,
+        dossierId,
+        action: "upload_refusal_letter",
+        actionLabel: "Courrier de refus déposé en mode assistance agent",
+        newState: {
+          document_id: document.id,
+          message_id: message.id,
+          nda_deposit_status: nextDepositStatus,
+        },
+      });
+    }
+
     return NextResponse.json({
       ok: true,
       document,
@@ -162,6 +179,11 @@ export async function POST(req: Request) {
         nda_deposit_status: nextDepositStatus,
         nda_deposit_refusal_received_at: refusalReceivedAt,
       },
+      assistanceMode: access.mode === "agent_assistance",
+      message:
+        access.mode === "agent_assistance"
+          ? "Action réalisée en mode assistance agent."
+          : undefined,
     });
   } catch (error) {
     return NextResponse.json(
