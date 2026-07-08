@@ -943,16 +943,7 @@ export default function ClientNdaPage() {
     isNdaRefused ||
     isNdaObtained;
   const isStep2Submitted =
-    isClientDetailsSubmittedFromState ||
-    [
-      step2Form.client_nom,
-      step2Form.client_siret,
-      step2Form.stagiaire_prenom,
-      step2Form.stagiaire_nom,
-      step2Form.stagiaire_email,
-      step2Form.date_formation_prevue,
-      step2Form.lieu_formation,
-    ].every((value) => value.trim().length > 0);
+    isClientDetailsSubmittedFromState || signingDocumentsReady;
   const showStep2 =
     step1Submitted && isProgramValidated && !isPastSigningWorkflow;
   const showStep2Form = showStep2 && !isStep2Submitted;
@@ -3088,7 +3079,7 @@ function SigningDocumentsSection({
         <DocumentList
           dossierId={dossierId}
           title="Documents à télécharger et signer"
-          emptyText="Aucun document à signer n'est disponible pour le moment."
+          emptyText="Les documents sont en préparation par l'équipe Selen."
           documents={documents}
           showClientAction
           downloadable
@@ -3346,8 +3337,7 @@ function DocumentList({
                 >
                   {preferTypeLabel
                     ? formatDocumentType(document.document_type)
-                    : document.name ||
-                      formatDocumentType(document.document_type)}
+                    : getSafeDocumentDisplayName(document)}
                 </p>
                 <p
                   style={{
@@ -3444,6 +3434,25 @@ function DocumentBadge({
   );
 }
 
+function getSafeDocumentDisplayName(document: NdaDocument) {
+  const fallback = formatDocumentType(document.document_type);
+  const name = document.name?.trim();
+
+  if (!name) {
+    return fallback;
+  }
+
+  const looksLikeHtml = /<\/?[a-z][\s\S]*>/i.test(name);
+  const looksLikeDocumentContent =
+    name.length > 120 || name.split(/\s+/).length > 14 || name.includes("\n");
+
+  if (looksLikeHtml || looksLikeDocumentContent) {
+    return fallback;
+  }
+
+  return name;
+}
+
 function formatDocumentStatus(
   document: NdaDocument,
   context: "default" | "deposit" = "default",
@@ -3486,6 +3495,9 @@ function formatDocumentType(value?: string | null) {
   if (!value) return "Document";
 
   const labels: Record<string, string> = {
+    convention_formation: "Convention de formation",
+    programme_formation: "Programme de formation",
+    liste_formateurs: "Liste des formateurs",
     convention_signee: "Convention de formation signée",
     programme_formation_signe: "Programme de formation signé",
     avis_insee: "Avis INSEE / KBIS",

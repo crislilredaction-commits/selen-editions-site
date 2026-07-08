@@ -238,6 +238,7 @@ export async function GET(req: Request) {
             sourceDocument.is_visible_to_client === true &&
             sourceDocument.document_role === "client_to_complete" &&
             sourceDocument.review_status === "pending_client" &&
+            sourceDocument.requires_client_action === true &&
             SIGNING_DOCUMENT_TYPES.includes(sourceDocument.document_type),
         ) ?? false,
     );
@@ -267,12 +268,20 @@ export async function GET(req: Request) {
       isProgramValidated;
     const isClientDetailsSubmitted = [
       ndaVariables?.client_nom,
+      ndaVariables?.client_adresse,
+      ndaVariables?.client_representant_prenom,
+      ndaVariables?.client_representant_nom,
       ndaVariables?.client_siret,
       ndaVariables?.stagiaire_prenom,
       ndaVariables?.stagiaire_nom,
+      ndaVariables?.stagiaire_fonction,
+      ndaVariables?.stagiaire_adresse,
       ndaVariables?.stagiaire_email,
+      ndaVariables?.stagiaire_telephone,
       ndaVariables?.date_formation_prevue,
       ndaVariables?.lieu_formation,
+      ndaVariables?.lieu_signature_convention,
+      ndaVariables?.date_signature_convention,
     ].every(hasText);
     const isDepositSubmitted =
       ndaVariables?.nda_deposit_status === "dreets_pending" ||
