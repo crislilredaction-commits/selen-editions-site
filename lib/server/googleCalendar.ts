@@ -1,3 +1,5 @@
+import { refreshGoogleAccessToken } from "@/lib/server/googleOAuth";
+
 const DEFAULT_TIMEZONE = "Europe/Paris";
 const DEFAULT_CALENDAR_ID = "crislil.redaction@gmail.com";
 const SLOT_STEP_MINUTES = 30;
@@ -163,28 +165,7 @@ function getCalendarConfig() {
 async function getAccessToken() {
   const { clientId, clientSecret, refreshToken } = getCalendarConfig();
 
-  const response = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: clientId,
-      client_secret: clientSecret,
-      refresh_token: refreshToken,
-      grant_type: "refresh_token",
-    }),
-  });
-
-  const data = await response.json().catch(() => null);
-
-  if (!response.ok || !data?.access_token) {
-    throw new Error(
-      data?.error_description ??
-        data?.error ??
-        "Impossible d'obtenir un acces Google Calendar.",
-    );
-  }
-
-  return data.access_token as string;
+  return refreshGoogleAccessToken({ clientId, clientSecret, refreshToken });
 }
 
 function getTimeZoneOffsetMs(date: Date, timeZone: string) {
