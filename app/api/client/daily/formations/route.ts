@@ -1,11 +1,6 @@
 import { NextResponse } from "next/server";
-import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
-import { createClient as createServerSupabaseClient } from "@/lib/supabase/server";
-import {
-  blockedAgentAssistanceResponse,
-  getAssistanceTokenFromRequest,
-  getAssistedClientUser,
-} from "@/lib/server/agentAssistance";
+import { blockedAgentAssistanceResponse, getAssistanceTokenFromRequest } from "@/lib/server/agentAssistance";
+import { getDailyOrganisationContext } from "@/lib/server/dailyOrganisationContext";
 
 const REQUIRED_FIELDS = [
   "title",
@@ -32,16 +27,6 @@ const POSITIONING_TYPES = new Set(["single_choice", "multiple_choice", "free_tex
 
 function registrationToken() {
   return crypto.randomUUID().replaceAll("-", "");
-}
-
-async function requireClient() {
-  const authSupabase = await createServerSupabaseClient();
-  const { data, error } = await authSupabase.auth.getUser();
-  const user = data.user;
-  if (error || !user?.id) {
-    return { ok: false as const, error: "Connexion client requise.", status: 401 };
-  }
-  return { ok: true as const, user };
 }
 
 function text(body: Record<string, unknown>, key: string) {
@@ -77,9 +62,7 @@ function cleanPositioningQuestions(value: unknown) {
       const label = String(question.label ?? "").trim();
       const helpText = String(question.help_text ?? "").trim();
       const rawOptions = Array.isArray(question.options) ? question.options : [];
-      const options = rawOptions
-        .map((option) => String(option ?? "").trim())
-        .filter(Boolean);
+      const options = rawOptions.map((option) => String(option ?? "").trim()).filter(Boolean);
 
       return {
         id: String(question.id ?? `question_${Date.now()}_${index}`).trim(),
@@ -96,24 +79,18 @@ function cleanPositioningQuestions(value: unknown) {
       ...question,
       id: question.id || `question_${index + 1}`,
       order: index + 1,
-      options: ["single_choice", "multiple_choice"].includes(question.type)
-        ? question.options
-        : [],
+      options: ["single_choice", "multiple_choice"].includes(question.type) ? question.options : [],
     }));
 }
 
-function buildPayload(body: Record<string, unknown>, userId: string) {
+function buildPayload(body: Record<string, unknown>, userId: string, organisationId: string) {
   const modality = text(body, "modality");
   const status = text(body, "status") || "draft";
   const durationHours = numberValue(body, "duration_hours");
   const durationDays = numberValue(body, "duration_days");
 
-  if (!MODALITIES.has(modality)) {
-    return { error: "Modalite de formation invalide." };
-  }
-  if (!STATUSES.has(status) || status === "validated") {
-    return { error: "Statut de formation invalide pour le client." };
-  }
+  if (!MODALITIES.has(modality)) return { error: "Modalite de formation invalide." };
+  if (!STATUSES.has(status) || status === "validated") return { error: "Statut de formation invalide pour le client." };
   if (durationHours === null || durationHours <= 0 || durationDays === null || durationDays <= 0) {
     return { error: "Les durees en heures et en jours doivent etre renseignees." };
   }
@@ -130,18 +107,15 @@ function buildPayload(body: Record<string, unknown>, userId: string) {
     const questionWithoutOptions = positioningQuestions.find(
       (question) => ["single_choice", "multiple_choice"].includes(question.type) && question.options.length === 0,
     );
-    if (questionWithoutOptions) {
-      return { error: "Les questions a choix doivent proposer au moins une option." };
-    }
+    if (questionWithoutOptions) return { error: "Les questions a choix doivent proposer au moins une option." };
   }
+
   if (!resultsPending) {
     const satisfaction = numberValue(body, "result_satisfaction_rate");
     const success = numberValue(body, "result_success_rate");
     if (
-      satisfaction !== null &&
-      (satisfaction < 0 || satisfaction > 100) ||
-      success !== null &&
-      (success < 0 || success > 100)
+      (satisfaction !== null && (satisfaction < 0 || satisfaction > 100)) ||
+      (success !== null && (success < 0 || success > 100))
     ) {
       return { error: "Les taux de resultats doivent etre compris entre 0 et 100." };
     }
@@ -149,6 +123,7 @@ function buildPayload(body: Record<string, unknown>, userId: string) {
 
   const payload = {
     user_id: userId,
+    organisation_id: organisationId,
     title: text(body, "title"),
     global_objective: text(body, "global_objective"),
     target_audience: text(body, "target_audience"),
@@ -159,8 +134,7 @@ function buildPayload(body: Record<string, unknown>, userId: string) {
     modality_details: text(body, "modality_details"),
     access_delays: text(body, "access_delays"),
     registration_methods:
-      text(body, "registration_methods") ||
-      "Les modalités d'inscription sont préparées et suivies par Selen Daily.",
+      text(body, "registration_methods") || "Les modalités d'inscription sont préparées et suivies par Selen Daily.",
     price: text(body, "price"),
     detailed_program: text(body, "detailed_program"),
     detailed_program_document_url: nullableText(body, "detailed_program_document_url"),
@@ -184,25 +158,18 @@ function buildPayload(body: Record<string, unknown>, userId: string) {
   };
 
   const missing = REQUIRED_FIELDS.filter((key) => !String(payload[key as keyof typeof payload] ?? "").trim());
-  if (missing.length > 0) {
-    return { error: "Tous les champs obligatoires de la formation doivent etre renseignes." };
-  }
-
+  if (missing.length > 0) return { error: "Tous les champs obligatoires de la formation doivent etre renseignes." };
   return { payload };
 }
 
 export async function GET(req: Request) {
-  const supabase = getAdminSupabase();
-  const assisted = await getAssistedClientUser(supabase, req);
-  const auth = assisted
-    ? { ok: true as const, user: assisted.user }
-    : await requireClient();
-  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  const context = await getDailyOrganisationContext(req, "trainings", { allowAssistanceRead: true });
+  if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
 
-  const { data, error } = await supabase
+  const { data, error } = await context.admin
     .from("daily_formations")
     .select("*")
-    .eq("user_id", auth.user.id)
+    .eq("organisation_id", context.organisationId)
     .order("updated_at", { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -211,22 +178,16 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   if (getAssistanceTokenFromRequest(req)) return blockedAgentAssistanceResponse();
-
-  const auth = await requireClient();
-  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  const context = await getDailyOrganisationContext(req, "trainings");
+  if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
 
   const body = await req.json().catch(() => ({}));
-  const built = buildPayload(body, auth.user.id);
+  const built = buildPayload(body, context.user.id, context.organisationId);
   if ("error" in built) return NextResponse.json({ error: built.error }, { status: 400 });
 
-  const supabase = getAdminSupabase();
-  const { data, error } = await supabase
+  const { data, error } = await context.admin
     .from("daily_formations")
-    .insert({
-      ...built.payload,
-      public_registration_token: registrationToken(),
-      public_registration_enabled: true,
-    })
+    .insert({ ...built.payload, public_registration_token: registrationToken(), public_registration_enabled: true })
     .select("*")
     .single();
 
@@ -236,23 +197,21 @@ export async function POST(req: Request) {
 
 export async function PATCH(req: Request) {
   if (getAssistanceTokenFromRequest(req)) return blockedAgentAssistanceResponse();
-
-  const auth = await requireClient();
-  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  const context = await getDailyOrganisationContext(req, "trainings");
+  if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
 
   const body = await req.json().catch(() => ({}));
   const id = text(body, "id");
   if (!id) return NextResponse.json({ error: "Identifiant formation requis." }, { status: 400 });
 
-  const built = buildPayload(body, auth.user.id);
+  const built = buildPayload(body, context.user.id, context.organisationId);
   if ("error" in built) return NextResponse.json({ error: built.error }, { status: 400 });
 
-  const supabase = getAdminSupabase();
-  const { data: existing, error: existingError } = await supabase
+  const { data: existing, error: existingError } = await context.admin
     .from("daily_formations")
     .select("*")
     .eq("id", id)
-    .eq("user_id", auth.user.id)
+    .eq("organisation_id", context.organisationId)
     .maybeSingle();
 
   if (existingError) return NextResponse.json({ error: existingError.message }, { status: 500 });
@@ -262,7 +221,7 @@ export async function PATCH(req: Request) {
   }
 
   if (existing.status === "validated") {
-    const { data: created, error: insertError } = await supabase
+    const { data: created, error: insertError } = await context.admin
       .from("daily_formations")
       .insert({
         ...built.payload,
@@ -275,20 +234,20 @@ export async function PATCH(req: Request) {
 
     if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
 
-    await supabase
+    await context.admin
       .from("daily_formations")
       .update({ status: "archived", archived_at: new Date().toISOString() })
       .eq("id", existing.id)
-      .eq("user_id", auth.user.id);
+      .eq("organisation_id", context.organisationId);
 
     return NextResponse.json({ formation: created, versioned: true });
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await context.admin
     .from("daily_formations")
     .update(built.payload)
     .eq("id", id)
-    .eq("user_id", auth.user.id)
+    .eq("organisation_id", context.organisationId)
     .select("*")
     .single();
 
@@ -298,30 +257,28 @@ export async function PATCH(req: Request) {
 
 export async function DELETE(req: Request) {
   if (getAssistanceTokenFromRequest(req)) return blockedAgentAssistanceResponse();
-
-  const auth = await requireClient();
-  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  const context = await getDailyOrganisationContext(req, "trainings");
+  if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
 
   const body = await req.json().catch(() => ({}));
   const id = text(body, "id");
   if (!id) return NextResponse.json({ error: "Identifiant formation requis." }, { status: 400 });
 
-  const supabase = getAdminSupabase();
-  const { count, error: countError } = await supabase
+  const { count, error: countError } = await context.admin
     .from("daily_sessions")
     .select("id", { count: "exact", head: true })
     .eq("formation_id", id)
-    .eq("user_id", auth.user.id)
+    .eq("organisation_id", context.organisationId)
     .neq("status", "archived");
 
   if (countError) return NextResponse.json({ error: countError.message }, { status: 500 });
 
   if ((count ?? 0) > 0) {
-    const { data, error } = await supabase
+    const { data, error } = await context.admin
       .from("daily_formations")
       .update({ status: "archived", archived_at: new Date().toISOString() })
       .eq("id", id)
-      .eq("user_id", auth.user.id)
+      .eq("organisation_id", context.organisationId)
       .select("*")
       .single();
 
@@ -329,11 +286,11 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ formation: data, archived: true });
   }
 
-  const { error } = await supabase
+  const { error } = await context.admin
     .from("daily_formations")
     .delete()
     .eq("id", id)
-    .eq("user_id", auth.user.id);
+    .eq("organisation_id", context.organisationId);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true, deleted: true });
