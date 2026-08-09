@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { blockedAgentAssistanceResponse, getAssistanceTokenFromRequest } from "@/lib/server/agentAssistance";
-import { getDailyOrganisationContext } from "@/lib/server/dailyOrganisationContext";
+import { getDailyOrganisationContext, getDailyOrganisationReadContext } from "@/lib/server/dailyOrganisationContext";
 
 const REQUIRED_FIELDS = [
   "title",
@@ -163,7 +163,7 @@ function buildPayload(body: Record<string, unknown>, userId: string, organisatio
 }
 
 export async function GET(req: Request) {
-  const context = await getDailyOrganisationContext(req, "trainings", { allowAssistanceRead: true });
+  const context = await getDailyOrganisationReadContext(req, ["trainings", "sessions"]);
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
 
   const { data, error } = await context.admin
