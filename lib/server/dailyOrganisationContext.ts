@@ -14,6 +14,7 @@ async function getAssistedContext(req: Request) {
     user: assisted.user,
     organisationId: assisted.assistance.organisation_id,
     assisted: true as const,
+    assistance: assisted.assistance,
     capabilities: null,
   };
 }
@@ -47,6 +48,7 @@ export async function getDailyOrganisationContext(
     user: workspace.user,
     organisationId: workspace.workspace.membership.organisation_id,
     assisted: false as const,
+    assistance: null,
     capabilities: workspace.workspace.capabilities,
   };
 }
@@ -75,6 +77,7 @@ export async function getDailyOrganisationReadContext(
     user: workspace.user,
     organisationId: workspace.workspace.membership.organisation_id,
     assisted: false as const,
+    assistance: null,
     capabilities: workspace.workspace.capabilities,
   };
 }
