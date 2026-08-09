@@ -2,13 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/app/lib/supabase/client";
 
 export default function DailyInvitationPage() {
-  const params = useSearchParams();
-  const token = params.get("token") ?? "";
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const [token, setToken] = useState("");
+  const [tokenReady, setTokenReady] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -18,6 +17,8 @@ export default function DailyInvitationPage() {
   const [accepted, setAccepted] = useState(false);
 
   useEffect(() => {
+    setToken(new URLSearchParams(window.location.search).get("token") ?? "");
+    setTokenReady(true);
     void supabase.auth.getUser().then(({ data }) => {
       setAuthenticated(Boolean(data.user));
       setEmail(data.user?.email ?? "");
@@ -46,6 +47,10 @@ export default function DailyInvitationPage() {
     if (!response.ok) { setError(data?.error ?? "L’invitation n’a pas pu être acceptée."); return; }
     setAccepted(true);
     setMessage("Invitation acceptée. Votre accès à l’organisme est maintenant actif.");
+  }
+
+  if (!tokenReady) {
+    return <main className="gazette-paper" style={s.page}><section style={s.card}><p>Ouverture de l’invitation...</p></section></main>;
   }
 
   if (!token || !/^[a-f0-9]{64}$/i.test(token)) {
