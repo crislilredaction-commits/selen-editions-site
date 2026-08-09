@@ -28,6 +28,12 @@ function jsonArray(value: unknown) {
   return Array.isArray(value) ? value : [];
 }
 
+function positiveInteger(value: unknown) {
+  if (value === null || value === undefined || String(value).trim() === "") return null;
+  const number = Number(value);
+  return Number.isInteger(number) && number > 0 ? number : null;
+}
+
 function registrationToken() {
   return crypto.randomUUID().replaceAll("-", "");
 }
@@ -58,6 +64,31 @@ function companyRow(value: unknown) {
   return { name, address, siret, email, participants };
 }
 
+function cleanSchedule(value: unknown, startDate: string, endDate: string) {
+  const blocks = jsonArray(value).map((raw) => {
+    const row = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+    return {
+      date: text(row, "date"),
+      start: text(row, "start"),
+      end: text(row, "end"),
+      note: text(row, "note"),
+    };
+  }).filter((block) => block.date || block.start || block.end || block.note);
+
+  if (blocks.length === 0) return { error: "Ajoutez au moins une journée ou un bloc horaire." };
+  for (const block of blocks) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(block.date) || !/^\d{2}:\d{2}$/.test(block.start) || !/^\d{2}:\d{2}$/.test(block.end)) {
+      return { error: "Chaque bloc horaire doit comporter une date, une heure de début et une heure de fin." };
+    }
+    if (block.end <= block.start) return { error: "L'heure de fin d'un bloc doit être postérieure à son heure de début." };
+    if (block.date < startDate || block.date > endDate) {
+      return { error: "Chaque bloc horaire doit être compris entre la date de début et la date de fin de la session." };
+    }
+  }
+
+  return { blocks };
+}
+
 function buildPayload(body: Record<string, unknown>, userId: string, organisationId: string) {
   const formationId = text(body, "formation_id");
   const modality = text(body, "modality");
@@ -65,41 +96,44 @@ function buildPayload(body: Record<string, unknown>, userId: string, organisatio
   const distanceMode = text(body, "distance_mode");
   const startDate = nullableDate(body, "start_date");
   const endDate = nullableDate(body, "end_date");
+  const maxParticipantsRaw = body.max_participants;
+  const maxParticipants = positiveInteger(maxParticipantsRaw);
 
-  if (!formationId) return { error: "Selectionnez une formation." };
-  if (!MODALITIES.has(modality)) return { error: "Modalite de session invalide." };
+  if (!formationId) return { error: "Sélectionnez une formation." };
+  if (!MODALITIES.has(modality)) return { error: "Modalité de session invalide." };
   if (!STATUSES.has(status)) return { error: "Statut de session invalide." };
   if (modality === "distanciel" && !DISTANCE_MODES.has(distanceMode)) {
-    return { error: "Precisez si la session a distance est en direct ou a son rythme." };
+    return { error: "Précisez si la session à distance est en direct ou à son rythme." };
   }
-  if (!startDate || !endDate) return { error: "Renseignez la date de debut et la date de fin de la session." };
-  if (endDate < startDate) return { error: "La date de fin doit etre posterieure ou egale a la date de debut." };
+  if (!startDate || !endDate) return { error: "Renseignez la date de début et la date de fin de la session." };
+  if (endDate < startDate) return { error: "La date de fin doit être postérieure ou égale à la date de début." };
+  if (maxParticipantsRaw !== null && maxParticipantsRaw !== undefined && String(maxParticipantsRaw).trim() !== "" && maxParticipants === null) {
+    return { error: "La capacité maximale doit être un nombre entier supérieur à zéro." };
+  }
 
-  const scheduleBlocks = jsonArray(body.schedule_blocks).filter((block) => {
-    if (!block || typeof block !== "object") return false;
-    const row = block as Record<string, unknown>;
-    return text(row, "date") || text(row, "start") || text(row, "end");
-  });
-  if (scheduleBlocks.length === 0) return { error: "Ajoutez au moins une journee ou un bloc horaire." };
+  const schedule = cleanSchedule(body.schedule_blocks, startDate, endDate);
+  if ("error" in schedule) return { error: schedule.error };
 
   const payload = {
     user_id: userId,
     organisation_id: organisationId,
     formation_id: formationId,
+    internal_reference: nullableText(body, "internal_reference"),
+    max_participants: maxParticipants,
     modality,
     start_date: startDate,
     end_date: endDate,
     distance_mode: modality === "distanciel" ? distanceMode : null,
     blended_elearning_periods: modality === "mixte" ? nullableText(body, "blended_elearning_periods") : null,
     blended_in_person_days: modality === "mixte" ? nullableText(body, "blended_in_person_days") : null,
-    schedule_blocks: scheduleBlocks,
+    schedule_blocks: schedule.blocks,
     location_address:
       modality === "presentiel" || modality === "mixte" ? nullableText(body, "location_address") : null,
     remote_url: modality === "distanciel" || modality === "mixte" ? nullableText(body, "remote_url") : null,
     companies: jsonArray(body.companies).map(companyRow).filter(Boolean),
     beneficiaries: jsonArray(body.beneficiaries).map(participantRow).filter(Boolean),
     individual_beneficiaries: jsonArray(body.individual_beneficiaries).map(participantRow).filter(Boolean),
-    trainer_ids: jsonArray(body.trainer_ids).map(String).filter(Boolean),
+    trainer_ids: [...new Set(jsonArray(body.trainer_ids).map(String).map((id) => id.trim()).filter(Boolean))],
     status,
   };
 
@@ -111,6 +145,23 @@ function buildPayload(body: Record<string, unknown>, userId: string, organisatio
   }
 
   return { payload };
+}
+
+async function validateTrainerIds(
+  organisationId: string,
+  trainerIds: string[],
+  admin: ReturnType<typeof import("@/lib/server/clientNdaAccess").getAdminSupabase>,
+) {
+  if (trainerIds.length === 0) return null;
+  const { data, error } = await admin
+    .from("daily_trainer_profiles")
+    .select("id,status")
+    .eq("organisation_id", organisationId)
+    .in("id", trainerIds)
+    .not("status", "in", "(rejected,archived)");
+  if (error) return "Impossible de vérifier les formateurs sélectionnés.";
+  if ((data ?? []).length !== trainerIds.length) return "Un formateur sélectionné n'appartient pas à cet organisme ou n'est plus actif.";
+  return null;
 }
 
 async function refreshLearnerTier(organisationId: string, actingUserId: string, admin: ReturnType<typeof import("@/lib/server/clientNdaAccess").getAdminSupabase>) {
@@ -145,7 +196,58 @@ export async function POST(req: Request) {
   const context = await getDailyOrganisationContext(req, "sessions");
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
 
-  const body = await req.json().catch(() => ({}));
+  const body = await req.json().catch(() => ({})) as Record<string, unknown>;
+
+  if (text(body, "action") === "duplicate") {
+    const sourceId = text(body, "id");
+    if (!sourceId) return NextResponse.json({ error: "Session source requise." }, { status: 400 });
+    const { data: source, error: sourceError } = await context.admin
+      .from("daily_sessions")
+      .select("*")
+      .eq("id", sourceId)
+      .eq("organisation_id", context.organisationId)
+      .maybeSingle();
+    if (sourceError) return NextResponse.json({ error: sourceError.message }, { status: 500 });
+    if (!source) return NextResponse.json({ error: "Session source introuvable." }, { status: 404 });
+
+    const {
+      id: _id,
+      created_at: _createdAt,
+      updated_at: _updatedAt,
+      registration_token: _registrationToken,
+      registration_status: _registrationStatus,
+      registration_summary: _registrationSummary,
+      adaptation_needed: _adaptationNeeded,
+      registration_prepared_at: _preparedAt,
+      registration_sent_at: _sentAt,
+      registration_responses_received_at: _responsesAt,
+      registration_summary_validated_at: _validatedAt,
+      ...copy
+    } = source;
+
+    const { data, error } = await context.admin
+      .from("daily_sessions")
+      .insert({
+        ...copy,
+        user_id: context.user.id,
+        organisation_id: context.organisationId,
+        internal_reference: source.internal_reference ? `${source.internal_reference}-COPIE` : null,
+        status: "draft",
+        registration_token: registrationToken(),
+        registration_status: "to_prepare",
+        registration_summary: {},
+        adaptation_needed: false,
+        registration_prepared_at: null,
+        registration_sent_at: null,
+        registration_responses_received_at: null,
+        registration_summary_validated_at: null,
+      })
+      .select("*, daily_formations(id,title,status,version)")
+      .single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ session: data, duplicated: true });
+  }
+
   const built = buildPayload(body, context.user.id, context.organisationId);
   if ("error" in built) return NextResponse.json({ error: built.error }, { status: 400 });
 
@@ -158,7 +260,10 @@ export async function POST(req: Request) {
     .maybeSingle();
 
   if (formationError) return NextResponse.json({ error: formationError.message }, { status: 500 });
-  if (!formation) return NextResponse.json({ error: "Formation introuvable ou archivee." }, { status: 404 });
+  if (!formation) return NextResponse.json({ error: "Formation introuvable ou archivée." }, { status: 404 });
+
+  const trainerError = await validateTrainerIds(context.organisationId, built.payload.trainer_ids, context.admin);
+  if (trainerError) return NextResponse.json({ error: trainerError }, { status: 400 });
 
   const { data, error } = await context.admin
     .from("daily_sessions")
@@ -173,7 +278,7 @@ export async function POST(req: Request) {
     annualLearnerCount: learnerCount,
     validationWarning:
       formation.status !== "validated"
-        ? "La session est prete a accueillir les inscriptions. Les documents officiels partiront quand le programme, le positionnement et l'evaluation auront ete valides."
+        ? "La session peut être préparée, mais les documents officiels ne devront partir qu'après validation des éléments de formation requis."
         : null,
   });
 }
@@ -183,7 +288,7 @@ export async function PATCH(req: Request) {
   const context = await getDailyOrganisationContext(req, "sessions");
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
 
-  const body = await req.json().catch(() => ({}));
+  const body = await req.json().catch(() => ({})) as Record<string, unknown>;
   const id = text(body, "id");
   if (!id) return NextResponse.json({ error: "Identifiant session requis." }, { status: 400 });
 
@@ -198,7 +303,10 @@ export async function PATCH(req: Request) {
     .neq("status", "archived")
     .maybeSingle();
   if (formationError) return NextResponse.json({ error: formationError.message }, { status: 500 });
-  if (!formation) return NextResponse.json({ error: "Formation introuvable ou archivee." }, { status: 404 });
+  if (!formation) return NextResponse.json({ error: "Formation introuvable ou archivée." }, { status: 404 });
+
+  const trainerError = await validateTrainerIds(context.organisationId, built.payload.trainer_ids, context.admin);
+  if (trainerError) return NextResponse.json({ error: trainerError }, { status: 400 });
 
   const { data, error } = await context.admin
     .from("daily_sessions")
@@ -218,7 +326,7 @@ export async function DELETE(req: Request) {
   const context = await getDailyOrganisationContext(req, "sessions");
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
 
-  const body = await req.json().catch(() => ({}));
+  const body = await req.json().catch(() => ({})) as Record<string, unknown>;
   const id = text(body, "id");
   if (!id) return NextResponse.json({ error: "Identifiant session requis." }, { status: 400 });
 
