@@ -192,8 +192,6 @@ export async function GET(req: Request) {
     );
   }
 
-  // Invited organisation members use the organisation billing owner's completed onboarding.
-  // No subscription or duplicate onboarding is ever created on the invited member account.
   if (access.membership?.organisation_id && access.organisationBillingUserId) {
     const billingUserId = access.organisationBillingUserId;
     const [onboardingRes, trainersRes, subscriptionRes, templatesRes] = await Promise.all([
@@ -234,7 +232,6 @@ export async function GET(req: Request) {
     });
   }
 
-  // Pre-bootstrap owner path: keep the historical onboarding flow until it creates the first organisation.
   if (!access.hasSubscription) {
     const subscriptionError = await ensureDailySubscription(auth.user.id);
     if (subscriptionError) return NextResponse.json({ error: subscriptionError.message }, { status: 500 });
@@ -268,6 +265,7 @@ export async function PATCH(req: Request) {
 
   const auth = await requireClient();
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  const supabase = getAdminSupabase();
 
   const access = await getDailyAccessState(auth.user.id);
   if (!access.ok) return NextResponse.json({ error: access.error }, { status: 500 });
