@@ -29,12 +29,19 @@ type ChangeRequest = {
 type Workspace = {
   organisation: Record<string, unknown>;
   membership: { id: string; organisation_id: string; roles: string[]; permission_blocks: string[] };
-  capabilities: { users: boolean; trainers: boolean; trainer_self: boolean; legal_profile: boolean; permanent_documents: boolean };
+  capabilities: { users: boolean; trainers: boolean; trainer_self?: boolean; trainers_all?: boolean; legal_profile: boolean; permanent_documents: boolean; trainings: boolean; sessions: boolean };
   users: UserRow[]; invitations: Invitation[]; trainers: Trainer[]; profile_change_requests: ChangeRequest[];
 };
 
 const roleLabels: Record<string, string> = { manager: "Responsable", trainer: "Formateur", admin_assistant: "Assistant administratif" };
-const blockLabels: Record<string, string> = { users: "Utilisateurs", trainers: "Formateurs", legal_profile: "Profil légal", permanent_documents: "Documents permanents" };
+const blockLabels: Record<string, string> = {
+  users: "Utilisateurs",
+  trainers: "Formateurs",
+  legal_profile: "Profil légal",
+  permanent_documents: "Documents permanents",
+  trainings: "Formations",
+  sessions: "Sessions",
+};
 
 export default function DailyOrganisationClientPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -112,7 +119,7 @@ export default function DailyOrganisationClientPage() {
       <nav style={s.tabs}>
         <TabButton active={tab === "organisation"} onClick={() => setTab("organisation")}>Mon organisme</TabButton>
         {workspace.capabilities.users ? <TabButton active={tab === "users"} onClick={() => setTab("users")}>Utilisateurs</TabButton> : null}
-        {(workspace.capabilities.trainers || workspace.capabilities.trainer_self) ? <TabButton active={tab === "trainers"} onClick={() => setTab("trainers")}>Formateurs</TabButton> : null}
+        {workspace.capabilities.trainers ? <TabButton active={tab === "trainers"} onClick={() => setTab("trainers")}>Formateurs</TabButton> : null}
         {workspace.capabilities.legal_profile ? <TabButton active={tab === "validations"} onClick={() => setTab("validations")}>Validations</TabButton> : null}
       </nav>
 
@@ -173,7 +180,7 @@ function UsersTab({ workspace, busy, patch, invitation }: { workspace: Workspace
         void invitation({ action: "create", email: f.get("email"), roles, permission_blocks }, "Invitation créée.");
       }}>
         <Field name="email" type="email" label="Adresse email" required />
-        <Checkboxes name="roles" title="Rôles" options={[['trainer','Formateur'],['admin_assistant','Assistant administratif']]} />
+        <Checkboxes name="roles" title="Rôles" options={[["trainer","Formateur"],["admin_assistant","Assistant administratif"]]} />
         <Checkboxes name="blocks" title="Accès complémentaires" options={workspace.membership.permission_blocks.map((block) => [block, blockLabels[block] || block])} />
         <p style={s.muted}>Un autre responsable ne peut pas être créé depuis l’espace client : ce rôle reste attribué par Selen.</p>
         <button className="btn-ink" disabled={busy}><span>Envoyer l’invitation</span></button>
@@ -188,7 +195,7 @@ function UserEditor({ user, currentMembershipId, allowedBlocks, busy, patch }: {
   const isSelf = user.membership_id === currentMembershipId; const isManager = user.roles.includes("manager");
   return <div style={s.row}><div style={{ flex: 1 }}><strong>{user.full_name || user.email || "Utilisateur"}</strong><p style={s.muted}>{user.email} · {user.roles.map((r) => roleLabels[r] || r).join(", ")} · {user.status}</p>
     {!isSelf && !isManager ? <form style={s.compactForm} onSubmit={(e) => { e.preventDefault(); const f = new FormData(e.currentTarget); void patch({ action: "set_user_access", membership_id: user.membership_id, roles: f.getAll("roles").map(String), permission_blocks: f.getAll("blocks").map(String) }, "Accès utilisateur mis à jour."); }}>
-      <Checkboxes name="roles" title="Rôles" options={[['trainer','Formateur'],['admin_assistant','Assistant administratif']]} defaults={user.roles} />
+      <Checkboxes name="roles" title="Rôles" options={[["trainer","Formateur"],["admin_assistant","Assistant administratif"]]} defaults={user.roles} />
       <Checkboxes name="blocks" title="Permissions" options={allowedBlocks.map((block) => [block, blockLabels[block] || block])} defaults={user.permission_blocks} />
       <button className="btn-ghost" disabled={busy}><span>Mettre à jour les accès</span></button>
     </form> : null}
@@ -232,19 +239,18 @@ function ValidationsTab({ workspace }: { workspace: Workspace }) {
 function Stat({ label, value: content, warn = false }: { label: string; value: string; warn?: boolean }) { return <section style={s.stat}><span style={s.muted}>{label}</span><strong style={{ fontSize: 24, color: warn ? "#9d5c1f" : "var(--ink)" }}>{content}</strong></section>; }
 function TabButton({ active, children, onClick }: { active: boolean; children: React.ReactNode; onClick: () => void }) { return <button onClick={onClick} style={{ ...s.tab, ...(active ? s.activeTab : {}) }}>{children}</button>; }
 function Field({ name, label, type = "text", defaultValue = "", required = false }: { name: string; label: string; type?: string; defaultValue?: string | null; required?: boolean }) { return <label>{label}<input name={name} type={type} defaultValue={defaultValue ?? ""} required={required} style={s.input} /></label>; }
-function Info({ label, value: content }: { label: string; value: unknown }) { return <div style={s.info}><span style={s.muted}>{label}</span><strong>{value(content) || "—"}</strong></div>; }
-function Checkboxes({ name, title, options, defaults = [] }: { name: string; title: string; options: string[][]; defaults?: string[] }) { return <fieldset style={s.fieldset}><legend>{title}</legend>{options.map(([key,label]) => <label key={key} style={s.check}><input type="checkbox" name={name} value={key} defaultChecked={defaults.includes(key)} /> {label}</label>)}</fieldset>; }
-function value(input: unknown) { return input == null ? "" : String(input); }
-function daysUntil(date: string) { return Math.ceil((new Date(`${date}T00:00:00`).getTime() - new Date().setHours(0,0,0,0)) / 86_400_000); }
-function certificationLabel(cert: Certification) { if (cert.validity_mode === "lifetime") return "Valable à vie"; if (cert.validity_mode === "unknown") return "Validité non renseignée"; if (!cert.valid_until) return "Date de fin à renseigner"; const days = daysUntil(cert.valid_until); return days < 0 ? `Expirée depuis ${Math.abs(days)} j` : days === 0 ? "Expire aujourd’hui" : `Expire dans ${days} j`; }
+function Info({ label, value: content }: { label: string; value: unknown }) { return <p><strong>{label} :</strong> {value(content) || "Non renseigné"}</p>; }
+function Checkboxes({ name, title, options, defaults = [] }: { name: string; title: string; options: string[][]; defaults?: string[] }) { return <fieldset style={s.fieldset}><legend>{title}</legend>{options.map(([key, label]) => <label key={key} style={s.check}><input type="checkbox" name={name} value={key} defaultChecked={defaults.includes(key)} /> {label}</label>)}</fieldset>; }
+function value(input: unknown) { return typeof input === "string" ? input : input == null ? "" : String(input); }
+function daysUntil(date: string) { return Math.ceil((new Date(`${date}T12:00:00`).getTime() - Date.now()) / 86400000); }
+function certificationLabel(cert: Certification) { if (cert.validity_mode === "lifetime") return "Valable à vie"; if (cert.validity_mode === "unknown") return "Validité non renseignée"; return cert.valid_until ? `Valable jusqu’au ${new Date(`${cert.valid_until}T12:00:00`).toLocaleDateString("fr-FR")}` : "Date de fin manquante"; }
 
 const s: Record<string, React.CSSProperties> = {
-  page: { minHeight: "100vh", maxWidth: 1160, margin: "0 auto", padding: "2rem 1rem 4rem", color: "var(--ink)" },
-  back: { color: "var(--rust)", textDecoration: "none" }, hero: { marginTop: "1rem", padding: "2rem" }, heroText: { color: "var(--sepia-mid)", maxWidth: 760 },
-  stats: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: ".8rem", margin: "1rem 0" }, stat: { display: "grid", gap: ".35rem", background: "var(--paper)", border: "1px solid var(--sepia-mid)", padding: "1rem" },
-  tabs: { display: "flex", gap: ".5rem", flexWrap: "wrap", marginBottom: "1rem" }, tab: { padding: ".7rem 1rem", border: "1px solid var(--sepia-mid)", background: "var(--paper)", cursor: "pointer", color: "var(--ink)" }, activeTab: { borderBottom: "3px solid var(--ocre-gold)", background: "rgba(201,160,85,.12)" },
-  grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: "1rem" }, stack: { display: "grid", gap: "1rem" }, card: { background: "var(--paper)", border: "1px solid var(--sepia-mid)", padding: "1.25rem" }, title: { color: "var(--ink)", marginBottom: ".8rem" }, form: { display: "grid", gap: ".8rem" }, compactForm: { display: "grid", gap: ".65rem", borderTop: "1px solid var(--sepia-mid)", paddingTop: ".8rem", marginTop: ".8rem" }, certForm: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: ".7rem", borderTop: "1px solid var(--sepia-mid)", marginTop: "1rem", paddingTop: "1rem" },
-  input: { display: "block", width: "100%", marginTop: ".3rem", padding: ".7rem", border: "1px solid var(--sepia-mid)", background: "rgba(255,255,255,.7)", color: "var(--ink)" }, textarea: { width: "100%", minHeight: 90, marginTop: ".3rem", padding: ".7rem", border: "1px solid var(--sepia-mid)", background: "rgba(255,255,255,.7)" },
-  row: { display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap", padding: ".85rem 0", borderBottom: "1px solid rgba(120,90,50,.16)" }, info: { display: "flex", justifyContent: "space-between", gap: "1rem", padding: ".5rem 0", borderBottom: "1px solid rgba(120,90,50,.12)" }, actions: { display: "flex", gap: ".5rem", flexWrap: "wrap" },
-  fieldset: { border: "1px solid var(--sepia-mid)", padding: ".7rem" }, check: { display: "flex", gap: ".45rem", alignItems: "center", margin: ".25rem 0" }, muted: { color: "var(--ink-faint)", fontSize: ".9rem" }, success: { padding: ".8rem", background: "rgba(52,120,77,.1)", color: "#2e6d47" }, error: { padding: ".8rem", background: "rgba(157,47,47,.08)", color: "#9d2f2f" }, dangerButton: { border: "1px solid #b75b5b", color: "#8d3030", background: "transparent", padding: ".55rem .7rem", cursor: "pointer" }, smallButton: { border: "1px solid var(--sepia-mid)", background: "transparent", padding: ".55rem .7rem", cursor: "pointer" }, pre: { whiteSpace: "pre-wrap", fontSize: ".8rem", background: "rgba(120,90,50,.06)", padding: ".6rem" },
+  page: { maxWidth: 1180, margin: "0 auto", padding: "32px 18px 70px", display: "grid", gap: 20 }, back: { color: "var(--ink)", fontWeight: 700 },
+  hero: { padding: 24, borderRadius: 24 }, heroText: { maxWidth: 760, lineHeight: 1.7 }, stats: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }, stat: { background: "rgba(255,255,255,.75)", border: "1px solid rgba(58,43,38,.12)", borderRadius: 16, padding: 16, display: "grid", gap: 8 },
+  tabs: { display: "flex", flexWrap: "wrap", gap: 8 }, tab: { border: "1px solid rgba(58,43,38,.18)", borderRadius: 999, background: "#fff", padding: "10px 16px", cursor: "pointer", fontWeight: 700 }, activeTab: { background: "#3a2b26", color: "white" },
+  grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 18 }, card: { background: "rgba(255,255,255,.88)", border: "1px solid rgba(58,43,38,.12)", borderRadius: 22, padding: 22, boxShadow: "0 16px 40px rgba(58,43,38,.07)" }, title: { marginTop: 0 }, form: { display: "grid", gap: 12 }, compactForm: { display: "grid", gap: 10, borderTop: "1px solid rgba(58,43,38,.1)", paddingTop: 12 }, certForm: { display: "grid", gap: 10, background: "#f8f3eb", padding: 14, borderRadius: 14 },
+  input: { width: "100%", marginTop: 5, padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(58,43,38,.2)", background: "#fff" }, textarea: { width: "100%", minHeight: 90, marginTop: 5, padding: 12, borderRadius: 10, border: "1px solid rgba(58,43,38,.2)" }, fieldset: { border: "1px solid rgba(58,43,38,.12)", borderRadius: 12, display: "flex", flexWrap: "wrap", gap: 12 }, check: { display: "flex", gap: 8, alignItems: "center" },
+  stack: { display: "grid", gap: 16 }, row: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 14, padding: "12px 0", borderBottom: "1px solid rgba(58,43,38,.08)" }, actions: { display: "flex", gap: 8, flexWrap: "wrap" }, muted: { color: "#76665f", lineHeight: 1.5 }, success: { padding: 12, borderRadius: 12, background: "#eef8ef", color: "#35643b" }, error: { padding: 12, borderRadius: 12, background: "#fff0ed", color: "#9a3f32" },
+  dangerButton: { border: "1px solid #c87c6b", color: "#9a3f32", background: "white", borderRadius: 9, padding: "8px 11px", cursor: "pointer" }, smallButton: { border: "1px solid rgba(58,43,38,.2)", background: "white", borderRadius: 9, padding: "8px 11px", cursor: "pointer" }, pre: { whiteSpace: "pre-wrap", fontSize: 12, background: "#f8f3eb", padding: 10, borderRadius: 9 },
 };
