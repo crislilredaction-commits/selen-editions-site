@@ -112,7 +112,7 @@ function buildPayload(body: Record<string, unknown>, userId: string, organisatio
   }
 
   const schedule = cleanSchedule(body.schedule_blocks, startDate, endDate);
-  if ("error" in schedule) return schedule;
+  if ("error" in schedule) return { error: schedule.error };
 
   const payload = {
     user_id: userId,
