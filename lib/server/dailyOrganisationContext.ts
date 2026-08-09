@@ -44,3 +44,31 @@ export async function getDailyOrganisationContext(
     assisted: false as const,
   };
 }
+
+export async function getDailyOrganisationBillingUserId(
+  organisationId: string,
+  fallbackUserId: string,
+) {
+  const admin = getAdminSupabase();
+  const { data: memberships, error: membershipError } = await admin
+    .from("organisation_memberships")
+    .select("user_id,joined_at")
+    .eq("organisation_id", organisationId)
+    .eq("status", "active")
+    .order("joined_at", { ascending: true });
+
+  if (membershipError) throw new Error(membershipError.message);
+  const userIds = (memberships ?? []).map((item) => item.user_id).filter(Boolean);
+  if (userIds.length === 0) return fallbackUserId;
+
+  const { data: subscriptions, error: subscriptionError } = await admin
+    .from("daily_subscriptions")
+    .select("user_id,created_at")
+    .in("user_id", userIds)
+    .eq("status", "active")
+    .order("created_at", { ascending: true })
+    .limit(1);
+
+  if (subscriptionError) throw new Error(subscriptionError.message);
+  return subscriptions?.[0]?.user_id || fallbackUserId;
+}
