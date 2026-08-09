@@ -1,11 +1,6 @@
 import { NextResponse } from "next/server";
 import { getDailyClientWorkspace } from "@/lib/server/dailyClientWorkspace";
 
-const SAFE_ORG_FIELDS = new Set([
-  "administrative_email",
-  "administrative_phone",
-  "administrative_address",
-]);
 const PROFILE_CHANGE_KEYS: Record<string, Set<string>> = {
   legal_identity: new Set(["legal_name"]),
   siret: new Set(["siret"]),
@@ -19,7 +14,6 @@ const PROFILE_CHANGE_KEYS: Record<string, Set<string>> = {
 function clean(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
-
 function cleanStringArray(value: unknown) {
   return Array.isArray(value) ? value.map((item) => clean(item)).filter(Boolean) : [];
 }
@@ -44,12 +38,12 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: "Accès au profil de l’organisme requis." }, { status: 403 });
     }
     const source = body.values && typeof body.values === "object" ? body.values as Record<string, unknown> : {};
-    const patch: Record<string, string | null> = {};
-    for (const [key, value] of Object.entries(source)) {
-      if (SAFE_ORG_FIELDS.has(key)) patch[key] = clean(value) || null;
-    }
-    if (Object.keys(patch).length === 0) return NextResponse.json({ error: "Aucune information à enregistrer." }, { status: 400 });
-    const { error } = await supabase.from("organisations").update(patch).eq("id", organisationId);
+    const { error } = await supabase.rpc("daily_client_update_safe_organisation", {
+      p_organisation_id: organisationId,
+      p_administrative_email: clean(source.administrative_email) || null,
+      p_administrative_phone: clean(source.administrative_phone) || null,
+      p_administrative_address: clean(source.administrative_address) || null,
+    });
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   } else if (action === "request_profile_change") {
     if (!context.workspace.capabilities.legal_profile) {
@@ -63,6 +57,7 @@ export async function PATCH(req: Request) {
     for (const [key, value] of Object.entries(source)) {
       if (!allowed.has(key)) continue;
       if (key === "qualiopi_categories") proposed[key] = cleanStringArray(value);
+      else if (key === "nda_status" && clean(value) === "active") proposed[key] = "registered";
       else proposed[key] = clean(value) || null;
     }
     if (Object.keys(proposed).length === 0) return NextResponse.json({ error: "Aucune modification proposée." }, { status: 400 });
@@ -75,14 +70,11 @@ export async function PATCH(req: Request) {
     });
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   } else if (action === "set_user_access") {
-    const membershipId = clean(body.membership_id);
-    const roles = cleanStringArray(body.roles);
-    const permissionBlocks = cleanStringArray(body.permission_blocks);
     const { error } = await supabase.rpc("daily_client_set_membership_access", {
       p_organisation_id: organisationId,
-      p_membership_id: membershipId,
-      p_roles: roles,
-      p_permission_blocks: permissionBlocks,
+      p_membership_id: clean(body.membership_id),
+      p_roles: cleanStringArray(body.roles),
+      p_permission_blocks: cleanStringArray(body.permission_blocks),
     });
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   } else if (action === "set_user_status") {
@@ -115,24 +107,15 @@ export async function PATCH(req: Request) {
     const certificationId = clean(body.id);
     const trainerProfileId = clean(body.trainer_profile_id);
     const validityMode = clean(body.validity_mode) || "unknown";
-    if (!["lifetime", "limited", "unknown"].includes(validityMode)) {
-      return NextResponse.json({ error: "Type de validité invalide." }, { status: 400 });
-    }
+    if (!["lifetime", "limited", "unknown"].includes(validityMode)) return NextResponse.json({ error: "Type de validité invalide." }, { status: 400 });
     const validUntil = clean(body.valid_until);
-    if (validityMode === "limited" && !validUntil) {
-      return NextResponse.json({ error: "La date de fin de validité est obligatoire." }, { status: 400 });
-    }
+    if (validityMode === "limited" && !validUntil) return NextResponse.json({ error: "La date de fin de validité est obligatoire." }, { status: 400 });
     const payload = {
       trainer_profile_id: trainerProfileId,
-      title: clean(body.title),
-      issuer: clean(body.issuer) || null,
-      reference: clean(body.reference) || null,
-      obtained_on: clean(body.obtained_on) || null,
-      validity_mode: validityMode,
-      valid_until: validityMode === "limited" ? validUntil : null,
-      note: clean(body.note) || null,
-      updated_by: user.id,
-      ...(certificationId ? {} : { created_by: user.id }),
+      title: clean(body.title), issuer: clean(body.issuer) || null, reference: clean(body.reference) || null,
+      obtained_on: clean(body.obtained_on) || null, validity_mode: validityMode,
+      valid_until: validityMode === "limited" ? validUntil : null, note: clean(body.note) || null,
+      updated_by: user.id, ...(certificationId ? {} : { created_by: user.id }),
     };
     if (!payload.title || !trainerProfileId) return NextResponse.json({ error: "Certification incomplète." }, { status: 400 });
     const query = certificationId
