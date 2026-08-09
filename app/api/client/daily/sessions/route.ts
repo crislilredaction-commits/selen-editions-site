@@ -3,6 +3,7 @@ import { blockedAgentAssistanceResponse, getAssistanceTokenFromRequest } from "@
 import {
   getDailyOrganisationBillingUserId,
   getDailyOrganisationContext,
+  getDailyOrganisationReadContext,
 } from "@/lib/server/dailyOrganisationContext";
 
 const MODALITIES = new Set(["presentiel", "distanciel", "mixte"]);
@@ -122,8 +123,12 @@ async function refreshLearnerTier(organisationId: string, actingUserId: string, 
 }
 
 export async function GET(req: Request) {
-  const context = await getDailyOrganisationContext(req, "sessions", { allowAssistanceRead: true });
+  const context = await getDailyOrganisationReadContext(req, ["trainings", "sessions"]);
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
+
+  if (!context.assisted && !context.capabilities?.sessions) {
+    return NextResponse.json({ sessions: [] });
+  }
 
   const { data, error } = await context.admin
     .from("daily_sessions")
