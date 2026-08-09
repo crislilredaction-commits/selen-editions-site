@@ -14,9 +14,12 @@ export type DailyWorkspace = {
   capabilities: {
     users: boolean;
     trainers: boolean;
-    trainer_self: boolean;
+    trainers_all?: boolean;
+    trainer_self?: boolean;
     legal_profile: boolean;
     permanent_documents: boolean;
+    trainings: boolean;
+    sessions: boolean;
   };
   users: Array<Record<string, unknown>>;
   invitations: Array<Record<string, unknown>>;
@@ -58,8 +61,8 @@ async function bootstrapFromCompletedOnboarding(
   });
   if (bootstrapError) throw new Error(bootstrapError.message);
 
-  // Temporary 1B.3 bridge: copy legacy onboarding trainers into the new organisation model.
-  // Formations/sessions remain on the V0 tables until Lot 1B.4.
+  // One-time compatibility bridge: copy any trainer captured by the legacy onboarding
+  // into the organisation-scoped trainer model. New Daily management uses daily_trainer_profiles.
   const { data: workspaceData, error: workspaceError } = await supabase.rpc("daily_client_workspace", {
     p_organisation_id: null,
   });
