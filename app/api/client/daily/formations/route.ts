@@ -14,6 +14,7 @@ const REQUIRED_FIELDS = [
   "access_delays",
   "price",
   "detailed_program",
+  "pedagogical_methods",
   "pedagogical_resources",
   "evaluation_methods",
   "contact_phone",
@@ -52,6 +53,11 @@ function boolValue(value: unknown) {
   return value === true || value === "true" || value === "on";
 }
 
+function cleanLearningObjectives(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => String(item ?? "").trim()).filter(Boolean);
+}
+
 function cleanPositioningQuestions(value: unknown) {
   if (!Array.isArray(value)) return [];
 
@@ -88,12 +94,14 @@ function buildPayload(body: Record<string, unknown>, userId: string, organisatio
   const status = text(body, "status") || "draft";
   const durationHours = numberValue(body, "duration_hours");
   const durationDays = numberValue(body, "duration_days");
+  const learningObjectives = cleanLearningObjectives(body.learning_objectives);
 
-  if (!MODALITIES.has(modality)) return { error: "Modalite de formation invalide." };
+  if (!MODALITIES.has(modality)) return { error: "Modalité de formation invalide." };
   if (!STATUSES.has(status) || status === "validated") return { error: "Statut de formation invalide pour le client." };
   if (durationHours === null || durationHours <= 0 || durationDays === null || durationDays <= 0) {
-    return { error: "Les durees en heures et en jours doivent etre renseignees." };
+    return { error: "Les durées en heures et en jours doivent être renseignées." };
   }
+  if (learningObjectives.length === 0) return { error: "Ajoutez au moins un objectif pédagogique." };
 
   const resultsPending = boolValue(body.results_pending);
   const positioningMode = POSITIONING_MODES.has(text(body, "positioning_mode"))
@@ -107,7 +115,7 @@ function buildPayload(body: Record<string, unknown>, userId: string, organisatio
     const questionWithoutOptions = positioningQuestions.find(
       (question) => ["single_choice", "multiple_choice"].includes(question.type) && question.options.length === 0,
     );
-    if (questionWithoutOptions) return { error: "Les questions a choix doivent proposer au moins une option." };
+    if (questionWithoutOptions) return { error: "Les questions à choix doivent proposer au moins une option." };
   }
 
   if (!resultsPending) {
@@ -117,7 +125,7 @@ function buildPayload(body: Record<string, unknown>, userId: string, organisatio
       (satisfaction !== null && (satisfaction < 0 || satisfaction > 100)) ||
       (success !== null && (success < 0 || success > 100))
     ) {
-      return { error: "Les taux de resultats doivent etre compris entre 0 et 100." };
+      return { error: "Les taux de résultats doivent être compris entre 0 et 100." };
     }
   }
 
@@ -126,6 +134,7 @@ function buildPayload(body: Record<string, unknown>, userId: string, organisatio
     organisation_id: organisationId,
     title: text(body, "title"),
     global_objective: text(body, "global_objective"),
+    learning_objectives: learningObjectives,
     target_audience: text(body, "target_audience"),
     prerequisites: text(body, "prerequisites"),
     duration_hours: durationHours,
@@ -142,6 +151,7 @@ function buildPayload(body: Record<string, unknown>, userId: string, organisatio
       text(body, "accessibility") ||
       "La formation est accessible aux personnes en situation de handicap. Les besoins d'adaptation sont analysés dans le dossier d'inscription et suivis par Selen.",
     disability_referent: nullableText(body, "disability_referent"),
+    pedagogical_methods: text(body, "pedagogical_methods"),
     pedagogical_resources: text(body, "pedagogical_resources"),
     evaluation_methods: text(body, "evaluation_methods"),
     result_beneficiary_count: resultsPending ? null : intValue(body, "result_beneficiary_count"),
@@ -158,7 +168,7 @@ function buildPayload(body: Record<string, unknown>, userId: string, organisatio
   };
 
   const missing = REQUIRED_FIELDS.filter((key) => !String(payload[key as keyof typeof payload] ?? "").trim());
-  if (missing.length > 0) return { error: "Tous les champs obligatoires de la formation doivent etre renseignes." };
+  if (missing.length > 0) return { error: "Tous les champs obligatoires de la formation doivent être renseignés." };
   return { payload };
 }
 
@@ -181,7 +191,54 @@ export async function POST(req: Request) {
   const context = await getDailyOrganisationContext(req, "trainings");
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
 
-  const body = await req.json().catch(() => ({}));
+  const body = await req.json().catch(() => ({})) as Record<string, unknown>;
+
+  if (text(body, "action") === "duplicate") {
+    const sourceId = text(body, "id");
+    if (!sourceId) return NextResponse.json({ error: "Formation source requise." }, { status: 400 });
+
+    const { data: source, error: sourceError } = await context.admin
+      .from("daily_formations")
+      .select("*")
+      .eq("id", sourceId)
+      .eq("organisation_id", context.organisationId)
+      .maybeSingle();
+    if (sourceError) return NextResponse.json({ error: sourceError.message }, { status: 500 });
+    if (!source) return NextResponse.json({ error: "Formation source introuvable." }, { status: 404 });
+
+    const {
+      id: _id,
+      created_at: _createdAt,
+      updated_at: _updatedAt,
+      archived_at: _archivedAt,
+      validation_note: _validationNote,
+      previous_version_id: _previousVersionId,
+      public_registration_token: _publicRegistrationToken,
+      ...copy
+    } = source;
+
+    const { data, error } = await context.admin
+      .from("daily_formations")
+      .insert({
+        ...copy,
+        user_id: context.user.id,
+        organisation_id: context.organisationId,
+        title: `${source.title} — copie`,
+        status: "draft",
+        version: 1,
+        validation_note: null,
+        previous_version_id: null,
+        archived_at: null,
+        public_registration_token: registrationToken(),
+        updated_visible_at: new Date().toISOString().slice(0, 10),
+      })
+      .select("*")
+      .single();
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ formation: data, duplicated: true });
+  }
+
   const built = buildPayload(body, context.user.id, context.organisationId);
   if ("error" in built) return NextResponse.json({ error: built.error }, { status: 400 });
 
@@ -200,7 +257,7 @@ export async function PATCH(req: Request) {
   const context = await getDailyOrganisationContext(req, "trainings");
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
 
-  const body = await req.json().catch(() => ({}));
+  const body = await req.json().catch(() => ({})) as Record<string, unknown>;
   const id = text(body, "id");
   if (!id) return NextResponse.json({ error: "Identifiant formation requis." }, { status: 400 });
 
@@ -228,6 +285,7 @@ export async function PATCH(req: Request) {
         status: "review",
         version: Number(existing.version ?? 1) + 1,
         previous_version_id: existing.id,
+        public_registration_token: registrationToken(),
       })
       .select("*")
       .single();
@@ -260,7 +318,7 @@ export async function DELETE(req: Request) {
   const context = await getDailyOrganisationContext(req, "trainings");
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
 
-  const body = await req.json().catch(() => ({}));
+  const body = await req.json().catch(() => ({})) as Record<string, unknown>;
   const id = text(body, "id");
   if (!id) return NextResponse.json({ error: "Identifiant formation requis." }, { status: 400 });
 
