@@ -1,32 +1,18 @@
 import { NextResponse } from "next/server";
-import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
-import { getAssistedClientUser, logAgentAssistanceAction } from "@/lib/server/agentAssistance";
-import { createClient as createServerSupabaseClient } from "@/lib/supabase/server";
-
-async function requireClient() {
-  const authSupabase = await createServerSupabaseClient();
-  const { data, error } = await authSupabase.auth.getUser();
-  const user = data.user;
-  if (error || !user?.id) {
-    return { ok: false as const, error: "Connexion client requise.", status: 401 };
-  }
-  return { ok: true as const, user };
-}
+import { logAgentAssistanceAction } from "@/lib/server/agentAssistance";
+import { getDailyOrganisationContext } from "@/lib/server/dailyOrganisationContext";
 
 export async function GET(req: Request) {
-  const supabase = getAdminSupabase();
-  const assisted = await getAssistedClientUser(supabase, req);
-  const auth = assisted ? { ok: true as const, user: assisted.user } : await requireClient();
-  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  const context = await getDailyOrganisationContext(req, "sessions", { allowAssistanceRead: true });
+  if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
 
   const id = new URL(req.url).searchParams.get("id")?.trim();
   if (!id) return NextResponse.json({ error: "Convocation introuvable." }, { status: 400 });
 
-  const { data: convocation, error } = await supabase
+  const { data: convocation, error } = await context.admin
     .from("daily_convocations")
-    .select("id,document_name,storage_path,user_id")
+    .select("id,document_name,storage_path,session_id")
     .eq("id", id)
-    .eq("user_id", auth.user.id)
     .maybeSingle();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -34,7 +20,17 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Fichier convocation introuvable." }, { status: 404 });
   }
 
-  const { data, error: signedUrlError } = await supabase.storage
+  const { data: session, error: sessionError } = await context.admin
+    .from("daily_sessions")
+    .select("id")
+    .eq("id", convocation.session_id)
+    .eq("organisation_id", context.organisationId)
+    .maybeSingle();
+
+  if (sessionError) return NextResponse.json({ error: sessionError.message }, { status: 500 });
+  if (!session) return NextResponse.json({ error: "Convocation introuvable pour cet organisme." }, { status: 404 });
+
+  const { data, error: signedUrlError } = await context.admin.storage
     .from("documents")
     .createSignedUrl(convocation.storage_path, 60 * 5, {
       download: convocation.document_name ?? true,
@@ -47,11 +43,11 @@ export async function GET(req: Request) {
     );
   }
 
-  if (assisted) {
+  if (context.assisted && context.assistance) {
     await logAgentAssistanceAction({
-      supabase,
+      supabase: context.admin,
       req,
-      assistance: assisted.assistance,
+      assistance: context.assistance,
       action: "download_daily_convocation",
       actionLabel: "Convocation Daily téléchargée en mode assistance agent",
       metadata: { convocation_id: convocation.id },
