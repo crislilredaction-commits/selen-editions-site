@@ -51,25 +51,17 @@ function buildSupportTasks(payload: {
   welcome_booklet_pending: boolean;
 }) {
   return [
-    payload.insee_document_pending
-      ? { key: "insee", label: "Avis INSEE à fournir", status: "todo" }
-      : null,
-    payload.qualiopi_certificate_pending
-      ? { key: "qualiopi_certificate", label: "Certificat Qualiopi à fournir", status: "todo" }
-      : null,
-    payload.nda_or_bpf_document_pending
-      ? { key: "nda_or_bpf", label: "Attestation NDA ou dernier BPF à fournir", status: "todo" }
-      : null,
-    payload.welcome_booklet_pending
-      ? { key: "welcome_booklet", label: "Livret d'accueil à fournir", status: "todo" }
-      : null,
+    payload.insee_document_pending ? { key: "insee", label: "Avis INSEE à fournir", status: "todo" } : null,
+    payload.qualiopi_certificate_pending ? { key: "qualiopi_certificate", label: "Certificat Qualiopi à fournir", status: "todo" } : null,
+    payload.nda_or_bpf_document_pending ? { key: "nda_or_bpf", label: "Attestation NDA ou dernier BPF à fournir", status: "todo" } : null,
+    payload.welcome_booklet_pending ? { key: "welcome_booklet", label: "Livret d'accueil à fournir", status: "todo" } : null,
   ].filter(Boolean);
 }
 
 async function getDailyAccessState(userId: string) {
   const supabase = getAdminSupabase();
 
-  const [accessRes, subscriptionRes] = await Promise.all([
+  const [accessRes, subscriptionRes, membershipRes] = await Promise.all([
     supabase
       .from("selen_client_tool_access")
       .select("id,status,access_type,starts_at,ends_at")
@@ -79,35 +71,67 @@ async function getDailyAccessState(userId: string) {
       .maybeSingle(),
     supabase
       .from("daily_subscriptions")
-      .select("id,status")
+      .select("id,status,user_id")
       .eq("user_id", userId)
       .eq("status", "active")
       .maybeSingle(),
+    supabase
+      .from("organisation_memberships")
+      .select("id,organisation_id,user_id,joined_at")
+      .eq("user_id", userId)
+      .eq("status", "active")
+      .order("joined_at", { ascending: true })
+      .limit(1)
+      .maybeSingle(),
   ]);
 
-  if (accessRes.error) {
-    return { ok: false as const, error: accessRes.error.message };
-  }
-
-  if (subscriptionRes.error) {
-    return { ok: false as const, error: subscriptionRes.error.message };
-  }
+  if (accessRes.error) return { ok: false as const, error: accessRes.error.message };
+  if (subscriptionRes.error) return { ok: false as const, error: subscriptionRes.error.message };
+  if (membershipRes.error) return { ok: false as const, error: membershipRes.error.message };
 
   const access = accessRes.data;
   const now = new Date();
   const accessIsActive =
     Boolean(access) &&
     (access?.access_type === "unlimited" ||
-      (!access?.starts_at ||
-        new Date(access.starts_at) <= now) &&
-        (!access?.ends_at || new Date(access.ends_at) >= now));
-  const subscriptionIsActive = Boolean(subscriptionRes.data);
+      ((!access?.starts_at || new Date(access.starts_at) <= now) &&
+        (!access?.ends_at || new Date(access.ends_at) >= now)));
+  const personalSubscriptionIsActive = Boolean(subscriptionRes.data);
+  const membership = membershipRes.data;
+
+  let organisationBillingUserId: string | null = null;
+  if (membership?.organisation_id) {
+    const { data: members, error: membersError } = await supabase
+      .from("organisation_memberships")
+      .select("user_id,joined_at")
+      .eq("organisation_id", membership.organisation_id)
+      .eq("status", "active")
+      .order("joined_at", { ascending: true });
+    if (membersError) return { ok: false as const, error: membersError.message };
+
+    const memberUserIds = (members ?? []).map((row) => row.user_id).filter(Boolean);
+    if (memberUserIds.length > 0) {
+      const { data: subscriptions, error: orgSubscriptionError } = await supabase
+        .from("daily_subscriptions")
+        .select("user_id,created_at")
+        .in("user_id", memberUserIds)
+        .eq("status", "active")
+        .order("created_at", { ascending: true })
+        .limit(1);
+      if (orgSubscriptionError) return { ok: false as const, error: orgSubscriptionError.message };
+      organisationBillingUserId = subscriptions?.[0]?.user_id ?? null;
+    }
+  }
+
+  const membershipAccess = Boolean(membership?.organisation_id && organisationBillingUserId);
 
   return {
     ok: true as const,
-    hasAccess: accessIsActive || subscriptionIsActive,
+    hasAccess: accessIsActive || personalSubscriptionIsActive || membershipAccess,
     hasCatalogAccess: accessIsActive,
-    hasSubscription: subscriptionIsActive,
+    hasSubscription: personalSubscriptionIsActive,
+    membership,
+    organisationBillingUserId,
   };
 }
 
@@ -125,106 +149,110 @@ async function ensureDailySubscription(userId: string) {
     },
     { onConflict: "user_id" },
   );
-
   return error;
 }
 
 async function ensureDailyOnboarding(userId: string) {
   const supabase = getAdminSupabase();
-
   const { data: existing, error: existingError } = await supabase
     .from("daily_onboarding")
     .select("*")
     .eq("user_id", userId)
     .maybeSingle();
 
-  if (existingError) {
-    return { data: null, error: existingError };
-  }
-
-  if (existing) {
-    return { data: existing, error: null };
-  }
+  if (existingError) return { data: null, error: existingError };
+  if (existing) return { data: existing, error: null };
 
   return supabase
     .from("daily_onboarding")
-    .upsert(
-      {
-        user_id: userId,
-        status: "not_started",
-        current_step: 1,
-      },
-      { onConflict: "user_id" },
-    )
+    .upsert({ user_id: userId, status: "not_started", current_step: 1 }, { onConflict: "user_id" })
     .select("*")
     .single();
 }
+
+function splitTrainerName(displayName: string) {
+  const parts = displayName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return { first_name: parts[0] ?? "", last_name: "" };
+  return { first_name: parts.slice(0, -1).join(" "), last_name: parts.at(-1) ?? "" };
+}
+
 export async function GET(req: Request) {
   const supabase = getAdminSupabase();
   const assisted = await getAssistedClientUser(supabase, req);
-  const auth = assisted
-    ? { ok: true as const, user: assisted.user }
-    : await requireClient();
+  const auth = assisted ? { ok: true as const, user: assisted.user } : await requireClient();
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const access = await getDailyAccessState(auth.user.id);
-
-  if (!access.ok) {
-    return NextResponse.json({ error: access.error }, { status: 500 });
-  }
+  if (!access.ok) return NextResponse.json({ error: access.error }, { status: 500 });
 
   if (!access.hasAccess) {
-    console.warn("Selen Daily onboarding : accès absent.", {
-      userId: auth.user.id,
-      email: auth.user.email,
-    });
     return NextResponse.json(
-      {
-        error:
-          "Aucun accès Selen Daily actif n'est associé à ce compte. Revenez au bureau Selen ou contactez Selen.",
-      },
+      { error: "Aucun accès Selen Daily actif n'est associé à ce compte ou à son organisme." },
       { status: 403 },
     );
   }
 
+  // Invited organisation members use the organisation billing owner's completed onboarding.
+  // No subscription or duplicate onboarding is ever created on the invited member account.
+  if (access.membership?.organisation_id && access.organisationBillingUserId) {
+    const billingUserId = access.organisationBillingUserId;
+    const [onboardingRes, trainersRes, subscriptionRes, templatesRes] = await Promise.all([
+      supabase.from("daily_onboarding").select("*").eq("user_id", billingUserId).maybeSingle(),
+      supabase
+        .from("daily_trainer_profiles")
+        .select("id,display_name,professional_email,status")
+        .eq("organisation_id", access.membership.organisation_id)
+        .eq("active", true)
+        .order("display_name", { ascending: true }),
+      supabase.from("daily_subscriptions").select("*").eq("user_id", billingUserId).maybeSingle(),
+      supabase
+        .from("daily_document_templates")
+        .select("*")
+        .eq("user_id", billingUserId)
+        .eq("status", "active"),
+    ]);
+
+    if (onboardingRes.error) return NextResponse.json({ error: onboardingRes.error.message }, { status: 500 });
+    if (trainersRes.error) return NextResponse.json({ error: trainersRes.error.message }, { status: 500 });
+    if (subscriptionRes.error) return NextResponse.json({ error: subscriptionRes.error.message }, { status: 500 });
+    const templatesMissing = templatesRes.error?.code === "42P01";
+    if (templatesRes.error && !templatesMissing) return NextResponse.json({ error: templatesRes.error.message }, { status: 500 });
+
+    const trainers = (trainersRes.data ?? []).map((trainer) => ({
+      id: trainer.id,
+      ...splitTrainerName(trainer.display_name || "Formateur"),
+      email: trainer.professional_email,
+    }));
+
+    return NextResponse.json({
+      hasAccess: true,
+      onboarding: onboardingRes.data ?? { status: "completed", current_step: 7 },
+      trainers,
+      subscription: subscriptionRes.data,
+      documentTemplates: templatesMissing ? [] : templatesRes.data ?? [],
+      organisationId: access.membership.organisation_id,
+    });
+  }
+
+  // Pre-bootstrap owner path: keep the historical onboarding flow until it creates the first organisation.
   if (!access.hasSubscription) {
     const subscriptionError = await ensureDailySubscription(auth.user.id);
-    if (subscriptionError) {
-      return NextResponse.json({ error: subscriptionError.message }, { status: 500 });
-    }
+    if (subscriptionError) return NextResponse.json({ error: subscriptionError.message }, { status: 500 });
   }
 
   const onboardingInit = await ensureDailyOnboarding(auth.user.id);
-
-  if (onboardingInit.error) {
-    return NextResponse.json({ error: onboardingInit.error.message }, { status: 500 });
-  }
+  if (onboardingInit.error) return NextResponse.json({ error: onboardingInit.error.message }, { status: 500 });
 
   const [trainersRes, subscriptionRes, templatesRes] = await Promise.all([
-    supabase
-      .from("daily_trainers")
-      .select("*")
-      .eq("user_id", auth.user.id)
-      .order("created_at", { ascending: true }),
-    supabase
-      .from("daily_subscriptions")
-      .select("*")
-      .eq("user_id", auth.user.id)
-      .maybeSingle(),
-    supabase
-      .from("daily_document_templates")
-      .select("*")
-      .eq("user_id", auth.user.id)
-      .eq("status", "active"),
+    supabase.from("daily_trainers").select("*").eq("user_id", auth.user.id).order("created_at", { ascending: true }),
+    supabase.from("daily_subscriptions").select("*").eq("user_id", auth.user.id).maybeSingle(),
+    supabase.from("daily_document_templates").select("*").eq("user_id", auth.user.id).eq("status", "active"),
   ]);
 
   if (trainersRes.error) return NextResponse.json({ error: trainersRes.error.message }, { status: 500 });
   if (subscriptionRes.error) return NextResponse.json({ error: subscriptionRes.error.message }, { status: 500 });
-
   const templatesMissing = templatesRes.error?.code === "42P01";
-  if (templatesRes.error && !templatesMissing) {
-    return NextResponse.json({ error: templatesRes.error.message }, { status: 500 });
-  }
+  if (templatesRes.error && !templatesMissing) return NextResponse.json({ error: templatesRes.error.message }, { status: 500 });
 
   return NextResponse.json({
     hasAccess: true,
@@ -242,19 +270,15 @@ export async function PATCH(req: Request) {
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const access = await getDailyAccessState(auth.user.id);
-
-  if (!access.ok) {
-    return NextResponse.json({ error: access.error }, { status: 500 });
-  }
-
+  if (!access.ok) return NextResponse.json({ error: access.error }, { status: 500 });
   if (!access.hasAccess) {
     return NextResponse.json(
-      {
-        error:
-          "Aucun accès Selen Daily actif n'est associé à ce compte. Revenez au bureau Selen ou contactez Selen.",
-      },
+      { error: "Aucun accès Selen Daily actif n'est associé à ce compte. Revenez au bureau Selen ou contactez Selen." },
       { status: 403 },
     );
+  }
+  if (access.membership?.organisation_id && access.organisationBillingUserId !== auth.user.id) {
+    return NextResponse.json({ error: "L’onboarding de l’organisme est déjà terminé." }, { status: 403 });
   }
 
   const body = await req.json().catch(() => ({}));
@@ -299,7 +323,6 @@ export async function PATCH(req: Request) {
     completed_at: status === "completed" ? now : null,
   };
 
-  const supabase = getAdminSupabase();
   const { data, error } = await supabase
     .from("daily_onboarding")
     .upsert(payload, { onConflict: "user_id" })
@@ -313,11 +336,7 @@ export async function PATCH(req: Request) {
     const existingIds = rows.map((row) => row.id).filter(Boolean);
 
     if (existingIds.length > 0) {
-      await supabase
-        .from("daily_trainers")
-        .delete()
-        .eq("user_id", auth.user.id)
-        .not("id", "in", `(${existingIds.join(",")})`);
+      await supabase.from("daily_trainers").delete().eq("user_id", auth.user.id).not("id", "in", `(${existingIds.join(",")})`);
     } else {
       await supabase.from("daily_trainers").delete().eq("user_id", auth.user.id);
     }
@@ -335,11 +354,7 @@ export async function PATCH(req: Request) {
       };
 
       if (row.id) {
-        await supabase
-          .from("daily_trainers")
-          .update(trainerPayload)
-          .eq("id", row.id)
-          .eq("user_id", auth.user.id);
+        await supabase.from("daily_trainers").update(trainerPayload).eq("id", row.id).eq("user_id", auth.user.id);
       } else {
         await supabase.from("daily_trainers").insert(trainerPayload);
       }
