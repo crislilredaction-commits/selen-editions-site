@@ -4,6 +4,7 @@ import { buildAttendanceSummaryHtml, buildCompletionCertificateHtml } from "@/li
 
 const documentTypes = ["attendance_summary","completion_certificate"] as const;
 type DocumentType = typeof documentTypes[number];
+type AttendanceEntry = { slot: any; record: any };
 
 function text(value: unknown) { return String(value ?? "").trim(); }
 function safe(value: string) { return value.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-zA-Z0-9-_]+/g,"-").replace(/^-+|-+$/g,"").toLowerCase().slice(0,80) || "document"; }
@@ -82,8 +83,8 @@ export async function POST(req:Request){
     const plannedHours=slots.reduce((sum:number,slot:any)=>sum+durationHours(slot.starts_at,slot.ends_at),0);
     let eligible=0;
     for(const enrolment of enrolments){
-      const learnerRecords=slots.map((slot:any)=>({slot,record:recordMap.get(`${slot.id}:${enrolment.id}`) as any}));
-      const attendedHours=learnerRecords.filter(({record})=>record?.status==="present").reduce((sum,{slot})=>sum+durationHours(slot.starts_at,slot.ends_at),0);
+      const learnerRecords:AttendanceEntry[]=slots.map((slot:any)=>({slot,record:recordMap.get(`${slot.id}:${enrolment.id}`)}));
+      const attendedHours=learnerRecords.reduce((sum:number,entry:AttendanceEntry)=>entry.record?.status==="present"?sum+durationHours(entry.slot.starts_at,entry.slot.ends_at):sum,0);
       if(attendedHours<=0)continue;
       eligible++;
       created.push(await generate({admin:context.admin,organisationId:context.organisationId,userId:context.user.id,documentType:"completion_certificate",linkedObjectType:"enrolment",linkedObjectId:enrolment.id,logicalName:"certificat-realisation",filenameBase:`certificat-realisation-${learnerName(enrolment)}`,metadata:{session_id:sessionId,enrolment_id:enrolment.id,learner_id:enrolment.learner_id,learner_name:learnerName(enrolment),planned_hours:plannedHours,attended_hours:attendedHours},html:buildCompletionCertificateHtml({organisationName:orgName,organisationSiret:text(org?.siret),organisationNda:text(org?.nda_number),formationTitle:title,learnerName:learnerName(enrolment),startDate:text(session.start_date),endDate:text(session.end_date),plannedHours,attendedHours,generatedAt:new Date()})}));
