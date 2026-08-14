@@ -12,12 +12,35 @@ type ActionItem = {
   sessionLabel?: string | null;
 };
 
-function sessionLabel(session: { internal_reference?: string | null; daily_formations?: { title?: string | null } | null } | null | undefined) {
-  return session?.internal_reference || session?.daily_formations?.title || "Session";
+type FormationRelation = { title?: string | null };
+type LearnerRelation = { first_name?: string | null; last_name?: string | null };
+type SessionRelation = {
+  id?: string | null;
+  internal_reference?: string | null;
+  status?: string | null;
+  daily_formations?: FormationRelation | FormationRelation[] | null;
+};
+
+type EnrolmentRelation = {
+  id?: string | null;
+  session_id?: string | null;
+  status?: string | null;
+  daily_learners?: LearnerRelation | LearnerRelation[] | null;
+  daily_sessions?: SessionRelation | SessionRelation[] | null;
+};
+
+function one<T>(value: T | T[] | null | undefined): T | null {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
 }
 
-function learnerLabel(enrolment: { daily_learners?: { first_name?: string | null; last_name?: string | null } | null }) {
-  const learner = enrolment.daily_learners;
+function sessionLabel(session: SessionRelation | null | undefined) {
+  const formation = one(session?.daily_formations);
+  return session?.internal_reference || formation?.title || "Session";
+}
+
+function learnerLabel(enrolment: EnrolmentRelation) {
+  const learner = one(enrolment.daily_learners);
   const label = [learner?.first_name, learner?.last_name].filter(Boolean).join(" ").trim();
   return label || "Apprenant";
 }
@@ -58,8 +81,9 @@ export async function GET(req: Request) {
 
   for (const item of checklist ?? []) {
     if (!["todo", "in_progress", "blocked"].includes(item.status)) continue;
-    const session = sessionsById.get(item.session_id);
-    if (!session) continue;
+    const rawSession = sessionsById.get(item.session_id);
+    if (!rawSession) continue;
+    const session = rawSession as SessionRelation;
     actions.push({
       id: `dossier:${item.id}`,
       kind: "dossier",
@@ -73,32 +97,33 @@ export async function GET(req: Request) {
   }
 
   for (const enrolment of enrolments ?? []) {
-    const session = enrolment.daily_sessions;
+    const enrolmentRelation = enrolment as EnrolmentRelation & { positioning_status?: string | null; prerequisites_status?: string | null };
+    const session = one(enrolmentRelation.daily_sessions);
     if (!session || session.status === "archived") continue;
-    const learner = learnerLabel(enrolment);
+    const learner = learnerLabel(enrolmentRelation);
     const label = sessionLabel(session);
 
-    if (!["reviewed"].includes(enrolment.positioning_status ?? "not_started")) {
+    if (enrolmentRelation.positioning_status !== "reviewed") {
       actions.push({
         id: `positioning:${enrolment.id}`,
         kind: "positioning",
-        priority: enrolment.positioning_status === "submitted" ? "medium" : "normal",
+        priority: enrolmentRelation.positioning_status === "submitted" ? "medium" : "normal",
         title: `Positionnement de ${learner}`,
-        detail: enrolment.positioning_status === "submitted" ? "Le positionnement a été reçu et doit être relu." : "Le positionnement n'est pas encore finalisé.",
+        detail: enrolmentRelation.positioning_status === "submitted" ? "Le positionnement a été reçu et doit être relu." : "Le positionnement n'est pas encore finalisé.",
         href: "/client/daily/apprenants",
         sessionId: enrolment.session_id,
         sessionLabel: label,
       });
     }
 
-    if (!["met"].includes(enrolment.prerequisites_status ?? "not_reviewed")) {
-      const priority = enrolment.prerequisites_status === "not_met" ? "high" : enrolment.prerequisites_status === "to_clarify" ? "medium" : "normal";
+    if (enrolmentRelation.prerequisites_status !== "met") {
+      const priority = enrolmentRelation.prerequisites_status === "not_met" ? "high" : enrolmentRelation.prerequisites_status === "to_clarify" ? "medium" : "normal";
       actions.push({
         id: `prerequisite:${enrolment.id}`,
         kind: "prerequisite",
         priority,
         title: `Prérequis de ${learner}`,
-        detail: enrolment.prerequisites_status === "not_met" ? "Les prérequis sont signalés comme non satisfaits." : enrolment.prerequisites_status === "to_clarify" ? "Un point doit être clarifié sur les prérequis." : "Les prérequis doivent encore être vérifiés.",
+        detail: enrolmentRelation.prerequisites_status === "not_met" ? "Les prérequis sont signalés comme non satisfaits." : enrolmentRelation.prerequisites_status === "to_clarify" ? "Un point doit être clarifié sur les prérequis." : "Les prérequis doivent encore être vérifiés.",
         href: "/client/daily/apprenants",
         sessionId: enrolment.session_id,
         sessionLabel: label,
@@ -107,9 +132,9 @@ export async function GET(req: Request) {
   }
 
   for (const need of supportNeeds ?? []) {
-    const enrolment = need.daily_session_enrolments;
-    if (!enrolment || ["cancelled", "declined", "completed"].includes(enrolment.status)) continue;
-    const session = enrolment.daily_sessions;
+    const enrolment = one(need.daily_session_enrolments as EnrolmentRelation | EnrolmentRelation[] | null);
+    if (!enrolment || ["cancelled", "declined", "completed"].includes(enrolment.status ?? "")) continue;
+    const session = one(enrolment.daily_sessions);
     if (!session || session.status === "archived") continue;
     if (need.planned_accommodations && !need.contact_requested) continue;
     const learner = learnerLabel(enrolment);
@@ -125,17 +150,18 @@ export async function GET(req: Request) {
     });
   }
 
-  for (const session of sessions ?? []) {
-    const trainerIds = Array.isArray(session.trainer_ids) ? session.trainer_ids.filter(Boolean) : [];
+  for (const rawSession of sessions ?? []) {
+    const trainerIds = Array.isArray(rawSession.trainer_ids) ? rawSession.trainer_ids.filter(Boolean) : [];
     if (trainerIds.length > 0) continue;
+    const session = rawSession as SessionRelation;
     actions.push({
-      id: `trainer:${session.id}`,
+      id: `trainer:${rawSession.id}`,
       kind: "trainer",
       priority: "medium",
       title: "Formateur à associer",
       detail: "Cette session n'a pas encore de formateur associé.",
       href: "/client/daily/sessions",
-      sessionId: session.id,
+      sessionId: rawSession.id,
       sessionLabel: sessionLabel(session),
     });
   }
