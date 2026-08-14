@@ -10,6 +10,7 @@ type Data = {
   alreadySigned?: boolean;
   signedAt?: string | null;
   consentText: string;
+  requiresEmailCode?: boolean;
 };
 
 export default function DailyAttendancePage({ params }: { params: { token: string } }) {
@@ -19,9 +20,14 @@ export default function DailyAttendancePage({ params }: { params: { token: strin
   const drawn = useRef(false);
   const [data, setData] = useState<Data | null>(null);
   const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
+  const [verificationId, setVerificationId] = useState("");
+  const [codeSent, setCodeSent] = useState(false);
   const [consent, setConsent] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
+  const [sendingCode, setSendingCode] = useState(false);
 
   useEffect(() => {
     fetch(`/api/daily-attendance/${token}`, { cache: "no-store" })
@@ -76,20 +82,48 @@ export default function DailyAttendancePage({ params }: { params: { token: strin
     context.stroke();
   }
 
+  async function requestCode() {
+    if (!email.trim()) return setError("Renseignez votre e-mail d'inscription.");
+    setSendingCode(true);
+    setError("");
+    setNotice("");
+    const response = await fetch(`/api/daily-attendance/${token}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "request_code", email: email.trim().toLowerCase() }),
+    });
+    const body = await response.json().catch(() => null);
+    setSendingCode(false);
+    if (!response.ok) return setError(body?.error ?? "Le code n'a pas pu être envoyé.");
+    setVerificationId(body?.verificationId ?? "");
+    setCodeSent(true);
+    setNotice("Un code à 6 chiffres vient d'être envoyé à votre adresse e-mail. Il est valable 10 minutes.");
+  }
+
   async function submit() {
     if (!data || !canvasRef.current || !drawn.current || !consent) return setError("Confirmez votre accord puis signez.");
-    if (data.accessType === "shared" && !email.trim()) return setError("Renseignez votre e-mail d'inscription.");
+    if (data.accessType === "shared") {
+      if (!email.trim()) return setError("Renseignez votre e-mail d'inscription.");
+      if (!verificationId || !/^\d{6}$/.test(code)) return setError("Demandez puis saisissez le code à 6 chiffres reçu par e-mail.");
+    }
     setSaving(true);
     setError("");
     const response = await fetch(`/api/daily-attendance/${token}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: email.trim().toLowerCase(), consent, signature_data: canvasRef.current.toDataURL("image/png") }),
+      body: JSON.stringify({
+        email: email.trim().toLowerCase(),
+        verification_id: verificationId,
+        code,
+        consent,
+        signature_data: canvasRef.current.toDataURL("image/png"),
+      }),
     });
     const body = await response.json().catch(() => null);
     setSaving(false);
     if (!response.ok) return setError(body?.error ?? "Émargement impossible.");
     setData((current) => current ? { ...current, alreadySigned: true, signedAt: body?.signedAt ?? new Date().toISOString() } : current);
+    setNotice("Votre présence est enregistrée et la preuve d'émargement est conservée dans le dossier de formation.");
   }
 
   return (
@@ -97,12 +131,17 @@ export default function DailyAttendancePage({ params }: { params: { token: strin
       <section style={{ maxWidth: 720, margin: "2rem auto", padding: "1.25rem", background: "#fffaf0", border: "1px solid #c9a055" }}>
         <p style={{ fontWeight: 800, color: "#8a4b24" }}>Selen Daily · Émargement</p>
         {error ? <p style={{ padding: ".75rem", border: "1px solid #8a4b24" }}>{error}</p> : null}
+        {notice ? <p style={{ padding: ".75rem", border: "1px solid #6a8a4a" }}>{notice}</p> : null}
         {data ? <>
           <h1>{data.session.title}</h1>
           <p>{new Date(`${data.slot.slot_date}T12:00:00`).toLocaleDateString("fr-FR")} · {data.slot.starts_at.slice(0, 5)} à {data.slot.ends_at.slice(0, 5)}</p>
           {data.slot.label ? <p>{data.slot.label}</p> : null}
           {data.alreadySigned ? <p style={{ padding: ".75rem", border: "1px solid #6a8a4a" }}>Votre présence est enregistrée{data.signedAt ? ` depuis le ${new Date(data.signedAt).toLocaleString("fr-FR")}` : ""}.</p> : <>
-            {data.accessType === "shared" ? <label style={{ display: "grid", gap: ".4rem" }}>E-mail d'inscription<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} style={{ padding: ".7rem" }} /></label> : null}
+            {data.accessType === "shared" ? <div style={{ display: "grid", gap: ".75rem", marginBottom: "1rem" }}>
+              <label style={{ display: "grid", gap: ".4rem" }}>E-mail d'inscription<input type="email" value={email} onChange={(event) => { setEmail(event.target.value); setCodeSent(false); setVerificationId(""); setCode(""); }} style={{ padding: ".7rem" }} /></label>
+              <button type="button" onClick={() => void requestCode()} disabled={sendingCode} style={{ width: "fit-content", padding: ".65rem .9rem", fontWeight: 700 }}>{sendingCode ? "Envoi..." : codeSent ? "Renvoyer un code" : "Recevoir mon code"}</button>
+              {codeSent ? <label style={{ display: "grid", gap: ".4rem" }}>Code reçu par e-mail<input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} style={{ padding: ".7rem", letterSpacing: ".3rem", fontWeight: 800 }} /></label> : null}
+            </div> : null}
             <label style={{ display: "flex", gap: ".6rem", margin: "1rem 0" }}><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} /><span>{data.consentText}</span></label>
             <canvas ref={canvasRef} onPointerDown={start} onPointerMove={move} onPointerUp={() => { drawing.current = false; }} onPointerCancel={() => { drawing.current = false; }} style={{ width: "100%", height: 180, border: "1px solid #b28a62", background: "#fff", touchAction: "none" }} />
             <button type="button" onClick={() => void submit()} disabled={saving} style={{ marginTop: "1rem", padding: ".8rem 1rem", fontWeight: 800 }}>{saving ? "Enregistrement..." : "Confirmer ma présence"}</button>
