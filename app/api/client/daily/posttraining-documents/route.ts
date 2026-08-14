@@ -48,14 +48,47 @@ export async function GET(req:Request){
 export async function POST(req:Request){
   const context=await getDailyOrganisationContext(req,"sessions");if(!context.ok)return NextResponse.json({error:context.error},{status:context.status});if(context.assisted)return NextResponse.json({error:"L’assistance agent est en lecture seule."},{status:403});const body=await req.json().catch(()=>({}));const sessionId=text(body.session_id);if(!sessionId)return NextResponse.json({error:"Session manquante."},{status:400});
   try{
-    const {session,enrolments,slots,records,org}=await load(context.admin,context.organisationId,sessionId);if(slots.length===0)return NextResponse.json({error:"Aucun créneau de présence n’est disponible pour établir les documents de fin."},{status:400});
-    const formation=Array.isArray(session.daily_formations)?session.daily_formations[0]:session.daily_formations; const title=text(formation?.title)||"Formation"; const orgName=text(org?.legal_name||org?.name)||"Organisme de formation"; const recordMap=new Map(records.map((r:any)=>[`${r.slot_id}:${r.enrolment_id}`,r]));
-    const lines:any[]=[]; for(const enrolment of enrolments){for(const slot of slots){const record:any=recordMap.get(`${slot.id}:${enrolment.id}`);lines.push({learnerName:learnerName(enrolment),date:text(slot.slot_date),start:text(slot.starts_at).slice(0,5),end:text(slot.ends_at).slice(0,5),status:text(record?.status||"pending"),proofHash:record?.proof_sha256??null});}}
-    const created:any[]=[]; created.push(await generate({admin:context.admin,organisationId:context.organisationId,userId:context.user.id,documentType:"attendance_summary",linkedObjectType:"session",linkedObjectId:sessionId,logicalName:"releve-presences",filenameBase:`releve-presences-${title}`,metadata:{session_id:sessionId},html:buildAttendanceSummaryHtml({organisationName:orgName,formationTitle:title,sessionReference:text(session.internal_reference),startDate:text(session.start_date),endDate:text(session.end_date),lines,generatedAt:new Date()})}));
-    const plannedHours=slots.reduce((sum:number,slot:any)=>sum+durationHours(slot.starts_at,slot.ends_at),0); let eligible=0;
-    for(const enrolment of enrolments){const learnerRecords=slots.map((slot:any)=>({slot,record:recordMap.get(`${slot.id}:${enrolment.id}`) as any})); const complete=learnerRecords.every(({record})=>record&&record.status!=="pending"); const attendedHours=learnerRecords.filter(({record})=>record?.status==="present").reduce((sum,{slot})=>sum+durationHours(slot.starts_at,slot.ends_at),0); if(!complete||attendedHours<=0)continue; eligible++;
+    const {session,enrolments,slots,records,org}=await load(context.admin,context.organisationId,sessionId);
+    if(slots.length===0)return NextResponse.json({error:"Aucun créneau de présence n’est disponible pour établir les documents de fin."},{status:400});
+    if(enrolments.length===0)return NextResponse.json({error:"Aucun apprenant actif n’est inscrit à cette session."},{status:400});
+
+    const formation=Array.isArray(session.daily_formations)?session.daily_formations[0]:session.daily_formations;
+    const title=text(formation?.title)||"Formation";
+    const orgName=text(org?.legal_name||org?.name)||"Organisme de formation";
+    const recordMap=new Map(records.map((r:any)=>[`${r.slot_id}:${r.enrolment_id}`,r]));
+    const expectedAttendance=enrolments.length*slots.length;
+    let settledAttendance=0;
+    for(const enrolment of enrolments){
+      for(const slot of slots){
+        const record:any=recordMap.get(`${slot.id}:${enrolment.id}`);
+        if(record&&record.status!=="pending")settledAttendance++;
+      }
+    }
+    if(settledAttendance<expectedAttendance){
+      return NextResponse.json({error:`Finalisez les présences avant de générer les documents de fin (${settledAttendance}/${expectedAttendance}).`},{status:409});
+    }
+
+    const lines:any[]=[];
+    for(const enrolment of enrolments){
+      for(const slot of slots){
+        const record:any=recordMap.get(`${slot.id}:${enrolment.id}`);
+        lines.push({learnerName:learnerName(enrolment),date:text(slot.slot_date),start:text(slot.starts_at).slice(0,5),end:text(slot.ends_at).slice(0,5),status:text(record?.status),proofHash:record?.proof_sha256??null});
+      }
+    }
+
+    const created:any[]=[];
+    created.push(await generate({admin:context.admin,organisationId:context.organisationId,userId:context.user.id,documentType:"attendance_summary",linkedObjectType:"session",linkedObjectId:sessionId,logicalName:"releve-presences",filenameBase:`releve-presences-${title}`,metadata:{session_id:sessionId},html:buildAttendanceSummaryHtml({organisationName:orgName,formationTitle:title,sessionReference:text(session.internal_reference),startDate:text(session.start_date),endDate:text(session.end_date),lines,generatedAt:new Date()})}));
+
+    const plannedHours=slots.reduce((sum:number,slot:any)=>sum+durationHours(slot.starts_at,slot.ends_at),0);
+    let eligible=0;
+    for(const enrolment of enrolments){
+      const learnerRecords=slots.map((slot:any)=>({slot,record:recordMap.get(`${slot.id}:${enrolment.id}`) as any}));
+      const attendedHours=learnerRecords.filter(({record})=>record?.status==="present").reduce((sum,{slot})=>sum+durationHours(slot.starts_at,slot.ends_at),0);
+      if(attendedHours<=0)continue;
+      eligible++;
       created.push(await generate({admin:context.admin,organisationId:context.organisationId,userId:context.user.id,documentType:"completion_certificate",linkedObjectType:"enrolment",linkedObjectId:enrolment.id,logicalName:"certificat-realisation",filenameBase:`certificat-realisation-${learnerName(enrolment)}`,metadata:{session_id:sessionId,enrolment_id:enrolment.id,learner_id:enrolment.learner_id,learner_name:learnerName(enrolment),planned_hours:plannedHours,attended_hours:attendedHours},html:buildCompletionCertificateHtml({organisationName:orgName,organisationSiret:text(org?.siret),organisationNda:text(org?.nda_number),formationTitle:title,learnerName:learnerName(enrolment),startDate:text(session.start_date),endDate:text(session.end_date),plannedHours,attendedHours,generatedAt:new Date()})}));
     }
-    await syncChecklist(context.admin,context.organisationId,sessionId,1+eligible); return NextResponse.json({documents:created,count:created.length,eligibleCertificates:eligible});
+    await syncChecklist(context.admin,context.organisationId,sessionId,1+eligible);
+    return NextResponse.json({documents:created,count:created.length,eligibleCertificates:eligible});
   }catch(cause){return NextResponse.json({error:cause instanceof Error?cause.message:"Génération impossible."},{status:400});}
 }
