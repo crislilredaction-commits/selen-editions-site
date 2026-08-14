@@ -15,6 +15,7 @@ export default function DailyClientLayout({ children }: { children: React.ReactN
           background: "var(--paper)",
         }}
       >
+        <Link href="/client/daily/a-faire" style={actionLinkStyle}>À faire</Link>
         <Link href="/client/daily/formations" style={linkStyle}>Formations</Link>
         <Link href="/client/daily/sessions" style={linkStyle}>Sessions</Link>
         <Link href="/client/daily/presences" style={linkStyle}>Présences</Link>
@@ -38,4 +39,11 @@ const linkStyle: React.CSSProperties = {
   border: "1px solid var(--sepia-mid)",
   padding: ".5rem .8rem",
   background: "rgba(201,160,85,.08)",
+};
+
+const actionLinkStyle: React.CSSProperties = {
+  ...linkStyle,
+  fontWeight: 800,
+  borderColor: "var(--rust)",
+  background: "rgba(138,75,36,.1)",
 };
