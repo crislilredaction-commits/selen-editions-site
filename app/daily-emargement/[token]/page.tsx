@@ -13,6 +13,8 @@ type Data = {
   requiresEmailCode?: boolean;
 };
 
+const SIGNATURE_HEIGHT = 220;
+
 export default function DailyAttendancePage({ params }: { params: { token: string } }) {
   const token = params.token;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -46,7 +48,7 @@ export default function DailyAttendancePage({ params }: { params: { token: strin
     const rect = canvas.getBoundingClientRect();
     const ratio = window.devicePixelRatio || 1;
     canvas.width = Math.floor(rect.width * ratio);
-    canvas.height = Math.floor(180 * ratio);
+    canvas.height = Math.floor(SIGNATURE_HEIGHT * ratio);
     const context = canvas.getContext("2d");
     if (!context) return;
     context.scale(ratio, ratio);
@@ -54,7 +56,7 @@ export default function DailyAttendancePage({ params }: { params: { token: strin
     context.lineCap = "round";
     context.strokeStyle = "#3f2b1d";
     context.fillStyle = "#fffaf0";
-    context.fillRect(0, 0, rect.width, 180);
+    context.fillRect(0, 0, rect.width, SIGNATURE_HEIGHT);
   }, [data]);
 
   function point(event: React.PointerEvent<HTMLCanvasElement>) {
@@ -80,6 +82,18 @@ export default function DailyAttendancePage({ params }: { params: { token: strin
     const value = point(event);
     context.lineTo(value.x, value.y);
     context.stroke();
+  }
+
+  function clearSignature() {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) return;
+    const rect = canvas.getBoundingClientRect();
+    context.fillStyle = "#fffaf0";
+    context.fillRect(0, 0, rect.width, SIGNATURE_HEIGHT);
+    drawn.current = false;
+    drawing.current = false;
+    setError("");
   }
 
   async function requestCode() {
@@ -126,25 +140,55 @@ export default function DailyAttendancePage({ params }: { params: { token: strin
     setNotice("Votre présence est enregistrée et la preuve d'émargement est conservée dans le dossier de formation.");
   }
 
+  const fieldStyle: React.CSSProperties = {
+    width: "100%",
+    boxSizing: "border-box",
+    minHeight: 50,
+    padding: ".75rem .85rem",
+    border: "1px solid #b28a62",
+    borderRadius: 8,
+    background: "#fff",
+    color: "#3f2b1d",
+    fontSize: 16,
+  };
+
+  const primaryButtonStyle: React.CSSProperties = {
+    width: "100%",
+    minHeight: 50,
+    padding: ".8rem 1rem",
+    borderRadius: 8,
+    fontWeight: 800,
+    fontSize: 16,
+    cursor: "pointer",
+  };
+
   return (
-    <main style={{ minHeight: "100vh", padding: "1.5rem", background: "#f7efe2", color: "#3f2b1d" }}>
-      <section style={{ maxWidth: 720, margin: "2rem auto", padding: "1.25rem", background: "#fffaf0", border: "1px solid #c9a055" }}>
-        <p style={{ fontWeight: 800, color: "#8a4b24" }}>Selen Daily · Émargement</p>
-        {error ? <p style={{ padding: ".75rem", border: "1px solid #8a4b24" }}>{error}</p> : null}
-        {notice ? <p style={{ padding: ".75rem", border: "1px solid #6a8a4a" }}>{notice}</p> : null}
+    <main style={{ minHeight: "100vh", boxSizing: "border-box", padding: "max(.75rem, env(safe-area-inset-top)) .75rem max(1rem, env(safe-area-inset-bottom))", background: "#f7efe2", color: "#3f2b1d" }}>
+      <section style={{ width: "100%", maxWidth: 620, boxSizing: "border-box", margin: "0 auto", padding: "clamp(1rem, 4vw, 1.5rem)", background: "#fffaf0", border: "1px solid #c9a055", borderRadius: 12 }}>
+        <p style={{ marginTop: 0, fontWeight: 800, color: "#8a4b24" }}>Selen Daily · Émargement</p>
+        <div style={{ display: "flex", gap: ".7rem", alignItems: "flex-start", margin: "0 0 1rem", padding: ".85rem", border: "1px solid #c9a055", borderRadius: 10, background: "#f7efe2", lineHeight: 1.5 }}>
+          <span aria-hidden="true" style={{ fontSize: "1.35rem", lineHeight: 1 }}>📱</span>
+          <div><strong>Le téléphone est recommandé.</strong><br /><span style={{ fontSize: ".95rem" }}>Pour émarger facilement, ouvrez cette page sur votre smartphone : la signature au doigt y est plus simple et plus rapide.</span></div>
+        </div>
+        {error ? <p role="alert" style={{ padding: ".75rem", border: "1px solid #8a4b24", borderRadius: 8 }}>{error}</p> : null}
+        {notice ? <p style={{ padding: ".75rem", border: "1px solid #6a8a4a", borderRadius: 8 }}>{notice}</p> : null}
         {data ? <>
-          <h1>{data.session.title}</h1>
-          <p>{new Date(`${data.slot.slot_date}T12:00:00`).toLocaleDateString("fr-FR")} · {data.slot.starts_at.slice(0, 5)} à {data.slot.ends_at.slice(0, 5)}</p>
+          <h1 style={{ marginBottom: ".5rem", fontSize: "clamp(1.5rem, 7vw, 2.1rem)", lineHeight: 1.15 }}>{data.session.title}</h1>
+          <p style={{ lineHeight: 1.55 }}>{new Date(`${data.slot.slot_date}T12:00:00`).toLocaleDateString("fr-FR")} · {data.slot.starts_at.slice(0, 5)} à {data.slot.ends_at.slice(0, 5)}</p>
           {data.slot.label ? <p>{data.slot.label}</p> : null}
-          {data.alreadySigned ? <p style={{ padding: ".75rem", border: "1px solid #6a8a4a" }}>Votre présence est enregistrée{data.signedAt ? ` depuis le ${new Date(data.signedAt).toLocaleString("fr-FR")}` : ""}.</p> : <>
-            {data.accessType === "shared" ? <div style={{ display: "grid", gap: ".75rem", marginBottom: "1rem" }}>
-              <label style={{ display: "grid", gap: ".4rem" }}>E-mail d'inscription<input type="email" value={email} onChange={(event) => { setEmail(event.target.value); setCodeSent(false); setVerificationId(""); setCode(""); }} style={{ padding: ".7rem" }} /></label>
-              <button type="button" onClick={() => void requestCode()} disabled={sendingCode} style={{ width: "fit-content", padding: ".65rem .9rem", fontWeight: 700 }}>{sendingCode ? "Envoi..." : codeSent ? "Renvoyer un code" : "Recevoir mon code"}</button>
-              {codeSent ? <label style={{ display: "grid", gap: ".4rem" }}>Code reçu par e-mail<input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} style={{ padding: ".7rem", letterSpacing: ".3rem", fontWeight: 800 }} /></label> : null}
+          {data.alreadySigned ? <p style={{ padding: ".85rem", border: "1px solid #6a8a4a", borderRadius: 8, lineHeight: 1.5 }}>Votre présence est enregistrée{data.signedAt ? ` depuis le ${new Date(data.signedAt).toLocaleString("fr-FR")}` : ""}.</p> : <>
+            {data.accessType === "shared" ? <div style={{ display: "grid", gap: ".85rem", marginBottom: "1.1rem" }}>
+              <label style={{ display: "grid", gap: ".45rem", fontWeight: 700 }}>E-mail d'inscription<input type="email" inputMode="email" autoComplete="email" value={email} onChange={(event) => { setEmail(event.target.value); setCodeSent(false); setVerificationId(""); setCode(""); }} style={fieldStyle} /></label>
+              <button type="button" onClick={() => void requestCode()} disabled={sendingCode} style={primaryButtonStyle}>{sendingCode ? "Envoi..." : codeSent ? "Renvoyer un code" : "Recevoir mon code"}</button>
+              {codeSent ? <label style={{ display: "grid", gap: ".45rem", fontWeight: 700 }}>Code reçu par e-mail<input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} style={{ ...fieldStyle, textAlign: "center", letterSpacing: ".35rem", fontSize: "1.25rem", fontWeight: 800 }} /></label> : null}
             </div> : null}
-            <label style={{ display: "flex", gap: ".6rem", margin: "1rem 0" }}><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} /><span>{data.consentText}</span></label>
-            <canvas ref={canvasRef} onPointerDown={start} onPointerMove={move} onPointerUp={() => { drawing.current = false; }} onPointerCancel={() => { drawing.current = false; }} style={{ width: "100%", height: 180, border: "1px solid #b28a62", background: "#fff", touchAction: "none" }} />
-            <button type="button" onClick={() => void submit()} disabled={saving} style={{ marginTop: "1rem", padding: ".8rem 1rem", fontWeight: 800 }}>{saving ? "Enregistrement..." : "Confirmer ma présence"}</button>
+            <label style={{ display: "flex", gap: ".75rem", alignItems: "flex-start", margin: "1.1rem 0", lineHeight: 1.5, cursor: "pointer" }}><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} style={{ width: 22, height: 22, flex: "0 0 auto", marginTop: 1 }} /><span>{data.consentText}</span></label>
+            <p style={{ margin: "0 0 .45rem", fontWeight: 700 }}>Signez avec votre doigt dans le cadre :</p>
+            <canvas ref={canvasRef} aria-label="Zone de signature" onPointerDown={start} onPointerMove={move} onPointerUp={() => { drawing.current = false; }} onPointerCancel={() => { drawing.current = false; }} style={{ display: "block", width: "100%", height: SIGNATURE_HEIGHT, boxSizing: "border-box", border: "1px solid #b28a62", borderRadius: 8, background: "#fffaf0", touchAction: "none" }} />
+            <div style={{ display: "grid", gap: ".7rem", marginTop: ".8rem" }}>
+              <button type="button" onClick={clearSignature} disabled={saving} style={{ ...primaryButtonStyle, background: "transparent", color: "#3f2b1d", border: "1px solid #b28a62", fontWeight: 700 }}>Effacer et recommencer</button>
+              <button type="button" onClick={() => void submit()} disabled={saving} style={primaryButtonStyle}>{saving ? "Enregistrement..." : "Confirmer ma présence"}</button>
+            </div>
           </>}
         </> : !error ? <p>Ouverture du lien...</p> : null}
       </section>
