@@ -19,5 +19,28 @@ export async function GET(req: Request) {
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  return NextResponse.json({ communications: data ?? [] });
+  const communications = data ?? [];
+  const ids = communications.map((row) => row.id);
+  const documentsByCommunication = new Map<string, unknown[]>();
+
+  if (ids.length > 0) {
+    const { data: linkedDocuments, error: linkedError } = await context.admin
+      .from("daily_communication_documents")
+      .select("communication_id,document_id,document_type,logical_name,document_version,sha256,storage_path,created_at")
+      .in("communication_id", ids);
+    if (linkedError) return NextResponse.json({ error: linkedError.message }, { status: 500 });
+
+    for (const linked of linkedDocuments ?? []) {
+      const current = documentsByCommunication.get(linked.communication_id) ?? [];
+      current.push(linked);
+      documentsByCommunication.set(linked.communication_id, current);
+    }
+  }
+
+  return NextResponse.json({
+    communications: communications.map((row) => ({
+      ...row,
+      documents: documentsByCommunication.get(row.id) ?? [],
+    })),
+  });
 }
