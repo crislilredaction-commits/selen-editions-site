@@ -4,9 +4,10 @@ import { useEffect, useState } from "react";
 import { assistanceFetch } from "@/components/AgentAssistanceBanner";
 
 type Session = { id: string; internal_reference?: string | null; start_date?: string | null; end_date?: string | null; daily_formations?: { title?: string } | { title?: string }[] | null };
+type ScheduleBlock = { date?: string; start?: string; end?: string; note?: string };
 type Slot = { id: string; slot_date: string; starts_at: string; ends_at: string; mode: string; status: string; daily_attendance_records?: { enrolment_id: string; status: string }[] };
 type Enrolment = { id: string; status: string; daily_learners?: { first_name?: string | null; last_name?: string | null; email?: string | null } | { first_name?: string | null; last_name?: string | null; email?: string | null }[] | null };
-type Overview = { slots: Slot[]; enrolments: Enrolment[] };
+type Overview = { session: { modality?: string | null; distance_mode?: string | null; schedule_blocks?: ScheduleBlock[] | null }; slots: Slot[]; enrolments: Enrolment[] };
 
 function formationTitle(session: Session) {
   const formation = Array.isArray(session.daily_formations) ? session.daily_formations[0] : session.daily_formations;
@@ -16,11 +17,15 @@ function learnerName(enrolment: Enrolment) {
   const learner = Array.isArray(enrolment.daily_learners) ? enrolment.daily_learners[0] : enrolment.daily_learners;
   return [learner?.first_name, learner?.last_name].filter(Boolean).join(" ") || learner?.email || "Apprenant";
 }
+function blockKey(block: ScheduleBlock, index: number) {
+  return `${block.date ?? "date"}-${block.start ?? "start"}-${block.end ?? "end"}-${index + 1}`;
+}
 
 export default function DailyPresencePage() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [sessionId, setSessionId] = useState("");
   const [overview, setOverview] = useState<Overview | null>(null);
+  const [blockModes, setBlockModes] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -37,7 +42,15 @@ export default function DailyPresencePage() {
     const response = await assistanceFetch(`/api/client/daily/attendance?session_id=${encodeURIComponent(id)}`, { cache: "no-store" });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) return setError(data.error ?? "Chargement impossible.");
-    setOverview(data.overview ?? null);
+    const next = data.overview ?? null;
+    setOverview(next);
+    if (next?.session?.modality === "mixte" && (next?.slots?.length ?? 0) === 0) {
+      const defaults: Record<string, string> = {};
+      (next.session.schedule_blocks ?? []).forEach((block: ScheduleBlock, index: number) => {
+        defaults[blockKey(block, index)] = "presentiel";
+      });
+      setBlockModes(defaults);
+    } else setBlockModes({});
   }
   useEffect(() => { void loadSessions(); }, []);
   useEffect(() => { void loadOverview(sessionId); }, [sessionId]);
@@ -60,10 +73,12 @@ export default function DailyPresencePage() {
     await loadOverview(sessionId);
   }
 
+  const blocks = overview?.session.schedule_blocks ?? [];
+
   return <main style={{ maxWidth: 1100, margin: "0 auto", padding: "2rem 1rem 4rem", color: "#3f2b1d" }}>
     <p style={{ fontWeight: 800, color: "#8a4b24" }}>Selen Daily · Pendant la formation</p>
     <h1>Présences & émargements</h1>
-    <p>Prépare les créneaux, génère les liens d'émargement et suis les présences.</p>
+    <p>Prépare les créneaux, génère les accès d'émargement et suis les présences.</p>
     {error ? <p style={{ padding: ".7rem", border: "1px solid #8a4b24" }}>{error}</p> : null}
     {message ? <p style={{ padding: ".7rem", border: "1px solid #6a8a4a" }}>{message}</p> : null}
     <section style={{ padding: "1rem", background: "#fffaf0", border: "1px solid #d8b989", marginBottom: "1rem" }}>
@@ -71,12 +86,28 @@ export default function DailyPresencePage() {
         <option value="">Choisir une session</option>
         {sessions.map((session) => <option key={session.id} value={session.id}>{formationTitle(session)}</option>)}
       </select>
-      {sessionId && overview?.slots.length === 0 ? <button disabled={busy} onClick={() => void run({ action: "prepare_session" })} style={{ marginTop: ".8rem", padding: ".7rem" }}>Préparer l'émargement</button> : null}
+      {sessionId && overview?.slots.length === 0 ? <>
+        {overview.session.modality === "mixte" ? <div style={{ display: "grid", gap: ".65rem", marginTop: ".9rem" }}>
+          <strong>Mode d'émargement par créneau</strong>
+          {blocks.map((block, index) => {
+            const key = blockKey(block, index);
+            return <label key={key} style={{ display: "grid", gridTemplateColumns: "minmax(220px,1fr) minmax(190px,.6fr)", gap: ".75rem", alignItems: "center" }}>
+              <span>{block.date || "Date"} · {block.start || "--:--"}–{block.end || "--:--"}{block.note ? ` · ${block.note}` : ""}</span>
+              <select value={blockModes[key] ?? "presentiel"} onChange={(event) => setBlockModes((current) => ({ ...current, [key]: event.target.value }))} style={{ padding: ".55rem" }}>
+                <option value="presentiel">Présentiel · QR</option>
+                <option value="distanciel_synchrone">Distanciel direct · chat</option>
+                <option value="distanciel_asynchrone">Distanciel asynchrone · lien individuel</option>
+              </select>
+            </label>;
+          })}
+        </div> : null}
+        <button disabled={busy} onClick={() => void run({ action: "prepare_session", block_modes: blockModes })} style={{ marginTop: ".8rem", padding: ".7rem" }}>Préparer l'émargement</button>
+      </> : null}
     </section>
     {overview?.slots.map((slot) => <section key={slot.id} style={{ padding: "1rem", background: "#fffaf0", border: "1px solid #d8b989", marginBottom: "1rem" }}>
       <h2>{new Date(`${slot.slot_date}T12:00:00`).toLocaleDateString("fr-FR")} · {slot.starts_at.slice(0, 5)}–{slot.ends_at.slice(0, 5)}</h2>
       <p>{slot.mode.replaceAll("_", " ")} · {slot.status}</p>
-      {slot.mode !== "distanciel_asynchrone" && slot.status !== "closed" ? <button disabled={busy} onClick={() => void run({ action: "create_link", slot_id: slot.id })} style={{ padding: ".55rem" }}>Créer le lien d'émargement</button> : null}
+      {slot.mode !== "distanciel_asynchrone" && slot.status !== "closed" ? <button disabled={busy} onClick={() => void run({ action: "create_link", slot_id: slot.id })} style={{ padding: ".55rem" }}>{slot.mode === "presentiel" ? "Créer l'accès QR" : "Créer le lien à partager dans le chat"}</button> : null}
       <div style={{ marginTop: ".8rem" }}>{overview.enrolments.map((enrolment) => {
         const record = slot.daily_attendance_records?.find((row) => row.enrolment_id === enrolment.id);
         return <div key={enrolment.id} style={{ display: "flex", gap: ".6rem", alignItems: "center", flexWrap: "wrap", padding: ".55rem 0", borderTop: "1px solid #ead8bc" }}>
