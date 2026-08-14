@@ -32,6 +32,61 @@ export type Article = {
 // date de publication, mise à la une.
 export const articles: Article[] = [
   {
+    slug: "qualiopi-decret-2026-728-preuves",
+    category: "Qualiopi",
+    title:
+      "Qualiopi change au 1er novembre 2026 : les nouvelles preuves à préparer, sans jargon",
+    excerpt:
+      "Le décret du 1er août 2026 actualise le Référentiel national qualité. Voici ce qui change vraiment et les preuves concrètes à préparer pour vos prochains audits.",
+    publishedAt: "2026-08-14",
+    coverImage: "/plum.png",
+    coverAlt: "Une plume de rédaction sur fond parchemin",
+    featured: true,
+    readingTime: "8 min",
+    introduction:
+      "Le décret n° 2026-728 du 1er août 2026 a été publié au Journal officiel du 4 août. Il actualise le Référentiel national qualité qui sert de base à Qualiopi et entrera en vigueur le 1er novembre 2026. Les sept critères restent en place, mais plusieurs indicateurs deviennent plus précis et un 33e indicateur apparaît pour les CFA. Pas besoin de jeter tout votre système qualité par la fenêtre : l'enjeu est surtout de mieux prouver ce que vous faites réellement. Important : le décret fixe les exigences, mais ne donne pas une liste officielle exhaustive de documents à présenter. Les preuves proposées ci-dessous sont donc des exemples pratiques pour anticiper l'audit, en attendant l'actualisation du guide de lecture Qualiopi.",
+    sections: [
+      {
+        title: "1. Votre communication devra être encore plus vérifiable",
+        body: "Les indicateurs 1 et 2 sont renforcés. Les informations diffusées au public doivent être accessibles, détaillées et vérifiables, sans formulation pouvant induire en erreur. Les indicateurs de résultats doivent aussi préciser clairement leur mode de calcul ou s'appuyer sur un dispositif existant. Concrètement, gardez une copie datée de vos pages ou supports de communication, la source des chiffres publiés et un petit tableau expliquant comment sont calculés vos taux de satisfaction, de réussite ou d'insertion. Si vous affichez 96 % de satisfaction, il faut pouvoir expliquer d'où vient ce 96 %, et pas seulement espérer que personne ne pose la question.",
+      },
+      {
+        title: "2. Pour une formation certifiante, il faudra mieux démontrer le lien avec la certification",
+        body: "L'indicateur 7 demande désormais au prestataire de vérifier l'adéquation du contenu de la formation avec les exigences de la certification visée et de pouvoir prouver sa capacité à assurer cette certification, y compris lorsqu'il intervient comme organisme habilité. À préparer : le référentiel de la certification applicable, un tableau simple reliant compétences ou blocs aux séquences de formation et aux évaluations, ainsi que les habilitations, conventions ou autres documents établissant votre droit à préparer ou organiser la certification lorsque cela vous concerne. L'indicateur 3 renforce aussi l'information à fournir sur les taux d'obtention, blocs, équivalences, passerelles, suites de parcours et débouchés.",
+      },
+      {
+        title: "3. À distance, mettre un module en ligne ne suffira plus à démontrer son suivi",
+        body: "L'indicateur 19 précise que, lorsque des modules sont réalisés à distance, l'organisme doit vérifier l'effectivité de leur suivi par les apprenants. Une simple plateforme avec des ressources disponibles devient donc une preuve assez maigre si rien ne montre ce que l'apprenant a réellement réalisé. Prévoyez des traces de progression, activités ou travaux remis, quiz ou évaluations, échanges pédagogiques, relevés de suivi et interventions du formateur. Le décret prévoit aussi un référent pédagogique par formation au-delà d'un nombre d'intervenants qui sera fixé par arrêté : ce seuil n'est donc pas à inventer soi-même en attendant le texte d'application.",
+      },
+      {
+        title: "4. Violences, harcèlement et discriminations entrent plus clairement dans le contrôle",
+        body: "L'indicateur 12 prévoit désormais que l'organisme s'assure de la prévention et du traitement des situations de violence, notamment sexistes et sexuelles, de harcèlement ou de discrimination pendant la formation. Pour être prêt, formalisez au minimum une procédure simple : comment signaler une situation, qui reçoit l'alerte, comment elle est traitée et comment les personnes sont orientées ou protégées. Gardez également la preuve que les bénéficiaires savent comment effectuer un signalement. Les indicateurs 14 et 15 renforcent encore ces obligations pour les CFA et l'information des apprentis, notamment mineurs.",
+      },
+      {
+        title: "5. Sous-traitance et portage salarial : la traçabilité doit apparaître dans les contrats",
+        body: "L'indicateur 27 vise désormais explicitement la sous-traitance et le portage salarial. Le prestataire doit s'assurer du respect du référentiel et en assurer la traçabilité dans les contrats de sous-traitance. Concrètement, vos contrats devraient identifier les exigences qualité applicables, et votre dossier devrait permettre de montrer comment vous avez vérifié les compétences et le respect des règles par l'intervenant : CV ou justificatifs de compétences, contrôle des documents utiles, engagements qualité, évaluations ou suivi des interventions selon le contexte. Une clause posée dans un contrat sans aucun suivi derrière risque de raconter une histoire assez courte à l'auditeur.",
+      },
+      {
+        title: "6. L'amélioration continue devra aussi intégrer les risques",
+        body: "L'indicateur 32 ajoute explicitement une analyse des risques portant sur la qualité des formations délivrées. Il devient donc pertinent de tenir un registre très simple : risque identifié, cause, niveau de vigilance, action prévue, responsable, échéance et résultat du suivi. Exemples : indisponibilité d'un formateur, plateforme distancielle défaillante, prérequis mal évalués, matériel indispensable indisponible, abandon important ou difficulté récurrente signalée par les apprenants. L'objectif n'est pas de construire une usine ISO miniature, mais de montrer que les problèmes prévisibles sont identifiés avant de devenir de vrais problèmes.",
+      },
+      {
+        title: "7. CFA : un nouvel indicateur 33 consacré à l'évaluation des enseignements",
+        body: "Ce point concerne les CFA. Le nouvel indicateur 33 impose un dispositif d'évaluation des contenus et des enseignements par les apprenants, distinct du simple questionnaire général de satisfaction. Les résultats doivent être partagés avec les équipes pédagogiques, conduire à une démarche d'amélioration continue formalisée et son efficacité doit être mesurée périodiquement. Il faudra donc distinguer clairement : « êtes-vous satisfait de la formation ? » et « les contenus, méthodes et enseignements vous ont-ils réellement permis d'apprendre ? ». Les preuves utiles pourront être le questionnaire pédagogique, la synthèse des réponses, le compte rendu de partage avec l'équipe, les décisions prises et une vérification ultérieure de leur efficacité.",
+      },
+      {
+        title: "8. Ce que je conseille de mettre en place avant le 1er novembre",
+        body: "Commencez par quatre choses simples : vérifiez toutes les informations publiées sur vos formations et documentez le calcul de vos résultats ; sécurisez la traçabilité du suivi pour les formations à distance ; ajoutez une procédure courte pour les violences, le harcèlement et les discriminations ; créez un petit registre des risques qualité. Si vous sous-traitez, relisez également vos contrats et votre manière de contrôler les intervenants. Pour les formations certifiantes, formalisez le lien entre votre programme et le référentiel de certification. Et si vous êtes CFA, préparez dès maintenant une véritable évaluation pédagogique distincte de la satisfaction générale.",
+      },
+      {
+        title: "Ce qui ne change pas : une preuve doit raconter ce qui s'est réellement passé",
+        body: "Le nouveau décret ne transforme pas Qualiopi en concours du plus gros classeur. Une preuve reste utile lorsqu'elle est cohérente avec votre activité, datée, applicable au bon bénéficiaire ou à la bonne formation et réellement utilisée. Un beau modèle vide ne démontre rien. À l'inverse, une trace simple mais fiable d'un positionnement, d'une adaptation, d'un suivi pédagogique ou d'une action d'amélioration peut être très parlante. Le meilleur réflexe reste donc le même : faire, tracer, conserver et pouvoir expliquer.",
+      },
+    ],
+    conclusion:
+      "À partir du 1er novembre 2026, Qualiopi demandera un peu moins de déclaratif et davantage de traces vérifiables de la qualité réellement mise en œuvre. Pour les petits organismes déjà sérieux dans leur suivi, il ne s'agit pas de tout reconstruire : il faut surtout rendre plus visibles, plus traçables et plus faciles à retrouver les pratiques qui existent déjà.",
+  },
+  {
     slug: "quand-administratif-prend-le-dessus",
     category: "Gestion quotidienne",
     title:
