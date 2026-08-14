@@ -93,10 +93,26 @@ export default function DailyEndEvaluationsPage() {
     try { await navigator.clipboard.writeText(link); setMessage("Lien de satisfaction copié dans le presse-papiers."); } catch { setMessage("Lien de satisfaction généré."); }
   }
 
+  async function sendFeedbackRequest(enrolmentId: string) {
+    setBusy(true); setError(""); setMessage(""); setGeneratedLink("");
+    const response = await assistanceFetch("/api/client/daily/end-evaluations/send-satisfaction", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sessionId, enrolment_id: enrolmentId }),
+    });
+    const data = await response.json().catch(() => ({}));
+    setBusy(false);
+    if (!response.ok) return setError(data.error ?? "Demande de satisfaction impossible à envoyer.");
+    const proof = data.evidenceRecorded === false
+      ? " L’e-mail est parti, mais la preuve technique doit être contrôlée par Selen."
+      : " L’envoi est conservé dans Communications.";
+    setMessage(`Questionnaire envoyé à ${data.sentTo}.${proof}`);
+  }
+
   return <main style={{ maxWidth: 1180, margin: "0 auto", padding: "2rem 1rem 4rem", color: "#3f2b1d" }}>
     <p style={{ fontWeight: 800, color: "#8a4b24" }}>Selen Daily · Fin de formation</p>
     <h1>Évaluation des acquis & satisfaction</h1>
-    <p>Prépare les évaluations, enregistre le résultat de chaque apprenant et collecte son retour de satisfaction par lien individuel sécurisé.</p>
+    <p>Prépare les évaluations, enregistre le résultat de chaque apprenant et collecte son retour de satisfaction. Daily peut envoyer le lien individuel directement à l’adresse enregistrée et conserver la preuve du message.</p>
     {error ? <p style={{ padding: ".7rem", border: "1px solid #8a4b24" }}>{error}</p> : null}
     {message ? <p style={{ padding: ".7rem", border: "1px solid #6a8a4a" }}>{message}</p> : null}
     {generatedLink ? <p style={{ wordBreak: "break-all", padding: ".7rem", background: "#fffaf0", border: "1px solid #d8b989" }}>{generatedLink}</p> : null}
@@ -120,7 +136,7 @@ export default function DailyEndEvaluationsPage() {
             <label style={{ display: "grid", gap: ".3rem" }}>Méthode<input value={current.method ?? ""} onChange={(event) => setDrafts((all) => ({ ...all, [enrolment.id]: { ...current, method: event.target.value } }))} placeholder="Quiz, mise en situation..." style={{ padding: ".6rem" }} /></label>
           </div>
           <label style={{ display: "grid", gap: ".3rem" }}>Notes<textarea rows={2} value={current.notes ?? ""} onChange={(event) => setDrafts((all) => ({ ...all, [enrolment.id]: { ...current, notes: event.target.value } }))} style={{ padding: ".6rem" }} /></label>
-          <div style={{ display: "flex", gap: ".6rem", flexWrap: "wrap" }}><button type="button" disabled={busy} onClick={() => void saveAssessment(enrolment.id)}>Enregistrer l'évaluation</button>{!feedback ? <button type="button" disabled={busy} onClick={() => void createFeedbackLink(enrolment.id)}>Créer le lien satisfaction</button> : null}</div>
+          <div style={{ display: "flex", gap: ".6rem", flexWrap: "wrap" }}><button type="button" disabled={busy} onClick={() => void saveAssessment(enrolment.id)}>Enregistrer l'évaluation</button>{!feedback ? <><button type="button" disabled={busy} onClick={() => void sendFeedbackRequest(enrolment.id)} style={{fontWeight:800}}>Envoyer le questionnaire</button><button type="button" disabled={busy} onClick={() => void createFeedbackLink(enrolment.id)}>Créer le lien sans envoi</button></> : null}</div>
           {feedback ? <details><summary>Voir le retour de satisfaction</summary><p>Objectifs : {feedback.objectives_rating}/5 · Formateur : {feedback.trainer_rating ?? "-"}/5 · Organisation : {feedback.organisation_rating ?? "-"}/5 · Contenu : {feedback.content_rating ?? "-"}/5 · Rythme : {feedback.pace_rating ?? "-"}/5</p>{feedback.strengths ? <p><strong>Points forts :</strong> {feedback.strengths}</p> : null}{feedback.improvements ? <p><strong>Améliorations :</strong> {feedback.improvements}</p> : null}{feedback.adaptation_feedback ? <p><strong>Adaptations :</strong> {feedback.adaptation_feedback}</p> : null}{feedback.free_comment ? <p><strong>Commentaire :</strong> {feedback.free_comment}</p> : null}</details> : null}
         </article>;
       })}
