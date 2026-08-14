@@ -4,10 +4,14 @@ import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import {
   DAILY_ATTENDANCE_CONSENT,
   buildAttendanceProofHash,
+  createAttendanceVerificationCode,
+  hashAttendanceEmail,
   hashAttendanceSignature,
   hashAttendanceToken,
+  hashAttendanceVerificationCode,
   signatureBufferFromDataUrl,
 } from "@/lib/server/dailyAttendance";
+import { sendDailyAttendanceVerificationCode } from "@/lib/server/dailyAttendanceEmails";
 
 type Params = { params: Promise<{ token: string }> };
 
@@ -29,6 +33,10 @@ async function getAccess(rawToken: string) {
   if (error) throw new Error(error.message);
   if (!access) return null;
   return { admin, access };
+}
+
+function accessUnavailable(access: { status: string; expires_at: string }) {
+  return access.status !== "active" || new Date(access.expires_at).getTime() < Date.now();
 }
 
 async function getIdentity(
@@ -75,6 +83,17 @@ async function getIdentity(
   return learner ? { enrolment, learner } : null;
 }
 
+async function loadSlotAndSession(
+  admin: ReturnType<typeof getAdminSupabase>,
+  access: { slot_id: string; session_id: string; organisation_id: string },
+) {
+  const [{ data: slot }, { data: session }] = await Promise.all([
+    admin.from("daily_attendance_slots").select("id,slot_date,starts_at,ends_at,mode,label,status").eq("id", access.slot_id).eq("organisation_id", access.organisation_id).maybeSingle(),
+    admin.from("daily_sessions").select("id,internal_reference,modality,start_date,end_date,daily_formations(id,title)").eq("id", access.session_id).eq("organisation_id", access.organisation_id).maybeSingle(),
+  ]);
+  return { slot, session };
+}
+
 export async function GET(_request: Request, { params }: Params) {
   const { token } = await params;
   const rawToken = String(token ?? "").trim();
@@ -83,13 +102,8 @@ export async function GET(_request: Request, { params }: Params) {
     const loaded = await getAccess(rawToken);
     if (!loaded) return NextResponse.json({ error: "Lien d'émargement introuvable." }, { status: 404 });
     const { admin, access } = loaded;
-    if (access.status !== "active" || new Date(access.expires_at).getTime() < Date.now()) {
-      return NextResponse.json({ error: "Ce lien d'émargement n'est plus actif." }, { status: 410 });
-    }
-    const [{ data: slot }, { data: session }] = await Promise.all([
-      admin.from("daily_attendance_slots").select("id,slot_date,starts_at,ends_at,mode,label,status").eq("id", access.slot_id).maybeSingle(),
-      admin.from("daily_sessions").select("id,internal_reference,modality,start_date,end_date,daily_formations(id,title)").eq("id", access.session_id).eq("organisation_id", access.organisation_id).maybeSingle(),
-    ]);
+    if (accessUnavailable(access)) return NextResponse.json({ error: "Ce lien d'émargement n'est plus actif." }, { status: 410 });
+    const { slot, session } = await loadSlotAndSession(admin, access);
     if (!slot || !session || ["closed", "cancelled"].includes(slot.status)) {
       return NextResponse.json({ error: "Ce créneau d'émargement n'est plus disponible." }, { status: 410 });
     }
@@ -109,6 +123,7 @@ export async function GET(_request: Request, { params }: Params) {
       alreadySigned: record?.status === "present",
       signedAt: record?.signed_at ?? null,
       consentText: DAILY_ATTENDANCE_CONSENT,
+      requiresEmailCode: access.access_type === "shared",
     });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Ouverture impossible." }, { status: 500 });
@@ -120,22 +135,106 @@ export async function POST(request: Request, { params }: Params) {
   const rawToken = String(token ?? "").trim();
   const body = await request.json().catch(() => ({})) as Record<string, unknown>;
   if (!rawToken) return NextResponse.json({ error: "Lien invalide." }, { status: 400 });
-  if (body.consent !== true) return NextResponse.json({ error: "Le consentement est obligatoire." }, { status: 400 });
-  const signature = signatureBufferFromDataUrl(String(body.signature_data ?? ""));
-  if (!signature) return NextResponse.json({ error: "La signature dessinée est obligatoire." }, { status: 400 });
 
   try {
     const loaded = await getAccess(rawToken);
     if (!loaded) return NextResponse.json({ error: "Lien d'émargement introuvable." }, { status: 404 });
     const { admin, access } = loaded;
-    if (access.status !== "active" || new Date(access.expires_at).getTime() < Date.now()) {
-      return NextResponse.json({ error: "Ce lien d'émargement n'est plus actif." }, { status: 410 });
+    if (accessUnavailable(access)) return NextResponse.json({ error: "Ce lien d'émargement n'est plus actif." }, { status: 410 });
+    const { slot, session } = await loadSlotAndSession(admin, access);
+    if (!slot || !session || ["closed", "cancelled"].includes(slot.status)) {
+      return NextResponse.json({ error: "Ce créneau est fermé." }, { status: 410 });
     }
-    const { data: slot } = await admin.from("daily_attendance_slots").select("status").eq("id", access.slot_id).maybeSingle();
-    if (!slot || ["closed", "cancelled"].includes(slot.status)) return NextResponse.json({ error: "Ce créneau est fermé." }, { status: 410 });
+
+    if (body.action === "request_code") {
+      if (access.access_type !== "shared") return NextResponse.json({ error: "Ce lien ne nécessite pas de code." }, { status: 400 });
+      const email = String(body.email ?? "").trim().toLowerCase();
+      const identity = await getIdentity(admin, access, email);
+      if (!identity?.learner.email) return NextResponse.json({ error: "Cette adresse ne correspond pas à une inscription active." }, { status: 404 });
+
+      const { data: recent } = await admin
+        .from("daily_attendance_verifications")
+        .select("created_at")
+        .eq("access_token_id", access.id)
+        .eq("enrolment_id", identity.enrolment.id)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (recent && Date.now() - new Date(recent.created_at).getTime() < 60_000) {
+        return NextResponse.json({ error: "Un code vient déjà d'être envoyé. Patientez une minute avant de recommencer." }, { status: 429 });
+      }
+
+      await admin
+        .from("daily_attendance_verifications")
+        .update({ status: "expired" })
+        .eq("access_token_id", access.id)
+        .eq("enrolment_id", identity.enrolment.id)
+        .eq("status", "pending");
+
+      const { code, codeHash } = createAttendanceVerificationCode();
+      const expiresAt = new Date(Date.now() + 10 * 60_000).toISOString();
+      const { data: verification, error: verificationError } = await admin
+        .from("daily_attendance_verifications")
+        .insert({
+          organisation_id: access.organisation_id,
+          session_id: access.session_id,
+          slot_id: access.slot_id,
+          access_token_id: access.id,
+          enrolment_id: identity.enrolment.id,
+          email_hash: hashAttendanceEmail(email),
+          code_hash: codeHash,
+          status: "pending",
+          expires_at: expiresAt,
+        })
+        .select("id")
+        .single();
+      if (verificationError || !verification) return NextResponse.json({ error: "Le code n'a pas pu être préparé." }, { status: 500 });
+
+      const learnerName = `${identity.learner.first_name ?? ""} ${identity.learner.last_name ?? ""}`.trim();
+      const sent = await sendDailyAttendanceVerificationCode({
+        email: identity.learner.email,
+        learnerName,
+        formationTitle: formationTitle(session.daily_formations),
+        code,
+      });
+      if (!sent.sent) {
+        await admin.from("daily_attendance_verifications").update({ status: "expired" }).eq("id", verification.id);
+        return NextResponse.json({ error: "Le code n'a pas pu être envoyé. Réessayez dans quelques instants." }, { status: 503 });
+      }
+      return NextResponse.json({ ok: true, verificationId: verification.id, expiresAt });
+    }
+
+    if (body.consent !== true) return NextResponse.json({ error: "Le consentement est obligatoire." }, { status: 400 });
+    const signature = signatureBufferFromDataUrl(String(body.signature_data ?? ""));
+    if (!signature) return NextResponse.json({ error: "La signature dessinée est obligatoire." }, { status: 400 });
 
     const identity = await getIdentity(admin, access, String(body.email ?? ""));
     if (!identity) return NextResponse.json({ error: "Votre inscription n'a pas été retrouvée." }, { status: 404 });
+
+    if (access.access_type === "shared") {
+      const verificationId = String(body.verification_id ?? "").trim();
+      const code = String(body.code ?? "").trim();
+      if (!verificationId || !/^\d{6}$/.test(code)) return NextResponse.json({ error: "Saisissez le code à 6 chiffres reçu par e-mail." }, { status: 400 });
+      const { data: verification } = await admin
+        .from("daily_attendance_verifications")
+        .select("id,status,attempts,expires_at,code_hash,email_hash")
+        .eq("id", verificationId)
+        .eq("access_token_id", access.id)
+        .eq("enrolment_id", identity.enrolment.id)
+        .maybeSingle();
+      if (!verification || verification.status !== "pending" || new Date(verification.expires_at).getTime() < Date.now()) {
+        if (verification?.id && verification.status === "pending") await admin.from("daily_attendance_verifications").update({ status: "expired" }).eq("id", verification.id);
+        return NextResponse.json({ error: "Ce code a expiré. Demandez-en un nouveau." }, { status: 410 });
+      }
+      if (verification.email_hash !== hashAttendanceEmail(String(body.email ?? "")) || verification.code_hash !== hashAttendanceVerificationCode(code)) {
+        const attempts = Number(verification.attempts ?? 0) + 1;
+        await admin.from("daily_attendance_verifications").update({ attempts, status: attempts >= 5 ? "locked" : "pending" }).eq("id", verification.id);
+        return NextResponse.json({ error: attempts >= 5 ? "Trop de tentatives. Demandez un nouveau code." : "Code incorrect." }, { status: attempts >= 5 ? 429 : 400 });
+      }
+      await admin.from("daily_attendance_verifications").update({ status: "verified", verified_at: new Date().toISOString() }).eq("id", verification.id);
+    }
+
     const { data: current } = await admin.from("daily_attendance_records").select("status,signed_at").eq("slot_id", access.slot_id).eq("enrolment_id", identity.enrolment.id).maybeSingle();
     if (current?.status === "present") return NextResponse.json({ ok: true, alreadySigned: true, signedAt: current.signed_at });
 
@@ -171,7 +270,7 @@ export async function POST(request: Request, { params }: Params) {
       signed_at: signedAt,
       ip_address: ipAddress,
       user_agent: userAgent,
-      evidence_metadata: { channel: access.channel, access_type: access.access_type },
+      evidence_metadata: { channel: access.channel, access_type: access.access_type, email_code_verified: access.access_type === "shared" },
       updated_at: signedAt,
     }, { onConflict: "slot_id,enrolment_id" });
     if (recordError) return NextResponse.json({ error: recordError.message }, { status: 500 });
