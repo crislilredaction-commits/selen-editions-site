@@ -3,6 +3,16 @@
 import { useEffect, useState } from "react";
 import { assistanceFetch } from "@/components/AgentAssistanceBanner";
 
+type LinkedDocument = {
+  communication_id: string;
+  document_id: string;
+  document_type: string;
+  logical_name: string;
+  document_version: number;
+  sha256?: string | null;
+  storage_path: string;
+};
+
 type Communication = {
   id: string;
   communication_type: string;
@@ -16,10 +26,12 @@ type Communication = {
   sent_at?: string | null;
   delivered_at?: string | null;
   failed_at?: string | null;
+  documents?: LinkedDocument[];
 };
 
 const typeLabels: Record<string, string> = {
   attendance_reminder: "Relance d’émargement",
+  convocation: "Envoi de convocation",
 };
 
 const statusLabels: Record<string, string> = {
@@ -28,6 +40,13 @@ const statusLabels: Record<string, string> = {
   delivered: "Livré",
   bounced: "Rejeté",
   failed: "Échec",
+};
+
+const documentLabels: Record<string, string> = {
+  training_program: "Programme",
+  training_agreement: "Convention",
+  convocation: "Convocation",
+  registration_positioning: "Inscription & positionnement",
 };
 
 function formatDate(value?: string | null) {
@@ -55,7 +74,8 @@ export default function DailyCommunicationsPage() {
       <h1>Communications envoyées</h1>
       <p>
         Cet historique conserve les communications métier envoyées par Daily. Il permet de retrouver le destinataire,
-        l’horodatage, le contenu exact envoyé et l’identifiant technique du message lorsqu’il est disponible.
+        l’horodatage, le contenu exact envoyé et l’identifiant technique du message. Lorsqu’un document est joint,
+        la version, son empreinte et son rattachement sont figés avec la preuve.
       </p>
       {error ? <p style={{ padding: 12, border: "1px solid #8a4b24" }}>{error}</p> : null}
       <section style={{ display: "grid", gap: 12, marginTop: 18 }}>
@@ -69,10 +89,16 @@ export default function DailyCommunicationsPage() {
                 <div style={{ fontSize: 13, marginTop: 5 }}>
                   À {item.recipient_name ? `${item.recipient_name} · ` : ""}{item.recipient_email}
                 </div>
+                {item.documents?.length ? (
+                  <div style={{ fontSize: 12, marginTop: 6, fontWeight: 700 }}>
+                    {item.documents.length} document{item.documents.length > 1 ? "s" : ""} lié{item.documents.length > 1 ? "s" : ""} à cette preuve
+                  </div>
+                ) : null}
               </div>
               <div style={{ textAlign: "right", fontSize: 13 }}>
                 <strong>{statusLabels[item.status] ?? item.status}</strong>
                 <div>{formatDate(item.sent_at ?? item.failed_at)}</div>
+                {item.delivered_at ? <div>Livré : {formatDate(item.delivered_at)}</div> : null}
               </div>
             </div>
             <button
@@ -85,6 +111,29 @@ export default function DailyCommunicationsPage() {
             {openId === item.id ? (
               <div style={{ marginTop: 12, padding: 12, background: "rgba(201,160,85,.08)", border: "1px solid #e4cfaa" }}>
                 <pre style={{ whiteSpace: "pre-wrap", fontFamily: "inherit", margin: 0 }}>{item.text_body}</pre>
+                {item.documents?.length ? (
+                  <div style={{ marginTop: 16, display: "grid", gap: 8 }}>
+                    <strong>Document(s) envoyé(s)</strong>
+                    {item.documents.map((document) => (
+                      <div key={document.document_id} style={{ padding: 10, background: "#fffaf0", border: "1px solid #e4cfaa" }}>
+                        <div>
+                          <strong>{documentLabels[document.document_type] ?? document.document_type}</strong> · version {document.document_version}
+                        </div>
+                        {document.sha256 ? (
+                          <div style={{ fontSize: 11, marginTop: 5, wordBreak: "break-all" }}>SHA-256 : {document.sha256}</div>
+                        ) : null}
+                        <a
+                          href={`/api/client/daily/pretraining-documents/download?id=${encodeURIComponent(document.document_id)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{ display: "inline-block", marginTop: 7 }}
+                        >
+                          Télécharger cette version
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 <div style={{ marginTop: 12, fontSize: 12 }}>
                   Prestataire : {item.provider}
                   {item.provider_message_id ? ` · identifiant : ${item.provider_message_id}` : " · identifiant indisponible"}
