@@ -139,5 +139,40 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "La relance n’a pas pu être envoyée. Aucun lien actif supplémentaire n’a été conservé." }, { status: 503 });
   }
 
-  return NextResponse.json({ ok: true, sentTo: email, expiresAt });
+  const sentAt = new Date().toISOString();
+  const { error: evidenceError } = await context.admin
+    .from("daily_communications")
+    .insert({
+      organisation_id: context.organisationId,
+      session_id: sessionId,
+      enrolment_id: enrolmentId,
+      communication_type: "attendance_reminder",
+      channel: "email",
+      recipient_email: email,
+      recipient_name: learnerName || null,
+      subject: sent.message.subject,
+      text_body: sent.message.text,
+      html_body: sent.message.html,
+      provider: "resend",
+      provider_message_id: sent.message.providerMessageId,
+      status: "sent",
+      sent_at: sentAt,
+      created_by: context.user.id,
+      metadata: {
+        attendance_slot_id: slotId,
+        attendance_access_token_id: access.id,
+        token_expires_at: expiresAt,
+      },
+    });
+
+  if (evidenceError) {
+    console.error("Daily : relance envoyée mais preuve de communication non enregistrée", evidenceError);
+  }
+
+  return NextResponse.json({
+    ok: true,
+    sentTo: email,
+    expiresAt,
+    evidenceRecorded: !evidenceError,
+  });
 }
