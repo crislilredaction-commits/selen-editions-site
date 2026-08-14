@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "crypto";
+import { createHash, randomBytes, randomInt } from "crypto";
 
 export const DAILY_ATTENDANCE_CONSENT =
   "Je confirme ma présence pour ce créneau de formation et j’accepte que ma signature électronique, la date et l’heure de signature ainsi que les éléments techniques de preuve soient conservés dans le dossier de formation.";
@@ -10,6 +10,19 @@ export function createAttendanceToken() {
 
 export function hashAttendanceToken(token: string) {
   return createHash("sha256").update(token.trim()).digest("hex");
+}
+
+export function createAttendanceVerificationCode() {
+  const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
+  return { code, codeHash: hashAttendanceVerificationCode(code) };
+}
+
+export function hashAttendanceVerificationCode(code: string) {
+  return createHash("sha256").update(code.trim()).digest("hex");
+}
+
+export function hashAttendanceEmail(email: string) {
+  return createHash("sha256").update(email.trim().toLowerCase()).digest("hex");
 }
 
 export function hashAttendanceSignature(buffer: Buffer) {
@@ -68,6 +81,8 @@ export function signatureBufferFromDataUrl(value: string) {
   try {
     const buffer = Buffer.from(payload, "base64");
     if (buffer.length === 0 || buffer.length > 1_000_000) return null;
+    const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    if (buffer.length < pngSignature.length || !buffer.subarray(0, pngSignature.length).equals(pngSignature)) return null;
     return buffer;
   } catch {
     return null;
