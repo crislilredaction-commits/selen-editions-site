@@ -4,8 +4,8 @@ import { hashDailyFeedbackToken } from "@/lib/server/dailyEndEvaluations";
 
 type Params = { params: Promise<{ token: string }> };
 
-function rating(value: unknown, required = false) {
-  if (value === null || value === undefined || String(value).trim() === "") return required ? null : undefined;
+function rating(value: unknown) {
+  if (value === null || value === undefined || String(value).trim() === "") return null;
   const number = Number(value);
   return Number.isInteger(number) && number >= 1 && number <= 5 ? number : null;
 }
@@ -76,14 +76,14 @@ export async function POST(request: Request, { params }: Params) {
     const { data: existing } = await admin.from("daily_learner_feedback_responses").select("id,submitted_at").eq("session_id", token.session_id).eq("enrolment_id", token.enrolment_id).maybeSingle();
     if (existing) return NextResponse.json({ ok: true, alreadySubmitted: true, submittedAt: existing.submitted_at });
 
-    const overall = rating(body.overall_rating, true);
-    const objectives = rating(body.objectives_rating, true);
+    const overall = rating(body.overall_rating);
+    const objectives = rating(body.objectives_rating);
     const trainer = rating(body.trainer_rating);
     const organisation = rating(body.organisation_rating);
     const content = rating(body.content_rating);
     const pace = rating(body.pace_rating);
     if (overall === null || objectives === null || trainer === null || organisation === null || content === null || pace === null) {
-      return NextResponse.json({ error: "Les notes doivent être comprises entre 1 et 5." }, { status: 400 });
+      return NextResponse.json({ error: "Merci de noter chaque critère de 1 à 5." }, { status: 400 });
     }
     const submittedAt = new Date().toISOString();
     const { error } = await admin.from("daily_learner_feedback_responses").insert({
