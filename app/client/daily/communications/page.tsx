@@ -32,6 +32,7 @@ type Communication = {
 const typeLabels: Record<string, string> = {
   attendance_reminder: "Relance d’émargement",
   convocation: "Envoi de convocation",
+  satisfaction_request: "Questionnaire de satisfaction",
 };
 
 const statusLabels: Record<string, string> = {
