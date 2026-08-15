@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 import { NextResponse } from "next/server";
 import { getDailyOrganisationContext } from "@/lib/server/dailyOrganisationContext";
-import { sendDailyCompletionCertificate } from "@/lib/server/dailyPosttrainingEmails";
+import { prepareDailyCompletionCertificateEmail, sendDailyCompletionCertificate } from "@/lib/server/dailyPosttrainingEmails";
 
 const sendableStatuses = ["validated", "published", "active"];
 
@@ -87,7 +87,7 @@ export async function POST(request: Request) {
 
   const attachmentBase64 = Buffer.from(await file.arrayBuffer()).toString("base64");
   const attachmentFilename = `${safeFilename(`certificat-realisation-${learnerName || "apprenant"}`)}-v${document.version}.doc`;
-  const sent = await sendDailyCompletionCertificate({
+  const emailInput = {
     email,
     learnerName,
     formationTitle,
@@ -95,12 +95,9 @@ export async function POST(request: Request) {
     endDate: text(session.end_date),
     attachmentFilename,
     attachmentBase64,
-  });
-  if (!sent.sent) {
-    return NextResponse.json({ error: "Le certificat n’a pas pu être envoyé. Aucune preuve d’envoi n’a été créée." }, { status: 503 });
-  }
+  };
+  const prepared = prepareDailyCompletionCertificateEmail(emailInput);
 
-  const sentAt = new Date().toISOString();
   const { data: communication, error: evidenceError } = await context.admin
     .from("daily_communications")
     .insert({
@@ -111,13 +108,11 @@ export async function POST(request: Request) {
       channel: "email",
       recipient_email: email,
       recipient_name: learnerName || null,
-      subject: sent.message.subject,
-      text_body: sent.message.text,
-      html_body: sent.message.html,
+      subject: prepared.subject,
+      text_body: prepared.text,
+      html_body: prepared.html,
       provider: "resend",
-      provider_message_id: sent.message.providerMessageId,
-      status: "sent",
-      sent_at: sentAt,
+      status: "queued",
       created_by: context.user.id,
       metadata: {
         document_id: document.id,
@@ -130,8 +125,7 @@ export async function POST(request: Request) {
     .single();
 
   if (evidenceError || !communication) {
-    console.error("Daily : certificat envoyé mais preuve de communication non enregistrée", evidenceError);
-    return NextResponse.json({ ok: true, sentTo: email, sentAt, evidenceRecorded: false });
+    return NextResponse.json({ error: "La preuve d’envoi n’a pas pu être réservée. Le certificat n’a pas été envoyé." }, { status: 500 });
   }
 
   const { error: linkError } = await context.admin.from("daily_communication_documents").insert({
@@ -144,13 +138,40 @@ export async function POST(request: Request) {
     storage_path: document.storage_path,
   });
 
-  if (linkError) console.error("Daily : certificat envoyé mais snapshot documentaire incomplet", linkError);
+  if (linkError) {
+    const failedAt = new Date().toISOString();
+    await context.admin.from("daily_communications").update({ status: "failed", failed_at: failedAt, failure_reason: "document_snapshot_failed" }).eq("id", communication.id);
+    return NextResponse.json({ error: "La version exacte du document n’a pas pu être figée. Le certificat n’a pas été envoyé." }, { status: 500 });
+  }
+
+  const sent = await sendDailyCompletionCertificate(emailInput);
+  if (!sent.sent) {
+    const failedAt = new Date().toISOString();
+    await context.admin.from("daily_communications").update({ status: "failed", failed_at: failedAt, failure_reason: sent.reason }).eq("id", communication.id);
+    return NextResponse.json({ error: "Le certificat n’a pas pu être envoyé. La tentative est conservée dans l’historique." }, { status: 503 });
+  }
+
+  const sentAt = new Date().toISOString();
+  const { error: finalizeError } = await context.admin
+    .from("daily_communications")
+    .update({
+      provider_message_id: sent.message.providerMessageId,
+      status: "sent",
+      sent_at: sentAt,
+      failed_at: null,
+      failure_reason: null,
+    })
+    .eq("id", communication.id);
+
+  if (finalizeError) {
+    console.error("Daily : certificat envoyé mais finalisation de la preuve impossible", finalizeError);
+  }
 
   return NextResponse.json({
     ok: true,
     sentTo: email,
     sentAt,
-    evidenceRecorded: !linkError,
+    evidenceRecorded: !finalizeError,
     communicationId: communication.id,
   });
 }
