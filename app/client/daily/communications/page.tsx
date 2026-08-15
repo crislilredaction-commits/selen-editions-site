@@ -33,6 +33,7 @@ const typeLabels: Record<string, string> = {
   attendance_reminder: "Relance d’émargement",
   convocation: "Envoi de convocation",
   satisfaction_request: "Questionnaire de satisfaction",
+  completion_certificate: "Certificat de réalisation",
 };
 
 const statusLabels: Record<string, string> = {
@@ -48,11 +49,20 @@ const documentLabels: Record<string, string> = {
   training_agreement: "Convention",
   convocation: "Convocation",
   registration_positioning: "Inscription & positionnement",
+  attendance_summary: "Relevé des présences",
+  completion_certificate: "Certificat de réalisation",
 };
 
 function formatDate(value?: string | null) {
   if (!value) return "Date indisponible";
   return new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+}
+
+function documentDownloadHref(document: LinkedDocument) {
+  const endpoint = ["attendance_summary", "completion_certificate"].includes(document.document_type)
+    ? "/api/client/daily/posttraining-documents/download"
+    : "/api/client/daily/pretraining-documents/download";
+  return `${endpoint}?id=${encodeURIComponent(document.document_id)}`;
 }
 
 export default function DailyCommunicationsPage() {
@@ -102,11 +112,7 @@ export default function DailyCommunicationsPage() {
                 {item.delivered_at ? <div>Livré : {formatDate(item.delivered_at)}</div> : null}
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => setOpenId(openId === item.id ? null : item.id)}
-              style={{ marginTop: 12, padding: "7px 10px", fontWeight: 700 }}
-            >
+            <button type="button" onClick={() => setOpenId(openId === item.id ? null : item.id)} style={{ marginTop: 12, padding: "7px 10px", fontWeight: 700 }}>
               {openId === item.id ? "Masquer la preuve" : "Voir la preuve"}
             </button>
             {openId === item.id ? (
@@ -117,27 +123,15 @@ export default function DailyCommunicationsPage() {
                     <strong>Document(s) envoyé(s)</strong>
                     {item.documents.map((document) => (
                       <div key={document.document_id} style={{ padding: 10, background: "#fffaf0", border: "1px solid #e4cfaa" }}>
-                        <div>
-                          <strong>{documentLabels[document.document_type] ?? document.document_type}</strong> · version {document.document_version}
-                        </div>
-                        {document.sha256 ? (
-                          <div style={{ fontSize: 11, marginTop: 5, wordBreak: "break-all" }}>SHA-256 : {document.sha256}</div>
-                        ) : null}
-                        <a
-                          href={`/api/client/daily/pretraining-documents/download?id=${encodeURIComponent(document.document_id)}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          style={{ display: "inline-block", marginTop: 7 }}
-                        >
-                          Télécharger cette version
-                        </a>
+                        <div><strong>{documentLabels[document.document_type] ?? document.document_type}</strong> · version {document.document_version}</div>
+                        {document.sha256 ? <div style={{ fontSize: 11, marginTop: 5, wordBreak: "break-all" }}>SHA-256 : {document.sha256}</div> : null}
+                        <a href={documentDownloadHref(document)} target="_blank" rel="noreferrer" style={{ display: "inline-block", marginTop: 7 }}>Télécharger cette version</a>
                       </div>
                     ))}
                   </div>
                 ) : null}
                 <div style={{ marginTop: 12, fontSize: 12 }}>
-                  Prestataire : {item.provider}
-                  {item.provider_message_id ? ` · identifiant : ${item.provider_message_id}` : " · identifiant indisponible"}
+                  Prestataire : {item.provider}{item.provider_message_id ? ` · identifiant : ${item.provider_message_id}` : " · identifiant indisponible"}
                 </div>
               </div>
             ) : null}
