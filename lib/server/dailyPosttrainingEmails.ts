@@ -11,7 +11,7 @@ export type DailyCertificateEmailSnapshot = {
   providerMessageId: string | null;
 };
 
-export async function sendDailyCompletionCertificate(input: {
+type DailyCertificateEmailInput = {
   email: string;
   learnerName: string;
   formationTitle: string;
@@ -19,12 +19,9 @@ export async function sendDailyCompletionCertificate(input: {
   endDate: string;
   attachmentFilename: string;
   attachmentBase64: string;
-}) {
-  if (!resend) {
-    console.warn("RESEND_API_KEY absente : certificat de réalisation Daily non envoyé.");
-    return { sent: false as const, reason: "missing_resend_api_key" as const };
-  }
+};
 
+export function prepareDailyCompletionCertificateEmail(input: DailyCertificateEmailInput) {
   const subject = `Votre certificat de réalisation · ${input.formationTitle}`;
   const period = input.endDate && input.endDate !== input.startDate
     ? `du ${formatDate(input.startDate)} au ${formatDate(input.endDate)}`
@@ -44,13 +41,22 @@ export async function sendDailyCompletionCertificate(input: {
       <p>Conservez ce document avec vos justificatifs de formation.</p>
       <p>Selen Editions</p>
     </div>`;
+  return { subject, text, html };
+}
 
+export async function sendDailyCompletionCertificate(input: DailyCertificateEmailInput) {
+  if (!resend) {
+    console.warn("RESEND_API_KEY absente : certificat de réalisation Daily non envoyé.");
+    return { sent: false as const, reason: "missing_resend_api_key" as const };
+  }
+
+  const message = prepareDailyCompletionCertificateEmail(input);
   const { data, error } = await resend.emails.send({
     from: resendFromEmail,
     to: input.email,
-    subject,
-    text,
-    html,
+    subject: message.subject,
+    text: message.text,
+    html: message.html,
     replyTo: "hello@selen-editions.fr",
     attachments: [{ content: input.attachmentBase64, filename: input.attachmentFilename }],
   });
@@ -62,7 +68,7 @@ export async function sendDailyCompletionCertificate(input: {
 
   return {
     sent: true as const,
-    message: { subject, text, html, providerMessageId: data?.id ?? null } satisfies DailyCertificateEmailSnapshot,
+    message: { ...message, providerMessageId: data?.id ?? null } satisfies DailyCertificateEmailSnapshot,
   };
 }
 
