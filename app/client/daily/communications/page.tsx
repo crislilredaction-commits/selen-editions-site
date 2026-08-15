@@ -65,6 +65,10 @@ function documentDownloadHref(document: LinkedDocument) {
   return `${endpoint}?id=${encodeURIComponent(document.document_id)}`;
 }
 
+function proofDownloadHref(communicationId: string) {
+  return `/api/client/daily/communications/proof?communication_id=${encodeURIComponent(communicationId)}`;
+}
+
 export default function DailyCommunicationsPage() {
   const [communications, setCommunications] = useState<Communication[]>([]);
   const [error, setError] = useState("");
@@ -86,7 +90,8 @@ export default function DailyCommunicationsPage() {
       <p>
         Cet historique conserve les communications métier envoyées par Daily. Il permet de retrouver le destinataire,
         l’horodatage, le contenu exact envoyé et l’identifiant technique du message. Lorsqu’un document est joint,
-        la version, son empreinte et son rattachement sont figés avec la preuve.
+        la version, son empreinte et son rattachement sont figés avec la preuve. Une preuve d’envoi PDF peut être
+        téléchargée pour être conservée avec le dossier d’audit.
       </p>
       {error ? <p style={{ padding: 12, border: "1px solid #8a4b24" }}>{error}</p> : null}
       <section style={{ display: "grid", gap: 12, marginTop: 18 }}>
@@ -112,9 +117,19 @@ export default function DailyCommunicationsPage() {
                 {item.delivered_at ? <div>Livré : {formatDate(item.delivered_at)}</div> : null}
               </div>
             </div>
-            <button type="button" onClick={() => setOpenId(openId === item.id ? null : item.id)} style={{ marginTop: 12, padding: "7px 10px", fontWeight: 700 }}>
-              {openId === item.id ? "Masquer la preuve" : "Voir la preuve"}
-            </button>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+              <button type="button" onClick={() => setOpenId(openId === item.id ? null : item.id)} style={{ padding: "7px 10px", fontWeight: 700 }}>
+                {openId === item.id ? "Masquer la preuve" : "Voir la preuve"}
+              </button>
+              <a
+                href={proofDownloadHref(item.id)}
+                target="_blank"
+                rel="noreferrer"
+                style={{ display: "inline-block", padding: "7px 10px", fontWeight: 700, border: "1px solid #8a4b24", background: "#fffaf0", color: "#5f3219", textDecoration: "none" }}
+              >
+                Télécharger la preuve PDF
+              </a>
+            </div>
             {openId === item.id ? (
               <div style={{ marginTop: 12, padding: 12, background: "rgba(201,160,85,.08)", border: "1px solid #e4cfaa" }}>
                 <pre style={{ whiteSpace: "pre-wrap", fontFamily: "inherit", margin: 0 }}>{item.text_body}</pre>
