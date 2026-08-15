@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDailyOrganisationContext } from "@/lib/server/dailyOrganisationContext";
 import { activeDailyEnrolment, createDailyFeedbackToken, dailyFeedbackPath } from "@/lib/server/dailyEndEvaluations";
-import { sendDailySatisfactionRequest } from "@/lib/server/dailyEndEvaluationEmails";
+import { prepareDailySatisfactionRequestEmail, sendDailySatisfactionRequest } from "@/lib/server/dailyEndEvaluationEmails";
 
 function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
@@ -105,48 +105,73 @@ export async function POST(request: Request) {
   }
 
   const feedbackUrl = new URL(dailyFeedbackPath(token), request.url).toString();
-  const sent = await sendDailySatisfactionRequest({
-    email,
-    learnerName,
-    formationTitle,
-    feedbackUrl,
-    expiresAt,
-  });
+  const emailInput = { email, learnerName, formationTitle, feedbackUrl, expiresAt };
+  const prepared = prepareDailySatisfactionRequestEmail(emailInput);
 
-  if (!sent.sent) {
+  const { data: communication, error: evidenceError } = await context.admin
+    .from("daily_communications")
+    .insert({
+      organisation_id: context.organisationId,
+      session_id: sessionId,
+      enrolment_id: enrolmentId,
+      communication_type: "satisfaction_request",
+      channel: "email",
+      recipient_email: email,
+      recipient_name: learnerName || null,
+      subject: prepared.subject,
+      text_body: prepared.text,
+      html_body: prepared.html,
+      provider: "resend",
+      status: "queued",
+      created_by: context.user.id,
+      metadata: {
+        feedback_token_id: tokenRow.id,
+        expires_at: expiresAt,
+      },
+    })
+    .select("id")
+    .single();
+
+  if (evidenceError || !communication) {
     await context.admin
       .from("daily_learner_feedback_tokens")
       .update({ status: "revoked" })
       .eq("id", tokenRow.id)
       .eq("organisation_id", context.organisationId);
-    return NextResponse.json({ error: "La demande de satisfaction n’a pas pu être envoyée. Le lien créé a été révoqué." }, { status: 503 });
+    return NextResponse.json({ error: "La preuve d’envoi n’a pas pu être réservée. Le message n’a pas été envoyé et le lien a été révoqué." }, { status: 500 });
+  }
+
+  const sent = await sendDailySatisfactionRequest(emailInput);
+  if (!sent.sent) {
+    const failedAt = new Date().toISOString();
+    await Promise.all([
+      context.admin
+        .from("daily_learner_feedback_tokens")
+        .update({ status: "revoked" })
+        .eq("id", tokenRow.id)
+        .eq("organisation_id", context.organisationId),
+      context.admin
+        .from("daily_communications")
+        .update({ status: "failed", failed_at: failedAt, failure_reason: sent.reason })
+        .eq("id", communication.id),
+    ]);
+    return NextResponse.json({ error: "La demande de satisfaction n’a pas pu être envoyée. Le lien a été révoqué et la tentative est conservée." }, { status: 503 });
   }
 
   const sentAt = new Date().toISOString();
-  const { error: evidenceError } = await context.admin.from("daily_communications").insert({
-    organisation_id: context.organisationId,
-    session_id: sessionId,
-    enrolment_id: enrolmentId,
-    communication_type: "satisfaction_request",
-    channel: "email",
-    recipient_email: email,
-    recipient_name: learnerName || null,
-    subject: sent.message.subject,
-    text_body: sent.message.text,
-    html_body: sent.message.html,
-    provider: "resend",
-    provider_message_id: sent.message.providerMessageId,
-    status: "sent",
-    sent_at: sentAt,
-    created_by: context.user.id,
-    metadata: {
-      feedback_token_id: tokenRow.id,
-      expires_at: expiresAt,
-    },
-  });
+  const { error: finalizeError } = await context.admin
+    .from("daily_communications")
+    .update({
+      provider_message_id: sent.message.providerMessageId,
+      status: "sent",
+      sent_at: sentAt,
+      failed_at: null,
+      failure_reason: null,
+    })
+    .eq("id", communication.id);
 
-  if (evidenceError) {
-    console.error("Daily : satisfaction envoyée mais preuve de communication non enregistrée", evidenceError);
+  if (finalizeError) {
+    console.error("Daily : satisfaction envoyée mais finalisation de la preuve impossible", finalizeError);
   }
 
   return NextResponse.json({
@@ -154,6 +179,7 @@ export async function POST(request: Request) {
     sentTo: email,
     sentAt,
     expiresAt,
-    evidenceRecorded: !evidenceError,
+    evidenceRecorded: !finalizeError,
+    communicationId: communication.id,
   });
 }
