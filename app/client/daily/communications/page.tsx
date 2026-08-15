@@ -15,6 +15,7 @@ type LinkedDocument = {
 
 type Communication = {
   id: string;
+  session_id?: string | null;
   communication_type: string;
   recipient_email: string;
   recipient_name?: string | null;
@@ -73,10 +74,16 @@ export default function DailyCommunicationsPage() {
   const [communications, setCommunications] = useState<Communication[]>([]);
   const [error, setError] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
+  const [sessionFilter, setSessionFilter] = useState("");
 
   useEffect(() => {
     void (async () => {
-      const response = await assistanceFetch("/api/client/daily/communications", { cache: "no-store" });
+      const sessionId = new URLSearchParams(window.location.search).get("session_id")?.trim() || "";
+      setSessionFilter(sessionId);
+      const endpoint = sessionId
+        ? `/api/client/daily/communications?session_id=${encodeURIComponent(sessionId)}`
+        : "/api/client/daily/communications";
+      const response = await assistanceFetch(endpoint, { cache: "no-store" });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) return setError(data.error ?? "Chargement impossible.");
       setCommunications(data.communications ?? []);
@@ -93,9 +100,20 @@ export default function DailyCommunicationsPage() {
         la version, son empreinte et son rattachement sont figés avec la preuve. Une preuve d’envoi PDF peut être
         téléchargée pour être conservée avec le dossier d’audit.
       </p>
+      {sessionFilter ? (
+        <div style={{ marginTop: 14, padding: 12, border: "1px solid #d8b989", background: "rgba(201,160,85,.08)" }}>
+          <strong>Preuves de la session sélectionnée</strong>
+          <div style={{ marginTop: 4, fontSize: 13 }}>
+            L’historique est limité aux communications rattachées à ce dossier de session. {" "}
+            <a href="/client/daily/communications" style={{ fontWeight: 700, color: "#5f3219" }}>Voir toutes les communications</a>
+          </div>
+        </div>
+      ) : null}
       {error ? <p style={{ padding: 12, border: "1px solid #8a4b24" }}>{error}</p> : null}
       <section style={{ display: "grid", gap: 12, marginTop: 18 }}>
-        {communications.length === 0 && !error ? <p>Aucune communication tracée pour le moment.</p> : null}
+        {communications.length === 0 && !error ? (
+          <p>{sessionFilter ? "Aucune communication tracée pour cette session." : "Aucune communication tracée pour le moment."}</p>
+        ) : null}
         {communications.map((item) => (
           <article key={item.id} style={{ padding: 16, border: "1px solid #d8b989", background: "#fffaf0" }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
