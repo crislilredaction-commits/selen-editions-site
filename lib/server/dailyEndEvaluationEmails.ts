@@ -11,18 +11,15 @@ export type DailySatisfactionEmailSnapshot = {
   providerMessageId: string | null;
 };
 
-export async function sendDailySatisfactionRequest(input: {
+type DailySatisfactionEmailInput = {
   email: string;
   learnerName: string;
   formationTitle: string;
   feedbackUrl: string;
   expiresAt: string;
-}) {
-  if (!resend) {
-    console.warn("RESEND_API_KEY absente : demande de satisfaction Daily non envoyée.");
-    return { sent: false as const, reason: "missing_resend_api_key" as const };
-  }
+};
 
+export function prepareDailySatisfactionRequestEmail(input: DailySatisfactionEmailInput) {
   const subject = `Votre avis sur la formation · ${input.formationTitle}`;
   const expiresText = formatDate(input.expiresAt);
   const text = [
@@ -45,13 +42,22 @@ export async function sendDailySatisfactionRequest(input: {
       <p style="font-size:13px">Ce lien personnel reste disponible jusqu’au ${escapeHtml(expiresText)}.</p>
       <p>Merci pour votre retour,<br/>Selen Editions</p>
     </div>`;
+  return { subject, text, html };
+}
 
+export async function sendDailySatisfactionRequest(input: DailySatisfactionEmailInput) {
+  if (!resend) {
+    console.warn("RESEND_API_KEY absente : demande de satisfaction Daily non envoyée.");
+    return { sent: false as const, reason: "missing_resend_api_key" as const };
+  }
+
+  const message = prepareDailySatisfactionRequestEmail(input);
   const { data, error } = await resend.emails.send({
     from: resendFromEmail,
     to: input.email,
-    subject,
-    text,
-    html,
+    subject: message.subject,
+    text: message.text,
+    html: message.html,
     replyTo: "hello@selen-editions.fr",
   });
 
@@ -63,9 +69,7 @@ export async function sendDailySatisfactionRequest(input: {
   return {
     sent: true as const,
     message: {
-      subject,
-      text,
-      html,
+      ...message,
       providerMessageId: data?.id ?? null,
     } satisfies DailySatisfactionEmailSnapshot,
   };
