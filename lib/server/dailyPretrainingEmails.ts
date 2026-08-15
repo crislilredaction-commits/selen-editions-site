@@ -11,7 +11,7 @@ export type DailyPretrainingEmailSnapshot = {
   providerMessageId: string | null;
 };
 
-export async function sendDailyConvocation(input: {
+type DailyConvocationEmailInput = {
   email: string;
   learnerName: string;
   formationTitle: string;
@@ -21,12 +21,9 @@ export async function sendDailyConvocation(input: {
   documentVersion: number;
   attachmentFilename: string;
   attachmentBase64: string;
-}) {
-  if (!resend) {
-    console.warn("RESEND_API_KEY absente : convocation Daily non envoyée.");
-    return { sent: false as const, reason: "missing_resend_api_key" as const };
-  }
+};
 
+export function prepareDailyConvocationEmail(input: DailyConvocationEmailInput) {
   const subject = `Votre convocation · ${input.formationTitle}`;
   const period = input.endDate && input.endDate !== input.startDate
     ? `du ${formatDate(input.startDate)} au ${formatDate(input.endDate)}`
@@ -48,13 +45,22 @@ export async function sendDailyConvocation(input: {
       <p>Conservez ce document : il reprend les informations utiles pour votre participation.</p>
       <p>Selen Editions</p>
     </div>`;
+  return { subject, text, html };
+}
 
+export async function sendDailyConvocation(input: DailyConvocationEmailInput) {
+  if (!resend) {
+    console.warn("RESEND_API_KEY absente : convocation Daily non envoyée.");
+    return { sent: false as const, reason: "missing_resend_api_key" as const };
+  }
+
+  const message = prepareDailyConvocationEmail(input);
   const { data, error } = await resend.emails.send({
     from: resendFromEmail,
     to: input.email,
-    subject,
-    text,
-    html,
+    subject: message.subject,
+    text: message.text,
+    html: message.html,
     replyTo: "hello@selen-editions.fr",
     attachments: [
       {
@@ -72,9 +78,7 @@ export async function sendDailyConvocation(input: {
   return {
     sent: true as const,
     message: {
-      subject,
-      text,
-      html,
+      ...message,
       providerMessageId: data?.id ?? null,
     } satisfies DailyPretrainingEmailSnapshot,
   };
