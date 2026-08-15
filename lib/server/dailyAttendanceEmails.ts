@@ -11,6 +11,14 @@ type SentEmailSnapshot = {
   providerMessageId: string | null;
 };
 
+type AttendanceReminderInput = {
+  email: string;
+  learnerName: string;
+  formationTitle: string;
+  slotLabel: string;
+  attendanceUrl: string;
+};
+
 export async function sendDailyAttendanceVerificationCode(input: {
   email: string;
   learnerName: string;
@@ -56,18 +64,7 @@ export async function sendDailyAttendanceVerificationCode(input: {
   return { sent: true as const, message: { subject, text, html, providerMessageId: data?.id ?? null } satisfies SentEmailSnapshot };
 }
 
-export async function sendDailyAttendanceReminder(input: {
-  email: string;
-  learnerName: string;
-  formationTitle: string;
-  slotLabel: string;
-  attendanceUrl: string;
-}) {
-  if (!resend) {
-    console.warn("RESEND_API_KEY absente : relance d’émargement Daily non envoyée.");
-    return { sent: false as const, reason: "missing_resend_api_key" as const };
-  }
-
+export function prepareDailyAttendanceReminder(input: AttendanceReminderInput) {
   const subject = `Rappel d’émargement · ${input.formationTitle}`;
   const text = [
     `Bonjour ${input.learnerName || ""},`.trim(),
@@ -91,12 +88,22 @@ export async function sendDailyAttendanceReminder(input: {
       <p>Selen Editions</p>
     </div>`;
 
+  return { subject, text, html };
+}
+
+export async function sendDailyAttendanceReminder(input: AttendanceReminderInput) {
+  if (!resend) {
+    console.warn("RESEND_API_KEY absente : relance d’émargement Daily non envoyée.");
+    return { sent: false as const, reason: "missing_resend_api_key" as const };
+  }
+
+  const message = prepareDailyAttendanceReminder(input);
   const { data, error } = await resend.emails.send({
     from: resendFromEmail,
     to: input.email,
-    subject,
-    text,
-    html,
+    subject: message.subject,
+    text: message.text,
+    html: message.html,
     replyTo: "hello@selen-editions.fr",
   });
 
@@ -104,7 +111,10 @@ export async function sendDailyAttendanceReminder(input: {
     console.error("Émargement Daily : relance impossible", error);
     return { sent: false as const, reason: "send_failed" as const };
   }
-  return { sent: true as const, message: { subject, text, html, providerMessageId: data?.id ?? null } satisfies SentEmailSnapshot };
+  return {
+    sent: true as const,
+    message: { ...message, providerMessageId: data?.id ?? null } satisfies SentEmailSnapshot,
+  };
 }
 
 function escapeHtml(value: string) {
