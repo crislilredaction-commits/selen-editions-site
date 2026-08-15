@@ -4,6 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import Header from "@/components/Header";
 
 type JsonRecord = Record<string, unknown>;
+type PortalDocument = JsonRecord & {
+  id: string;
+  document_type: "training_program" | "completion_certificate";
+  logical_name?: string | null;
+  version?: number | null;
+};
 type PortalData = {
   access: {
     portalType: "learner" | "enterprise" | "trainer";
@@ -51,6 +57,7 @@ type PortalData = {
     status?: string | null;
     sent_at?: string | null;
   }>;
+  documents?: PortalDocument[];
 };
 
 function text(value: unknown) {
@@ -84,6 +91,11 @@ function statusLabel(status: string) {
   return "à venir";
 }
 
+function documentLabel(document: PortalDocument) {
+  if (document.document_type === "training_program") return `Programme${document.version ? ` v${document.version}` : ""}`;
+  return `Certificat de réalisation${document.version ? ` v${document.version}` : ""}`;
+}
+
 function timelineFor(data: PortalData) {
   const responses = data.responses ?? [];
   const conventions = data.conventions ?? [];
@@ -95,6 +107,7 @@ function timelineFor(data: PortalData) {
   const hasConvention = conventions.length > 0;
   const hasConvocation = (data.convocations ?? []).length > 0;
   const hasSentConvocation = (data.convocations ?? []).some((convocation) => convocation.status === "sent" || convocation.status === "viewed");
+  const hasCertificate = (data.documents ?? []).some((document) => document.document_type === "completion_certificate");
   const signature = signatureStatus(conventions);
 
   if (data.access.portalType === "enterprise") {
@@ -130,7 +143,7 @@ function timelineFor(data: PortalData) {
     ["Formation", "a_venir"],
     ["Evaluation", "a_venir"],
     ["Satisfaction", "a_venir"],
-    ["Certificat", "a_venir"],
+    ["Certificat", hasCertificate ? "termine" : "a_venir"],
   ];
 }
 
@@ -159,6 +172,9 @@ export default function DailyPortalPage({ params }: { params: { role: string; to
   const trainers = data?.trainers ?? [];
   const conventions = data?.conventions ?? [];
   const convocations = data?.convocations ?? [];
+  const documents = data?.documents ?? [];
+  const hasProgram = documents.some((document) => document.document_type === "training_program");
+  const hasCertificate = documents.some((document) => document.document_type === "completion_certificate");
   const pendingSignature = conventions
     .flatMap((convention) => convention.daily_convention_signatures ?? [])
     .find((signature) => signature.status !== "signed" && signature.token);
@@ -212,6 +228,11 @@ export default function DailyPortalPage({ params }: { params: { role: string; to
 
           <article style={s.card}>
             <strong>Documents</strong>
+            {documents.map((document) => (
+              <a key={document.id} href={`/api/daily-portal/${token}/document?id=${document.id}`} target="_blank" rel="noreferrer" style={s.link}>
+                {documentLabel(document)}
+              </a>
+            ))}
             {conventions.map((convention) => (
               <a key={convention.id} href={`/api/daily-portal/${token}/convention?id=${convention.id}`} target="_blank" rel="noreferrer" style={s.link}>
                 {convention.document_name ?? `Convention v${convention.version ?? 1}`}
@@ -222,9 +243,10 @@ export default function DailyPortalPage({ params }: { params: { role: string; to
                 {convocation.document_name ?? `Convocation v${convocation.version ?? 1}`}
               </a>
             ))}
+            {data.access.portalType === "learner" && !hasProgram ? <span>Programme à venir.</span> : null}
             {conventions.length === 0 ? <span>Convention à venir.</span> : null}
             {convocations.length === 0 ? <span>Convocation à venir.</span> : null}
-            <span>Certificat à venir.</span>
+            {data.access.portalType === "learner" && !hasCertificate ? <span>Certificat à venir.</span> : null}
           </article>
 
           {data.access.portalType !== "learner" ? (
