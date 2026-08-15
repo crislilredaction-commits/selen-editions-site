@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDailyOrganisationContext } from "@/lib/server/dailyOrganisationContext";
 import { attendanceChannel, createAttendanceToken } from "@/lib/server/dailyAttendance";
-import { sendDailyAttendanceReminder } from "@/lib/server/dailyAttendanceEmails";
+import { prepareDailyAttendanceReminder, sendDailyAttendanceReminder } from "@/lib/server/dailyAttendanceEmails";
 
 function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
@@ -126,21 +126,16 @@ export async function POST(req: Request) {
   const attendanceUrl = `${origin}/daily-emargement/${token}`;
   const learnerName = [learner?.first_name, learner?.last_name].filter(Boolean).join(" ").trim();
   const slotLabel = `${new Date(`${slot.slot_date}T12:00:00`).toLocaleDateString("fr-FR")} · ${slot.starts_at.slice(0, 5)} à ${slot.ends_at.slice(0, 5)}${slot.label ? ` · ${slot.label}` : ""}`;
-  const sent = await sendDailyAttendanceReminder({
+  const emailInput = {
     email,
     learnerName,
     formationTitle: formationTitle(session.daily_formations),
     slotLabel,
     attendanceUrl,
-  });
+  };
+  const prepared = prepareDailyAttendanceReminder(emailInput);
 
-  if (!sent.sent) {
-    await context.admin.from("daily_attendance_access_tokens").update({ status: "revoked" }).eq("id", access.id);
-    return NextResponse.json({ error: "La relance n’a pas pu être envoyée. Aucun lien actif supplémentaire n’a été conservé." }, { status: 503 });
-  }
-
-  const sentAt = new Date().toISOString();
-  const { error: evidenceError } = await context.admin
+  const { data: communication, error: evidenceError } = await context.admin
     .from("daily_communications")
     .insert({
       organisation_id: context.organisationId,
@@ -150,29 +145,69 @@ export async function POST(req: Request) {
       channel: "email",
       recipient_email: email,
       recipient_name: learnerName || null,
-      subject: sent.message.subject,
-      text_body: sent.message.text,
-      html_body: sent.message.html,
+      subject: prepared.subject,
+      text_body: prepared.text,
+      html_body: prepared.html,
       provider: "resend",
-      provider_message_id: sent.message.providerMessageId,
-      status: "sent",
-      sent_at: sentAt,
+      status: "queued",
       created_by: context.user.id,
       metadata: {
         attendance_slot_id: slotId,
         attendance_access_token_id: access.id,
         token_expires_at: expiresAt,
       },
-    });
+    })
+    .select("id")
+    .single();
 
-  if (evidenceError) {
-    console.error("Daily : relance envoyée mais preuve de communication non enregistrée", evidenceError);
+  if (evidenceError || !communication) {
+    await context.admin
+      .from("daily_attendance_access_tokens")
+      .update({ status: "revoked" })
+      .eq("id", access.id)
+      .eq("organisation_id", context.organisationId);
+    return NextResponse.json({ error: "La preuve d’envoi n’a pas pu être réservée. Le message n’a pas été envoyé et le lien a été révoqué." }, { status: 500 });
+  }
+
+  const sent = await sendDailyAttendanceReminder(emailInput);
+  if (!sent.sent) {
+    const failedAt = new Date().toISOString();
+    await Promise.all([
+      context.admin
+        .from("daily_attendance_access_tokens")
+        .update({ status: "revoked" })
+        .eq("id", access.id)
+        .eq("organisation_id", context.organisationId),
+      context.admin
+        .from("daily_communications")
+        .update({ status: "failed", failed_at: failedAt, failure_reason: sent.reason })
+        .eq("id", communication.id),
+    ]);
+    return NextResponse.json({ error: "La relance n’a pas pu être envoyée. Le lien a été révoqué et la tentative est conservée." }, { status: 503 });
+  }
+
+  const sentAt = new Date().toISOString();
+  const { error: finalizeError } = await context.admin
+    .from("daily_communications")
+    .update({
+      provider_message_id: sent.message.providerMessageId,
+      status: "sent",
+      sent_at: sentAt,
+      failed_at: null,
+      failure_reason: null,
+    })
+    .eq("id", communication.id);
+
+  if (finalizeError) {
+    console.error("Daily : relance envoyée mais finalisation de la preuve impossible", finalizeError);
   }
 
   return NextResponse.json({
     ok: true,
     sentTo: email,
+    sentAt,
     expiresAt,
-    evidenceRecorded: !evidenceError,
+    evidenceRecorded: !finalizeError,
+    communicationId: communication.id,
   });
 }
