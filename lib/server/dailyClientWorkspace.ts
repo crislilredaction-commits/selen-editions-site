@@ -36,6 +36,40 @@ export async function requireDailyClient() {
   return { ok: true as const, supabase, user: data.user };
 }
 
+async function hasActivePersonalDailySubscription(userId: string) {
+  const admin = getAdminSupabase();
+  const { data, error } = await admin
+    .from("daily_subscriptions")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return Boolean(data?.id);
+}
+
+async function organisationHasActiveDailySubscription(organisationId: string) {
+  const admin = getAdminSupabase();
+  const { data: memberships, error: membershipError } = await admin
+    .from("organisation_memberships")
+    .select("user_id")
+    .eq("organisation_id", organisationId)
+    .eq("status", "active");
+  if (membershipError) throw new Error(membershipError.message);
+
+  const userIds = (memberships ?? []).map((membership) => membership.user_id).filter(Boolean);
+  if (userIds.length === 0) return false;
+
+  const { data: subscriptions, error: subscriptionError } = await admin
+    .from("daily_subscriptions")
+    .select("id")
+    .in("user_id", userIds)
+    .eq("status", "active")
+    .limit(1);
+  if (subscriptionError) throw new Error(subscriptionError.message);
+  return Boolean(subscriptions?.length);
+}
+
 async function bootstrapFromCompletedOnboarding(
   supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
   userId: string,
@@ -104,6 +138,14 @@ export async function getDailyClientWorkspace() {
 
   if (error && error.message.includes("active organisation membership required")) {
     try {
+      const hasSubscription = await hasActivePersonalDailySubscription(auth.user.id);
+      if (!hasSubscription) {
+        return {
+          ok: false as const,
+          status: 403,
+          error: "Aucun abonnement Selen Daily actif n'est associé à ce compte.",
+        };
+      }
       await bootstrapFromCompletedOnboarding(auth.supabase, auth.user.id);
       const retry = await auth.supabase.rpc("daily_client_workspace", {
         p_organisation_id: null,
@@ -121,10 +163,28 @@ export async function getDailyClientWorkspace() {
 
   if (error) return { ok: false as const, status: 403, error: error.message };
 
+  const workspace = data as DailyWorkspace;
+  try {
+    const organisationHasSubscription = await organisationHasActiveDailySubscription(workspace.membership.organisation_id);
+    if (!organisationHasSubscription) {
+      return {
+        ok: false as const,
+        status: 403,
+        error: "Aucun abonnement Selen Daily actif n'est associé à cet organisme.",
+      };
+    }
+  } catch (subscriptionError) {
+    return {
+      ok: false as const,
+      status: 500,
+      error: subscriptionError instanceof Error ? subscriptionError.message : "Vérification de l'abonnement Daily impossible.",
+    };
+  }
+
   return {
     ok: true as const,
     supabase: auth.supabase,
     user: auth.user,
-    workspace: data as DailyWorkspace,
+    workspace,
   };
 }
