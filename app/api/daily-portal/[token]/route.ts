@@ -4,6 +4,8 @@ import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 type Params = { params: Promise<{ token: string }> };
 type JsonRecord = Record<string, unknown>;
 
+const learnerDocumentStatuses = ["validated", "published", "signed", "active"];
+
 function cleanToken(value?: string | null) {
   return String(value ?? "").trim();
 }
@@ -28,6 +30,52 @@ function portalRole(value: string) {
 
 function isExpired(expiresAt?: string | null) {
   return Boolean(expiresAt && new Date(expiresAt).getTime() < Date.now());
+}
+
+function relatedLearner(value: unknown): JsonRecord | null {
+  if (Array.isArray(value)) return value[0] && typeof value[0] === "object" ? value[0] as JsonRecord : null;
+  return value && typeof value === "object" ? value as JsonRecord : null;
+}
+
+async function loadLearnerDocuments(supabase: ReturnType<typeof getAdminSupabase>, access: JsonRecord, organisationId: string) {
+  if (access.portal_type !== "learner") return [];
+  const entityEmail = normalizedEmail(access.entity_email);
+  if (!entityEmail) return [];
+
+  const { data: enrolments, error: enrolmentError } = await supabase
+    .from("daily_session_enrolments")
+    .select("id,status,daily_learners(id,email)")
+    .eq("session_id", access.session_id)
+    .eq("organisation_id", organisationId)
+    .not("status", "in", "(declined,cancelled)");
+  if (enrolmentError) throw enrolmentError;
+
+  const enrolment = (enrolments ?? []).find((row) => normalizedEmail(relatedLearner(row.daily_learners)?.email) === entityEmail);
+  const enrolmentId = enrolment?.id ?? null;
+
+  let query = supabase
+    .from("daily_documents")
+    .select("id,document_type,linked_object_type,linked_object_id,logical_name,version,status,mime_type,created_at")
+    .eq("organisation_id", organisationId)
+    .eq("is_current", true)
+    .in("status", learnerDocumentStatuses)
+    .in("document_type", ["training_program", "completion_certificate"])
+    .order("created_at", { ascending: false });
+
+  const { data: documents, error: documentError } = await query;
+  if (documentError) throw documentError;
+
+  return (documents ?? []).filter((document) => {
+    if (document.document_type === "training_program") {
+      return document.linked_object_type === "session" && document.linked_object_id === access.session_id;
+    }
+    return Boolean(
+      enrolmentId
+      && document.document_type === "completion_certificate"
+      && document.linked_object_type === "enrolment"
+      && document.linked_object_id === enrolmentId,
+    );
+  });
 }
 
 export async function GET(_request: Request, { params }: Params) {
@@ -95,6 +143,13 @@ export async function GET(_request: Request, { params }: Params) {
 
   if (sessionError) return NextResponse.json({ error: sessionError.message }, { status: 500 });
   if (!session) return NextResponse.json({ error: "Session introuvable." }, { status: 404 });
+
+  let learnerDocuments: JsonRecord[] = [];
+  try {
+    learnerDocuments = await loadLearnerDocuments(supabase, access, String(session.organisation_id ?? ""));
+  } catch (cause) {
+    return NextResponse.json({ error: cause instanceof Error ? cause.message : "Documents indisponibles." }, { status: 500 });
+  }
 
   const responseRows = responses ?? [];
   const conventionRows = conventions ?? [];
@@ -170,9 +225,10 @@ export async function GET(_request: Request, { params }: Params) {
       : access.portal_type === "trainer"
         ? [...individualLearners, ...companyLearners, ...companies.flatMap((item) => asArray(item.participants))]
         : learner ? [learner] : [],
-    trainers: access.portal_type === "learner" || access.portal_type === "enterprise" ? trainers ?? [] : trainers ?? [],
+    trainers: trainers ?? [],
     responses: filteredResponses,
     conventions: filteredConventions,
     convocations: filteredConvocations,
+    documents: learnerDocuments,
   });
 }
