@@ -13,6 +13,17 @@ type Training = {
   note?: string | null;
 };
 
+type Certification = {
+  id: string;
+  title: string;
+  issuer?: string | null;
+  reference?: string | null;
+  obtained_on?: string | null;
+  validity_mode?: string | null;
+  valid_until?: string | null;
+  note?: string | null;
+};
+
 type Review = {
   id: string;
   status: "draft" | "submitted";
@@ -35,6 +46,7 @@ type Trainer = {
   cv_review_due_at?: string | null;
   review: Review | null;
   trainings: Training[];
+  certifications: Certification[];
 };
 
 type Payload = { year: number; trainers: Trainer[] };
@@ -59,6 +71,10 @@ export default function TrainerAnnualManagerOverviewPage() {
   const submitted = data?.trainers.filter((trainer) => trainer.review?.status === "submitted").length ?? 0;
   const pending = data?.trainers.length ? data.trainers.length - submitted : 0;
   const cvDue = data?.trainers.filter((trainer) => isDue(trainer.cv_review_due_at)).length ?? 0;
+  const expiredCertifications = data?.trainers.reduce(
+    (count, trainer) => count + trainer.certifications.filter((certification) => isExpiredCertification(certification)).length,
+    0,
+  ) ?? 0;
 
   return (
     <main className="gazette-paper" style={styles.page}>
@@ -66,7 +82,7 @@ export default function TrainerAnnualManagerOverviewPage() {
       <header className="gazette-cta" style={styles.hero}>
         <p className="gazette-label">Selen Daily · Suivi des compétences</p>
         <h1 className="gazette-hero-title">Suivi annuel des formateurs {data?.year ?? ""}</h1>
-        <p style={styles.muted}>Une vue simple des auto-évaluations, formations déclarées et mises à jour de CV. La V1 est en consultation : aucune validation du dirigeant n’est exigée.</p>
+        <p style={styles.muted}>Une vue simple des auto-évaluations, formations déclarées, mises à jour de CV et échéances de certifications. La V1 est en consultation : aucune validation du dirigeant n’est exigée.</p>
       </header>
 
       {error ? <p style={styles.error}>{error}</p> : null}
@@ -77,12 +93,14 @@ export default function TrainerAnnualManagerOverviewPage() {
             <Metric value={submitted} label="Auto-évaluations reçues" />
             <Metric value={pending} label="À compléter" />
             <Metric value={cvDue} label="CV à actualiser" />
+            <Metric value={expiredCertifications} label="Certifications expirées" />
           </section>
 
           <section style={styles.list}>
             {data.trainers.length === 0 ? <p style={styles.card}>Aucun formateur enregistré.</p> : data.trainers.map((trainer) => {
               const reviewStatus = trainer.review?.status === "submitted" ? "Reçue" : trainer.review ? "En cours" : "Non commencée";
               const opened = openId === trainer.id;
+              const expired = trainer.certifications.filter((certification) => isExpiredCertification(certification));
               return (
                 <article key={trainer.id} style={styles.card}>
                   <div style={styles.headerRow}>
@@ -93,8 +111,13 @@ export default function TrainerAnnualManagerOverviewPage() {
                     <div style={styles.badges}>
                       <span style={trainer.review?.status === "submitted" ? styles.goodBadge : styles.waitBadge}>Auto-évaluation : {reviewStatus}</span>
                       <span style={isDue(trainer.cv_review_due_at) ? styles.warningBadge : styles.neutralBadge}>CV : {cvLabel(trainer)}</span>
+                      {expired.length > 0 ? <span style={styles.errorBadge}>{expired.length} certification{expired.length > 1 ? "s" : ""} expirée{expired.length > 1 ? "s" : ""}</span> : null}
                     </div>
                   </div>
+
+                  {expired.length > 0 ? (
+                    <p style={styles.certificationAlert}>Une certification déclarée comme temporaire a dépassé sa date de validité. Vérifiez-la avant toute affectation nécessitant cette certification.</p>
+                  ) : null}
 
                   {trainer.review?.status === "submitted" ? (
                     <>
@@ -103,7 +126,11 @@ export default function TrainerAnnualManagerOverviewPage() {
                       {opened ? <ReviewDetails trainer={trainer} /> : null}
                     </>
                   ) : (
-                    <p style={styles.info}>Le questionnaire obligatoire n’est pas encore transmis. Les relances pourront continuer jusqu’à complétion.</p>
+                    <>
+                      <p style={styles.info}>Le questionnaire obligatoire n’est pas encore transmis. Les relances pourront continuer jusqu’à complétion.</p>
+                      {trainer.certifications.length > 0 ? <button className="btn-ghost" onClick={() => setOpenId(opened ? null : trainer.id)}><span>{opened ? "Masquer les certifications" : "Voir les certifications"}</span></button> : null}
+                      {opened ? <CertificationDetails certifications={trainer.certifications} /> : null}
+                    </>
                   )}
                 </article>
               );
@@ -134,6 +161,30 @@ function ReviewDetails({ trainer }: { trainer: Trainer }) {
         <h3>Formations envisagées</h3>
         {planned.length ? <ul>{planned.map((item) => <li key={item.id}><strong>{item.title}</strong>{item.provider ? ` · ${item.provider}` : ""}{item.note ? ` · ${item.note}` : ""}</li>)}</ul> : <p style={styles.muted}>Aucune formation envisagée déclarée.</p>}
       </div>
+      <CertificationDetails certifications={trainer.certifications} />
+    </div>
+  );
+}
+
+function CertificationDetails({ certifications }: { certifications: Certification[] }) {
+  return (
+    <div style={styles.certifications}>
+      <h3>Certifications déclarées</h3>
+      {certifications.length === 0 ? <p style={styles.muted}>Aucune certification enregistrée.</p> : (
+        <ul>
+          {certifications.map((certification) => {
+            const expired = isExpiredCertification(certification);
+            return (
+              <li key={certification.id} style={expired ? styles.expiredCertification : undefined}>
+                <strong>{certification.title}</strong>
+                {certification.issuer ? ` · ${certification.issuer}` : ""}
+                {certification.valid_until ? ` · valable jusqu’au ${formatDate(certification.valid_until)}` : certification.validity_mode === "unlimited" ? " · sans date de fin" : " · validité à préciser"}
+                {expired ? " · EXPIRÉE" : ""}
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }
@@ -150,6 +201,12 @@ function cvLabel(trainer: Trainer) {
   if (!trainer.cv_updated_at) return "à déposer";
   if (isDue(trainer.cv_review_due_at)) return "à actualiser";
   return `à jour jusqu’au ${formatDate(trainer.cv_review_due_at)}`;
+}
+
+function isExpiredCertification(certification: Certification) {
+  if (!certification.valid_until) return false;
+  const expiry = new Date(`${certification.valid_until}T23:59:59.999Z`).getTime();
+  return !Number.isNaN(expiry) && expiry < Date.now();
 }
 
 function isDue(value?: string | null) {
@@ -178,11 +235,15 @@ const styles: Record<string, React.CSSProperties> = {
   name: { margin: 0 },
   muted: { color: "var(--ink-soft)", lineHeight: 1.5 },
   info: { padding: ".75rem", background: "rgba(201,160,85,.08)", color: "var(--ink-soft)" },
+  certificationAlert: { padding: ".75rem", background: "rgba(138,45,36,.08)", color: "#8a2d24", border: "1px solid rgba(138,45,36,.2)" },
+  certifications: { marginTop: ".8rem" },
+  expiredCertification: { color: "#8a2d24", fontWeight: 700 },
   details: { marginTop: "1rem", paddingTop: "1rem", borderTop: "1px dashed var(--sepia-mid)", display: "grid", gap: ".8rem" },
   answer: { whiteSpace: "pre-wrap", lineHeight: 1.6 },
   goodBadge: { padding: ".35rem .55rem", background: "rgba(61,106,74,.1)", color: "#3d6a4a", fontWeight: 800, fontSize: ".85rem" },
   waitBadge: { padding: ".35rem .55rem", background: "rgba(201,160,85,.12)", color: "#7d571d", fontWeight: 800, fontSize: ".85rem" },
   warningBadge: { padding: ".35rem .55rem", background: "rgba(154,91,22,.1)", color: "#9a5b16", fontWeight: 800, fontSize: ".85rem" },
+  errorBadge: { padding: ".35rem .55rem", background: "rgba(138,45,36,.1)", color: "#8a2d24", fontWeight: 800, fontSize: ".85rem" },
   neutralBadge: { padding: ".35rem .55rem", background: "rgba(80,70,60,.07)", color: "var(--ink-soft)", fontWeight: 800, fontSize: ".85rem" },
   error: { padding: ".8rem 1rem", color: "#8a2d24", background: "rgba(138,45,36,.08)", border: "1px solid rgba(138,45,36,.25)" },
 };
