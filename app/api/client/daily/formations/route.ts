@@ -170,21 +170,27 @@ export async function PATCH(req: Request) {
   const { data: existing, error: existingError } = await context.admin.from("daily_formations").select("*").eq("id", id).eq("organisation_id", context.organisationId).maybeSingle();
   if (existingError) return NextResponse.json({ error: existingError.message }, { status: 500 });
   if (!existing) return NextResponse.json({ error: "Formation introuvable." }, { status: 404 });
-  if (existing.status === "archived") return NextResponse.json({ error: "Remettez la formation active avant de la modifier." }, { status: 400 });
+  if (existing.status === "archived") return NextResponse.json({ error: "Une ancienne version archivée ne peut pas être modifiée." }, { status: 400 });
 
-  if (existing.status === "validated") {
-    const { data: created, error: insertError } = await context.admin.from("daily_formations").insert({
-      ...built.payload, status: "review", version: Number(existing.version ?? 1) + 1, previous_version_id: existing.id,
-      public_registration_token: existing.public_registration_token ?? registrationToken(),
-    }).select("*").single();
-    if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
-    await context.admin.from("daily_formations").update({ status: "archived", archived_at: new Date().toISOString() }).eq("id", existing.id).eq("organisation_id", context.organisationId);
-    return NextResponse.json({ formation: created, versioned: true });
+  const nextStatus = existing.status === "validated" ? "review" : built.payload.status;
+  const archivedAt = new Date().toISOString();
+  const { data: created, error: insertError } = await context.admin.from("daily_formations").insert({
+    ...built.payload,
+    status: nextStatus,
+    version: Number(existing.version ?? 1) + 1,
+    previous_version_id: existing.id,
+    public_registration_token: existing.public_registration_token ?? registrationToken(),
+    public_registration_enabled: existing.public_registration_enabled ?? true,
+  }).select("*").single();
+  if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
+
+  const { error: archiveError } = await context.admin.from("daily_formations").update({ status: "archived", archived_at: archivedAt }).eq("id", existing.id).eq("organisation_id", context.organisationId);
+  if (archiveError) {
+    await context.admin.from("daily_formations").update({ status: "archived", archived_at: archivedAt }).eq("id", created.id).eq("organisation_id", context.organisationId);
+    return NextResponse.json({ error: "La nouvelle version a été conservée mais n'a pas pu remplacer proprement la version précédente. Aucun programme actif n'a été écrasé." }, { status: 500 });
   }
 
-  const { data, error } = await context.admin.from("daily_formations").update(built.payload).eq("id", id).eq("organisation_id", context.organisationId).select("*").single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ formation: data });
+  return NextResponse.json({ formation: created, versioned: nextStatus === "review", retainedVersion: true });
 }
 
 export async function DELETE(req: Request) {
@@ -194,14 +200,13 @@ export async function DELETE(req: Request) {
   const body = await req.json().catch(() => ({})) as Record<string, unknown>;
   const id = text(body, "id");
   if (!id) return NextResponse.json({ error: "Identifiant formation requis." }, { status: 400 });
-  const { count, error: countError } = await context.admin.from("daily_sessions").select("id", { count: "exact", head: true }).eq("formation_id", id).eq("organisation_id", context.organisationId).neq("status", "archived");
-  if (countError) return NextResponse.json({ error: countError.message }, { status: 500 });
-  if ((count ?? 0) > 0) {
-    const { data, error } = await context.admin.from("daily_formations").update({ status: "archived", archived_at: new Date().toISOString() }).eq("id", id).eq("organisation_id", context.organisationId).select("*").single();
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ formation: data, archived: true });
-  }
-  const { error } = await context.admin.from("daily_formations").delete().eq("id", id).eq("organisation_id", context.organisationId);
+
+  const { data: existing, error: existingError } = await context.admin.from("daily_formations").select("id,status").eq("id", id).eq("organisation_id", context.organisationId).maybeSingle();
+  if (existingError) return NextResponse.json({ error: existingError.message }, { status: 500 });
+  if (!existing) return NextResponse.json({ error: "Formation introuvable." }, { status: 404 });
+  if (existing.status === "archived") return NextResponse.json({ ok: true, archived: true });
+
+  const { data, error } = await context.admin.from("daily_formations").update({ status: "archived", archived_at: new Date().toISOString() }).eq("id", id).eq("organisation_id", context.organisationId).select("*").single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true, deleted: true });
+  return NextResponse.json({ formation: data, archived: true });
 }
