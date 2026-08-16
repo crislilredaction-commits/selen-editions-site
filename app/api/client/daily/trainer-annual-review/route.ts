@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import { getDailyClientWorkspace } from "@/lib/server/dailyClientWorkspace";
+import { sendTrainerAnnualReviewManagerEmail } from "@/lib/server/dailyTrainerAnnualReviewEmails";
 
 const currentReviewYear = () => new Date().getUTCFullYear();
 
@@ -221,6 +222,32 @@ export async function PATCH(req: Request) {
         })
         .eq("id", state.review.id);
       if (error) throw new Error(error.message);
+
+      const { data: organisation } = await admin
+        .from("organisations")
+        .select("name,legal_representative_name,legal_representative_email,administrative_email,email")
+        .eq("id", context.organisationId)
+        .maybeSingle();
+      const managerEmail = clean(organisation?.legal_representative_email)
+        || clean(organisation?.administrative_email)
+        || clean(organisation?.email);
+      if (managerEmail) {
+        const origin = new URL(req.url).origin;
+        const notification = await sendTrainerAnnualReviewManagerEmail({
+          email: managerEmail,
+          managerName: clean(organisation?.legal_representative_name) || null,
+          trainerName: clean(context.trainer.display_name) || "Un formateur",
+          reviewYear: year,
+          reviewUrl: `${origin}/client/daily/organisation`,
+        });
+        if (notification.sent) {
+          await admin
+            .from("daily_trainer_annual_reviews")
+            .update({ manager_notified_at: new Date().toISOString() })
+            .eq("id", state.review.id)
+            .is("manager_notified_at", null);
+        }
+      }
     } else {
       return NextResponse.json({ error: "Action inconnue." }, { status: 400 });
     }
