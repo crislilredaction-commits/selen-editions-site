@@ -181,7 +181,8 @@ export async function POST(req: Request) {
       context.admin
         .from("daily_communications")
         .update({ status: "failed", failed_at: failedAt, failure_reason: sent.reason })
-        .eq("id", communication.id),
+        .eq("id", communication.id)
+        .eq("organisation_id", context.organisationId),
     ]);
     return NextResponse.json({ error: "La relance n’a pas pu être envoyée. Le lien a été révoqué et la tentative est conservée." }, { status: 503 });
   }
@@ -196,7 +197,8 @@ export async function POST(req: Request) {
       failed_at: null,
       failure_reason: null,
     })
-    .eq("id", communication.id);
+    .eq("id", communication.id)
+    .eq("organisation_id", context.organisationId);
 
   if (finalizeError) {
     console.error("Daily : relance envoyée mais finalisation de la preuve impossible", finalizeError);
