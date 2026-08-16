@@ -27,6 +27,7 @@ export default function ClientSupportBar({
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
+  const bookingAllowed = context !== "le paramétrage Selen Daily";
 
   useEffect(() => {
     setSenderEmail((current) => current || email || "");
@@ -145,17 +146,19 @@ export default function ClientSupportBar({
         </p>
 
         <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}>
-          <Link
-            href="/prendre-rendez-vous?source=client_space"
-            className="btn-ink"
-            style={{
-              padding: "0.45rem 0.8rem",
-              fontSize: "0.82rem",
-              textDecoration: "none",
-            }}
-          >
-            <span>Réserver un appel</span>
-          </Link>
+          {bookingAllowed ? (
+            <Link
+              href="/prendre-rendez-vous?source=client_space"
+              className="btn-ink"
+              style={{
+                padding: "0.45rem 0.8rem",
+                fontSize: "0.82rem",
+                textDecoration: "none",
+              }}
+            >
+              <span>Réserver un appel</span>
+            </Link>
+          ) : null}
 
           <button
             type="button"
