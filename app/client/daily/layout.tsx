@@ -29,6 +29,7 @@ export default function DailyClientLayout({ children }: { children: React.ReactN
         <Link href="/client/daily/dossiers" style={linkStyle}>Dossiers de session</Link>
         <Link href="/client/daily" style={linkStyle}>Suivi & documents</Link>
         <Link href="/client/daily/organisation" style={linkStyle}>Mon organisme</Link>
+        <Link href="/client/daily/formateur/suivi-annuel" style={linkStyle}>Mon suivi formateur</Link>
       </nav>
       {children}
     </>
