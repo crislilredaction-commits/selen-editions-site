@@ -29,6 +29,7 @@ export async function GET() {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const trainerIds = new Set((trainers ?? []).map((trainer) => trainer.id));
+  const trainerIdList = Array.from(trainerIds);
   const organisationReviews = (reviews ?? []).filter((review) => trainerIds.has(review.trainer_profile_id));
   const reviewIds = organisationReviews.map((review) => review.id);
 
@@ -43,6 +44,17 @@ export async function GET() {
     trainings = data ?? [];
   }
 
+  let certifications: Array<Record<string, unknown>> = [];
+  if (trainerIdList.length > 0) {
+    const { data, error: certificationError } = await admin
+      .from("daily_trainer_certifications")
+      .select("id,trainer_profile_id,title,issuer,reference,obtained_on,validity_mode,valid_until,note")
+      .in("trainer_profile_id", trainerIdList)
+      .order("valid_until", { ascending: true, nullsFirst: false });
+    if (certificationError) return NextResponse.json({ error: certificationError.message }, { status: 500 });
+    certifications = data ?? [];
+  }
+
   const reviewByTrainer = new Map(organisationReviews.map((review) => [review.trainer_profile_id, review]));
   const trainingsByReview = new Map<string, Array<Record<string, unknown>>>();
   for (const training of trainings) {
@@ -50,6 +62,14 @@ export async function GET() {
     const list = trainingsByReview.get(reviewId) ?? [];
     list.push(training);
     trainingsByReview.set(reviewId, list);
+  }
+
+  const certificationsByTrainer = new Map<string, Array<Record<string, unknown>>>();
+  for (const certification of certifications) {
+    const trainerId = String(certification.trainer_profile_id ?? "");
+    const list = certificationsByTrainer.get(trainerId) ?? [];
+    list.push(certification);
+    certificationsByTrainer.set(trainerId, list);
   }
 
   return NextResponse.json({
@@ -60,6 +80,7 @@ export async function GET() {
         ...trainer,
         review,
         trainings: review?.id ? trainingsByReview.get(review.id) ?? [] : [],
+        certifications: certificationsByTrainer.get(trainer.id) ?? [],
       };
     }),
   });
