@@ -190,7 +190,7 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "La nouvelle version a été conservée mais n'a pas pu remplacer proprement la version précédente. Aucun programme actif n'a été écrasé." }, { status: 500 });
   }
 
-  return NextResponse.json({ formation: created, versioned: true });
+  return NextResponse.json({ formation: created, versioned: nextStatus === "review", retainedVersion: true });
 }
 
 export async function DELETE(req: Request) {
