@@ -3,6 +3,22 @@ import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import FeedbackResponseForm from "./FeedbackResponseForm";
 import NewFeedbackForm from "./NewFeedbackForm";
 
+type FeedbackRow = {
+  id: string;
+  session_id: string | null;
+  submission_type: string;
+  stakeholder_type: string;
+  submitter_name: string;
+  subject: string;
+  message: string;
+  status: string;
+  selen_review_note: string | null;
+  forwarded_at: string | null;
+  organisation_response: string | null;
+  resolved_at: string | null;
+  created_at: string;
+};
+
 const TYPE_LABELS: Record<string, string> = {
   complaint: "Réclamation",
   suggestion: "Suggestion",
@@ -31,7 +47,7 @@ export default async function DailyManagerFeedbackPage() {
 
   const roles = context.workspace.membership.roles ?? [];
   const isManager = roles.includes("manager");
-  let rows: Array<Record<string, any>> = [];
+  let rows: FeedbackRow[] = [];
 
   if (isManager) {
     const admin = getAdminSupabase();
@@ -45,7 +61,7 @@ export default async function DailyManagerFeedbackPage() {
       .limit(300);
 
     if (error) throw new Error(error.message);
-    rows = data ?? [];
+    rows = (data ?? []) as FeedbackRow[];
   }
 
   return (
