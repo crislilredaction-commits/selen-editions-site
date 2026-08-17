@@ -1,5 +1,6 @@
 import { getDailyClientWorkspace } from "@/lib/server/dailyClientWorkspace";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
+import FeedbackResponseForm from "./FeedbackResponseForm";
 
 const TYPE_LABELS: Record<string, string> = {
   complaint: "Réclamation",
@@ -96,6 +97,9 @@ export default async function DailyManagerFeedbackPage() {
             </dl>
 
             <p style={s.reference}>Référence : {item.id}{item.session_id ? ` · Session ${item.session_id}` : ""}</p>
+            {item.status === "forwarded_to_organisation" ? (
+              <FeedbackResponseForm id={item.id} initialResponse={item.organisation_response ?? ""} />
+            ) : null}
           </article>
         ))}
       </section>
