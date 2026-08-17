@@ -16,6 +16,44 @@ async function getManagerContext() {
   return { ...context, organisationId: context.workspace.membership.organisation_id };
 }
 
+export async function POST(req: Request) {
+  const context = await getDailyClientWorkspace();
+  if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
+
+  const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  const submissionType = clean(body.submissionType, 20);
+  const subject = clean(body.subject, 200);
+  const message = clean(body.message, 6000);
+
+  if (!["complaint", "suggestion"].includes(submissionType)) {
+    return NextResponse.json({ error: "Choisissez réclamation ou suggestion." }, { status: 400 });
+  }
+  if (!subject || !message) {
+    return NextResponse.json({ error: "L’objet et le message sont obligatoires." }, { status: 400 });
+  }
+
+  const admin = getAdminSupabase();
+  const submitterEmail = clean(context.user.email, 320) || null;
+  const submitterName = submitterEmail || "Client Daily";
+  const { data, error } = await admin
+    .from("daily_stakeholder_feedback")
+    .insert({
+      organisation_id: context.workspace.membership.organisation_id,
+      submission_type: submissionType,
+      stakeholder_type: "client",
+      submitter_name: submitterName,
+      submitter_email: submitterEmail,
+      subject,
+      message,
+      status: "received",
+    })
+    .select("id,created_at,status")
+    .single();
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ ok: true, reference: data.id, submittedAt: data.created_at, status: data.status });
+}
+
 export async function PATCH(req: Request) {
   const context = await getManagerContext();
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
