@@ -10,6 +10,30 @@ import {
 
 type Params = { params: Promise<{ token: string }> };
 
+const FORMATION_PUBLIC_FIELDS = [
+  "id",
+  "title",
+  "status",
+  "global_objective",
+  "target_audience",
+  "prerequisites",
+  "duration_hours",
+  "duration_days",
+  "modality",
+  "modality_details",
+  "access_delays",
+  "registration_methods",
+  "price",
+  "detailed_program",
+  "detailed_program_document_url",
+  "accessibility",
+  "pedagogical_resources",
+  "pedagogical_methods",
+  "evaluation_methods",
+  "positioning_mode",
+  "positioning_questions",
+].join(",");
+
 function cleanToken(value?: string | null) {
   return String(value ?? "").trim();
 }
@@ -39,7 +63,7 @@ async function findSession(token: string) {
   const { data, error } = await supabase
     .from("daily_sessions")
     .select(
-      "id,user_id,registration_token,registration_status,adaptation_needed,companies,beneficiaries,individual_beneficiaries,daily_formations(id,title,status,global_objective,target_audience,positioning_mode,positioning_questions)",
+      `id,user_id,registration_token,registration_status,adaptation_needed,companies,beneficiaries,individual_beneficiaries,daily_formations(${FORMATION_PUBLIC_FIELDS})`,
     )
     .eq("registration_token", token)
     .neq("status", "archived")
@@ -53,7 +77,7 @@ async function findFormation(token: string) {
   const supabase = getAdminSupabase();
   const { data, error } = await supabase
     .from("daily_formations")
-    .select("id,user_id,public_registration_token,public_registration_enabled,title,status,global_objective,target_audience,positioning_mode,positioning_questions")
+    .select(`user_id,public_registration_token,public_registration_enabled,${FORMATION_PUBLIC_FIELDS}`)
     .eq("public_registration_token", token)
     .eq("public_registration_enabled", true)
     .neq("status", "archived")
