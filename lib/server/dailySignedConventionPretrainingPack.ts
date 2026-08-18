@@ -11,8 +11,21 @@ type DispatchResult =
   | { status: "sent"; convocationId: string }
   | { status: "send_failed"; convocationId: string; reason: string };
 
+type FormationRelation = { title?: unknown };
+type SessionRelation = {
+  internal_reference?: unknown;
+  start_date?: unknown;
+  end_date?: unknown;
+  daily_formations?: FormationRelation | FormationRelation[] | null;
+};
+
 function clean(value: unknown) {
   return String(value ?? "").trim();
+}
+
+function firstRelation<T>(value: T | T[] | null | undefined): T | null {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
 }
 
 /**
@@ -96,12 +109,8 @@ export async function dispatchPretrainingPackAfterConventionSigned(
     return { status: "send_failed", convocationId: convocation.id, reason };
   }
 
-  const session = Array.isArray(convocation.daily_sessions)
-    ? convocation.daily_sessions[0]
-    : convocation.daily_sessions;
-  const formation = session && Array.isArray(session.daily_formations)
-    ? session.daily_formations[0]
-    : session?.daily_formations;
+  const session = firstRelation(convocation.daily_sessions as SessionRelation | SessionRelation[] | null);
+  const formation = firstRelation(session?.daily_formations);
   const attachmentBase64 = Buffer.from(await file.arrayBuffer()).toString("base64");
   const result = await sendDailyConvocation({
     email: recipientEmail,
