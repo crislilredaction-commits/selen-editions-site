@@ -44,7 +44,7 @@ function hasExplicitAdaptationAnswer(answers: Record<string, unknown>) {
 function buildApplicationSignature(
   request: Request,
   body: Record<string, unknown>,
-  token: string,
+  targetId: string,
   responseType: string,
   needAnswers: Record<string, unknown>,
   positioningAnswers: Record<string, unknown>,
@@ -69,7 +69,7 @@ function buildApplicationSignature(
   const userAgent = request.headers.get("user-agent");
   const proofHash = createHash("sha256")
     .update([
-      token,
+      targetId,
       responseType,
       text(body, "respondent_first_name"),
       text(body, "respondent_last_name"),
@@ -172,25 +172,33 @@ export async function POST(request: Request, { params }: Params) {
   const formation = session ? null : await findFormation(clean);
   if (!session && !formation) return NextResponse.json({ error: "Lien introuvable ou expiré." }, { status: 404 });
 
-  const rawNeedAnswers = jsonObject(body.need_answers);
+  const needAnswers = jsonObject(body.need_answers);
   const positioningAnswers = jsonObject(body.positioning_answers);
+  const targetId = session?.id ?? formation?.id;
+  if (!targetId) return NextResponse.json({ error: "Dossier de candidature introuvable." }, { status: 404 });
+
   const signature = buildApplicationSignature(
     request,
     body,
-    clean,
+    targetId,
     responseType,
-    rawNeedAnswers,
+    needAnswers,
     positioningAnswers,
   );
   if ("error" in signature) {
     return NextResponse.json({ error: signature.error }, { status: 400 });
   }
-  const needAnswers = {
-    ...rawNeedAnswers,
-    application_signature: signature.value,
-  };
-  const adaptationNeeded = hasExplicitAdaptationAnswer(rawNeedAnswers) || detectAdaptationNeeded(rawNeedAnswers);
+
+  const adaptationNeeded = hasExplicitAdaptationAnswer(needAnswers) || detectAdaptationNeeded(needAnswers);
   const supabase = getAdminSupabase();
+  const signatureFields = {
+    signature_consent_text: signature.value.consent_text,
+    signature_data: signature.value.signature_data,
+    signature_proof_hash: signature.value.proof_hash,
+    signature_signed_at: signature.value.signed_at,
+    signature_ip_address: signature.value.ip_address,
+    signature_user_agent: signature.value.user_agent,
+  };
 
   if (formation) {
     const { data: response, error } = await supabase
@@ -209,8 +217,9 @@ export async function POST(request: Request, { params }: Params) {
         adaptation_needed: adaptationNeeded,
         status: "to_attach",
         submitted_at: signature.value.signed_at,
+        ...signatureFields,
       })
-      .select("*")
+      .select("id,status,submitted_at,signature_signed_at")
       .single();
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -249,8 +258,9 @@ export async function POST(request: Request, { params }: Params) {
       adaptation_needed: adaptationNeeded,
       status: "submitted",
       submitted_at: signature.value.signed_at,
+      ...signatureFields,
     })
-    .select("*")
+    .select("id,status,submitted_at,signature_signed_at")
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
