@@ -15,6 +15,7 @@ export default function ApplicationSignature({
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const drawingRef = useRef(false);
+  const hasStrokeRef = useRef(false);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -58,12 +59,15 @@ export default function ApplicationSignature({
     const position = point(event);
     context.lineTo(position.x, position.y);
     context.stroke();
+    hasStrokeRef.current = true;
   }
 
-  function stopDrawing() {
-    if (!drawingRef.current || !canvasRef.current) return;
+  function stopDrawing(event: React.PointerEvent<HTMLCanvasElement>) {
+    const canvas = canvasRef.current;
+    if (!drawingRef.current || !canvas) return;
     drawingRef.current = false;
-    onSignatureChange(canvasRef.current.toDataURL("image/png"));
+    if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+    onSignatureChange(hasStrokeRef.current ? canvas.toDataURL("image/png") : "");
   }
 
   function clearSignature() {
@@ -73,6 +77,7 @@ export default function ApplicationSignature({
     const rect = canvas.getBoundingClientRect();
     context.fillStyle = "#fffaf0";
     context.fillRect(0, 0, rect.width, 190);
+    hasStrokeRef.current = false;
     onSignatureChange("");
   }
 
