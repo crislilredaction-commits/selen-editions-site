@@ -53,12 +53,12 @@ export default function DailyRegistrationPage({ params }: { params: { token: str
       ? [...questions].sort((a, b) => Number(a.order ?? 0) - Number(b.order ?? 0))
       : [];
   }, [session]);
+
   const hasSelenPositioning =
     mode === "beneficiary" &&
     session?.daily_formations?.positioning_mode === "selen" &&
     positioningQuestions.length > 0;
   const totalSteps = mode === "company" ? 6 : hasSelenPositioning ? 7 : 6;
-  const title = mode === "company" ? "Préparons votre formation" : "Préparons votre formation";
 
   useEffect(() => {
     async function load() {
@@ -153,6 +153,10 @@ export default function DailyRegistrationPage({ params }: { params: { token: str
     return {
       birth_date: form.birth_date,
       phone: form.phone,
+      postal_address: form.postal_address,
+      professional_situation: form.professional_situation,
+      highest_diploma: form.highest_diploma,
+      current_knowledge_level: form.current_knowledge_level,
       funding: form.funding,
       funding_other: form.funding_other,
       expectations: form.expectations,
@@ -258,7 +262,7 @@ export default function DailyRegistrationPage({ params }: { params: { token: str
       <section style={s.page}>
         <article style={s.hero}>
           <p className="gazette-label">Selen Daily</p>
-          <h1 style={s.title}>{title}</h1>
+          <h1 style={s.title}>Préparons votre formation</h1>
           <p style={s.muted}>{session?.daily_formations?.title ?? "Formation Selen Daily"}</p>
           <div style={s.progressOuter}><div style={{ ...s.progressInner, width: `${progress}%` }} /></div>
           <p style={s.autosave}>
@@ -348,14 +352,17 @@ function BeneficiaryStep({
   if (step === 1) {
     return (
       <div style={s.stack}>
-        <h2 style={s.sectionTitle}>Vos coordonnées</h2>
+        <h2 style={s.sectionTitle}>Vos coordonnées et votre situation</h2>
         <div style={s.grid}>
           <Input label="Prénom" value={form.first_name} onChange={(value) => update("first_name", value)} />
           <Input label="Nom" value={form.last_name} onChange={(value) => update("last_name", value)} />
           <Input label="Date de naissance" type="date" value={form.birth_date} onChange={(value) => update("birth_date", value)} />
           <Input label="Téléphone fortement recommandé" value={form.phone} onChange={(value) => update("phone", value)} required />
           <Input label="Email" type="email" value={form.email} onChange={(value) => update("email", value)} />
+          <Input label="Situation professionnelle actuelle" value={form.professional_situation} onChange={(value) => update("professional_situation", value)} />
+          <Input label="Plus haut diplôme obtenu" value={form.highest_diploma} onChange={(value) => update("highest_diploma", value)} />
         </div>
+        <Textarea label="Adresse postale" value={form.postal_address} onChange={(value) => update("postal_address", value)} />
       </div>
     );
   }
@@ -368,6 +375,7 @@ function BeneficiaryStep({
         <Textarea label="Le besoin que vous exprimez" value={form.expressed_need} onChange={(value) => update("expressed_need", value)} />
         <Textarea label="Votre objectif professionnel ou personnel" value={form.objective} onChange={(value) => update("objective", value)} />
         <Textarea label="Vos motivations" value={form.motivations} onChange={(value) => update("motivations", value)} />
+        <Textarea label="Votre niveau de connaissance actuel dans le domaine de la formation" value={form.current_knowledge_level} onChange={(value) => update("current_knowledge_level", value)} />
       </div>
     );
   }
@@ -386,7 +394,7 @@ function BeneficiaryStep({
     return (
       <div style={s.stack}>
         <h2 style={s.sectionTitle}>Positionnement</h2>
-        <p style={s.notice}>Ces questions aident a preparer votre entree en formation. Repondez simplement avec les elements dont vous disposez.</p>
+        <p style={s.notice}>Ces questions aident à préparer votre entrée en formation. Répondez simplement avec les éléments dont vous disposez.</p>
         {positioningQuestions.map((question) => (
           <PositioningQuestionField
             key={question.id}
