@@ -6,6 +6,7 @@ import {
   getAssistanceTokenFromRequest,
   verifyAgentAssistance,
 } from "@/lib/server/agentAssistance";
+import { dispatchPretrainingPackAfterConventionSigned } from "@/lib/server/dailySignedConventionPretrainingPack";
 
 type Params = { params: Promise<{ token: string }> };
 
@@ -51,6 +52,18 @@ function isExpired(expiresAt?: string | null) {
   return Boolean(expiresAt && new Date(expiresAt).getTime() < Date.now());
 }
 
+async function dispatchPackWithoutBreakingSignature(
+  supabase: ReturnType<typeof getAdminSupabase>,
+  conventionId: string,
+) {
+  try {
+    return await dispatchPretrainingPackAfterConventionSigned(supabase, conventionId);
+  } catch (error) {
+    console.error("Daily : déclenchement du pack pré-formation impossible après signature", error);
+    return { status: "dispatch_error" as const };
+  }
+}
+
 export async function GET(_request: Request, { params }: Params) {
   const { token } = await params;
   const clean = cleanToken(token);
@@ -78,12 +91,13 @@ export async function GET(_request: Request, { params }: Params) {
   }
 
   if (signature.status === "pending") {
+    const viewedAt = new Date().toISOString();
     await supabase
       .from("daily_convention_signatures")
-      .update({ status: "viewed", viewed_at: new Date().toISOString() })
+      .update({ status: "viewed", viewed_at: viewedAt })
       .eq("id", signature.id);
     signature.status = "viewed";
-    signature.viewed_at = new Date().toISOString();
+    signature.viewed_at = viewedAt;
   }
 
   return NextResponse.json({
@@ -112,10 +126,12 @@ export async function POST(request: Request, { params }: Params) {
   const signature = await findSignature(clean);
   if (!signature) return NextResponse.json({ error: "Lien de signature introuvable." }, { status: 404 });
   if (signature.status === "signed") {
+    const pack = await dispatchPackWithoutBreakingSignature(supabase, signature.convention_id);
     return NextResponse.json({
       ok: true,
       alreadySigned: true,
       signedAt: signature.signed_at,
+      pretrainingPack: pack,
     });
   }
   if (isExpired(signature.expires_at)) {
@@ -161,5 +177,7 @@ export async function POST(request: Request, { params }: Params) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true, signature: data });
+
+  const pack = await dispatchPackWithoutBreakingSignature(supabase, signature.convention_id);
+  return NextResponse.json({ ok: true, signature: data, pretrainingPack: pack });
 }
