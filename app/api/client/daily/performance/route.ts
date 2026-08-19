@@ -10,6 +10,8 @@ type AssessmentRow = {
   outcome?: string | null;
 };
 
+type FormationRelation = { title?: string | null } | Array<{ title?: string | null }> | null;
+
 function average(values: Array<number | null | undefined>) {
   const usable = values.filter((value): value is number => typeof value === "number" && Number.isFinite(value));
   if (usable.length === 0) return null;
@@ -19,6 +21,12 @@ function average(values: Array<number | null | undefined>) {
 function percentage(part: number, total: number) {
   if (total <= 0) return null;
   return Math.round((part / total) * 1000) / 10;
+}
+
+function formationTitle(value: unknown) {
+  const relation = value as FormationRelation;
+  if (Array.isArray(relation)) return relation[0]?.title ?? null;
+  return relation?.title ?? null;
 }
 
 export async function GET(request: Request) {
@@ -74,7 +82,7 @@ export async function GET(request: Request) {
       start_date: session.start_date,
       end_date: session.end_date,
       status: session.status,
-      formation: Array.isArray(session.daily_formations) ? session.daily_formations[0]?.title ?? null : session.daily_formations?.title ?? null,
+      formation: formationTitle(session.daily_formations),
       learners: activeEnrolments.length,
       learner_feedback_count: sessionLearnerFeedback.length,
       stakeholder_feedback_count: sessionStakeholderFeedback.length,
