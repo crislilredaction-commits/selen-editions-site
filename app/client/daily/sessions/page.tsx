@@ -131,6 +131,10 @@ export default function DailySessionsPage() {
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    const formationId = new URLSearchParams(window.location.search).get("formation_id");
+    if (formationId) setForm((current) => ({ ...current, formation_id: formationId }));
+  }, []);
 
   const trainers = useMemo(
     () => (workspace?.trainers ?? []).filter((trainer) => !["rejected", "archived"].includes(trainer.status)),
@@ -181,6 +185,10 @@ export default function DailySessionsPage() {
 
   async function save(event: FormEvent) {
     event.preventDefault();
+    if (!form.max_participants.trim()) {
+      setError("Renseigne le nombre de places de la session.");
+      return;
+    }
     setSaving(true); setError(""); setMessage("");
     try {
       const response = await assistanceFetch("/api/client/daily/sessions", {
@@ -257,7 +265,7 @@ export default function DailySessionsPage() {
         <form onSubmit={save} style={styles.form}>
           <Field label="Formation *"><select required value={form.formation_id} onChange={(e) => setForm({ ...form, formation_id: e.target.value })} style={styles.input}><option value="">Choisir une formation</option>{formations.map((formation) => <option key={formation.id} value={formation.id}>{formation.title} · v{formation.version} · {formation.status}</option>)}</select></Field>
           <Field label="Référence interne"><input value={form.internal_reference} onChange={(e) => setForm({ ...form, internal_reference: e.target.value })} placeholder="Ex. SES-2026-014" style={styles.input} /></Field>
-          <Field label="Capacité maximale"><input type="number" min="1" step="1" value={form.max_participants} onChange={(e) => setForm({ ...form, max_participants: e.target.value })} style={styles.input} /></Field>
+          <Field label="Nombre de places *"><input type="number" min="1" step="1" required value={form.max_participants} onChange={(e) => setForm({ ...form, max_participants: e.target.value })} style={styles.input} /></Field>
           <Field label="Statut"><select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} style={styles.input}><option value="draft">Brouillon</option><option value="ready">Prête</option></select></Field>
           <Field label="Date de début *"><input type="date" required value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} style={styles.input} /></Field>
           <Field label="Date de fin *"><input type="date" required value={form.end_date} onChange={(e) => setForm({ ...form, end_date: e.target.value })} style={styles.input} /></Field>
