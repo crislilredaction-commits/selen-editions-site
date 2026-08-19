@@ -96,8 +96,7 @@ function buildPayload(body: Record<string, unknown>, userId: string, organisatio
   const distanceMode = text(body, "distance_mode");
   const startDate = nullableDate(body, "start_date");
   const endDate = nullableDate(body, "end_date");
-  const maxParticipantsRaw = body.max_participants;
-  const maxParticipants = positiveInteger(maxParticipantsRaw);
+  const maxParticipants = positiveInteger(body.max_participants);
 
   if (!formationId) return { error: "Sélectionnez une formation." };
   if (!MODALITIES.has(modality)) return { error: "Modalité de session invalide." };
@@ -107,8 +106,8 @@ function buildPayload(body: Record<string, unknown>, userId: string, organisatio
   }
   if (!startDate || !endDate) return { error: "Renseignez la date de début et la date de fin de la session." };
   if (endDate < startDate) return { error: "La date de fin doit être postérieure ou égale à la date de début." };
-  if (maxParticipantsRaw !== null && maxParticipantsRaw !== undefined && String(maxParticipantsRaw).trim() !== "" && maxParticipants === null) {
-    return { error: "La capacité maximale doit être un nombre entier supérieur à zéro." };
+  if (maxParticipants === null) {
+    return { error: "Renseignez le nombre de places de la session avec un nombre entier supérieur à zéro." };
   }
 
   const schedule = cleanSchedule(body.schedule_blocks, startDate, endDate);
