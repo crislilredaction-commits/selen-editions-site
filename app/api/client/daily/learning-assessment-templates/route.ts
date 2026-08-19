@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { blockedAgentAssistanceResponse, getAssistanceTokenFromRequest } from "@/components/AgentAssistanceBanner";
+import { blockedAgentAssistanceResponse, getAssistanceTokenFromRequest } from "@/lib/server/agentAssistance";
 import { getDailyOrganisationContext, getDailyOrganisationReadContext } from "@/lib/server/dailyOrganisationContext";
 
 const MODES = new Set(["off_platform", "selen"]);
