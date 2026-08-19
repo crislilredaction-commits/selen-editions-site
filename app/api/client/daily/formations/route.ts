@@ -176,6 +176,9 @@ export async function PATCH(req: Request) {
   const archivedAt = new Date().toISOString();
   const { data: created, error: insertError } = await context.admin.from("daily_formations").insert({
     ...built.payload,
+    learning_assessment_mode: existing.learning_assessment_mode,
+    learning_assessment_instructions: existing.learning_assessment_instructions,
+    learning_assessment_questions: existing.learning_assessment_questions,
     status: nextStatus,
     version: Number(existing.version ?? 1) + 1,
     previous_version_id: existing.id,
