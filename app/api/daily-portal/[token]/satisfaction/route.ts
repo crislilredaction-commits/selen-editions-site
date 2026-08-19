@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 
 type Params = { params: Promise<{ token: string }> };
+type SupportedPortalType = "enterprise" | "trainer";
 
 function clean(value: unknown) {
   return String(value ?? "").trim();
@@ -38,7 +39,19 @@ function optionalText(value: unknown, max = 4000) {
   return normalized ? normalized.slice(0, max) : null;
 }
 
-async function resolveEnterprisePortal(token: string) {
+function stakeholderTypeForPortal(portalType: SupportedPortalType) {
+  return portalType === "enterprise" ? "company" : "trainer";
+}
+
+function availabilityOffsetForPortal(portalType: SupportedPortalType) {
+  return portalType === "enterprise" ? 10 : 0;
+}
+
+function portalLabel(portalType: SupportedPortalType) {
+  return portalType === "enterprise" ? "commanditaire" : "formateur";
+}
+
+async function resolveSatisfactionPortal(token: string) {
   const admin = getAdminSupabase();
   const { data: access, error: accessError } = await admin
     .from("daily_portal_access_tokens")
@@ -48,11 +61,14 @@ async function resolveEnterprisePortal(token: string) {
 
   if (accessError) return { error: accessError.message, status: 500 as const };
   if (!access) return { error: "Portail introuvable.", status: 404 as const };
-  if (access.portal_type !== "enterprise") return { error: "Ce questionnaire est réservé au commanditaire.", status: 403 as const };
+  if (access.portal_type !== "enterprise" && access.portal_type !== "trainer") {
+    return { error: "Ce questionnaire n’est pas disponible depuis ce portail.", status: 403 as const };
+  }
   if (access.expires_at && new Date(access.expires_at).getTime() < Date.now()) {
     return { error: "Ce lien de portail a expiré.", status: 410 as const };
   }
 
+  const portalType = access.portal_type as SupportedPortalType;
   const { data: session, error: sessionError } = await admin
     .from("daily_sessions")
     .select("id,organisation_id,internal_reference,end_date,status,daily_formations(title)")
@@ -64,21 +80,29 @@ async function resolveEnterprisePortal(token: string) {
   if (!session) return { error: "Session introuvable.", status: 404 as const };
   if (!session.end_date) return { error: "La date de fin de session n’est pas encore définie.", status: 409 as const };
 
-  const availableFrom = addDays(session.end_date, 10);
+  const availableFrom = addDays(session.end_date, availabilityOffsetForPortal(portalType));
   const isAvailable = Boolean(availableFrom && todayParis() >= availableFrom);
-  return { admin, access, session, availableFrom, isAvailable };
+  return {
+    admin,
+    access,
+    session,
+    portalType,
+    stakeholderType: stakeholderTypeForPortal(portalType),
+    availableFrom,
+    isAvailable,
+  };
 }
 
 export async function GET(_request: Request, { params }: Params) {
   const { token } = await params;
-  const portal = await resolveEnterprisePortal(clean(token));
+  const portal = await resolveSatisfactionPortal(clean(token));
   if ("error" in portal) return NextResponse.json({ error: portal.error }, { status: portal.status });
 
   const { data: response, error: responseError } = await portal.admin
     .from("daily_stakeholder_satisfaction_responses")
     .select("id,overall_rating,objectives_rating,trainer_rating,organisation_rating,would_recommend,strengths,improvements,free_comment,submitted_at")
     .eq("session_id", portal.session.id)
-    .eq("stakeholder_type", "company")
+    .eq("stakeholder_type", portal.stakeholderType)
     .eq("entity_key", portal.access.entity_key)
     .maybeSingle();
 
@@ -91,9 +115,11 @@ export async function GET(_request: Request, { params }: Params) {
     availableFrom: portal.availableFrom,
     alreadySubmitted: Boolean(response),
     response,
-    commanditaire: {
+    portalType: portal.portalType,
+    stakeholder: {
       name: portal.access.entity_name,
       email: portal.access.entity_email,
+      label: portalLabel(portal.portalType),
     },
     session: {
       id: portal.session.id,
@@ -106,13 +132,13 @@ export async function GET(_request: Request, { params }: Params) {
 
 export async function POST(request: Request, { params }: Params) {
   const { token } = await params;
-  const portal = await resolveEnterprisePortal(clean(token));
+  const portal = await resolveSatisfactionPortal(clean(token));
   if ("error" in portal) return NextResponse.json({ error: portal.error }, { status: portal.status });
   if (!portal.isAvailable) {
-    return NextResponse.json(
-      { error: "Le questionnaire commanditaire sera disponible 10 jours après la fin de la formation.", availableFrom: portal.availableFrom },
-      { status: 409 },
-    );
+    const message = portal.portalType === "enterprise"
+      ? "Le questionnaire commanditaire sera disponible 10 jours après la fin de la formation."
+      : "Le questionnaire formateur sera disponible le dernier jour de la formation.";
+    return NextResponse.json({ error: message, availableFrom: portal.availableFrom }, { status: 409 });
   }
 
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
@@ -135,7 +161,7 @@ export async function POST(request: Request, { params }: Params) {
     .from("daily_stakeholder_satisfaction_responses")
     .select("id")
     .eq("session_id", portal.session.id)
-    .eq("stakeholder_type", "company")
+    .eq("stakeholder_type", portal.stakeholderType)
     .eq("entity_key", portal.access.entity_key)
     .maybeSingle();
   if (existingError) return NextResponse.json({ error: existingError.message }, { status: 500 });
@@ -146,7 +172,7 @@ export async function POST(request: Request, { params }: Params) {
     .insert({
       organisation_id: portal.session.organisation_id,
       session_id: portal.session.id,
-      stakeholder_type: "company",
+      stakeholder_type: portal.stakeholderType,
       entity_key: portal.access.entity_key,
       entity_name: clean(portal.access.entity_name) || null,
       entity_email: clean(portal.access.entity_email).toLowerCase() || null,
