@@ -63,7 +63,12 @@ async function loadOverview(
 ) {
   const session = await sessionExists(admin, organisationId, sessionId);
   if (!session) return null;
-  const [{ data: enrolments, error: enrolmentError }, { data: assessments, error: assessmentError }, { data: responses, error: responseError }] = await Promise.all([
+  const [
+    { data: enrolments, error: enrolmentError },
+    { data: assessments, error: assessmentError },
+    { data: responses, error: responseError },
+    { data: quizResponses, error: quizResponseError },
+  ] = await Promise.all([
     admin
       .from("daily_session_enrolments")
       .select("id,status,daily_learners(id,first_name,last_name,email)")
@@ -79,13 +84,27 @@ async function loadOverview(
       .select("id,enrolment_id,overall_rating,objectives_rating,trainer_rating,organisation_rating,content_rating,pace_rating,would_recommend,strengths,improvements,adaptation_feedback,free_comment,submitted_at")
       .eq("organisation_id", organisationId)
       .eq("session_id", sessionId),
+    admin
+      .from("daily_learning_assessment_responses")
+      .select("id,enrolment_id,question_snapshot,answers,auto_score,score_max,requires_manual_review,submitted_at")
+      .eq("organisation_id", organisationId)
+      .eq("session_id", sessionId),
   ]);
-  if (enrolmentError || assessmentError || responseError) throw new Error(enrolmentError?.message ?? assessmentError?.message ?? responseError?.message ?? "Lecture impossible.");
+  if (enrolmentError || assessmentError || responseError || quizResponseError) {
+    throw new Error(
+      enrolmentError?.message ??
+        assessmentError?.message ??
+        responseError?.message ??
+        quizResponseError?.message ??
+        "Lecture impossible.",
+    );
+  }
   return {
     session,
     enrolments: (enrolments ?? []).filter((row) => activeDailyEnrolment(row.status)),
     assessments: assessments ?? [],
     feedback: responses ?? [],
+    quizResponses: quizResponses ?? [],
   };
 }
 
