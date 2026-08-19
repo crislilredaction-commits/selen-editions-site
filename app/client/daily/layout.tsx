@@ -17,6 +17,7 @@ export default function DailyClientLayout({ children }: { children: React.ReactN
       >
         <Link href="/client/daily/a-faire" style={actionLinkStyle}>À faire</Link>
         <Link href="/client/daily/formations" style={linkStyle}>Formations</Link>
+        <Link href="/client/daily/formations/evaluation" style={linkStyle}>Modèles d’évaluation</Link>
         <Link href="/client/daily/sessions" style={linkStyle}>Sessions</Link>
         <Link href="/client/daily/presences" style={linkStyle}>Présences</Link>
         <Link href="/client/daily/relances" style={linkStyle}>Relances</Link>
