@@ -24,6 +24,7 @@ export default function DailyClientLayout({ children }: { children: React.ReactN
         <Link href="/client/daily/communications" style={linkStyle}>Communications</Link>
         <Link href="/client/daily/suivi" style={linkStyle}>Déroulement</Link>
         <Link href="/client/daily/evaluations" style={linkStyle}>Évaluations & satisfaction</Link>
+        <Link href="/client/daily/indicateurs" style={linkStyle}>Indicateurs</Link>
         <Link href="/client/daily/evaluations/preuves" style={linkStyle}>Preuves d’évaluation</Link>
         <Link href="/client/daily/documents-fin" style={linkStyle}>Documents de fin</Link>
         <Link href="/client/daily/reclamations" style={linkStyle}>Réclamations & suggestions</Link>
