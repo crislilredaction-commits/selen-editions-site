@@ -8,6 +8,7 @@ import {
 
 const PARIS_TIME_ZONE = "Europe/Paris";
 const COMMUNICATION_TYPE = "learning_assessment_reminder";
+const NOTIFICATION_SOURCE_KIND = "daily_learning_assessment";
 
 type Formation = {
   title?: string | null;
@@ -45,6 +46,10 @@ type CommunicationRow = {
   recipient_email: string;
   status: string;
   metadata: Record<string, unknown> | null;
+};
+
+type NotificationRow = {
+  source_key: string | null;
 };
 
 function one<T>(value: T | T[] | null | undefined): T | null {
@@ -98,6 +103,10 @@ function alreadySentToday(
   );
 }
 
+function notificationSourceKey(sessionId: string, today: string) {
+  return `external-assessment:${sessionId}:${today}`;
+}
+
 export async function GET(req: Request) {
   const access = authorized(req);
   if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
@@ -123,9 +132,10 @@ export async function GET(req: Request) {
   }
 
   const sessionIds = externalSessions.map((session) => session.id);
+  const sourceKeys = sessionIds.map((sessionId) => notificationSourceKey(sessionId, today));
   const trainerIds = Array.from(new Set(externalSessions.flatMap((session) => parseTrainerIds(session.trainer_ids))));
 
-  const [enrolmentsResult, evidenceResult, communicationsResult, trainersResult] = await Promise.all([
+  const [enrolmentsResult, evidenceResult, communicationsResult, trainersResult, notificationsResult] = await Promise.all([
     admin
       .from("daily_session_enrolments")
       .select("id,organisation_id,session_id,status")
@@ -149,9 +159,19 @@ export async function GET(req: Request) {
         .select("id,organisation_id,user_id,professional_email,display_name,active")
         .in("id", trainerIds)
       : Promise.resolve({ data: [] as TrainerRow[], error: null }),
+    admin
+      .from("notifications")
+      .select("source_key")
+      .eq("source_kind", NOTIFICATION_SOURCE_KIND)
+      .in("source_key", sourceKeys),
   ]);
 
-  const readError = enrolmentsResult.error ?? evidenceResult.error ?? communicationsResult.error ?? trainersResult.error;
+  const readError =
+    enrolmentsResult.error ??
+    evidenceResult.error ??
+    communicationsResult.error ??
+    trainersResult.error ??
+    notificationsResult.error;
   if (readError) return NextResponse.json({ error: readError.message }, { status: 500 });
 
   const enrolments = (enrolmentsResult.data ?? []) as EnrolmentRow[];
@@ -159,6 +179,9 @@ export async function GET(req: Request) {
   const communications = (communicationsResult.data ?? []) as CommunicationRow[];
   const trainers = (trainersResult.data ?? []) as TrainerRow[];
   const trainerMap = new Map(trainers.map((trainer) => [trainer.id, trainer]));
+  const existingNotificationKeys = new Set(
+    ((notificationsResult.data ?? []) as NotificationRow[]).map((row) => text(row.source_key)).filter(Boolean),
+  );
 
   let due = 0;
   let processed = 0;
@@ -192,6 +215,26 @@ export async function GET(req: Request) {
     const formationTitle = text(formation?.title) || "Formation Selen Daily";
     const sessionReference = text(session.internal_reference) || formationTitle;
     const assignedTrainerIds = parseTrainerIds(session.trainer_ids);
+    const sourceKey = notificationSourceKey(session.id, today);
+
+    if (execute && !existingNotificationKeys.has(sourceKey)) {
+      const { error: notificationError } = await admin.from("notifications").insert({
+        type: "daily_action",
+        title: "Évaluations externes à récupérer",
+        content: `${sessionReference} · ${missingEvidence.length} preuve${missingEvidence.length > 1 ? "s" : ""} d’évaluation manquante${missingEvidence.length > 1 ? "s" : ""}.`,
+        link_path: `/agent/daily/session-dossiers/${session.id}`,
+        source_kind: NOTIFICATION_SOURCE_KIND,
+        source_key: sourceKey,
+        target_role: "agent",
+        pinned: true,
+      });
+      if (notificationError) {
+        failed += 1;
+        details.push({ session_id: session.id, status: "agent_notification_failed" });
+      } else {
+        existingNotificationKeys.add(sourceKey);
+      }
+    }
 
     if (assignedTrainerIds.length === 0) {
       due += 1;
