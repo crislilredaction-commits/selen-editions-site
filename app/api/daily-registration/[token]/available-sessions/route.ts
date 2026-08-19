@@ -44,7 +44,7 @@ export async function GET(_request: Request, { params }: Params) {
   const today = todayIsoDate();
   const { data: sessionRows, error: sessionsError } = await admin
     .from("daily_sessions")
-    .select("id,start_date,end_date,modality,distance_mode,location_address,max_participants,schedule_blocks,internal_reference")
+    .select("id,start_date,end_date,modality,distance_mode,location_address,max_participants,schedule_blocks")
     .eq("organisation_id", formation.organisation_id)
     .eq("formation_id", formation.id)
     .eq("status", "ready")
@@ -90,7 +90,6 @@ export async function GET(_request: Request, { params }: Params) {
       modality: session.modality,
       distanceMode: session.distance_mode,
       locationAddress: session.location_address,
-      internalReference: session.internal_reference,
       scheduleBlocks: session.schedule_blocks,
       maxParticipants: capacity,
       placesRemaining,
