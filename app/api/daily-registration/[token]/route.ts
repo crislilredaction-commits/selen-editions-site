@@ -12,7 +12,7 @@ import {
 type Params = { params: Promise<{ token: string }> };
 
 const SESSION_SELECT = "id,user_id,registration_token,registration_status,adaptation_needed,companies,beneficiaries,individual_beneficiaries,daily_formations(id,title,status,global_objective,target_audience,prerequisites,duration_hours,duration_days,modality,modality_details,access_delays,registration_methods,price,detailed_program,detailed_program_document_url,accessibility,pedagogical_resources,pedagogical_methods,evaluation_methods,positioning_mode,positioning_questions)" as const;
-const FORMATION_SELECT = "id,user_id,public_registration_token,public_registration_enabled,title,status,global_objective,target_audience,prerequisites,duration_hours,duration_days,modality,modality_details,access_delays,registration_methods,price,detailed_program,detailed_program_document_url,accessibility,pedagogical_resources,pedagogical_methods,evaluation_methods,positioning_mode,positioning_questions" as const;
+const FORMATION_SELECT = "id,user_id,organisation_id,public_registration_token,public_registration_enabled,title,status,global_objective,target_audience,prerequisites,duration_hours,duration_days,modality,modality_details,access_delays,registration_methods,price,detailed_program,detailed_program_document_url,accessibility,pedagogical_resources,pedagogical_methods,evaluation_methods,positioning_mode,positioning_questions" as const;
 const APPLICATION_CONSENT_TEXT =
   "Je certifie l'exactitude des informations renseignées dans ce dossier de candidature et confirme ma demande d'inscription à cette formation.";
 const MAX_SIGNATURE_LENGTH = 500_000;
@@ -33,6 +33,15 @@ function jsonObject(value: unknown) {
 
 function jsonArray(value: unknown) {
   return Array.isArray(value) ? value : [];
+}
+
+function todayIsoDate() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Paris",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
 }
 
 function hasExplicitAdaptationAnswer(answers: Record<string, unknown>) {
@@ -121,6 +130,44 @@ async function findFormation(token: string) {
   return data;
 }
 
+async function validateSelectedSession(
+  formationId: string,
+  organisationId: string,
+  selectedSessionId: string,
+) {
+  const supabase = getAdminSupabase();
+  const { data: selectedSession, error: sessionError } = await supabase
+    .from("daily_sessions")
+    .select("id,start_date,end_date,max_participants,status")
+    .eq("id", selectedSessionId)
+    .eq("formation_id", formationId)
+    .eq("organisation_id", organisationId)
+    .eq("status", "ready")
+    .maybeSingle();
+
+  if (sessionError) throw new Error(sessionError.message);
+  if (!selectedSession || !selectedSession.max_participants) {
+    return { error: "La session choisie n'est plus disponible. Merci d'en sélectionner une autre." } as const;
+  }
+
+  if (selectedSession.end_date && selectedSession.end_date < todayIsoDate()) {
+    return { error: "La session choisie est déjà terminée. Merci d'en sélectionner une autre." } as const;
+  }
+
+  const { count, error: countError } = await supabase
+    .from("daily_session_enrolments")
+    .select("id", { count: "exact", head: true })
+    .eq("session_id", selectedSession.id)
+    .in("status", ["invited", "pending", "confirmed"]);
+
+  if (countError) throw new Error(countError.message);
+  if ((count ?? 0) >= Number(selectedSession.max_participants)) {
+    return { error: "La session choisie vient d'être complète. Merci d'en sélectionner une autre." } as const;
+  }
+
+  return { value: selectedSession } as const;
+}
+
 export async function GET(_request: Request, { params }: Params) {
   const { token } = await params;
   const clean = cleanToken(token);
@@ -174,7 +221,22 @@ export async function POST(request: Request, { params }: Params) {
 
   const needAnswers = jsonObject(body.need_answers);
   const positioningAnswers = jsonObject(body.positioning_answers);
-  const targetId = session?.id ?? formation?.id;
+  const selectedSessionId = formation ? text(body, "selected_session_id") : "";
+
+  let selectedSession: { id: string } | null = null;
+  if (formation && selectedSessionId) {
+    const validation = await validateSelectedSession(
+      formation.id,
+      formation.organisation_id,
+      selectedSessionId,
+    );
+    if ("error" in validation) {
+      return NextResponse.json({ error: validation.error }, { status: 409 });
+    }
+    selectedSession = validation.value;
+  }
+
+  const targetId = session?.id ?? (formation ? `${formation.id}:${selectedSession?.id ?? "unassigned"}` : null);
   if (!targetId) return NextResponse.json({ error: "Dossier de candidature introuvable." }, { status: 404 });
 
   const signature = buildApplicationSignature(
@@ -215,11 +277,12 @@ export async function POST(request: Request, { params }: Params) {
         need_answers: needAnswers,
         positioning_answers: positioningAnswers,
         adaptation_needed: adaptationNeeded,
+        attached_session_id: selectedSession?.id ?? null,
         status: "to_attach",
         submitted_at: signature.value.signed_at,
         ...signatureFields,
       })
-      .select("id,status,submitted_at,signature_signed_at")
+      .select("id,status,submitted_at,signature_signed_at,attached_session_id")
       .single();
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -232,7 +295,9 @@ export async function POST(request: Request, { params }: Params) {
     return NextResponse.json({
       response,
       summary: {
-        task: "Créer une session ou rattacher cette demande à une session.",
+        task: selectedSession
+          ? "Contrôler la candidature puis confirmer le rattachement à la session choisie."
+          : "Créer une session ou rattacher cette demande à une session.",
       },
       registrationKind: "formation",
     });
