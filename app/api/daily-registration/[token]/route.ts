@@ -44,6 +44,26 @@ function todayIsoDate() {
   }).format(new Date());
 }
 
+function selectedSessionFromCookie(request: Request, token: string) {
+  const cookie = request.headers.get("cookie") ?? "";
+  const raw = cookie
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith("selen_daily_session_choice="))
+    ?.slice("selen_daily_session_choice=".length);
+  if (!raw) return "";
+
+  let value = "";
+  try {
+    value = decodeURIComponent(raw);
+  } catch {
+    return "";
+  }
+
+  const prefix = `${token}.`;
+  return value.startsWith(prefix) ? value.slice(prefix.length).trim() : "";
+}
+
 function hasExplicitAdaptationAnswer(answers: Record<string, unknown>) {
   return String(
     answers.adaptation_needed_answer ?? answers.company_adaptation_needed ?? "",
@@ -168,6 +188,35 @@ async function validateSelectedSession(
   return { value: selectedSession } as const;
 }
 
+async function hasAvailableSessions(formationId: string, organisationId: string) {
+  const supabase = getAdminSupabase();
+  const { data: sessions, error } = await supabase
+    .from("daily_sessions")
+    .select("id,max_participants")
+    .eq("formation_id", formationId)
+    .eq("organisation_id", organisationId)
+    .eq("status", "ready")
+    .not("max_participants", "is", null)
+    .gte("end_date", todayIsoDate());
+
+  if (error) throw new Error(error.message);
+  if (!sessions?.length) return false;
+
+  for (const item of sessions) {
+    const capacity = Number(item.max_participants ?? 0);
+    if (capacity <= 0) continue;
+    const { count, error: countError } = await supabase
+      .from("daily_session_enrolments")
+      .select("id", { count: "exact", head: true })
+      .eq("session_id", item.id)
+      .in("status", ["invited", "pending", "confirmed"]);
+    if (countError) throw new Error(countError.message);
+    if ((count ?? 0) < capacity) return true;
+  }
+
+  return false;
+}
+
 export async function GET(_request: Request, { params }: Params) {
   const { token } = await params;
   const clean = cleanToken(token);
@@ -221,7 +270,9 @@ export async function POST(request: Request, { params }: Params) {
 
   const needAnswers = jsonObject(body.need_answers);
   const positioningAnswers = jsonObject(body.positioning_answers);
-  const selectedSessionId = formation ? text(body, "selected_session_id") : "";
+  const selectedSessionId = formation
+    ? text(body, "selected_session_id") || selectedSessionFromCookie(request, clean)
+    : "";
 
   let selectedSession: { id: string } | null = null;
   if (formation && selectedSessionId) {
@@ -234,6 +285,10 @@ export async function POST(request: Request, { params }: Params) {
       return NextResponse.json({ error: validation.error }, { status: 409 });
     }
     selectedSession = validation.value;
+  } else if (formation && await hasAvailableSessions(formation.id, formation.organisation_id)) {
+    return NextResponse.json({
+      error: "Des sessions sont actuellement disponibles. Merci d'en choisir une avant d'envoyer votre dossier.",
+    }, { status: 400 });
   }
 
   const targetId = session?.id ?? (formation ? `${formation.id}:${selectedSession?.id ?? "unassigned"}` : null);
