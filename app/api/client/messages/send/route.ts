@@ -19,12 +19,22 @@ export async function POST(req: Request) {
     }
 
     const supabase = getAdminSupabase();
-    const access = await verifyClientNdaDossierAccess(supabase, dossierId);
+    const access = await verifyClientNdaDossierAccess(supabase, dossierId, req);
 
     if (!access.ok) {
       return NextResponse.json(
         { error: access.error },
         { status: access.status },
+      );
+    }
+
+    if (access.mode === "agent_assistance") {
+      return NextResponse.json(
+        {
+          error:
+            "L’envoi d’un message au nom du client est réservé au client connecté.",
+        },
+        { status: 403 },
       );
     }
 
