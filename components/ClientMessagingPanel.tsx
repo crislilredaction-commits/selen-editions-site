@@ -1,6 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import {
+  assistanceFetch,
+  getStoredAssistanceToken,
+} from "@/components/AgentAssistanceBanner";
 
 type MessageItem = {
   id: string;
@@ -21,6 +25,7 @@ export default function ClientMessagingPanel({
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [messages, setMessages] = useState<MessageItem[]>(initialMessages);
+  const [assistanceMode, setAssistanceMode] = useState(false);
 
   const sortedMessages = useMemo(() => {
     return [...messages].sort(
@@ -30,9 +35,13 @@ export default function ClientMessagingPanel({
   }, [messages]);
 
   useEffect(() => {
+    setAssistanceMode(Boolean(getStoredAssistanceToken()));
+  }, []);
+
+  useEffect(() => {
     async function loadMessages() {
       try {
-        const res = await fetch(
+        const res = await assistanceFetch(
           `/api/client/messages/list?dossierId=${encodeURIComponent(dossierId)}`,
           {
             cache: "no-store",
@@ -43,6 +52,7 @@ export default function ClientMessagingPanel({
 
         if (res.ok) {
           setMessages(data?.items ?? []);
+          setAssistanceMode(Boolean(data?.assistanceMode));
           return;
         }
 
@@ -61,6 +71,8 @@ export default function ClientMessagingPanel({
 
   useEffect(() => {
     async function markAsRead() {
+      if (getStoredAssistanceToken()) return;
+
       try {
         await fetch("/api/client/messages/read-client", {
           method: "POST",
@@ -79,6 +91,13 @@ export default function ClientMessagingPanel({
 
   async function sendMessage() {
     try {
+      if (assistanceMode) {
+        setError(
+          "En mode assistance, la messagerie est en lecture seule afin qu’aucun message ne soit attribué au client à tort.",
+        );
+        return;
+      }
+
       if (!message.trim()) return;
 
       setSending(true);
@@ -141,7 +160,7 @@ export default function ClientMessagingPanel({
             letterSpacing: "-0.01em",
           }}
         >
-          Messagerie avec votre agent
+          {assistanceMode ? "Messagerie du dossier" : "Messagerie avec votre agent"}
         </h2>
 
         <p
@@ -153,8 +172,9 @@ export default function ClientMessagingPanel({
             fontFamily: "sans-serif",
           }}
         >
-          Utilisez cet espace pour poser une question ou répondre à votre agent
-          directement depuis la plateforme.
+          {assistanceMode
+            ? "Mode assistance : la conversation est consultable en lecture seule. Un agent ne peut ni envoyer un message au nom du client ni confirmer sa lecture à sa place."
+            : "Utilisez cet espace pour poser une question ou répondre à votre agent directement depuis la plateforme."}
         </p>
       </div>
 
@@ -232,12 +252,17 @@ export default function ClientMessagingPanel({
         id="client-message-input"
         value={message}
         onChange={(e) => setMessage(e.target.value)}
-        placeholder="Écrire un message à votre agent..."
+        placeholder={
+          assistanceMode
+            ? "Messagerie en lecture seule pendant l’assistance agent."
+            : "Écrire un message à votre agent..."
+        }
+        disabled={assistanceMode}
         style={{
           width: "100%",
           minHeight: 120,
           resize: "vertical",
-          background: "#fffdfa",
+          background: assistanceMode ? "#f3eee7" : "#fffdfa",
           border: "1px solid #d9ccb9",
           borderRadius: 8,
           padding: "12px 14px",
@@ -246,6 +271,7 @@ export default function ClientMessagingPanel({
           outline: "none",
           fontFamily: "sans-serif",
           boxSizing: "border-box",
+          cursor: assistanceMode ? "not-allowed" : "text",
         }}
       />
 
@@ -288,10 +314,12 @@ export default function ClientMessagingPanel({
         <button
           type="button"
           onClick={sendMessage}
-          disabled={sending || !message.trim()}
+          disabled={assistanceMode || sending || !message.trim()}
           style={{
             background:
-              sending || !message.trim() ? "rgba(75,46,30,0.45)" : "#4b2e1e",
+              assistanceMode || sending || !message.trim()
+                ? "rgba(75,46,30,0.45)"
+                : "#4b2e1e",
             color: "white",
             border: "1px solid #4b2e1e",
             borderRadius: 3,
@@ -301,11 +329,18 @@ export default function ClientMessagingPanel({
             fontFamily: "sans-serif",
             letterSpacing: "0.14em",
             textTransform: "uppercase",
-            cursor: sending || !message.trim() ? "not-allowed" : "pointer",
+            cursor:
+              assistanceMode || sending || !message.trim()
+                ? "not-allowed"
+                : "pointer",
             minWidth: 180,
           }}
         >
-          {sending ? "Envoi..." : "Envoyer le message"}
+          {assistanceMode
+            ? "Lecture seule"
+            : sending
+              ? "Envoi..."
+              : "Envoyer le message"}
         </button>
       </div>
     </div>
