@@ -147,7 +147,14 @@ export async function POST(req: Request) {
     nextDue.setUTCFullYear(nextDue.getUTCFullYear() + 1);
     const { error: profileError } = await admin
       .from("daily_trainer_profiles")
-      .update({ cv_updated_at: now.toISOString(), cv_review_due_at: nextDue.toISOString(), updated_at: now.toISOString() })
+      .update({
+        cv_updated_at: now.toISOString(),
+        cv_review_due_at: nextDue.toISOString(),
+        cv_last_reminder_at: null,
+        cv_reminder_count: 0,
+        cv_next_reminder_at: null,
+        updated_at: now.toISOString(),
+      })
       .eq("id", trainerProfileId)
       .eq("organisation_id", organisationId);
     if (profileError) throw new Error(profileError.message);
