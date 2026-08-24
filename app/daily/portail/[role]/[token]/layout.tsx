@@ -8,19 +8,27 @@ export default async function DailyStakeholderPortalLayout({
   params: Promise<{ role: string; token: string }>;
 }) {
   const { role, token } = await params;
+  const isLearner = role === "apprenant" || role === "learner";
 
   return (
     <>
       {children}
-      <aside style={s.panel} aria-label="Réclamations et suggestions">
+      <aside style={s.panel} aria-label="Actions du portail">
         <div style={s.content}>
           <div style={s.copy}>
-            <strong>Une réclamation ou une suggestion ?</strong>
-            <span>Vous pouvez la transmettre directement à Selen depuis votre espace.</span>
+            <strong>Besoin d’agir depuis votre espace ?</strong>
+            <span>{isLearner ? "Votre évaluation de fin et le formulaire de réclamation restent accessibles ici." : "Vous pouvez transmettre une réclamation ou une suggestion directement à Selen."}</span>
           </div>
-          <a href={`/daily/portail/${role}/${token}/feedback`} style={s.link}>
-            Ouvrir le formulaire
-          </a>
+          <div style={s.actions}>
+            {isLearner ? (
+              <a href={`/daily/portail/${role}/${token}/evaluation`} style={s.secondaryLink}>
+                Mon évaluation
+              </a>
+            ) : null}
+            <a href={`/daily/portail/${role}/${token}/feedback`} style={s.link}>
+              Réclamation / suggestion
+            </a>
+          </div>
         </div>
       </aside>
     </>
@@ -47,6 +55,7 @@ const s: Record<string, React.CSSProperties> = {
     gap: "0.75rem",
   },
   copy: { display: "grid", gap: "0.15rem", color: "var(--ink)", lineHeight: 1.4 },
+  actions: { display: "flex", flexWrap: "wrap", gap: "0.55rem", alignItems: "center" },
   link: {
     display: "inline-flex",
     alignItems: "center",
@@ -55,6 +64,18 @@ const s: Record<string, React.CSSProperties> = {
     padding: "0.7rem 0.9rem",
     background: "var(--rust)",
     color: "white",
+    fontWeight: 800,
+    textDecoration: "none",
+  },
+  secondaryLink: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 44,
+    padding: "0.7rem 0.9rem",
+    border: "1px solid var(--rust)",
+    color: "var(--rust)",
+    background: "var(--paper)",
     fontWeight: 800,
     textDecoration: "none",
   },
