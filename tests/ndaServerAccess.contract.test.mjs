@@ -58,9 +58,15 @@ test("les routes historiques NDA critiques ne reviennent pas a un acces navigate
   assert.deepEqual(failures, []);
 });
 
-test("les mutations NDA sensibles restent interdites en mode assistance agent", async () => {
+test("la declaration du depot NDA reste interdite en assistance agent", async () => {
+  const route = await source("app/api/client/nda/deposit-submitted/route.ts");
+
+  assert.match(route, /access\.mode\s*===\s*"agent_assistance"/);
+  assert.match(route, /blockedAgentAssistanceResponse/);
+});
+
+test("les depots documentaires autorises en assistance agent restent journalises", async () => {
   const routes = [
-    "app/api/client/nda/deposit-submitted/route.ts",
     "app/api/client/nda/final-documents-submitted/route.ts",
     "app/api/client/nda/refusal-letter/route.ts",
   ];
@@ -68,6 +74,6 @@ test("les mutations NDA sensibles restent interdites en mode assistance agent", 
   for (const path of routes) {
     const route = await source(path);
     assert.match(route, /access\.mode\s*===\s*"agent_assistance"/);
-    assert.match(route, /blockedAgentAssistanceResponse/);
+    assert.match(route, /logAgentAssistanceAction/);
   }
 });
