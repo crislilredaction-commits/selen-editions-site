@@ -24,25 +24,25 @@ type DailyConvocationEmailInput = {
 };
 
 export function prepareDailyConvocationEmail(input: DailyConvocationEmailInput) {
-  const subject = `Votre convocation · ${input.formationTitle}`;
+  const subject = `Votre convocation et livret d'accueil · ${input.formationTitle}`;
   const period = input.endDate && input.endDate !== input.startDate
     ? `du ${formatDate(input.startDate)} au ${formatDate(input.endDate)}`
     : `le ${formatDate(input.startDate)}`;
   const text = [
     `Bonjour ${input.learnerName || ""},`.trim(),
     "",
-    `Vous trouverez en pièce jointe votre convocation pour la formation « ${input.formationTitle} » ${period}.`,
+    `Vous trouverez en pièce jointe votre convocation et votre livret d'accueil pour la formation « ${input.formationTitle} » ${period}.`,
     input.sessionReference ? `Référence de session : ${input.sessionReference}` : "",
     "",
-    "Conservez ce document : il reprend les informations utiles pour votre participation.",
+    "Conservez ce document : il reprend les informations pratiques et les repères utiles pour votre participation.",
     "",
     "Selen Editions",
   ].filter((line) => line !== "").join("\n");
   const html = `<div style="font-family:Arial,sans-serif;color:#3e2a1f;line-height:1.6;max-width:640px">
       <p>Bonjour ${escapeHtml(input.learnerName)},</p>
-      <p>Vous trouverez en pièce jointe votre convocation pour la formation <strong>${escapeHtml(input.formationTitle)}</strong> ${escapeHtml(period)}.</p>
+      <p>Vous trouverez en pièce jointe votre convocation et votre livret d'accueil pour la formation <strong>${escapeHtml(input.formationTitle)}</strong> ${escapeHtml(period)}.</p>
       ${input.sessionReference ? `<p>Référence de session : ${escapeHtml(input.sessionReference)}</p>` : ""}
-      <p>Conservez ce document : il reprend les informations utiles pour votre participation.</p>
+      <p>Conservez ce document : il reprend les informations pratiques et les repères utiles pour votre participation.</p>
       <p>Selen Editions</p>
     </div>`;
   return { subject, text, html };
