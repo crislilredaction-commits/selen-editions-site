@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Header from "@/components/Header";
+import ProgramDetails from "@/components/daily/ProgramDetails";
 
 type RegistrationMode = "beneficiary" | "company";
 type Participant = { first_name: string; last_name: string; email: string };
@@ -275,6 +276,8 @@ export default function DailyRegistrationPage({ params }: { params: { token: str
                   : ""}
           </p>
         </article>
+
+        <ProgramDetails token={token} />
 
         {error ? <p style={s.error}>{error}</p> : null}
 
