@@ -153,7 +153,8 @@ export async function POST(request: Request) {
       context.admin
         .from("daily_communications")
         .update({ status: "failed", failed_at: failedAt, failure_reason: sent.reason })
-        .eq("id", communication.id),
+        .eq("id", communication.id)
+        .eq("organisation_id", context.organisationId),
     ]);
     return NextResponse.json({ error: "La demande de satisfaction n’a pas pu être envoyée. Le lien a été révoqué et la tentative est conservée." }, { status: 503 });
   }
@@ -168,7 +169,8 @@ export async function POST(request: Request) {
       failed_at: null,
       failure_reason: null,
     })
-    .eq("id", communication.id);
+    .eq("id", communication.id)
+    .eq("organisation_id", context.organisationId);
 
   if (finalizeError) {
     console.error("Daily : satisfaction envoyée mais finalisation de la preuve impossible", finalizeError);
