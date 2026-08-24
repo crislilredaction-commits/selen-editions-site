@@ -126,7 +126,10 @@ export default function TrainerAnnualManagerOverviewPage() {
                   {trainer.review?.status === "submitted" ? (
                     <>
                       <p style={styles.muted}>Transmise le {formatDate(trainer.review.submitted_at)} · {trainer.trainings.filter((item) => item.training_kind === "completed").length} formation(s) suivie(s) · {trainer.trainings.filter((item) => item.training_kind === "planned").length} envisagée(s).</p>
-                      <button className="btn-ghost" onClick={() => setOpenId(opened ? null : trainer.id)}><span>{opened ? "Masquer" : "Consulter et compléter"}</span></button>
+                      <div style={styles.actionsRow}>
+                        <button className="btn-ghost" onClick={() => setOpenId(opened ? null : trainer.id)}><span>{opened ? "Masquer" : "Consulter et compléter"}</span></button>
+                        <a className="btn-ghost" href={`/api/client/daily/trainer-annual-reviews/document?review_id=${encodeURIComponent(trainer.review.id)}`}><span>Télécharger le document PDF</span></a>
+                      </div>
                       {opened ? <ReviewDetails trainer={trainer} onSaved={load} /> : null}
                     </>
                   ) : (
@@ -282,6 +285,7 @@ const styles: Record<string, React.CSSProperties> = {
   card: { padding: "1.25rem", border: "1px solid var(--sepia-mid)", background: "var(--paper)" },
   headerRow: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem", flexWrap: "wrap" },
   badges: { display: "flex", gap: ".45rem", flexWrap: "wrap" },
+  actionsRow: { display: "flex", alignItems: "center", gap: ".6rem", flexWrap: "wrap" },
   name: { margin: 0 },
   muted: { color: "var(--ink-soft)", lineHeight: 1.5 },
   info: { padding: ".75rem", background: "rgba(201,160,85,.08)", color: "var(--ink-soft)" },
