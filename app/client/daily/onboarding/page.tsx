@@ -316,20 +316,22 @@ export default function DailyOnboardingPage() {
                   Je paramètre seul
                 </button>
                 <button type="button" style={form.setup_choice === "video" ? s.choiceOn : s.choice} onClick={() => update("setup_choice", "video")}>
-                  Je préfère être accompagné en visio
+                  Je souhaite être accompagné
                 </button>
               </div>
               {form.setup_choice === "video" ? (
                 <div style={s.appointmentBox}>
-                  <strong>Vous préférez être accompagné ?</strong>
+                  <strong>Préparons d'abord votre rendez-vous</strong>
                   <p>
-                    Nous pouvons configurer Selen Daily ensemble lors d'un rendez-vous d'environ 1 h 30.
-                    Nous préparerons votre espace, vos documents et votre première formation.
+                    Commencez par transmettre les documents demandés dans les étapes suivantes. Selen pourra ainsi préremplir au maximum votre espace avant l'échange et limiter les saisies manuelles.
                   </p>
-                  <a href="/prendre-rendez-vous?source=client_space&appointmentType=daily_setup_1h30" className="btn-ink">
-                    <span>Choisir un créneau</span>
-                  </a>
-                  <a href="/support" style={s.inlineLink}>Demander un rendez-vous à Selen</a>
+                  <p style={{ margin: 0 }}>
+                    Le rendez-vous de mise en place pourra être planifié au minimum 24 h après la transmission des documents nécessaires.
+                  </p>
+                  <button type="button" className="btn-ink" onClick={() => void goTo(2)}>
+                    <span>Commencer par transmettre mes informations</span>
+                  </button>
+                  <a href="/support" style={s.inlineLink}>Contacter Selen si besoin</a>
                 </div>
               ) : null}
             </div>
