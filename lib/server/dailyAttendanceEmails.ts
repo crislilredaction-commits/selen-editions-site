@@ -64,6 +64,59 @@ export async function sendDailyAttendanceVerificationCode(input: {
   return { sent: true as const, message: { subject, text, html, providerMessageId: data?.id ?? null } satisfies SentEmailSnapshot };
 }
 
+export function prepareDailyAttendanceRequest(input: AttendanceReminderInput) {
+  const subject = `Émargement · ${input.formationTitle}`;
+  const text = [
+    `Bonjour ${input.learnerName || ""},`.trim(),
+    "",
+    `La séance de la formation « ${input.formationTitle} » commence (${input.slotLabel}).`,
+    "",
+    "Merci de confirmer votre présence depuis votre téléphone avec ce lien :",
+    input.attendanceUrl,
+    "",
+    "Le lien est personnel. Ne le transmettez pas.",
+    "",
+    "Selen Editions",
+  ].join("\n");
+  const html = `<div style="font-family:Arial,sans-serif;color:#3e2a1f;line-height:1.6;max-width:640px">
+      <p>Bonjour ${escapeHtml(input.learnerName)},</p>
+      <p>La séance de la formation <strong>${escapeHtml(input.formationTitle)}</strong> commence.</p>
+      <p>${escapeHtml(input.slotLabel)}</p>
+      <p>Merci de confirmer votre présence depuis votre téléphone.</p>
+      <p><a href="${escapeHtml(input.attendanceUrl)}" style="display:inline-block;padding:12px 18px;background:#8a4b24;color:#fffaf0;text-decoration:none;font-weight:700">Émarger maintenant</a></p>
+      <p style="font-size:13px">Ce lien est personnel. Ne le transmettez pas.</p>
+      <p>Selen Editions</p>
+    </div>`;
+
+  return { subject, text, html };
+}
+
+export async function sendDailyAttendanceRequest(input: AttendanceReminderInput) {
+  if (!resend) {
+    console.warn("RESEND_API_KEY absente : demande d’émargement Daily non envoyée.");
+    return { sent: false as const, reason: "missing_resend_api_key" as const };
+  }
+
+  const message = prepareDailyAttendanceRequest(input);
+  const { data, error } = await resend.emails.send({
+    from: resendFromEmail,
+    to: input.email,
+    subject: message.subject,
+    text: message.text,
+    html: message.html,
+    replyTo: "hello@selen-editions.fr",
+  });
+
+  if (error) {
+    console.error("Émargement Daily : demande impossible", error);
+    return { sent: false as const, reason: "send_failed" as const };
+  }
+  return {
+    sent: true as const,
+    message: { ...message, providerMessageId: data?.id ?? null } satisfies SentEmailSnapshot,
+  };
+}
+
 export function prepareDailyAttendanceReminder(input: AttendanceReminderInput) {
   const subject = `Rappel d’émargement · ${input.formationTitle}`;
   const text = [
