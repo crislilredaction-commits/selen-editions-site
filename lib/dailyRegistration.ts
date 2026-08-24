@@ -1,4 +1,8 @@
 export const DAILY_NEED_QUESTIONS = [
+  { key: "postal_address", label: "Quelle est votre adresse postale ?" },
+  { key: "professional_situation", label: "Quelle est votre situation professionnelle actuelle ?" },
+  { key: "highest_diploma", label: "Quel est le plus haut diplôme que vous avez obtenu ?" },
+  { key: "current_knowledge_level", label: "Quel est votre niveau de connaissance actuel dans le domaine de la formation ?" },
   { key: "expectations", label: "Qu'attendez-vous de cette formation ?" },
   { key: "expressed_need", label: "Quel besoin souhaitez-vous couvrir avec cette formation ?" },
   { key: "objective", label: "Quel est votre objectif professionnel ou personnel ?" },
@@ -65,9 +69,14 @@ export function buildDailyRegistrationSummary(
 
   return {
     synthese_beneficiaire: {
+      adresses_postales: collectType("beneficiary", "postal_address"),
+      situations_professionnelles: collectType("beneficiary", "professional_situation"),
+      diplomes_plus_eleves: collectType("beneficiary", "highest_diploma"),
+      niveaux_connaissance_initiaux: collectType("beneficiary", "current_knowledge_level"),
       attentes: collectType("beneficiary", "expectations"),
       besoin_exprime: collectType("beneficiary", "expressed_need"),
       objectif: collectType("beneficiary", "objective"),
+      motivations: collectType("beneficiary", "motivations"),
     },
     synthese_entreprise: {
       besoin_exprime: collectType("company", "expressed_need"),
