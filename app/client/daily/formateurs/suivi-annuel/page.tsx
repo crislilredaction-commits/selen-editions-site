@@ -34,6 +34,10 @@ type Review = {
   submitted_at?: string | null;
   manager_notified_at?: string | null;
   reminder_count?: number | null;
+  manager_appreciation?: string | null;
+  manager_improvement_areas?: string | null;
+  manager_actions?: string | null;
+  manager_completed_at?: string | null;
 };
 
 type Trainer = {
@@ -82,7 +86,7 @@ export default function TrainerAnnualManagerOverviewPage() {
       <header className="gazette-cta" style={styles.hero}>
         <p className="gazette-label">Selen Daily · Suivi des compétences</p>
         <h1 className="gazette-hero-title">Suivi annuel des formateurs {data?.year ?? ""}</h1>
-        <p style={styles.muted}>Une vue simple des auto-évaluations, formations déclarées, mises à jour de CV et échéances de certifications. La V1 est en consultation : aucune validation du dirigeant n’est exigée.</p>
+        <p style={styles.muted}>Consultez les auto-évaluations, formations, CV et certifications. Vous pouvez compléter une appréciation ou des actions de votre côté, sans aucune obligation.</p>
       </header>
 
       {error ? <p style={styles.error}>{error}</p> : null}
@@ -122,8 +126,8 @@ export default function TrainerAnnualManagerOverviewPage() {
                   {trainer.review?.status === "submitted" ? (
                     <>
                       <p style={styles.muted}>Transmise le {formatDate(trainer.review.submitted_at)} · {trainer.trainings.filter((item) => item.training_kind === "completed").length} formation(s) suivie(s) · {trainer.trainings.filter((item) => item.training_kind === "planned").length} envisagée(s).</p>
-                      <button className="btn-ghost" onClick={() => setOpenId(opened ? null : trainer.id)}><span>{opened ? "Masquer" : "Consulter"}</span></button>
-                      {opened ? <ReviewDetails trainer={trainer} /> : null}
+                      <button className="btn-ghost" onClick={() => setOpenId(opened ? null : trainer.id)}><span>{opened ? "Masquer" : "Consulter et compléter"}</span></button>
+                      {opened ? <ReviewDetails trainer={trainer} onSaved={load} /> : null}
                     </>
                   ) : (
                     <>
@@ -142,11 +146,45 @@ export default function TrainerAnnualManagerOverviewPage() {
   );
 }
 
-function ReviewDetails({ trainer }: { trainer: Trainer }) {
+function ReviewDetails({ trainer, onSaved }: { trainer: Trainer; onSaved: () => Promise<void> }) {
   const review = trainer.review;
+  const [managerAppreciation, setManagerAppreciation] = useState(review?.manager_appreciation ?? "");
+  const [managerImprovementAreas, setManagerImprovementAreas] = useState(review?.manager_improvement_areas ?? "");
+  const [managerActions, setManagerActions] = useState(review?.manager_actions ?? "");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
   if (!review) return null;
   const completed = trainer.trainings.filter((item) => item.training_kind === "completed");
   const planned = trainer.trainings.filter((item) => item.training_kind === "planned");
+  const hasManagerContribution = Boolean(review.manager_appreciation || review.manager_improvement_areas || review.manager_actions);
+
+  async function saveManagerContribution() {
+    setBusy(true);
+    setError("");
+    setMessage("");
+    const response = await fetch("/api/client/daily/trainer-annual-reviews", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        review_id: review?.id,
+        manager_appreciation: managerAppreciation,
+        manager_improvement_areas: managerImprovementAreas,
+        manager_actions: managerActions,
+      }),
+    });
+    const payload = await response.json().catch(() => null);
+    setBusy(false);
+    if (!response.ok) {
+      setError(payload?.error ?? "Enregistrement impossible.");
+      return;
+    }
+    await onSaved();
+    const hasContent = Boolean(managerAppreciation.trim() || managerImprovementAreas.trim() || managerActions.trim());
+    setMessage(hasContent ? "Contribution enregistrée." : "Contribution retirée. La partie dirigeant restera absente du document final.");
+  }
+
   return (
     <div style={styles.details}>
       <Detail title="Points forts" value={review.strengths} />
@@ -162,6 +200,18 @@ function ReviewDetails({ trainer }: { trainer: Trainer }) {
         {planned.length ? <ul>{planned.map((item) => <li key={item.id}><strong>{item.title}</strong>{item.provider ? ` · ${item.provider}` : ""}{item.note ? ` · ${item.note}` : ""}</li>)}</ul> : <p style={styles.muted}>Aucune formation envisagée déclarée.</p>}
       </div>
       <CertificationDetails certifications={trainer.certifications} />
+
+      <section style={styles.managerBox}>
+        <h3 style={{ marginTop: 0 }}>Contribution du dirigeant <span style={styles.optional}>facultative</span></h3>
+        <p style={styles.muted}>Vous pouvez compléter ce point après lecture. Si les trois champs restent vides, cette partie ne devra pas apparaître sur le document final.</p>
+        {hasManagerContribution && review.manager_completed_at ? <p style={styles.managerMeta}>Dernière contribution enregistrée le {formatDate(review.manager_completed_at)}.</p> : null}
+        <label style={styles.field}><strong>Appréciation</strong><textarea rows={4} value={managerAppreciation} onChange={(event) => setManagerAppreciation(event.target.value)} style={styles.textarea} placeholder="Votre appréciation, si vous souhaitez en ajouter une…" /></label>
+        <label style={styles.field}><strong>Axes d’amélioration confirmés ou ajustés</strong><textarea rows={4} value={managerImprovementAreas} onChange={(event) => setManagerImprovementAreas(event.target.value)} style={styles.textarea} placeholder="Facultatif" /></label>
+        <label style={styles.field}><strong>Actions proposées ou décidées</strong><textarea rows={4} value={managerActions} onChange={(event) => setManagerActions(event.target.value)} style={styles.textarea} placeholder="Facultatif" /></label>
+        {error ? <p style={styles.error}>{error}</p> : null}
+        {message ? <p style={styles.success}>{message}</p> : null}
+        <button className="btn-ink" disabled={busy} onClick={() => void saveManagerContribution()}><span>{busy ? "Enregistrement…" : "Enregistrer ma contribution"}</span></button>
+      </section>
     </div>
   );
 }
@@ -240,6 +290,12 @@ const styles: Record<string, React.CSSProperties> = {
   expiredCertification: { color: "#8a2d24", fontWeight: 700 },
   details: { marginTop: "1rem", paddingTop: "1rem", borderTop: "1px dashed var(--sepia-mid)", display: "grid", gap: ".8rem" },
   answer: { whiteSpace: "pre-wrap", lineHeight: 1.6 },
+  managerBox: { marginTop: ".5rem", padding: "1rem", border: "1px solid var(--sepia-mid)", background: "rgba(201,160,85,.05)", display: "grid", gap: ".8rem" },
+  managerMeta: { margin: 0, fontSize: ".9rem", color: "var(--ink-soft)" },
+  optional: { fontSize: ".75rem", fontWeight: 700, color: "var(--ink-soft)", marginLeft: ".35rem" },
+  field: { display: "grid", gap: ".4rem" },
+  textarea: { width: "100%", boxSizing: "border-box", padding: ".75rem", border: "1px solid var(--sepia-mid)", background: "#fffdf8", font: "inherit", lineHeight: 1.5 },
+  success: { padding: ".7rem .8rem", margin: 0, background: "rgba(61,106,74,.1)", border: "1px solid rgba(61,106,74,.3)" },
   goodBadge: { padding: ".35rem .55rem", background: "rgba(61,106,74,.1)", color: "#3d6a4a", fontWeight: 800, fontSize: ".85rem" },
   waitBadge: { padding: ".35rem .55rem", background: "rgba(201,160,85,.12)", color: "#7d571d", fontWeight: 800, fontSize: ".85rem" },
   warningBadge: { padding: ".35rem .55rem", background: "rgba(154,91,22,.1)", color: "#9a5b16", fontWeight: 800, fontSize: ".85rem" },
