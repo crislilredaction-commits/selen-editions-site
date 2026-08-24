@@ -1,6 +1,23 @@
 import { getDailyClientWorkspace } from "@/lib/server/dailyClientWorkspace";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import FeedbackResponseForm from "./FeedbackResponseForm";
+import NewFeedbackForm from "./NewFeedbackForm";
+
+type FeedbackRow = {
+  id: string;
+  session_id: string | null;
+  submission_type: string;
+  stakeholder_type: string;
+  submitter_name: string;
+  subject: string;
+  message: string;
+  status: string;
+  selen_review_note: string | null;
+  forwarded_at: string | null;
+  organisation_response: string | null;
+  resolved_at: string | null;
+  created_at: string;
+};
 
 const TYPE_LABELS: Record<string, string> = {
   complaint: "Réclamation",
@@ -29,29 +46,23 @@ export default async function DailyManagerFeedbackPage() {
   }
 
   const roles = context.workspace.membership.roles ?? [];
-  if (!roles.includes("manager")) {
-    return (
-      <main style={s.page}>
-        <section style={s.card}>
-          <h1>Réclamations & suggestions</h1>
-          <p>Cette vue est réservée au dirigeant ou responsable de l’organisme.</p>
-        </section>
-      </main>
-    );
+  const isManager = roles.includes("manager");
+  let rows: FeedbackRow[] = [];
+
+  if (isManager) {
+    const admin = getAdminSupabase();
+    const organisationId = context.workspace.membership.organisation_id;
+    const { data, error } = await admin
+      .from("daily_stakeholder_feedback")
+      .select("id,session_id,submission_type,stakeholder_type,submitter_name,subject,message,status,selen_review_note,forwarded_at,organisation_response,resolved_at,created_at")
+      .eq("organisation_id", organisationId)
+      .in("status", ["forwarded_to_organisation", "resolved"])
+      .order("forwarded_at", { ascending: false, nullsFirst: false })
+      .limit(300);
+
+    if (error) throw new Error(error.message);
+    rows = (data ?? []) as FeedbackRow[];
   }
-
-  const admin = getAdminSupabase();
-  const organisationId = context.workspace.membership.organisation_id;
-  const { data, error } = await admin
-    .from("daily_stakeholder_feedback")
-    .select("id,session_id,submission_type,stakeholder_type,submitter_name,subject,message,status,selen_review_note,forwarded_at,organisation_response,resolved_at,created_at")
-    .eq("organisation_id", organisationId)
-    .in("status", ["forwarded_to_organisation", "resolved"])
-    .order("forwarded_at", { ascending: false, nullsFirst: false })
-    .limit(300);
-
-  if (error) throw new Error(error.message);
-  const rows = data ?? [];
 
   return (
     <main style={s.page}>
@@ -59,50 +70,61 @@ export default async function DailyManagerFeedbackPage() {
         <p className="gazette-label">Selen Daily</p>
         <h1 style={s.title}>Réclamations & suggestions</h1>
         <p style={s.subtitle}>
-          Seules les demandes déjà examinées par Selen et transmises à votre organisme apparaissent ici.
+          Toute partie prenante connectée peut écrire directement à Selen. Les demandes ne sont transmises à l’organisme qu’après revue.
         </p>
       </section>
 
-      <section style={s.metrics}>
-        <Metric value={rows.filter((item) => item.status === "forwarded_to_organisation").length} label="À traiter" />
-        <Metric value={rows.filter((item) => item.status === "resolved").length} label="Résolues" />
-      </section>
+      <NewFeedbackForm />
 
-      <section style={s.list}>
-        {rows.length === 0 ? (
-          <article style={s.card}>
-            <h2 style={s.cardTitle}>Aucune demande transmise</h2>
-            <p style={s.muted}>Les messages restent d’abord dans la file privée Selen. Ils n’apparaissent ici qu’après revue et transmission.</p>
-          </article>
-        ) : rows.map((item) => (
-          <article key={item.id} style={s.card}>
-            <div style={s.row}>
-              <div>
-                <h2 style={s.cardTitle}>{item.subject}</h2>
-                <p style={s.muted}>
-                  {TYPE_LABELS[item.submission_type] ?? item.submission_type} · {STAKEHOLDER_LABELS[item.stakeholder_type] ?? item.stakeholder_type} · {item.submitter_name}
-                </p>
-              </div>
-              <span style={item.status === "resolved" ? s.badgeDone : s.badgeOpen}>
-                {item.status === "resolved" ? "Résolue" : "À traiter"}
-              </span>
-            </div>
+      {isManager ? (
+        <>
+          <section style={s.metrics}>
+            <Metric value={rows.filter((item) => item.status === "forwarded_to_organisation").length} label="À traiter" />
+            <Metric value={rows.filter((item) => item.status === "resolved").length} label="Résolues" />
+          </section>
 
-            <dl style={s.details}>
-              <Info label="Transmise par Selen" value={formatDateTime(item.forwarded_at)} />
-              <Info label="Message initial" value={item.message} multiline />
-              {item.selen_review_note ? <Info label="Note Selen" value={item.selen_review_note} multiline /> : null}
-              {item.organisation_response ? <Info label="Réponse enregistrée" value={item.organisation_response} multiline /> : null}
-              {item.resolved_at ? <Info label="Clôturée le" value={formatDateTime(item.resolved_at)} /> : null}
-            </dl>
+          <section style={s.list}>
+            {rows.length === 0 ? (
+              <article style={s.card}>
+                <h2 style={s.cardTitle}>Aucune demande transmise</h2>
+                <p style={s.muted}>Les messages restent d’abord dans la file privée Selen. Ils n’apparaissent ici qu’après revue et transmission.</p>
+              </article>
+            ) : rows.map((item) => (
+              <article key={item.id} style={s.card}>
+                <div style={s.row}>
+                  <div>
+                    <h2 style={s.cardTitle}>{item.subject}</h2>
+                    <p style={s.muted}>
+                      {TYPE_LABELS[item.submission_type] ?? item.submission_type} · {STAKEHOLDER_LABELS[item.stakeholder_type] ?? item.stakeholder_type} · {item.submitter_name}
+                    </p>
+                  </div>
+                  <span style={item.status === "resolved" ? s.badgeDone : s.badgeOpen}>
+                    {item.status === "resolved" ? "Résolue" : "À traiter"}
+                  </span>
+                </div>
 
-            <p style={s.reference}>Référence : {item.id}{item.session_id ? ` · Session ${item.session_id}` : ""}</p>
-            {item.status === "forwarded_to_organisation" ? (
-              <FeedbackResponseForm id={item.id} initialResponse={item.organisation_response ?? ""} />
-            ) : null}
-          </article>
-        ))}
-      </section>
+                <dl style={s.details}>
+                  <Info label="Transmise par Selen" value={formatDateTime(item.forwarded_at)} />
+                  <Info label="Message initial" value={item.message} multiline />
+                  {item.selen_review_note ? <Info label="Note Selen" value={item.selen_review_note} multiline /> : null}
+                  {item.organisation_response ? <Info label="Réponse enregistrée" value={item.organisation_response} multiline /> : null}
+                  {item.resolved_at ? <Info label="Clôturée le" value={formatDateTime(item.resolved_at)} /> : null}
+                </dl>
+
+                <p style={s.reference}>Référence : {item.id}{item.session_id ? ` · Session ${item.session_id}` : ""}</p>
+                {item.status === "forwarded_to_organisation" ? (
+                  <FeedbackResponseForm id={item.id} initialResponse={item.organisation_response ?? ""} />
+                ) : null}
+              </article>
+            ))}
+          </section>
+        </>
+      ) : (
+        <section style={s.card}>
+          <h2 style={s.cardTitle}>Suivi par Selen</h2>
+          <p style={s.muted}>La vue de traitement des demandes transmises à l’organisme reste réservée au dirigeant ou responsable.</p>
+        </section>
+      )}
     </main>
   );
 }
