@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import {
@@ -12,6 +13,9 @@ type Params = { params: Promise<{ token: string }> };
 
 const SESSION_SELECT = "id,user_id,registration_token,registration_status,adaptation_needed,companies,beneficiaries,individual_beneficiaries,daily_formations(id,title,status,global_objective,target_audience,prerequisites,duration_hours,duration_days,modality,modality_details,access_delays,registration_methods,price,detailed_program,detailed_program_document_url,accessibility,pedagogical_resources,pedagogical_methods,evaluation_methods,positioning_mode,positioning_questions)" as const;
 const FORMATION_SELECT = "id,user_id,public_registration_token,public_registration_enabled,title,status,global_objective,target_audience,prerequisites,duration_hours,duration_days,modality,modality_details,access_delays,registration_methods,price,detailed_program,detailed_program_document_url,accessibility,pedagogical_resources,pedagogical_methods,evaluation_methods,positioning_mode,positioning_questions" as const;
+const APPLICATION_CONSENT_TEXT =
+  "Je certifie l'exactitude des informations renseignées dans ce dossier de candidature et confirme ma demande d'inscription à cette formation.";
+const MAX_SIGNATURE_LENGTH = 500_000;
 
 function cleanToken(value?: string | null) {
   return String(value ?? "").trim();
@@ -35,6 +39,59 @@ function hasExplicitAdaptationAnswer(answers: Record<string, unknown>) {
   return String(
     answers.adaptation_needed_answer ?? answers.company_adaptation_needed ?? "",
   ).toLowerCase() === "oui";
+}
+
+function buildApplicationSignature(
+  request: Request,
+  body: Record<string, unknown>,
+  targetId: string,
+  responseType: string,
+  needAnswers: Record<string, unknown>,
+  positioningAnswers: Record<string, unknown>,
+) {
+  const consentAccepted = body.signature_consent === true;
+  const signatureData = text(body, "signature_data");
+  if (!consentAccepted) {
+    return { error: "Merci de confirmer votre accord avant de signer le dossier." } as const;
+  }
+  if (!signatureData.startsWith("data:image/png;base64,")) {
+    return { error: "Merci de dessiner votre signature dans l'encadré prévu." } as const;
+  }
+  if (signatureData.length > MAX_SIGNATURE_LENGTH) {
+    return { error: "La signature transmise est trop volumineuse. Merci de l'effacer puis de signer à nouveau." } as const;
+  }
+
+  const signedAt = new Date().toISOString();
+  const ipAddress =
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    request.headers.get("x-real-ip") ||
+    null;
+  const userAgent = request.headers.get("user-agent");
+  const proofHash = createHash("sha256")
+    .update([
+      targetId,
+      responseType,
+      text(body, "respondent_first_name"),
+      text(body, "respondent_last_name"),
+      text(body, "respondent_email").toLowerCase(),
+      JSON.stringify(needAnswers),
+      JSON.stringify(positioningAnswers),
+      signedAt,
+      APPLICATION_CONSENT_TEXT,
+      signatureData,
+    ].join("|"))
+    .digest("hex");
+
+  return {
+    value: {
+      consent_text: APPLICATION_CONSENT_TEXT,
+      signature_data: signatureData,
+      signed_at: signedAt,
+      ip_address: ipAddress,
+      user_agent: userAgent,
+      proof_hash: proofHash,
+    },
+  } as const;
 }
 
 async function findSession(token: string) {
@@ -77,6 +134,7 @@ export async function GET(_request: Request, { params }: Params) {
       beneficiaryQuestions: DAILY_NEED_QUESTIONS,
       companyQuestions: DAILY_COMPANY_QUESTIONS,
       positioningQuestions: DAILY_POSITIONING_QUESTIONS,
+      signatureConsentText: APPLICATION_CONSENT_TEXT,
     });
   }
 
@@ -95,6 +153,7 @@ export async function GET(_request: Request, { params }: Params) {
     beneficiaryQuestions: DAILY_NEED_QUESTIONS,
     companyQuestions: DAILY_COMPANY_QUESTIONS,
     positioningQuestions: DAILY_POSITIONING_QUESTIONS,
+    signatureConsentText: APPLICATION_CONSENT_TEXT,
   });
 }
 
@@ -115,8 +174,31 @@ export async function POST(request: Request, { params }: Params) {
 
   const needAnswers = jsonObject(body.need_answers);
   const positioningAnswers = jsonObject(body.positioning_answers);
+  const targetId = session?.id ?? formation?.id;
+  if (!targetId) return NextResponse.json({ error: "Dossier de candidature introuvable." }, { status: 404 });
+
+  const signature = buildApplicationSignature(
+    request,
+    body,
+    targetId,
+    responseType,
+    needAnswers,
+    positioningAnswers,
+  );
+  if ("error" in signature) {
+    return NextResponse.json({ error: signature.error }, { status: 400 });
+  }
+
   const adaptationNeeded = hasExplicitAdaptationAnswer(needAnswers) || detectAdaptationNeeded(needAnswers);
   const supabase = getAdminSupabase();
+  const signatureFields = {
+    signature_consent_text: signature.value.consent_text,
+    signature_data: signature.value.signature_data,
+    signature_proof_hash: signature.value.proof_hash,
+    signature_signed_at: signature.value.signed_at,
+    signature_ip_address: signature.value.ip_address,
+    signature_user_agent: signature.value.user_agent,
+  };
 
   if (formation) {
     const { data: response, error } = await supabase
@@ -134,9 +216,10 @@ export async function POST(request: Request, { params }: Params) {
         positioning_answers: positioningAnswers,
         adaptation_needed: adaptationNeeded,
         status: "to_attach",
-        submitted_at: new Date().toISOString(),
+        submitted_at: signature.value.signed_at,
+        ...signatureFields,
       })
-      .select("*")
+      .select("id,status,submitted_at,signature_signed_at")
       .single();
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -174,9 +257,10 @@ export async function POST(request: Request, { params }: Params) {
       positioning_answers: positioningAnswers,
       adaptation_needed: adaptationNeeded,
       status: "submitted",
-      submitted_at: new Date().toISOString(),
+      submitted_at: signature.value.signed_at,
+      ...signatureFields,
     })
-    .select("*")
+    .select("id,status,submitted_at,signature_signed_at")
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -196,7 +280,7 @@ export async function POST(request: Request, { params }: Params) {
       registration_status: "summary_to_review",
       registration_summary: summary,
       adaptation_needed: hasAdaptation,
-      registration_responses_received_at: new Date().toISOString(),
+      registration_responses_received_at: signature.value.signed_at,
     })
     .eq("id", session.id);
 

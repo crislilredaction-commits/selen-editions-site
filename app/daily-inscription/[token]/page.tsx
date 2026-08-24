@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Header from "@/components/Header";
+import ApplicationSignature from "@/components/daily/ApplicationSignature";
 import ProgramDetails from "@/components/daily/ProgramDetails";
 
 type RegistrationMode = "beneficiary" | "company";
@@ -47,6 +48,9 @@ export default function DailyRegistrationPage({ params }: { params: { token: str
   const [participants, setParticipants] = useState<Participant[]>([
     { first_name: "", last_name: "", email: "" },
   ]);
+  const [signatureConsentText, setSignatureConsentText] = useState("");
+  const [signatureConsent, setSignatureConsent] = useState(false);
+  const [signatureData, setSignatureData] = useState("");
 
   const positioningQuestions = useMemo(() => {
     const questions = session?.daily_formations?.positioning_questions;
@@ -71,6 +75,7 @@ export default function DailyRegistrationPage({ params }: { params: { token: str
         return;
       }
       setSession(data.session);
+      setSignatureConsentText(data.signatureConsentText ?? "");
       try {
         const draft = window.localStorage.getItem(`selen-daily-registration-${token}`);
         if (!draft) return;
@@ -210,9 +215,22 @@ export default function DailyRegistrationPage({ params }: { params: { token: str
     return true;
   }
 
+  function validateSignature() {
+    if (!signatureConsent) {
+      setError("Merci de confirmer l'exactitude des informations du dossier avant de l'envoyer.");
+      return false;
+    }
+    if (!signatureData.startsWith("data:image/png;base64,")) {
+      setError("Merci de signer le dossier dans l'encadré prévu avant de l'envoyer.");
+      return false;
+    }
+    return true;
+  }
+
   async function submit() {
     if (!validateContactDetails()) return;
     if (!validatePositioning()) return;
+    if (!validateSignature()) return;
     setSaving(true);
     setError("");
     const res = await fetch(`/api/daily-registration/${token}`, {
@@ -227,6 +245,8 @@ export default function DailyRegistrationPage({ params }: { params: { token: str
         participants: participants.filter((participant) => participant.first_name || participant.last_name || participant.email),
         need_answers: buildNeedAnswers(),
         positioning_answers: buildPositioningAnswers(),
+        signature_consent: signatureConsent,
+        signature_data: signatureData,
       }),
     });
     const data = await res.json().catch(() => null);
@@ -249,8 +269,8 @@ export default function DailyRegistrationPage({ params }: { params: { token: str
         <section style={s.page}>
           <article style={s.card}>
             <p className="gazette-label">Selen Daily</p>
-            <h1 style={s.title}>Merci, vos réponses sont bien transmises</h1>
-            <p style={s.muted}>Selen va les relire avec l&apos;organisme de formation pour préparer votre entrée en formation dans de bonnes conditions.</p>
+            <h1 style={s.title}>Merci, votre dossier signé est bien transmis</h1>
+            <p style={s.muted}>Selen va le relire avec l&apos;organisme de formation pour préparer votre entrée en formation dans de bonnes conditions.</p>
           </article>
         </section>
       </main>
@@ -303,13 +323,36 @@ export default function DailyRegistrationPage({ params }: { params: { token: str
             />
           )}
 
+          {step === totalSteps - 1 ? (
+            <ApplicationSignature
+              consentText={signatureConsentText}
+              consent={signatureConsent}
+              onConsentChange={setSignatureConsent}
+              onSignatureChange={setSignatureData}
+            />
+          ) : null}
+
           <div style={s.actions}>
-            {step > 0 ? <button type="button" className="btn-ghost" onClick={() => setStep(step - 1)}><span>Retour</span></button> : null}
+            {step > 0 ? (
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() => {
+                  if (step === totalSteps - 1) {
+                    setSignatureConsent(false);
+                    setSignatureData("");
+                  }
+                  setStep(step - 1);
+                }}
+              >
+                <span>Retour</span>
+              </button>
+            ) : null}
             {step < totalSteps - 1 ? (
               <button type="button" className="btn-ink" onClick={() => setStep(step + 1)}><span>Continuer</span></button>
             ) : (
               <button type="button" className="btn-ink" disabled={saving} onClick={() => void submit()}>
-                <span>{saving ? "Transmission..." : "Envoyer mes réponses"}</span>
+                <span>{saving ? "Transmission..." : "Signer et envoyer mon dossier"}</span>
               </button>
             )}
           </div>
