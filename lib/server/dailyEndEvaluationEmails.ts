@@ -45,6 +45,33 @@ export function prepareDailySatisfactionRequestEmail(input: DailySatisfactionEma
   return { subject, text, html };
 }
 
+export function prepareDailySatisfactionReminderEmail(input: DailySatisfactionEmailInput) {
+  const subject = `Rappel · votre avis sur la formation · ${input.formationTitle}`;
+  const expiresText = formatDate(input.expiresAt);
+  const text = [
+    `Bonjour ${input.learnerName || ""},`.trim(),
+    "",
+    `Nous n’avons pas encore reçu votre questionnaire de satisfaction pour la formation « ${input.formationTitle} ».`,
+    "",
+    "Vous pouvez le compléter en quelques minutes avec ce lien personnel :",
+    input.feedbackUrl,
+    "",
+    `Le lien reste disponible jusqu’au ${expiresText}.`,
+    "",
+    "Merci pour votre retour,",
+    "Selen Editions",
+  ].join("\n");
+  const html = `<div style="font-family:Arial,sans-serif;color:#3e2a1f;line-height:1.6;max-width:640px">
+      <p>Bonjour ${escapeHtml(input.learnerName)},</p>
+      <p>Nous n’avons pas encore reçu votre questionnaire de satisfaction pour la formation <strong>${escapeHtml(input.formationTitle)}</strong>.</p>
+      <p>Vous pouvez le compléter en quelques minutes avec ce lien personnel :</p>
+      <p><a href="${escapeHtml(input.feedbackUrl)}" style="display:inline-block;padding:12px 18px;background:#8a4b24;color:#fffaf0;text-decoration:none;font-weight:700">Répondre au questionnaire</a></p>
+      <p style="font-size:13px">Ce lien personnel reste disponible jusqu’au ${escapeHtml(expiresText)}.</p>
+      <p>Merci pour votre retour,<br/>Selen Editions</p>
+    </div>`;
+  return { subject, text, html };
+}
+
 export async function sendDailySatisfactionRequest(input: DailySatisfactionEmailInput) {
   if (!resend) {
     console.warn("RESEND_API_KEY absente : demande de satisfaction Daily non envoyée.");
@@ -63,6 +90,36 @@ export async function sendDailySatisfactionRequest(input: DailySatisfactionEmail
 
   if (error) {
     console.error("Daily : demande de satisfaction impossible", error);
+    return { sent: false as const, reason: "send_failed" as const };
+  }
+
+  return {
+    sent: true as const,
+    message: {
+      ...message,
+      providerMessageId: data?.id ?? null,
+    } satisfies DailySatisfactionEmailSnapshot,
+  };
+}
+
+export async function sendDailySatisfactionReminder(input: DailySatisfactionEmailInput) {
+  if (!resend) {
+    console.warn("RESEND_API_KEY absente : rappel de satisfaction Daily non envoyé.");
+    return { sent: false as const, reason: "missing_resend_api_key" as const };
+  }
+
+  const message = prepareDailySatisfactionReminderEmail(input);
+  const { data, error } = await resend.emails.send({
+    from: resendFromEmail,
+    to: input.email,
+    subject: message.subject,
+    text: message.text,
+    html: message.html,
+    replyTo: "hello@selen-editions.fr",
+  });
+
+  if (error) {
+    console.error("Daily : rappel de satisfaction impossible", error);
     return { sent: false as const, reason: "send_failed" as const };
   }
 
