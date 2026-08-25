@@ -5,7 +5,10 @@ import test from "node:test";
 const dossierScopedRoutes = [
   "app/api/client/dossier/state/route.ts",
   "app/api/client/dossier/step-1/route.ts",
+  "app/api/client/dossier/step-2/route.ts",
+  "app/api/client/dossier/final-upload/route.ts",
   "app/api/client/messages/list/route.ts",
+  "app/api/client/messages/send/route.ts",
   "app/api/client/program/latest/route.ts",
 ];
 
