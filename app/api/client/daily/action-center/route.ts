@@ -3,7 +3,7 @@ import { getDailyOrganisationReadContext } from "@/lib/server/dailyOrganisationC
 
 type ActionItem = {
   id: string;
-  kind: "dossier" | "positioning" | "prerequisite" | "adaptation" | "trainer";
+  kind: "dossier" | "positioning" | "prerequisite" | "adaptation" | "trainer" | "application";
   priority: "high" | "medium" | "normal";
   title: string;
   detail: string;
@@ -12,7 +12,7 @@ type ActionItem = {
   sessionLabel?: string | null;
 };
 
-type FormationRelation = { title?: string | null };
+type FormationRelation = { title?: string | null; organisation_id?: string | null };
 type LearnerRelation = { first_name?: string | null; last_name?: string | null };
 type SessionRelation = {
   id?: string | null;
@@ -27,6 +27,18 @@ type EnrolmentRelation = {
   status?: string | null;
   daily_learners?: LearnerRelation | LearnerRelation[] | null;
   daily_sessions?: SessionRelation | SessionRelation[] | null;
+};
+
+type PublicApplicationRelation = {
+  id: string;
+  formation_id: string;
+  response_type: string;
+  respondent_first_name?: string | null;
+  respondent_last_name?: string | null;
+  respondent_email?: string | null;
+  company_name?: string | null;
+  attached_session_id?: string | null;
+  daily_formations?: FormationRelation | FormationRelation[] | null;
 };
 
 function one<T>(value: T | T[] | null | undefined): T | null {
@@ -45,11 +57,28 @@ function learnerLabel(enrolment: EnrolmentRelation) {
   return label || "Apprenant";
 }
 
+function applicantLabel(application: PublicApplicationRelation) {
+  if (application.response_type === "company" && application.company_name?.trim()) {
+    return application.company_name.trim();
+  }
+  const name = [application.respondent_first_name, application.respondent_last_name]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  return name || application.respondent_email || "Candidat";
+}
+
 export async function GET(req: Request) {
   const context = await getDailyOrganisationReadContext(req, ["sessions", "trainings"]);
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
 
-  const [{ data: sessions, error: sessionsError }, { data: checklist, error: checklistError }, { data: enrolments, error: enrolmentsError }, { data: supportNeeds, error: needsError }] = await Promise.all([
+  const [
+    { data: sessions, error: sessionsError },
+    { data: checklist, error: checklistError },
+    { data: enrolments, error: enrolmentsError },
+    { data: supportNeeds, error: needsError },
+    { data: publicApplications, error: applicationsError },
+  ] = await Promise.all([
     context.admin
       .from("daily_sessions")
       .select("id,internal_reference,start_date,end_date,status,trainer_ids,daily_formations(title)")
@@ -71,9 +100,16 @@ export async function GET(req: Request) {
       .select("id,enrolment_id,has_specific_needs,needs_description,planned_accommodations,contact_requested,daily_session_enrolments(id,session_id,status,daily_learners(first_name,last_name),daily_sessions(id,internal_reference,start_date,end_date,status,daily_formations(title)))")
       .eq("organisation_id", context.organisationId)
       .eq("has_specific_needs", true),
+    context.admin
+      .from("daily_formation_registration_requests")
+      .select("id,formation_id,response_type,respondent_first_name,respondent_last_name,respondent_email,company_name,attached_session_id,daily_formations!inner(title,organisation_id)")
+      .eq("status", "to_attach")
+      .is("attached_session_id", null)
+      .eq("daily_formations.organisation_id", context.organisationId)
+      .order("submitted_at", { ascending: true }),
   ]);
 
-  const error = sessionsError ?? checklistError ?? enrolmentsError ?? needsError;
+  const error = sessionsError ?? checklistError ?? enrolmentsError ?? needsError ?? applicationsError;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const actions: ActionItem[] = [];
@@ -166,6 +202,20 @@ export async function GET(req: Request) {
     });
   }
 
+  for (const rawApplication of publicApplications ?? []) {
+    const application = rawApplication as unknown as PublicApplicationRelation;
+    const formation = one(application.daily_formations);
+    actions.push({
+      id: `application:${application.id}`,
+      kind: "application",
+      priority: "medium",
+      title: `Session à proposer pour ${applicantLabel(application)}`,
+      detail: "Une candidature a été reçue depuis votre lien public alors qu'aucune session n'était disponible. Créez ou préparez une session ; Selen conservera le contrôle du dossier avant convention.",
+      href: `/client/daily/sessions?formation_id=${encodeURIComponent(application.formation_id)}`,
+      sessionLabel: formation?.title || "Formation",
+    });
+  }
+
   const rank = { high: 0, medium: 1, normal: 2 } as const;
   actions.sort((a, b) => rank[a.priority] - rank[b.priority] || (a.sessionLabel ?? "").localeCompare(b.sessionLabel ?? "", "fr"));
 
@@ -177,6 +227,7 @@ export async function GET(req: Request) {
       dossier: actions.filter((item) => item.kind === "dossier").length,
       learners: actions.filter((item) => ["positioning", "prerequisite", "adaptation"].includes(item.kind)).length,
       trainers: actions.filter((item) => item.kind === "trainer").length,
+      applications: actions.filter((item) => item.kind === "application").length,
     },
   });
 }

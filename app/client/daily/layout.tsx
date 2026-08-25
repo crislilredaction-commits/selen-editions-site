@@ -24,6 +24,7 @@ export default function DailyClientLayout({ children }: { children: React.ReactN
         <Link href="/client/daily/communications" style={linkStyle}>Communications</Link>
         <Link href="/client/daily/suivi" style={linkStyle}>Déroulement</Link>
         <Link href="/client/daily/evaluations" style={linkStyle}>Évaluations & satisfaction</Link>
+        <Link href="/client/daily/indicateurs" style={linkStyle}>Indicateurs</Link>
         <Link href="/client/daily/evaluations/preuves" style={linkStyle}>Preuves d’évaluation</Link>
         <Link href="/client/daily/documents-fin" style={linkStyle}>Documents de fin</Link>
         <Link href="/client/daily/reclamations" style={linkStyle}>Réclamations & suggestions</Link>
@@ -32,6 +33,7 @@ export default function DailyClientLayout({ children }: { children: React.ReactN
         <Link href="/client/daily/dossiers" style={linkStyle}>Dossiers de session</Link>
         <Link href="/client/daily" style={linkStyle}>Suivi & documents</Link>
         <Link href="/client/daily/organisation" style={linkStyle}>Mon organisme</Link>
+        <Link href="/client/daily/formateur/suivi-sessions" style={linkStyle}>Mes sessions formateur</Link>
         <Link href="/client/daily/formateur/suivi-annuel" style={linkStyle}>Mon suivi formateur</Link>
         <Link href="/client/daily/formateur/cv" style={linkStyle}>Mon CV</Link>
         <Link href="/client/daily/formateurs/suivi-annuel" style={linkStyle}>Suivi des formateurs</Link>

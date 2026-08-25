@@ -118,6 +118,7 @@ function timelineFor(data: PortalData) {
       ["Signatures", signature],
       ["Convocations", hasSentConvocation ? "termine" : hasConvocation ? "a_faire" : "a_venir"],
       ["Formation", "a_venir"],
+      ["Satisfaction à froid", "a_venir"],
       ["Certificats", "a_venir"],
     ];
   }
@@ -131,6 +132,7 @@ function timelineFor(data: PortalData) {
       ["Convention/signatures", signature],
       ["Convocation", hasSentConvocation ? "termine" : hasConvocation ? "a_faire" : "a_venir"],
       ["Formation", "a_venir"],
+      ["Satisfaction formateur", "a_venir"],
     ];
   }
 
@@ -178,6 +180,7 @@ export default function DailyPortalPage({ params }: { params: { role: string; to
   const pendingSignature = conventions
     .flatMap((convention) => convention.daily_convention_signatures ?? [])
     .find((signature) => signature.status !== "signed" && signature.token);
+  const satisfactionAvailable = data?.access.portalType === "enterprise" || data?.access.portalType === "trainer";
 
   return (
     <main className="gazette-paper" style={s.page}>
@@ -223,6 +226,11 @@ export default function DailyPortalPage({ params }: { params: { role: string; to
             {conventions.length > 0 ? <span>Consulter ou télécharger la convention disponible.</span> : null}
             {convocations.length > 0 ? <span>Consulter ou télécharger la convocation.</span> : null}
             {data.session.adaptation_needed && data.access.portalType === "trainer" ? <span>Vérifier les adaptations utiles à la session.</span> : null}
+            {satisfactionAvailable ? (
+              <a href={`/daily/portail/${data.access.portalType}/${token}/satisfaction`} style={s.link}>
+                {data.access.portalType === "trainer" ? "Questionnaire de satisfaction formateur" : "Questionnaire de satisfaction commanditaire"}
+              </a>
+            ) : null}
             {data.responses?.length && !pendingSignature && conventions.length === 0 ? <span>Aucune action immédiate pour le moment.</span> : null}
           </article>
 
