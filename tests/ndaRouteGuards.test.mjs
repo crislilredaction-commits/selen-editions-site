@@ -18,6 +18,7 @@ const dossierScopedRoutes = [
   "app/api/client/program/download/route.ts",
   "app/api/client/program/latest/route.ts",
   "app/api/client/program/validate/route.ts",
+  "app/api/client/upload/route.ts",
 ];
 
 const listRoutes = ["app/api/client/nda-dossiers/route.ts"];
