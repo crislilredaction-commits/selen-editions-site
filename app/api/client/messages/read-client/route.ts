@@ -17,12 +17,22 @@ export async function POST(req: Request) {
     }
 
     const supabase = getAdminSupabase();
-    const access = await verifyClientNdaDossierAccess(supabase, dossierId);
+    const access = await verifyClientNdaDossierAccess(supabase, dossierId, req);
 
     if (!access.ok) {
       return NextResponse.json(
         { error: access.error },
         { status: access.status },
+      );
+    }
+
+    if (access.mode === "agent_assistance") {
+      return NextResponse.json(
+        {
+          error:
+            "Le mode assistance ne peut pas confirmer la lecture d’un message à la place du client.",
+        },
+        { status: 403 },
       );
     }
 
