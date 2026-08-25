@@ -14,11 +14,22 @@ export default function SelenDailySuccessPage() {
             Abonnement activé
           </h1>
           <p className="mx-auto mt-5 max-w-xl leading-7 text-[#5a4031]">
-            Merci. Votre accès Selen Daily est en préparation. Connectez-vous à
-            votre espace client pour terminer le paramétrage initial.
+            Merci. Votre paiement est confirmé et votre espace Selen Daily est en
+            cours d&apos;activation.
+          </p>
+          <p className="mx-auto mt-4 max-w-xl leading-7 text-[#5a4031]">
+            Vous allez recevoir à l&apos;adresse utilisée lors du paiement un email
+            intitulé <strong>« Bienvenue dans Selen Daily »</strong>. Il contient
+            le lien qui vous permet de créer votre mot de passe puis de commencer
+            le paramétrage de votre organisme.
+          </p>
+          <p className="mx-auto mt-4 max-w-xl text-sm leading-6 text-[#6d5140]">
+            L&apos;email arrive généralement en quelques minutes. Si vous ne le voyez
+            pas après 10 minutes, vérifiez vos courriers indésirables avant de
+            contacter Selen.
           </p>
           <Link href="/client" className="btn-ink mt-7 inline-flex">
-            <span>Ouvrir mon espace client</span>
+            <span>J&apos;ai déjà mes accès</span>
           </Link>
         </article>
       </section>
