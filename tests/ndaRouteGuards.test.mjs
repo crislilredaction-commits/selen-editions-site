@@ -24,6 +24,16 @@ const dossierScopedRoutes = [
 
 const listRoutes = ["app/api/client/nda-dossiers/route.ts"];
 
+const legacyNdaRouteRoots = [
+  "app/api/client/documents",
+  "app/api/client/dossier",
+  "app/api/client/messages",
+  "app/api/client/nda-dossiers",
+  "app/api/client/nda",
+  "app/api/client/program",
+  "app/api/client/upload",
+];
+
 function firstPrivilegedOperationIndex(source) {
   return [
     source.search(/\.from\s*\(/),
@@ -122,5 +132,18 @@ test("toutes les routes client qui utilisent les gardes NDA canoniques restent c
     guardedListRoutes.sort(),
     [...listRoutes].sort(),
     "une route utilisant listClientNdaDossiers a été ajoutée ou retirée sans mise à jour explicite du gate NDA",
+  );
+});
+
+test("la surface connue des routes NDA historiques reste entièrement couverte", async () => {
+  const legacyNdaRoutes = (
+    await Promise.all(legacyNdaRouteRoots.map((root) => listRouteFiles(root)))
+  ).flat();
+  const coveredRoutes = [...dossierScopedRoutes, ...listRoutes];
+
+  assert.deepEqual(
+    legacyNdaRoutes.sort(),
+    coveredRoutes.sort(),
+    "une route a été ajoutée ou retirée dans la surface NDA historique sans classement explicite dans le gate de sécurité",
   );
 });
