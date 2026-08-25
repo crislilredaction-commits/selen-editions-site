@@ -123,7 +123,7 @@ export default function SelenDailyCheckoutPage() {
               Démarrer l&apos;abonnement
             </h2>
             <p className="mt-5 leading-7 text-[#5a4031]">
-              Selen Daily est à <strong>89 € TTC/mois</strong> jusqu&apos;à 150
+              Selen Daily est à <strong>69 € TTC/mois</strong> jusqu&apos;à 150
               apprenants par an. À partir du 151e apprenant inscrit sur l&apos;année,
               l&apos;abonnement passera automatiquement à <strong>149 € TTC/mois</strong>.
             </p>
@@ -149,7 +149,7 @@ export default function SelenDailyCheckoutPage() {
                   }
                 />
                 <span>
-                  J&apos;accepte la règle de palier : 89 € TTC/mois jusqu&apos;à
+                  J&apos;accepte la règle de palier : 69 € TTC/mois jusqu&apos;à
                   150 apprenants par an, puis 149 € TTC/mois à partir du 151e
                   apprenant inscrit sur l&apos;année.
                 </span>
@@ -167,7 +167,7 @@ export default function SelenDailyCheckoutPage() {
                 disabled={loading}
                 onClick={() => void startCheckout()}
               >
-                <span>{loading ? "Ouverture..." : "Payer 89 € TTC / mois"}</span>
+                <span>{loading ? "Ouverture..." : "Payer 69 € TTC / mois"}</span>
               </button>
             </div>
           </article>
