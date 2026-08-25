@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
+import path from "node:path";
 import test from "node:test";
 
 const dossierScopedRoutes = [
@@ -31,6 +32,26 @@ function firstPrivilegedOperationIndex(source) {
   ]
     .filter((index) => index >= 0)
     .sort((a, b) => a - b)[0] ?? -1;
+}
+
+async function listRouteFiles(directory) {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const files = [];
+
+  for (const entry of entries) {
+    const entryPath = path.join(directory, entry.name);
+
+    if (entry.isDirectory()) {
+      files.push(...(await listRouteFiles(entryPath)));
+      continue;
+    }
+
+    if (entry.isFile() && entry.name === "route.ts") {
+      files.push(entryPath.split(path.sep).join("/"));
+    }
+  }
+
+  return files;
 }
 
 for (const routePath of dossierScopedRoutes) {
@@ -73,3 +94,33 @@ for (const routePath of listRoutes) {
     assert.match(source, /if\s*\(!result\.ok\)/);
   });
 }
+
+test("toutes les routes client qui utilisent les gardes NDA canoniques restent couvertes", async () => {
+  const routeFiles = await listRouteFiles("app/api/client");
+  const guardedDossierRoutes = [];
+  const guardedListRoutes = [];
+
+  for (const routePath of routeFiles) {
+    const source = await readFile(routePath, "utf8");
+
+    if (/await\s+verifyClientNdaDossierAccess\s*\(/.test(source)) {
+      guardedDossierRoutes.push(routePath);
+    }
+
+    if (/await\s+listClientNdaDossiers\s*\(/.test(source)) {
+      guardedListRoutes.push(routePath);
+    }
+  }
+
+  assert.deepEqual(
+    guardedDossierRoutes.sort(),
+    [...dossierScopedRoutes].sort(),
+    "une route utilisant verifyClientNdaDossierAccess a été ajoutée ou retirée sans mise à jour explicite du gate NDA",
+  );
+
+  assert.deepEqual(
+    guardedListRoutes.sort(),
+    [...listRoutes].sort(),
+    "une route utilisant listClientNdaDossiers a été ajoutée ou retirée sans mise à jour explicite du gate NDA",
+  );
+});
