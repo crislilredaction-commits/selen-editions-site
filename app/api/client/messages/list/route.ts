@@ -17,7 +17,7 @@ export async function GET(req: Request) {
     }
 
     const supabase = getAdminSupabase();
-    const access = await verifyClientNdaDossierAccess(supabase, dossierId);
+    const access = await verifyClientNdaDossierAccess(supabase, dossierId, req);
 
     if (!access.ok) {
       return NextResponse.json(
@@ -36,7 +36,10 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ items: data ?? [] });
+    return NextResponse.json({
+      items: data ?? [],
+      assistanceMode: access.mode === "agent_assistance",
+    });
   } catch (error) {
     return NextResponse.json(
       {
