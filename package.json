@@ -4,9 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "npm run test:nda-access && next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:nda-access": "node --test tests/ndaServerAccess.contract.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.2",
