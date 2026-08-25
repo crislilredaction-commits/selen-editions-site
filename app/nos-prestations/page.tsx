@@ -126,7 +126,7 @@ export default function PrestationsPage() {
                       </p>
 
                       <p className="mt-2 font-['Playfair_Display'] text-4xl font-semibold text-[#3e2a1f]">
-                        89{" "}
+                        69{" "}
                         <span className="text-xl text-[#6e4a32]">
                           € TTC/mois
                         </span>
@@ -148,7 +148,7 @@ export default function PrestationsPage() {
                   </div>
 
                   <p className="mt-5 text-[#5a4031] leading-7 text-[0.93rem]">
-                    L&apos;abonnement Selen Daily est à 89 € TTC/mois jusqu&apos;à
+                    L&apos;abonnement Selen Daily est à 69 € TTC/mois jusqu&apos;à
                     150 apprenants par an. À partir du 151e apprenant inscrit
                     sur l&apos;année, l&apos;abonnement passera automatiquement à
                     149 € TTC/mois.
