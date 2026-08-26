@@ -8,7 +8,8 @@ type SatisfactionData = {
   availableFrom: string;
   alreadySubmitted: boolean;
   response?: { submitted_at?: string | null } | null;
-  commanditaire: { name?: string | null; email?: string | null };
+  portalType: "enterprise" | "trainer";
+  stakeholder: { name?: string | null; email?: string | null; label: string };
   session: { reference?: string | null; endDate?: string | null; formationTitle: string };
 };
 
@@ -41,7 +42,7 @@ function formatDate(value?: string | null) {
   return new Intl.DateTimeFormat("fr-FR", { dateStyle: "long" }).format(date);
 }
 
-export default function CommanditaireSatisfactionPage({ params }: { params: { role: string; token: string } }) {
+export default function StakeholderSatisfactionPage({ params }: { params: { role: string; token: string } }) {
   const { token } = params;
   const [data, setData] = useState<SatisfactionData | null>(null);
   const [form, setForm] = useState<FormState>(initialForm);
@@ -97,16 +98,20 @@ export default function CommanditaireSatisfactionPage({ params }: { params: { ro
     setSuccess(true);
   }
 
+  const isTrainer = data?.portalType === "trainer";
+  const portalRole = data?.portalType ?? "enterprise";
+  const label = isTrainer ? "formateur" : "commanditaire";
+
   return (
     <main className="gazette-paper" style={s.page}>
       <Header />
       <section style={s.hero}>
-        <p className="gazette-label">Selen Daily · satisfaction commanditaire</p>
+        <p className="gazette-label">Selen Daily · satisfaction {label}</p>
         <h1 style={s.title}>Votre retour sur la formation</h1>
         <p style={s.subtitle}>
           {data?.session.formationTitle ?? "Formation Daily"}. Quelques minutes suffisent pour nous aider à mesurer la qualité de la prestation et les axes d’amélioration.
         </p>
-        <a href={`/daily/portail/enterprise/${token}`} style={s.back}>← Retour au portail</a>
+        <a href={`/daily/portail/${portalRole}/${token}`} style={s.back}>← Retour au portail</a>
       </section>
 
       {loading ? <p style={s.state}>Chargement du questionnaire...</p> : null}
@@ -115,7 +120,11 @@ export default function CommanditaireSatisfactionPage({ params }: { params: { ro
       {data && !data.available ? (
         <section style={s.panel}>
           <h2 style={s.panelTitle}>Questionnaire à venir</h2>
-          <p style={s.text}>Le questionnaire commanditaire sera disponible à partir du {formatDate(data.availableFrom)}, soit 10 jours après la fin de la formation.</p>
+          <p style={s.text}>
+            {isTrainer
+              ? `Le questionnaire formateur sera disponible à partir du ${formatDate(data.availableFrom)}, dernier jour de la formation.`
+              : `Le questionnaire commanditaire sera disponible à partir du ${formatDate(data.availableFrom)}, soit 10 jours après la fin de la formation.`}
+          </p>
         </section>
       ) : null}
 
@@ -132,10 +141,12 @@ export default function CommanditaireSatisfactionPage({ params }: { params: { ro
             <h2 style={s.panelTitle}>Évaluation</h2>
             <RatingField label="Satisfaction globale *" value={form.overall_rating} onChange={(value) => setField("overall_rating", value)} />
             <RatingField label="Atteinte des objectifs" value={form.objectives_rating} onChange={(value) => setField("objectives_rating", value)} />
-            <RatingField label="Qualité de l’intervention du formateur" value={form.trainer_rating} onChange={(value) => setField("trainer_rating", value)} />
+            {isTrainer ? null : (
+              <RatingField label="Qualité de l’intervention du formateur" value={form.trainer_rating} onChange={(value) => setField("trainer_rating", value)} />
+            )}
             <RatingField label="Organisation et suivi administratif" value={form.organisation_rating} onChange={(value) => setField("organisation_rating", value)} />
             <label style={s.field}>
-              <span>Recommanderiez-vous cette formation ?</span>
+              <span>{isTrainer ? "Recommanderiez-vous l’organisation de cette session ?" : "Recommanderiez-vous cette formation ?"}</span>
               <select value={form.would_recommend} onChange={(event) => setField("would_recommend", event.target.value)} style={s.input}>
                 <option value="">Non renseigné</option>
                 <option value="yes">Oui</option>
