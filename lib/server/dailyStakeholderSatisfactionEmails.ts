@@ -11,15 +11,19 @@ export type DailyStakeholderSatisfactionEmailInput = {
   sessionReference: string;
   satisfactionUrl: string;
   reminder: boolean;
+  stakeholderType: "company" | "trainer";
 };
 
 export function prepareDailyStakeholderSatisfactionEmail(input: DailyStakeholderSatisfactionEmailInput) {
   const subject = input.reminder
     ? `Rappel · votre retour sur la formation · ${input.formationTitle}`
     : `Votre retour sur la formation · ${input.formationTitle}`;
+  const firstRequestIntro = input.stakeholderType === "trainer"
+    ? "La session arrive à son terme et nous souhaitons recueillir votre retour en tant que formateur."
+    : "La formation est terminée depuis quelques jours et nous souhaitons recueillir votre retour en tant que commanditaire.";
   const intro = input.reminder
     ? "Nous n’avons pas encore reçu votre retour sur la formation."
-    : "La formation est terminée depuis quelques jours et nous souhaitons recueillir votre retour en tant que commanditaire.";
+    : firstRequestIntro;
   const text = [
     `Bonjour ${input.recipientName || ""},`.trim(),
     "",
@@ -46,7 +50,7 @@ export function prepareDailyStakeholderSatisfactionEmail(input: DailyStakeholder
 
 export async function sendDailyStakeholderSatisfactionEmail(input: DailyStakeholderSatisfactionEmailInput) {
   if (!resend) {
-    console.warn("RESEND_API_KEY absente : satisfaction commanditaire Daily non envoyée.");
+    console.warn("RESEND_API_KEY absente : satisfaction partie prenante Daily non envoyée.");
     return { sent: false as const, reason: "missing_resend_api_key" as const };
   }
   const message = prepareDailyStakeholderSatisfactionEmail(input);
@@ -59,7 +63,7 @@ export async function sendDailyStakeholderSatisfactionEmail(input: DailyStakehol
     replyTo: "hello@selen-editions.fr",
   });
   if (error) {
-    console.error("Daily : satisfaction commanditaire impossible", error);
+    console.error("Daily : satisfaction partie prenante impossible", error);
     return { sent: false as const, reason: "send_failed" as const };
   }
   return { sent: true as const, message: { ...message, providerMessageId: data?.id ?? null } };
