@@ -7,9 +7,12 @@ import {
 
 const COMMUNICATION_TYPE = "stakeholder_satisfaction_request";
 const REMINDER_DAYS = 3;
-const OPEN_OFFSET_DAYS = 10;
+const COMPANY_OPEN_OFFSET_DAYS = 10;
+const TRAINER_OPEN_OFFSET_DAYS = 0;
 const RESPONSE_WINDOW_DAYS = 30;
 
+type StakeholderType = "company" | "trainer";
+type PortalType = "enterprise" | "trainer";
 type Formation = { title?: string | null };
 type SessionRow = {
   id: string;
@@ -21,6 +24,7 @@ type SessionRow = {
 type PortalRow = {
   id: string;
   session_id: string;
+  portal_type: PortalType;
   entity_key: string;
   entity_name: string | null;
   entity_email: string | null;
@@ -28,7 +32,7 @@ type PortalRow = {
   status: string;
   expires_at: string | null;
 };
-type ResponseRow = { session_id: string; entity_key: string };
+type ResponseRow = { session_id: string; stakeholder_type: StakeholderType; entity_key: string };
 type CommunicationRow = {
   session_id: string | null;
   recipient_email: string;
@@ -79,10 +83,19 @@ function authorized(req: Request) {
   return { ok: true as const };
 }
 
+function stakeholderTypeForPortal(portal: PortalRow): StakeholderType {
+  return portal.portal_type === "enterprise" ? "company" : "trainer";
+}
+
+function openOffsetForPortal(portal: PortalRow) {
+  return portal.portal_type === "enterprise" ? COMPANY_OPEN_OFFSET_DAYS : TRAINER_OPEN_OFFSET_DAYS;
+}
+
 function entityMatches(row: CommunicationRow, portal: PortalRow) {
+  const stakeholderType = stakeholderTypeForPortal(portal);
   return row.session_id === portal.session_id
     && text(row.recipient_email).toLowerCase() === text(portal.entity_email).toLowerCase()
-    && text(row.metadata?.stakeholder_type) === "company"
+    && text(row.metadata?.stakeholder_type) === stakeholderType
     && text(row.metadata?.entity_key) === portal.entity_key;
 }
 
@@ -107,15 +120,14 @@ export async function GET(req: Request) {
   const requestUrl = new URL(req.url);
   const execute = requestUrl.searchParams.get("execute") === "1";
   const today = dateInParis();
-  const latestEndDate = shiftDate(today, -OPEN_OFFSET_DAYS);
-  const earliestEndDate = shiftDate(today, -(OPEN_OFFSET_DAYS + RESPONSE_WINDOW_DAYS));
+  const earliestEndDate = shiftDate(today, -(COMPANY_OPEN_OFFSET_DAYS + RESPONSE_WINDOW_DAYS));
   const admin = getAdminSupabase();
 
   const { data: sessionData, error: sessionError } = await admin
     .from("daily_sessions")
     .select("id,organisation_id,internal_reference,end_date,daily_formations(title)")
     .gte("end_date", earliestEndDate)
-    .lte("end_date", latestEndDate)
+    .lte("end_date", today)
     .neq("status", "archived")
     .order("end_date", { ascending: true });
   if (sessionError) return NextResponse.json({ error: sessionError.message }, { status: 500 });
@@ -129,15 +141,15 @@ export async function GET(req: Request) {
   const [portalsResult, responsesResult, communicationsResult] = await Promise.all([
     admin
       .from("daily_portal_access_tokens")
-      .select("id,session_id,entity_key,entity_name,entity_email,token,status,expires_at")
+      .select("id,session_id,portal_type,entity_key,entity_name,entity_email,token,status,expires_at")
       .in("session_id", sessionIds)
-      .eq("portal_type", "enterprise")
+      .in("portal_type", ["enterprise", "trainer"])
       .in("status", ["pending", "viewed"]),
     admin
       .from("daily_stakeholder_satisfaction_responses")
-      .select("session_id,entity_key")
+      .select("session_id,stakeholder_type,entity_key")
       .in("session_id", sessionIds)
-      .eq("stakeholder_type", "company"),
+      .in("stakeholder_type", ["company", "trainer"]),
     admin
       .from("daily_communications")
       .select("session_id,recipient_email,status,sent_at,created_at,metadata")
@@ -152,43 +164,45 @@ export async function GET(req: Request) {
   const portals = (portalsResult.data ?? []) as PortalRow[];
   const responses = (responsesResult.data ?? []) as ResponseRow[];
   const communications = (communicationsResult.data ?? []) as CommunicationRow[];
-  const responseKeys = new Set(responses.map((row) => `${row.session_id}:${row.entity_key}`));
+  const responseKeys = new Set(responses.map((row) => `${row.session_id}:${row.stakeholder_type}:${row.entity_key}`));
   const sessionMap = new Map(sessions.map((session) => [session.id, session]));
 
   let due = 0;
   let processed = 0;
   let skipped = 0;
   let failed = 0;
-  const details: Array<{ session_id: string; entity_key: string; status: string; reminder?: boolean }> = [];
+  const details: Array<{ session_id: string; entity_key: string; stakeholder_type: StakeholderType; status: string; reminder?: boolean }> = [];
 
   for (const portal of portals) {
     const session = sessionMap.get(portal.session_id);
+    const stakeholderType = stakeholderTypeForPortal(portal);
     if (!session?.end_date) {
       skipped += 1;
       continue;
     }
     if (!text(portal.entity_email)) {
       skipped += 1;
-      details.push({ session_id: portal.session_id, entity_key: portal.entity_key, status: "missing_email" });
+      details.push({ session_id: portal.session_id, entity_key: portal.entity_key, stakeholder_type: stakeholderType, status: "missing_email" });
       continue;
     }
     if (portal.expires_at && new Date(portal.expires_at).getTime() < Date.now()) {
       skipped += 1;
-      details.push({ session_id: portal.session_id, entity_key: portal.entity_key, status: "portal_expired" });
+      details.push({ session_id: portal.session_id, entity_key: portal.entity_key, stakeholder_type: stakeholderType, status: "portal_expired" });
       continue;
     }
-    if (responseKeys.has(`${portal.session_id}:${portal.entity_key}`)) {
+    if (responseKeys.has(`${portal.session_id}:${stakeholderType}:${portal.entity_key}`)) {
       skipped += 1;
-      details.push({ session_id: portal.session_id, entity_key: portal.entity_key, status: "already_submitted" });
+      details.push({ session_id: portal.session_id, entity_key: portal.entity_key, stakeholder_type: stakeholderType, status: "already_submitted" });
       continue;
     }
     if (alreadyQueuedToday(communications, portal, today)) {
       skipped += 1;
-      details.push({ session_id: portal.session_id, entity_key: portal.entity_key, status: "already_queued_today" });
+      details.push({ session_id: portal.session_id, entity_key: portal.entity_key, stakeholder_type: stakeholderType, status: "already_queued_today" });
       continue;
     }
 
-    const availableFrom = shiftDate(session.end_date, OPEN_OFFSET_DAYS);
+    const openOffsetDays = openOffsetForPortal(portal);
+    const availableFrom = shiftDate(session.end_date, openOffsetDays);
     const closesOn = shiftDate(availableFrom, RESPONSE_WINDOW_DAYS);
     if (!availableFrom || today < availableFrom || today > closesOn) {
       skipped += 1;
@@ -199,14 +213,14 @@ export async function GET(req: Request) {
     const latestDay = latest ? dateInParis(new Date(latest.sent_at ?? latest.created_at)) : null;
     if (latestDay && daysBetween(latestDay, today) < REMINDER_DAYS) {
       skipped += 1;
-      details.push({ session_id: portal.session_id, entity_key: portal.entity_key, status: "reminder_not_due" });
+      details.push({ session_id: portal.session_id, entity_key: portal.entity_key, stakeholder_type: stakeholderType, status: "reminder_not_due" });
       continue;
     }
 
     const reminder = Boolean(latest);
     due += 1;
     if (!execute) {
-      details.push({ session_id: portal.session_id, entity_key: portal.entity_key, status: "due", reminder });
+      details.push({ session_id: portal.session_id, entity_key: portal.entity_key, stakeholder_type: stakeholderType, status: "due", reminder });
       continue;
     }
 
@@ -214,7 +228,7 @@ export async function GET(req: Request) {
     const formationTitle = text(formation?.title) || "Formation Selen Daily";
     const sessionReference = text(session.internal_reference) || formationTitle;
     const email = text(portal.entity_email).toLowerCase();
-    const satisfactionUrl = new URL(`/daily/portail/enterprise/${portal.token}/satisfaction`, requestUrl.origin).toString();
+    const satisfactionUrl = new URL(`/daily/portail/${portal.portal_type}/${portal.token}/satisfaction`, requestUrl.origin).toString();
     const emailInput = {
       email,
       recipientName: text(portal.entity_name),
@@ -222,6 +236,7 @@ export async function GET(req: Request) {
       sessionReference,
       satisfactionUrl,
       reminder,
+      stakeholderType,
     };
     const prepared = prepareDailyStakeholderSatisfactionEmail(emailInput);
 
@@ -243,7 +258,8 @@ export async function GET(req: Request) {
         created_by: null,
         metadata: {
           automation_day: today,
-          stakeholder_type: "company",
+          stakeholder_type: stakeholderType,
+          portal_type: portal.portal_type,
           entity_key: portal.entity_key,
           portal_access_id: portal.id,
           reminder,
@@ -256,7 +272,7 @@ export async function GET(req: Request) {
 
     if (evidenceError || !communication) {
       failed += 1;
-      details.push({ session_id: session.id, entity_key: portal.entity_key, status: "evidence_failed", reminder });
+      details.push({ session_id: session.id, entity_key: portal.entity_key, stakeholder_type: stakeholderType, status: "evidence_failed", reminder });
       continue;
     }
 
@@ -269,7 +285,7 @@ export async function GET(req: Request) {
         .eq("organisation_id", session.organisation_id)
         .eq("id", communication.id);
       failed += 1;
-      details.push({ session_id: session.id, entity_key: portal.entity_key, status: sent.reason, reminder });
+      details.push({ session_id: session.id, entity_key: portal.entity_key, stakeholder_type: stakeholderType, status: sent.reason, reminder });
       continue;
     }
 
@@ -290,6 +306,7 @@ export async function GET(req: Request) {
     details.push({
       session_id: session.id,
       entity_key: portal.entity_key,
+      stakeholder_type: stakeholderType,
       status: finalizeError ? "sent_evidence_finalize_failed" : "sent",
       reminder,
     });
@@ -305,8 +322,8 @@ export async function GET(req: Request) {
       skipped,
       failed,
       cadence_days: REMINDER_DAYS,
-      opens_after_days: OPEN_OFFSET_DAYS,
       response_window_days: RESPONSE_WINDOW_DAYS,
+      opens_after_days: { trainer: TRAINER_OPEN_OFFSET_DAYS, company: COMPANY_OPEN_OFFSET_DAYS },
       details,
     },
     { status: failed === 0 ? 200 : 207 },
