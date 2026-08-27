@@ -11,6 +11,10 @@ function text(value: unknown) {
   return result || null;
 }
 
+function normalizedEmail(value: unknown) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
 export async function GET(req: Request) {
   const context = await getDailyOrganisationContext(req, "sessions", { allowAssistanceRead: true });
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
@@ -22,7 +26,35 @@ export async function GET(req: Request) {
   ]);
   const error = learnerError ?? enrolmentError ?? needsError;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ learners: learners ?? [], enrolments: enrolments ?? [], supportNeeds: needs ?? [] });
+
+  const enrolmentRows = enrolments ?? [];
+  const sessionIds = [...new Set(enrolmentRows.map((row) => String(row.session_id ?? "")).filter(Boolean))];
+  let portalAccess: Array<Record<string, unknown>> = [];
+
+  if (sessionIds.length > 0) {
+    const { data: portalRows, error: portalError } = await context.admin
+      .from("daily_portal_access_tokens")
+      .select("id,session_id,portal_type,entity_key,entity_name,entity_email,token,status,expires_at,last_viewed_at")
+      .in("session_id", sessionIds)
+      .eq("portal_type", "learner")
+      .not("status", "eq", "expired");
+    if (portalError) return NextResponse.json({ error: portalError.message }, { status: 500 });
+
+    portalAccess = enrolmentRows.flatMap((enrolment) => {
+      const learner = enrolment.daily_learners as { email?: string | null; first_name?: string | null; last_name?: string | null } | null;
+      const learnerEmail = normalizedEmail(learner?.email);
+      const learnerName = [learner?.first_name, learner?.last_name].map((part) => String(part ?? "").trim()).filter(Boolean).join(" ").toLowerCase();
+      const access = (portalRows ?? []).find((row) => {
+        if (row.session_id !== enrolment.session_id) return false;
+        const portalEmail = normalizedEmail(row.entity_email);
+        const portalName = String(row.entity_name ?? "").trim().toLowerCase();
+        return Boolean((learnerEmail && portalEmail === learnerEmail) || (learnerName && portalName === learnerName));
+      });
+      return access ? [{ ...access, enrolment_id: enrolment.id, learner_id: enrolment.learner_id }] : [];
+    });
+  }
+
+  return NextResponse.json({ learners: learners ?? [], enrolments: enrolmentRows, supportNeeds: needs ?? [], portalAccess });
 }
 
 export async function POST(req: Request) {
