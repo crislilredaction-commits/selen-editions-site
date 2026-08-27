@@ -34,10 +34,6 @@ function positiveInteger(value: unknown) {
   return Number.isInteger(number) && number > 0 ? number : null;
 }
 
-function registrationToken() {
-  return crypto.randomUUID().replaceAll("-", "");
-}
-
 function participantRow(value: unknown) {
   if (!value || typeof value !== "object") return null;
   const row = value as Record<string, unknown>;
@@ -233,7 +229,7 @@ export async function POST(req: Request) {
         organisation_id: context.organisationId,
         internal_reference: source.internal_reference ? `${source.internal_reference}-COPIE` : null,
         status: "draft",
-        registration_token: registrationToken(),
+        registration_token: null,
         registration_status: "to_prepare",
         registration_summary: {},
         adaptation_needed: false,
@@ -267,7 +263,7 @@ export async function POST(req: Request) {
 
   const { data, error } = await context.admin
     .from("daily_sessions")
-    .insert({ ...built.payload, registration_token: registrationToken(), registration_status: "to_prepare" })
+    .insert({ ...built.payload, registration_token: null, registration_status: "to_prepare" })
     .select("*, daily_formations(id,title,status,version)")
     .single();
 
@@ -310,7 +306,7 @@ export async function PATCH(req: Request) {
 
   const { data, error } = await context.admin
     .from("daily_sessions")
-    .update(built.payload)
+    .update({ ...built.payload, registration_token: null })
     .eq("id", id)
     .eq("organisation_id", context.organisationId)
     .select("*, daily_formations(id,title,status,version)")
@@ -332,7 +328,7 @@ export async function DELETE(req: Request) {
 
   const { data, error } = await context.admin
     .from("daily_sessions")
-    .update({ status: "archived" })
+    .update({ status: "archived", registration_token: null })
     .eq("id", id)
     .eq("organisation_id", context.organisationId)
     .select("*")
