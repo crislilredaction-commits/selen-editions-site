@@ -2,8 +2,6 @@ from pathlib import Path
 
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml import OxmlElement
-from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
 
@@ -53,6 +51,7 @@ subtitle = doc.add_paragraph("Trame éditable à compléter puis à importer dan
 subtitle.runs[0].italic = True
 subtitle.runs[0].font.color.rgb = RGBColor.from_string("6B625C")
 
+
 def field(label: str, hint: str = ""):
     p = doc.add_paragraph()
     r = p.add_run(label)
@@ -64,6 +63,14 @@ def field(label: str, hint: str = ""):
     line = doc.add_paragraph("________________________________________________________________________________")
     line.paragraph_format.space_after = Pt(8)
     line.runs[0].font.color.rgb = RGBColor.from_string("C9B6A6")
+
+
+def program_module(number: int, chapter_count: int = 3):
+    doc.add_heading(f"Module {number}", level=2)
+    field("Durée :")
+    for chapter in range(1, chapter_count + 1):
+        field(f"Chapitre {chapter} :")
+
 
 doc.add_heading("1. Identification de la formation", level=1)
 field("Intitulé de la formation")
@@ -82,26 +89,11 @@ doc.add_paragraph("Indiquez uniquement les conditions réellement nécessaires. 
 field("Prérequis")
 
 doc.add_heading("4. Contenu détaillé", level=1)
-doc.add_paragraph("Présentez les séquences, thèmes et activités dans leur ordre logique. Vous pouvez ajouter ou supprimer des lignes.")
-table = doc.add_table(rows=1, cols=3)
-table.style = "Table Grid"
-headers = ["Séquence / thème", "Contenu et activités", "Durée indicative"]
-for cell, text in zip(table.rows[0].cells, headers):
-    cell.text = text
-    cell.paragraphs[0].runs[0].bold = True
-    shading = OxmlElement("w:shd")
-    shading.set(qn("w:fill"), "F4E9DF")
-    cell._tc.get_or_add_tcPr().append(shading)
-for _ in range(6):
-    cells = table.add_row().cells
-    cells[0].text = ""
-    cells[1].text = ""
-    cells[2].text = ""
-table.autofit = False
-widths = [Inches(1.55), Inches(4.0), Inches(0.95)]
-for row in table.rows:
-    for cell, width in zip(row.cells, widths):
-        cell.width = width
+doc.add_paragraph(
+    "Présentez le programme par modules et chapitres. Dupliquez ou supprimez les blocs selon les besoins de votre formation."
+)
+for module_number in range(1, 5):
+    program_module(module_number)
 
 doc.add_heading("5. Moyens pédagogiques et techniques", level=1)
 doc.add_paragraph("Décrivez les supports, outils, matériels, méthodes pédagogiques et l’alternance entre théorie et pratique.")
