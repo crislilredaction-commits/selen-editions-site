@@ -13,6 +13,40 @@ import { logAgentAssistanceAction } from "@/lib/server/agentAssistance";
 
 const REFUSAL_LETTER_MESSAGE =
   "Le client a déposé un courrier de refus DREETS pour étude.";
+const MAX_REFUSAL_UPLOAD_BYTES = 10 * 1024 * 1024;
+const ALLOWED_REFUSAL_EXTENSIONS = new Set([
+  "pdf",
+  "doc",
+  "docx",
+  "jpg",
+  "jpeg",
+  "png",
+]);
+const ALLOWED_REFUSAL_MIME_TYPES = new Set([
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "image/jpeg",
+  "image/png",
+]);
+
+function validateRefusalLetter(file: File) {
+  const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+
+  if (!ALLOWED_REFUSAL_EXTENSIONS.has(extension)) {
+    return "Format non autorisé. Utilisez un fichier PDF, DOC, DOCX, JPG ou PNG.";
+  }
+
+  if (file.type && !ALLOWED_REFUSAL_MIME_TYPES.has(file.type)) {
+    return "Format non autorisé. Utilisez un fichier PDF, DOC, DOCX, JPG ou PNG.";
+  }
+
+  if (file.size > MAX_REFUSAL_UPLOAD_BYTES) {
+    return "Le fichier est trop volumineux. La taille maximale est de 10 Mo.";
+  }
+
+  return null;
+}
 
 export async function POST(req: Request) {
   try {
@@ -26,6 +60,11 @@ export async function POST(req: Request) {
         { error: "file ou dossierId manquant." },
         { status: 400 },
       );
+    }
+
+    const validationError = validateRefusalLetter(file);
+    if (validationError) {
+      return NextResponse.json({ error: validationError }, { status: 400 });
     }
 
     const access = await verifyClientNdaDossierAccess(supabase, dossierId, req);
