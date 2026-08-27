@@ -22,6 +22,15 @@ type PublicSession = {
     positioning_questions?: PositioningQuestion[] | null;
   } | null;
 };
+type AvailableSession = {
+  id: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  modality?: string | null;
+  schedule_blocks?: Array<{ date?: string; start?: string; end?: string }> | null;
+};
+
+type DeliveryMode = "scheduled" | "date_to_plan" | "asynchronous";
 
 const fundingOptions = ["personnel", "entreprise", "opco", "cpf", "autre"] as const;
 const modalities = ["presentiel", "distanciel", "mixte"] as const;
@@ -29,6 +38,21 @@ const modalities = ["presentiel", "distanciel", "mixte"] as const;
 function initialMode() {
   if (typeof window === "undefined") return "beneficiary";
   return new URLSearchParams(window.location.search).get("type") === "company" ? "company" : "beneficiary";
+}
+
+function formatDate(value?: string | null) {
+  if (!value) return "Date à préciser";
+  const date = new Date(`${value}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "long", year: "numeric" }).format(date);
+}
+
+function formatSession(session: AvailableSession) {
+  const dates = session.end_date && session.end_date !== session.start_date
+    ? `Du ${formatDate(session.start_date)} au ${formatDate(session.end_date)}`
+    : `${formatDate(session.start_date)}`;
+  const modality = session.modality === "presentiel" ? "En présentiel" : session.modality === "mixte" ? "Format mixte" : "À distance";
+  return `${dates} · ${modality}`;
 }
 
 export default function DailyRegistrationPage({ params }: { params: Promise<{ token: string }> }) {
@@ -46,6 +70,11 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
   const [signatureConsentText, setSignatureConsentText] = useState("");
   const [signatureConsent, setSignatureConsent] = useState(false);
   const [signatureData, setSignatureData] = useState("");
+  const [registrationKind, setRegistrationKind] = useState<"formation" | "session">("formation");
+  const [availableSessions, setAvailableSessions] = useState<AvailableSession[]>([]);
+  const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>("date_to_plan");
+  const [organisationName, setOrganisationName] = useState("votre organisme de formation");
+  const [submissionNextStep, setSubmissionNextStep] = useState<DeliveryMode>("date_to_plan");
 
   const positioningQuestions = useMemo(() => {
     const questions = session?.daily_formations?.positioning_questions;
@@ -65,6 +94,10 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
         return;
       }
       setSession(data.session);
+      setRegistrationKind(data.registrationKind === "session" ? "session" : "formation");
+      setAvailableSessions(Array.isArray(data.availableSessions) ? data.availableSessions : []);
+      setDeliveryMode(data.deliveryMode === "asynchronous" ? "asynchronous" : data.deliveryMode === "scheduled" ? "scheduled" : "date_to_plan");
+      setOrganisationName(data.organisation?.name || "votre organisme de formation");
       setSignatureConsentText(data.signatureConsentText ?? "");
       try {
         const draft = window.localStorage.getItem(`selen-daily-registration-${token}`);
@@ -185,6 +218,10 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
       setError("Merci d'ajouter un téléphone. L'organisme de formation pourra ainsi vous recontacter si une précision est nécessaire.");
       return false;
     }
+    if (registrationKind === "formation" && availableSessions.length > 0 && !form.selected_session_id) {
+      setError("Merci de choisir la session qui vous convient parmi les dates proposées.");
+      return false;
+    }
     return true;
   }
 
@@ -214,6 +251,7 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
         respondent_email: mode === "beneficiary" ? form.email : form.admin_contact_email,
         company_name: form.company_name,
         participants: participants.filter((participant) => participant.first_name || participant.last_name || participant.email),
+        selected_session_id: form.selected_session_id || null,
         need_answers: buildNeedAnswers(),
         positioning_answers: buildPositioningAnswers(),
         signature_consent: signatureConsent,
@@ -226,6 +264,8 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
       setError(data?.error ?? "Vos réponses n'ont pas pu être transmises. Vous pouvez réessayer dans un instant.");
       return;
     }
+    if (data?.organisationName) setOrganisationName(data.organisationName);
+    setSubmissionNextStep(data?.nextStep === "asynchronous" ? "asynchronous" : data?.nextStep === "scheduled" ? "scheduled" : "date_to_plan");
     window.localStorage.removeItem(`selen-daily-registration-${token}`);
     setSaved(true);
   }
@@ -240,7 +280,9 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
           <ProgramDetails token={token} />
           <article style={s.card}>
             <h1 style={s.title}>Merci, votre dossier signé est bien transmis</h1>
-            <p style={s.muted}>Votre organisme de formation va pouvoir prendre connaissance de vos réponses et préparer la suite de votre inscription.</p>
+            <p style={s.muted}>{organisationName} va pouvoir prendre connaissance de vos réponses et préparer la suite de votre inscription.</p>
+            {submissionNextStep === "asynchronous" ? <p style={s.callout}>Votre formation se déroule à distance à votre rythme. Vos identifiants d&apos;accès vous seront envoyés par email lorsque votre inscription aura été traitée.</p> : submissionNextStep === "date_to_plan" ? <p style={s.callout}>Aucune date n&apos;est encore planifiée. Une date va être calée avec le formateur et {organisationName} reviendra vers vous dès que possible.</p> : <p style={s.callout}>Votre demande est rattachée à la session que vous avez choisie. L&apos;organisme vous transmettra les informations nécessaires pour la suite.</p>}
+            <p style={s.confirmation}>Vous allez également recevoir un email de confirmation de la part de <strong>Selen Editions</strong>, partenaire de <strong>{organisationName}</strong>.</p>
           </article>
           <p style={s.powered}>Dossier sécurisé avec Selen Daily</p>
         </section>
@@ -260,6 +302,21 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
           <div style={s.progressOuter}><div style={{ ...s.progressInner, width: `${progress}%` }} /></div>
           <p style={s.autosave}>{autosaveStatus === "saving" ? "Enregistrement..." : autosaveStatus === "saved" ? "Enregistré" : autosaveStatus === "error" ? "Le brouillon n'a pas pu être enregistré" : ""}</p>
         </article>
+
+        {registrationKind === "formation" ? (
+          <article style={s.sessionCard}>
+            {availableSessions.length > 0 ? (
+              <>
+                <div><p className="gazette-label">Votre date de formation</p><h2 style={s.sectionTitle}>Choisissez une session</h2><p style={s.muted}>Voici les prochaines dates actuellement planifiées par {organisationName}.</p></div>
+                <div style={s.sessionChoices}>{availableSessions.map((item) => <label key={item.id} style={{ ...s.sessionChoice, ...(form.selected_session_id === item.id ? s.sessionChoiceSelected : {}) }}><input type="radio" name="selected_session" checked={form.selected_session_id === item.id} onChange={() => update("selected_session_id", item.id)} /><span><strong>{formatSession(item)}</strong>{Array.isArray(item.schedule_blocks) && item.schedule_blocks[0]?.start ? <small>Horaires prévus à partir de {item.schedule_blocks[0].start}</small> : null}</span></label>)}</div>
+              </>
+            ) : deliveryMode === "asynchronous" ? (
+              <><p className="gazette-label">Organisation de la formation</p><h2 style={s.sectionTitle}>Formation accessible à distance</h2><p style={s.callout}>Après validation de votre dossier, vos identifiants d&apos;accès à la formation vous seront envoyés par email. Vous pourrez ensuite suivre la formation selon les modalités prévues par l&apos;organisme.</p></>
+            ) : (
+              <><p className="gazette-label">Organisation de la formation</p><h2 style={s.sectionTitle}>La date sera définie avec vous</h2><p style={s.callout}>Aucune session n&apos;est encore planifiée. Une date va être calée avec le formateur et {organisationName} reviendra vers vous dès que possible.</p></>
+            )}
+          </article>
+        ) : null}
 
         {error ? <p style={s.error}>{error}</p> : null}
 
@@ -426,10 +483,15 @@ const s: Record<string, React.CSSProperties> = {
   page: { maxWidth: 940, margin: "0 auto", padding: "2rem 1.5rem 4rem", display: "grid", gap: "1rem" },
   hero: { background: "var(--paper)", border: "1px solid var(--sepia-mid)", borderLeft: "4px solid var(--ocre-gold)", padding: "1.2rem", display: "grid", gap: "0.7rem" },
   card: { background: "var(--paper)", border: "1px solid var(--sepia-mid)", borderLeft: "4px solid var(--ocre-gold)", padding: "1.2rem", display: "grid", gap: "1rem" },
+  sessionCard: { background: "var(--paper)", border: "1px solid var(--sepia-mid)", borderLeft: "4px solid #6a8a4a", padding: "1.2rem", display: "grid", gap: "1rem" },
+  sessionChoices: { display: "grid", gap: ".65rem" },
+  sessionChoice: { display: "flex", gap: ".7rem", alignItems: "flex-start", border: "1px solid rgba(178,138,98,.4)", background: "rgba(255,250,239,.75)", padding: ".8rem", cursor: "pointer" },
+  sessionChoiceSelected: { borderColor: "#6a8a4a", background: "rgba(106,138,74,.1)" },
   title: { color: "var(--ink)", margin: 0 }, sectionTitle: { color: "var(--ink)", margin: 0 },
   muted: { color: "var(--ink-soft)", lineHeight: 1.6 },
   notice: { border: "1px solid rgba(106,138,74,0.45)", background: "rgba(106,138,74,0.08)", color: "#496532", padding: "0.75rem", lineHeight: 1.5 },
   callout: { borderLeft: "4px solid var(--ocre-gold)", background: "rgba(201,160,85,0.1)", color: "var(--ink)", padding: "0.8rem", lineHeight: 1.55, margin: 0 },
+  confirmation: { border: "1px solid rgba(106,138,74,.45)", background: "rgba(106,138,74,.08)", color: "var(--ink)", padding: ".8rem", lineHeight: 1.55, margin: 0 },
   error: { border: "1px solid var(--rust)", background: "rgba(138,75,36,0.08)", color: "var(--rust)", padding: "0.75rem" },
   autosave: { color: "var(--ink-soft)", minHeight: 22, margin: 0 },
   progressOuter: { height: 8, border: "1px solid rgba(178,138,98,0.45)", background: "rgba(255,250,239,0.7)" },
