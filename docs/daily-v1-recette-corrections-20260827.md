@@ -125,6 +125,254 @@ Texte cible : « Indiquez les coordonnées de l'organisme de formation que les a
 - Le formulaire affichait un objectif principal, mais n'envoyait aucun tableau `learning_objectives` alors que l'API exige au moins un objectif pédagogique. Le formulaire doit proposer explicitement un ou plusieurs objectifs pédagogiques et transmettre les valeurs renseignées.
 - Ces anomalies empêchant de créer la formation, elles rendent la poursuite de la recette impossible et doivent être corrigées dans le même lot que les ajustements validés ci-dessus.
 
+# Corrections complémentaires de recette — découpage en lots
+
+Les éléments ci-dessous sont ajoutés au cahier des charges comme décisions de recette. L'ordre des lots tient compte des dépendances métier : les corrections d'interface simples peuvent être réalisées rapidement, tandis que le workflow complet d'inscription et de déroulement d'une session doit rester cohérent de bout en bout.
+
+## Lot A — Corrections immédiates du dashboard client et des accès
+
+### Dashboard client
+
+- Supprimer toute carte, raccourci ou mention « Paramétrage autonome » une fois le paramétrage terminé. Le paramétrage ne doit pas rester présenté comme une fonctionnalité courante du dashboard.
+- Ajouter un bouton clairement identifiable « Se déconnecter » sur le dashboard Daily.
+- Corriger le comptage et l'affichage des formateurs : tout formateur réellement enregistré pour l'organisme doit apparaître dans le dashboard et être comptabilisé correctement.
+- Corriger la carte « À faire » afin que les documents obligatoires ou attendus mais non fournis génèrent bien une tâche visible avec lien direct vers la page permettant de les déposer.
+
+### Accès aux espaces apprenants
+
+- Les administrateurs de l'organisme et les formateurs autorisés doivent pouvoir ouvrir l'espace d'un apprenant directement depuis son dossier.
+- L'accès doit reprendre les droits du rôle connecté : consultation ou intervention uniquement sur les éléments auxquels le rôle est autorisé.
+- Le dossier apprenant devient le point d'entrée principal vers son portail, ses documents, évaluations, émargements, réclamations et historique de formation.
+
+## Lot B — Générateur « Télécharger un dossier apprenant »
+
+La fonctionnalité actuelle « Modèles de documents » doit être remplacée dans le dashboard par une entrée intitulée :
+
+**Télécharger un dossier apprenant**
+
+### Parcours attendu
+
+À l'ouverture, afficher un formulaire permettant de :
+
+1. choisir une formation existante ou en créer une ;
+2. choisir une session existante ou en créer une ;
+3. renseigner ou sélectionner les coordonnées de l'apprenant ;
+4. renseigner, lorsque nécessaire, les informations entreprise/commanditaire et financeur ;
+5. générer le dossier complet.
+
+### Règles du générateur
+
+- Reprendre le même principe et le même contenu que le générateur de dossiers de formation actuellement utilisé dans Studio.
+- Le dossier téléchargé par le client doit contenir uniquement des PDF.
+- Les informations de l'organisme de formation sont toujours celles de l'organisme Daily connecté : nom légal, SIRET, adresse, NDA, coordonnées et autres mentions nécessaires.
+- Ces données organisme ne doivent jamais être librement modifiables dans le générateur client afin d'empêcher la génération de dossiers pour un autre organisme.
+- Les données apprenant, entreprise, session et formation peuvent être renseignées ou reprises depuis Daily selon le contexte.
+- Chaque document du dossier doit pouvoir recevoir ultérieurement une nouvelle version PDF importée manuellement sans écraser l'historique.
+- Les modèles Word Selen restent téléchargeables pour usage hors ligne lorsqu'ils sont prévus, mais le générateur Daily produit des PDF.
+
+## Lot C — Présence, distanciel asynchrone et preuves de réalisation
+
+### Présentiel, mixte et distanciel synchrone
+
+- Conserver les feuilles d'émargement lorsque la présence peut être attestée par signature.
+- Le formateur doit retrouver dans son espace les feuilles d'émargement de tous les apprenants de sa session ainsi que les éléments qu'il doit signer lui-même.
+
+### Distanciel asynchrone
+
+- Ne pas demander de feuille d'émargement classique.
+- Remplacer la preuve d'émargement par l'import d'une capture d'écran ou d'un justificatif des temps de connexion de l'apprenant.
+- Cette preuve doit être rattachée à l'apprenant, à la session et à la formation et être exploitable ultérieurement dans Audit Live.
+- Le statut de présence/réalisation doit tenir compte de cette preuve afin que les certificats ne soient pas émis sans élément de traçabilité suffisant.
+
+## Lot D — Refonte du suivi Qualité
+
+Le suivi Qualité doit devenir un espace documentaire et de pilotage réel de la démarche qualité de l'organisme.
+
+### Procédures internes
+
+Prévoir une bibliothèque structurée comprenant au minimum :
+
+- procédure de gestion des documents ;
+- procédure de prévention des absences et abandons ;
+- procédure de gestion des abandons ;
+- fiches de poste ;
+- politique handicap ;
+- contacts et ressources handicap : MDPH, AGEFIPH, ressources handicap et Cap emploi par région.
+
+Ces contenus pourront être fournis sous forme de modèles Selen, de documents générés et/ou de documents propres à l'organisme selon la règle retenue pour chaque catégorie.
+
+### Tableau de suivi qualité
+
+Créer un tableau consolidé par organisme recensant notamment :
+
+- notes globales et commentaires de satisfaction des apprenants ;
+- notes globales et commentaires de satisfaction des formateurs ;
+- notes globales et commentaires de satisfaction des entreprises/commanditaires ;
+- aléas rencontrés ;
+- difficultés remontées ;
+- réclamations des apprenants ;
+- réclamations des formateurs ;
+- solutions ou actions correctives proposées ;
+- améliorations effectivement mises en place par l'organisme de formation.
+
+Le tableau doit permettre de conserver une chronologie et une traçabilité des actions d'amélioration.
+
+### Accès Studio
+
+- Studio doit pouvoir consulter le tableau qualité de chaque client Daily.
+- Les agents autorisés doivent pouvoir le compléter et le mettre à jour.
+- Les ajouts/modifications Studio doivent conserver l'auteur et la date afin que l'historique reste exploitable en audit.
+
+## Lot E — Nettoyage et organisation Studio
+
+### Dashboard Studio
+
+- Supprimer la carte « Remboursements à traiter ».
+- Supprimer la carte « Messages », qui fait doublon avec la messagerie dédiée.
+
+### Remboursements
+
+- Intégrer la gestion des demandes de remboursement dans le Support.
+- Une demande de remboursement doit devenir un type ou un motif de dossier support, avec suivi de son état et historique.
+
+### Attribution des dossiers Daily
+
+- Permettre d'attribuer un dossier Daily à un agent.
+- L'agent responsable doit être identifiable depuis le dossier Studio.
+- Les tâches et notifications relatives à ce dossier doivent être adressées prioritairement à l'agent attribué.
+- Prévoir la possibilité de réattribuer un dossier sans perdre l'historique des interventions.
+
+## Lot F — Workflow agent/client : formation, inscription et préparation de session
+
+Ce lot remplace les notifications trop granulaires par un workflow déclenché uniquement lorsque l'intervention de l'agent devient réellement nécessaire.
+
+### Création d'une formation
+
+- Lorsqu'un client crée une formation, l'agent reçoit une seule tâche de vérification.
+- Le rôle de l'agent consiste à vérifier la cohérence et valider la formation.
+- Il ne doit pas reconstruire la formation si les données client sont exploitables.
+
+### Création d'une session
+
+- La création d'une session par le client ne génère aucune notification agent.
+- La session apparaît simplement dans le planning Studio.
+- L'agent n'intervient qu'aux étapes métier suivantes.
+
+### Réception d'un dossier d'inscription
+
+Lorsqu'un dossier public d'inscription est complété :
+
+1. l'agent reçoit une tâche pour traiter le dossier ;
+2. l'agent crée ou complète la fiche apprenant à partir des informations reçues ;
+3. le client accepte ou refuse l'inscription ;
+4. si aucune date de formation n'était définie, le client indique la date ou rattache l'apprenant à une session ;
+5. après validation de l'inscription par le client, l'agent reçoit la tâche suivante ;
+6. l'agent met à jour la fiche de session avec les données utiles issues des dossiers des apprenants inscrits.
+
+### Fiche de session enrichie
+
+La fiche de session doit notamment présenter une synthèse des :
+
+- attentes ;
+- motivations ;
+- niveau initial ;
+- besoins d'adaptation ;
+- prérequis et points nécessitant une vigilance particulière.
+
+La synthèse doit être mise à jour lorsque de nouveaux apprenants sont validés dans la session.
+
+### Déclenchement des accès apprenant
+
+La validation de l'inscription par le client déclenche automatiquement :
+
+- la création ou l'activation de l'accès apprenant ;
+- l'envoi par email des accès à son portail ;
+- l'ouverture de son dossier apprenant dans Daily.
+
+### Documents à déposer dans l'espace apprenant
+
+L'agent dépose ou valide dans l'espace apprenant :
+
+- la convention de formation ;
+- la convocation ;
+- le livret d'accueil.
+
+Chaque nouvelle tâche agent doit être créée uniquement au moment où l'étape précédente a été validée par l'acteur attendu, côté client ou côté agent.
+
+### Principe général des notifications
+
+- Une notification correspond à une action réellement attendue.
+- Ne pas notifier l'agent pour une simple création de session ou un changement sans intervention requise.
+- Une étape terminée déclenche la suivante lorsqu'une action devient possible.
+- Les tâches d'un même dossier restent regroupées dans le dossier plutôt que multipliées en alertes indépendantes.
+
+## Lot G — Déroulement de formation et fin de session
+
+### Emargement et rappels
+
+Pendant la formation :
+
+- rappeler au formateur les émargements qu'il doit effectuer ;
+- rappeler aux apprenants les signatures attendues ;
+- pour le distanciel asynchrone, utiliser le mécanisme de preuve de connexion décrit dans le lot C plutôt qu'une signature classique.
+
+### Dernier jour de formation
+
+Le matin du dernier jour :
+
+- rendre disponible l'évaluation de fin de formation dans l'espace apprenant ;
+- rendre disponible le questionnaire de satisfaction apprenant ;
+- envoyer un rappel par email à l'apprenant.
+
+Le formateur doit avoir accès depuis son propre espace :
+
+- aux émargements de la session ;
+- à ses propres signatures/validations ;
+- aux évaluations nécessaires au suivi pédagogique, dans le respect des droits définis.
+
+### Réclamations
+
+- Ajouter un formulaire de réclamation dans l'espace apprenant.
+- Ajouter un formulaire de réclamation dans l'espace formateur.
+- Toute réclamation doit alimenter le tableau de suivi Qualité et créer, si nécessaire, une action de traitement.
+
+### Certificat après formation
+
+Le lendemain de la fin de formation :
+
+- générer automatiquement le certificat attestant la réalisation/présence de l'apprenant ;
+- le déposer dans son espace ;
+- ne pas générer automatiquement le certificat lorsqu'une absence ou une anomalie de présence empêche d'attester normalement la réalisation ;
+- conserver la preuve utilisée pour justifier l'émission du certificat.
+
+## Lot H — Livret d'accueil enrichi
+
+Le livret d'accueil généré pour les apprenants doit comprendre au minimum :
+
+- une présentation de l'organisme et de la formation ;
+- l'explication de l'utilisation de l'espace apprenant en ligne ;
+- la manière d'accéder aux documents, évaluations, émargements, questionnaires et réclamations ;
+- les coordonnées de l'assistance technique Selen, avec l'adresse email Selen prévue à cet effet ;
+- les coordonnées du référent pédagogique : formateur et/ou gérant selon l'organisation ;
+- les coordonnées du référent handicap : formateur et/ou gérant selon l'organisation définie par le client ;
+- la politique handicap ;
+- le règlement intérieur.
+
+Les données propres à l'organisme doivent être alimentées depuis Daily et non saisies librement à chaque génération.
+
+## Ordre recommandé d'implémentation
+
+1. Lot A — corrections dashboard et accès.
+2. Lot B — générateur complet « Télécharger un dossier apprenant ».
+3. Lot E — nettoyage Studio et attribution des dossiers.
+4. Lot F — workflow inscription / agent / client / portail apprenant.
+5. Lot C — règles d'émargement et preuves asynchrones, intégrées au nouveau workflow.
+6. Lot G — déroulement et fin de formation.
+7. Lot H — nouveau livret d'accueil.
+8. Lot D — suivi Qualité consolidé, en branchant les réclamations, satisfactions et actions d'amélioration produites par les lots précédents.
+
+Cet ordre évite de construire le tableau Qualité ou les automatismes de fin de session sur des événements métier qui seraient ensuite redéfinis.
+
 ## À valider avec Lil
 
 Aucun point bloquant dans cette note. Les formulations exactes des aides peuvent être ajustées au fil de la recette tant que les règles métier ci-dessus sont préservées.
