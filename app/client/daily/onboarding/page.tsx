@@ -335,7 +335,10 @@ export default function DailyOnboardingPage() {
               <p className="gazette-label">Étape 2</p>
               <h2 style={s.title}>Informations de l&apos;organisme</h2>
               <Input label="Nom de l&apos;organisme de formation" value={form.organisation_name} onChange={(value) => update("organisation_name", value)} />
-              <Input label="Numéro NDA, facultatif" value={form.nda_number} onChange={(value) => update("nda_number", value)} />
+              <div style={s.field}>
+                <Input label="Numéro NDA" value={form.nda_number} onChange={(value) => update("nda_number", value)} />
+                <p style={s.fieldHint}>Si votre organisme possède déjà un numéro de déclaration d&apos;activité, il doit être renseigné ici.</p>
+              </div>
               <FileUploadField label="Logo de l'organisme" kind="organisation_logo" accept=".png,.jpg,.jpeg,.webp" value={form.organisation_logo_url} onUploaded={(url) => update("organisation_logo_url", url)} />
               <div style={s.twoCols}>
                 <Input label="Prénom du dirigeant" value={form.manager_first_name} onChange={(value) => update("manager_first_name", value)} />
@@ -488,6 +491,7 @@ function Input({ label, value, onChange, disabled = false }: { label: string; va
 function FileUploadField({ label, kind, slot = "principal", value, onUploaded, accept }: { label: string; kind: string; slot?: string; value: string; onUploaded: (url: string) => void; accept: string }) {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
 
   async function upload(file: File) {
     setUploading(true);
@@ -509,8 +513,26 @@ function FileUploadField({ label, kind, slot = "principal", value, onUploaded, a
   return (
     <div style={s.field}>
       <span style={s.label}>{label}</span>
-      <input type="file" accept={accept} disabled={uploading} onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(file); }} />
-      {uploading ? <span style={s.muted}>Import en cours…</span> : value ? <span style={s.uploaded}>Document importé ✓</span> : null}
+      <input
+        ref={inputRef}
+        type="file"
+        accept={accept}
+        disabled={uploading}
+        style={s.fileInput}
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) void upload(file);
+        }}
+      />
+      <button
+        type="button"
+        style={s.fileButton}
+        disabled={uploading}
+        onClick={() => inputRef.current?.click()}
+      >
+        {uploading ? "Import en cours…" : "Choisir un fichier"}
+      </button>
+      {!uploading && value ? <span style={s.uploaded}>Document importé ✓</span> : null}
       {uploadError ? <span style={s.saveError}>{uploadError}</span> : null}
     </div>
   );
@@ -544,8 +566,11 @@ const s: Record<string, React.CSSProperties> = {
   inlineLink: { color: "var(--rust)", fontWeight: 800, textDecoration: "none" },
   twoCols: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "0.75rem" },
   field: { display: "grid", gap: "0.35rem" },
+  fieldHint: { color: "var(--ink-soft)", fontSize: "0.88rem", lineHeight: 1.45, margin: 0 },
   label: { color: "var(--ink)", fontWeight: 800 },
   input: { width: "100%", border: "1px solid rgba(178,138,98,0.55)", background: "rgba(255,250,239,0.86)", color: "var(--ink)", padding: "0.7rem", fontSize: "0.95rem", boxSizing: "border-box" },
+  fileInput: { display: "none" },
+  fileButton: { justifySelf: "start", border: "1px solid var(--rust)", background: "rgba(255,250,239,0.9)", color: "var(--rust)", padding: "0.65rem 1rem", fontSize: "0.95rem", fontWeight: 800, cursor: "pointer", borderRadius: 4 },
   uploaded: { color: "#496532", fontWeight: 700 },
   check: { color: "var(--ink-soft)", display: "flex", gap: "0.5rem", alignItems: "center" },
   trainer: { display: "grid", gap: "0.7rem", border: "1px solid rgba(178,138,98,0.28)", padding: "0.85rem" },
