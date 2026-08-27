@@ -5,52 +5,22 @@ import { useEffect, useMemo, useState } from "react";
 import { assistanceFetch } from "@/components/AgentAssistanceBanner";
 import LoadingMascot from "@/components/ui/LoadingMascot";
 
-type Formation = {
-  id: string;
-  title: string;
-  status: string;
-  modality?: string | null;
-  spontaneous_registration_task_status?: string | null;
-};
+type Formation = { id: string; title: string; status: string; spontaneous_registration_task_status?: string | null };
+type Session = { id: string; formation_id: string; start_date?: string | null; status: string; modality?: string | null; distance_mode?: string | null; daily_formations?: { title?: string | null } | null };
+type Workspace = { organisation?: Record<string, unknown> | null; trainers?: Array<Record<string, unknown>> };
+type ActionItem = { id: string; priority: "high" | "medium" | "normal"; title: string; detail: string; href: string; sessionLabel?: string | null };
+type Onboarding = { organisation_name?: string | null; manager_first_name?: string | null; manager_last_name?: string | null; qualiopi_status?: string | null; quality_tracking_enabled?: boolean | null };
 
-type Session = {
-  id: string;
-  formation_id: string;
-  start_date?: string | null;
-  end_date?: string | null;
-  status: string;
-  modality?: string | null;
-  distance_mode?: string | null;
-  daily_formations?: { title?: string | null } | null;
-};
+const rank: Record<ActionItem["priority"], number> = { high: 0, medium: 1, normal: 2 };
 
-type Workspace = {
-  organisation?: { name?: string | null } | null;
-};
-
-type ActionItem = {
-  id: string;
-  kind: "dossier" | "positioning" | "prerequisite" | "adaptation" | "trainer" | "onboarding";
-  priority: "high" | "medium" | "normal";
-  title: string;
-  detail: string;
-  href: string;
-  sessionId?: string | null;
-  sessionLabel?: string | null;
-};
-
-type ActionResponse = {
-  actions?: ActionItem[];
-};
-
-function formatDate(value?: string | null) {
+function fmtDate(value?: string | null) {
   if (!value) return "Date à définir";
   const date = new Date(`${value}T12:00:00`);
   if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "long", year: "numeric" }).format(date);
 }
 
-function formatModality(session: Session) {
+function fmtModality(session: Session) {
   if (session.modality === "distanciel" && session.distance_mode === "asynchrone") return "Distanciel à votre rythme";
   if (session.modality === "distanciel") return "Distanciel en direct";
   if (session.modality === "presentiel") return "Présentiel";
@@ -58,62 +28,39 @@ function formatModality(session: Session) {
   return "Modalité à préciser";
 }
 
-function FeatherIcon() {
-  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4"><path d="M20 4c-6 0-11 3-13 9-1 3-1 5 0 7 2-1 4-3 5-6M9 16 20 4" /></svg>;
-}
-function BookIcon() {
-  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M4 5.5C4 4.7 4.7 4 5.5 4H12v16H5.5A1.5 1.5 0 0 1 4 18.5z" /><path d="M20 5.5c0-.8-.7-1.5-1.5-1.5H12v16h6.5a1.5 1.5 0 0 0 1.5-1.5z" /></svg>;
-}
-function CalendarIcon() {
-  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><rect x="4" y="5.5" width="16" height="14.5" rx="1.5" /><path d="M4 10h16M8 3.5v3M16 3.5v3" /></svg>;
-}
-function CheckIcon() {
-  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><circle cx="12" cy="12" r="8.5" /><path d="M8.5 12.3l2.2 2.2 4.8-5" /></svg>;
-}
-function PhoneIcon() {
-  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M6 4.5c0 4 2 12 13.5 15 1 .3 1.5-1 .8-1.8l-3-3.4c-.5-.6-1.3-.7-1.9-.2l-1.3 1.1c-2-1.2-4-3.2-5.2-5.2l1.1-1.3c.5-.6.4-1.4-.2-1.9L6.5 3.7c-.8-.7-2.1-.2-1.8.8z" /></svg>;
-}
-function UserIcon() {
-  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="8.5" r="3.5" /><path d="M5 20c1-4 4-6 7-6s6 2 7 6" /></svg>;
-}
-function FolderIcon() {
-  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M4 7.5c0-1 .8-1.5 1.7-1.5h4l1.8 2h6.8c1 0 1.7.7 1.7 1.5v9c0 1-.8 1.7-1.7 1.7H5.7C4.8 20.2 4 19.5 4 18.5z" /></svg>;
-}
-function Fleuron() {
-  return <div className="daily-fleuron"><span /><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3"><path d="M12 3v18M12 3c-3 2-5 4-5 7s2 4 5 4M12 3c3 2 5 4 5 7s-2 4-5 4M7 21c2-1.5 3-3 5-3s3 1.5 5 3" /></svg><span /></div>;
-}
-
 export default function DailyDashboardOverview() {
   const [formations, setFormations] = useState<Formation[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
+  const [onboarding, setOnboarding] = useState<Onboarding | null>(null);
   const [actions, setActions] = useState<ActionItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState("");
+  const [error, setError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       try {
-        const [formationRes, sessionRes, workspaceRes, actionRes] = await Promise.all([
+        const responses = await Promise.all([
           assistanceFetch("/api/client/daily/formations", { cache: "no-store" }),
           assistanceFetch("/api/client/daily/sessions", { cache: "no-store" }),
           assistanceFetch("/api/client/daily/workspace", { cache: "no-store" }),
           assistanceFetch("/api/client/daily/action-center", { cache: "no-store" }),
+          assistanceFetch("/api/client/daily/onboarding", { cache: "no-store" }),
         ]);
-        const formationData = await formationRes.json().catch(() => ({}));
-        const sessionData = await sessionRes.json().catch(() => ({}));
-        const workspaceData = await workspaceRes.json().catch(() => ({}));
-        const actionData = await actionRes.json().catch(() => ({})) as ActionResponse;
+        const [formationRes, sessionRes, workspaceRes, actionRes, onboardingRes] = responses;
+        const [formationData, sessionData, workspaceData, actionData, onboardingData] = await Promise.all(
+          responses.map((response) => response.json().catch(() => ({}))),
+        );
         if (!formationRes.ok || !sessionRes.ok) throw new Error("Impossible de charger l'activité Daily.");
-        if (!cancelled) {
-          setFormations((formationData.formations ?? []).filter((formation: Formation) => formation.status !== "archived"));
-          setSessions((sessionData.sessions ?? []).filter((session: Session) => session.status !== "archived"));
-          if (workspaceRes.ok) setWorkspace(workspaceData.workspace ?? null);
-          if (actionRes.ok) setActions(actionData.actions ?? []);
-        }
+        if (cancelled) return;
+        setFormations((formationData.formations ?? []).filter((formation: Formation) => formation.status !== "archived"));
+        setSessions((sessionData.sessions ?? []).filter((session: Session) => session.status !== "archived"));
+        if (workspaceRes.ok) setWorkspace(workspaceData.workspace ?? null);
+        if (actionRes.ok) setActions(actionData.actions ?? []);
+        if (onboardingRes.ok) setOnboarding(onboardingData.onboarding ?? null);
       } catch (cause) {
-        if (!cancelled) setLoadError(cause instanceof Error ? cause.message : "Chargement impossible.");
+        if (!cancelled) setError(cause instanceof Error ? cause.message : "Chargement impossible.");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -123,127 +70,118 @@ export default function DailyDashboardOverview() {
   }, []);
 
   const today = new Date().toISOString().slice(0, 10);
-  const futureSessions = useMemo(
-    () => sessions.filter((session) => !session.start_date || session.start_date >= today).sort((a, b) => String(a.start_date ?? "9999").localeCompare(String(b.start_date ?? "9999"))),
-    [sessions, today],
-  );
-  const requestsToPlan = useMemo(
-    () => formations.filter((formation) => formation.spontaneous_registration_task_status === "to_attach" && !futureSessions.some((session) => session.formation_id === formation.id)),
-    [formations, futureSessions],
-  );
-  const sortedActions = useMemo(() => {
-    const priorityRank: Record<ActionItem["priority"], number> = { high: 0, medium: 1, normal: 2 };
-    return [...actions].sort((a, b) => priorityRank[a.priority] - priorityRank[b.priority]);
-  }, [actions]);
-  const readySessions = futureSessions.filter((session) => session.status === "ready").length;
+  const futureSessions = useMemo(() => sessions
+    .filter((session) => !session.start_date || session.start_date >= today)
+    .sort((a, b) => String(a.start_date ?? "9999").localeCompare(String(b.start_date ?? "9999"))), [sessions, today]);
+  const requestsToPlan = useMemo(() => formations.filter((formation) =>
+    formation.spontaneous_registration_task_status === "to_attach"
+    && !futureSessions.some((session) => session.formation_id === formation.id),
+  ), [formations, futureSessions]);
+  const sortedActions = useMemo(() => [...actions].sort((a, b) => rank[a.priority] - rank[b.priority]), [actions]);
   const next = futureSessions[0] ?? null;
-  const organisationName = workspace?.organisation?.name?.trim() || null;
+  const organisationName = String(workspace?.organisation?.name ?? onboarding?.organisation_name ?? "Mon organisme");
+  const managerName = [onboarding?.manager_first_name, onboarding?.manager_last_name].filter(Boolean).join(" ") || "Mon profil";
+  const isQualiopi = onboarding?.qualiopi_status === "yes";
+  const qualityEnabled = isQualiopi || onboarding?.quality_tracking_enabled !== false;
+  const trainerCount = workspace?.trainers?.length ?? 0;
 
-  if (loading) {
-    return <LoadingMascot message="Sélion rassemble votre activité…" />;
-  }
+  if (loading) return <LoadingMascot message="Sélion rassemble votre activité…" />;
 
   return (
-    <main className="daily-dashboard-shell">
-      <style>{dashboardCss}</style>
-      <div className="daily-frame">
-        <span className="daily-corner tl" /><span className="daily-corner tr" /><span className="daily-corner bl" /><span className="daily-corner br" />
-        <div className="daily-wrap">
-          <section className="daily-hero">
-            <div className="daily-hero-copy">
-              <div className="daily-eyebrow"><span className="daily-feather"><FeatherIcon /></span>Selen Daily</div>
-              <h1>Votre activité, en un coup d&apos;œil</h1>
-              <div className="daily-hero-rule" />
-              <p>{requestsToPlan.length > 0 ? "Une demande mérite votre attention. Rien ne presse dans le vide : Selen vous montre exactement où agir." : <>Tout avance{organisationName ? ` chez ${organisationName}` : ""}. Gardez le cap, Selen vous montre seulement ce qui mérite vraiment votre attention.</>}</p>
-            </div>
-            <div className="daily-hero-actions">
-              <Link href="/client" className="daily-service-link">Mes autres services Selen</Link>
-            </div>
-          </section>
+    <main className="dash-shell">
+      <style>{css}</style>
+      <div className="dash-frame">
+        <header className="dash-topline">
+          <div>
+            <div className="dash-kicker">Selen Daily</div>
+            <h1>Votre activité, en un coup d'œil</h1>
+            <p>{sortedActions.length ? "Selen vous montre les actions qui demandent réellement votre intervention." : "Tout est à jour. Vous pouvez vous concentrer sur vos prochaines formations."}</p>
+          </div>
+          <Link href="/client" className="service-link">Mes autres services Selen</Link>
+        </header>
 
-          {loadError ? <div className="daily-error">{loadError}</div> : null}
+        {error ? <div className="dash-error">{error}</div> : null}
 
-          <section className="daily-card daily-task-card" aria-label="Tâches à faire">
-            <div className="daily-task-head">
-              <div>
-                <div className="daily-mid-eyebrow"><CheckIcon />À faire</div>
-                <h2>{sortedActions.length > 0 ? `${sortedActions.length} tâche${sortedActions.length > 1 ? "s" : ""} à traiter` : "Tout est à jour"}</h2>
+        <div className="dash-layout">
+          <div className="dash-main">
+            <Link href="/client/daily/mon-compte" className="profile-card card">
+              <div className="avatar">{managerName.slice(0, 1).toUpperCase()}</div>
+              <div className="profile-copy">
+                <span className="eyebrow">Mon profil & mon organisme</span>
+                <h2>{managerName}</h2>
+                <p>{organisationName}</p>
+                <small>Informations administratives, documents, abonnement et facturation</small>
               </div>
-              {sortedActions.length > 0 ? <span className="daily-task-count">{sortedActions.length}</span> : null}
-            </div>
-            {sortedActions.length === 0 ? (
-              <div className="daily-task-empty"><span className="daily-task-check done">✓</span><span>Aucune action n&apos;attend votre intervention pour le moment.</span></div>
-            ) : (
-              <div className="daily-task-list">
-                {sortedActions.map((item) => (
-                  <Link key={item.id} href={item.href} className={`daily-task-row ${item.priority}`}>
-                    <span className="daily-task-check" aria-hidden="true" />
-                    <span className="daily-task-copy">
-                      <strong>{item.title}</strong>
-                      <small>{item.sessionLabel ? `${item.sessionLabel} · ` : ""}{item.detail}</small>
-                    </span>
-                    <span className="daily-task-arrow" aria-hidden="true">→</span>
-                  </Link>
+              <span className="arrow">→</span>
+            </Link>
+
+            <section className="task-card card">
+              <div className="section-head">
+                <div>
+                  <span className="eyebrow">À faire</span>
+                  <h2>{sortedActions.length ? `${sortedActions.length} tâche${sortedActions.length > 1 ? "s" : ""} à traiter` : "Tout est à jour"}</h2>
+                </div>
+                {sortedActions.length ? <span className="count">{sortedActions.length}</span> : null}
+              </div>
+              {sortedActions.length === 0 ? (
+                <div className="empty">✓ Aucune action n'attend votre intervention.</div>
+              ) : (
+                <div className="task-list">
+                  {sortedActions.map((item) => (
+                    <Link href={item.href} key={item.id} className={`task ${item.priority}`}>
+                      <span className="box" />
+                      <span className="task-copy"><strong>{item.title}</strong><small>{item.sessionLabel ? `${item.sessionLabel} · ` : ""}{item.detail}</small></span>
+                      <span>→</span>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <div className="main-grid">
+              <article className="card info-card">
+                <span className="eyebrow">Prochaine session</span>
+                <h2>{next?.daily_formations?.title ?? "Aucune session planifiée"}</h2>
+                {next ? <><p className="bigline">{fmtDate(next.start_date)}</p><p>{fmtModality(next)}</p><Link href={`/client/daily/sessions?session=${next.id}`} className="text-link">Ouvrir la session →</Link></> : <p>Votre planning est libre pour le moment.</p>}
+              </article>
+
+              <article className="card info-card">
+                <span className="eyebrow">À surveiller</span>
+                <h2>Demandes sans date</h2>
+                {requestsToPlan.length === 0 ? <div className="good">Aucune demande n'attend de date.</div> : requestsToPlan.slice(0, 3).map((formation) => (
+                  <Link key={formation.id} href={`/client/daily/sessions?formation=${formation.id}`} className="watch-item"><strong>{formation.title}</strong><span>Planifier une session →</span></Link>
                 ))}
-              </div>
-            )}
-          </section>
+              </article>
+            </div>
+          </div>
 
-          <section className="daily-grid-stats">
-            <Stat icon={<BookIcon />} number={formations.length} label={`formation${formations.length > 1 ? "s" : ""}`} />
-            <Stat icon={<CalendarIcon />} number={futureSessions.length} label={`session${futureSessions.length > 1 ? "s" : ""} à venir`} />
-            <Stat icon={<CheckIcon />} number={readySessions} label={`session${readySessions > 1 ? "s" : ""} prête${readySessions > 1 ? "s" : ""}`} />
-            <Stat icon={<PhoneIcon />} number={requestsToPlan.length} label={`date${requestsToPlan.length > 1 ? "s" : ""} à caler`} alert={requestsToPlan.length > 0} />
-          </section>
-
-          <Fleuron />
-
-          <section className="daily-grid-mid">
-            <article className="daily-card daily-mid-card">
-              <div className="daily-mid-eyebrow"><CalendarIcon />Prochaine étape</div>
-              <h2>{next ? next.daily_formations?.title ?? "Session à venir" : "Aucune session planifiée"}</h2>
-              {next ? <><p className="daily-mid-date">{formatDate(next.start_date)}</p><p className="daily-mid-format">{formatModality(next)}</p><Link href={`/client/daily/sessions?session=${next.id}`} className="daily-ghost">Ouvrir la session</Link></> : <><p className="daily-mid-date">Votre planning est libre pour le moment.</p><p className="daily-mid-format">Une session apparaîtra ici dès qu&apos;elle sera créée.</p><Link href="/client/daily/formations" className="daily-ghost">Voir les formations</Link></>}
-            </article>
-
-            <article className="daily-card daily-mid-card">
-              <div className="daily-mid-eyebrow"><PhoneIcon />À surveiller</div>
-              <h2>Demandes sans date</h2>
-              {requestsToPlan.length === 0 ? <div className="daily-watch good">Rien d&apos;urgent ici. Vos demandes disposent d&apos;une session planifiée ou aucune nouvelle demande n&apos;attend de date.</div> : <div className="daily-request-list">{requestsToPlan.slice(0, 3).map((formation) => <div key={formation.id} className="daily-watch alert"><strong>{formation.title}</strong><span>Une inscription a été reçue sans session disponible. Une date doit être calée avec le formateur.</span><Link href={`/client/daily/sessions?formation=${formation.id}`} className="daily-inline-link">Planifier la session</Link></div>)}</div>}
-            </article>
-          </section>
-
-          <Fleuron />
-
-          <section className="daily-grid-nav">
-            <NavCard href="/client/daily/formations" icon={<BookIcon />} title="Formations" subtitle="Programmes et lien d'inscription" />
-            <NavCard href="/client/daily/sessions" icon={<CalendarIcon />} title="Sessions" subtitle="Dates, formateurs et organisation" />
-            <NavCard href="/client/daily/apprenants" icon={<UserIcon />} title="Apprenants" subtitle="Dossiers et suivi" />
-            <NavCard href="/client/daily/documents" icon={<FolderIcon />} title="Documents" subtitle="Préformation et conformité" />
-          </section>
-
-          <div className="daily-footer-mark"><span><FeatherIcon /></span>Selen Studio</div>
+          <aside className="dash-sidebar" aria-label="Navigation Daily">
+            <SidebarCard href="/client/daily/formations" icon="📚" title="Formations" detail={`${formations.length} active${formations.length > 1 ? "s" : ""}`} />
+            <SidebarCard href="/client/daily/sessions" icon="📅" title="Sessions" detail={`${futureSessions.length} à venir`} />
+            <SidebarCard href="/client/daily/apprenants" icon="👥" title="Apprenants" detail="Dossiers et suivi" />
+            <SidebarCard href="/client/daily/documents" icon="📁" title="Documents" detail="Pièces et conformité" />
+            <SidebarCard href="/client/daily/formateurs" icon="🎓" title="Formateurs" detail={`${trainerCount} référencé${trainerCount > 1 ? "s" : ""}`} />
+            <SidebarCard
+              href="/client/daily/qualite"
+              icon="✓"
+              title="Suivi Qualité"
+              detail={isQualiopi ? "Obligatoire · Qualiopi" : qualityEnabled ? "Actif · optionnel" : "Désactivé"}
+              badge={isQualiopi ? "Obligatoire" : undefined}
+              muted={!qualityEnabled}
+            />
+          </aside>
         </div>
       </div>
     </main>
   );
 }
 
-function Stat({ icon, number, label, alert = false }: { icon: React.ReactNode; number: number; label: string; alert?: boolean }) {
-  return <article className={`daily-card daily-stat${alert ? " alert" : ""}`}><div className="daily-seal">{icon}</div><div className="daily-stat-num">{number}</div><div className="daily-stat-label">{label}</div></article>;
+function SidebarCard({ href, icon, title, detail, badge, muted = false }: { href: string; icon: string; title: string; detail: string; badge?: string; muted?: boolean }) {
+  return <Link href={href} className={`side-card card${muted ? " muted" : ""}`}><span className="side-icon">{icon}</span><span className="side-copy"><strong>{title}</strong><small>{detail}</small></span>{badge ? <span className="badge">{badge}</span> : <span className="arrow">→</span>}</Link>;
 }
 
-function NavCard({ href, icon, title, subtitle }: { href: string; icon: React.ReactNode; title: string; subtitle: string }) {
-  return <Link href={href} className="daily-card daily-nav-card"><div className="daily-nav-icon">{icon}</div><h3>{title}</h3><p>{subtitle}</p></Link>;
-}
-
-const dashboardCss = `
-.daily-dashboard-shell{min-height:100vh;padding:44px 18px 80px;color:#392a19;background:radial-gradient(ellipse at 50% -10%,rgba(255,247,225,.5),transparent 55%),radial-gradient(circle at 8% 15%,rgba(255,255,255,.28),transparent 35%),radial-gradient(circle at 92% 88%,rgba(57,42,25,.10),transparent 45%),linear-gradient(180deg,#eadfbf 0%,#e0cf9f 100%);font-family:Georgia,'Times New Roman',serif}
-.daily-frame{max-width:1120px;margin:0 auto;position:relative;padding:26px 30px 34px;border:1px solid rgba(160,106,44,.4);border-radius:4px}.daily-frame:before{content:'';position:absolute;inset:7px;border:1px solid rgba(160,106,44,.4);border-radius:2px;pointer-events:none}.daily-wrap{max-width:1040px;margin:0 auto;position:relative;z-index:1}.daily-corner{position:absolute;width:26px;height:26px;border-color:#a06a2c;opacity:.65}.daily-corner.tl{top:-2px;left:-2px;border-top:1px solid;border-left:1px solid}.daily-corner.tr{top:-2px;right:-2px;border-top:1px solid;border-right:1px solid}.daily-corner.bl{bottom:-2px;left:-2px;border-bottom:1px solid;border-left:1px solid}.daily-corner.br{bottom:-2px;right:-2px;border-bottom:1px solid;border-right:1px solid}
-.daily-hero{position:relative;background:#f8f0dc;border:1px solid #d9c391;border-radius:2px;padding:42px 46px 46px;box-shadow:0 1px 2px rgba(57,42,25,.08),0 10px 24px rgba(57,42,25,.10);display:flex;justify-content:space-between;align-items:flex-start;gap:34px;flex-wrap:wrap;overflow:hidden}.daily-hero:before,.daily-card:before{content:'';position:absolute;inset:8px;border:1px solid rgba(160,106,44,.17);pointer-events:none}.daily-hero-copy{max-width:650px;position:relative;z-index:1}.daily-eyebrow,.daily-mid-eyebrow{display:flex;align-items:center;gap:9px;font-size:12px;letter-spacing:.17em;text-transform:uppercase;color:#a06a2c;font-weight:700}.daily-feather,.daily-footer-mark span{width:18px;height:18px;display:inline-flex}.daily-hero h1{font-family:Georgia,'Times New Roman',serif;font-size:clamp(2.2rem,5vw,3rem);line-height:1.08;margin:12px 0 16px;font-weight:600}.daily-hero-rule{width:70px;height:2px;background:linear-gradient(90deg,#c08a3e,transparent);margin-bottom:18px}.daily-hero p{font-size:17px;color:#7a6549;line-height:1.65;margin:0}.daily-hero-actions{display:grid;gap:12px;position:relative;z-index:1}.daily-service-link{color:#5c3a1e;text-align:center;font-weight:700;text-decoration:none;border-bottom:1px solid rgba(160,106,44,.35);padding-bottom:4px}.daily-error{margin-top:18px;padding:12px 14px;background:#fff1ed;border:1px solid #c58c7d;color:#7a2e22}
-.daily-task-card{margin-top:30px;padding:28px 30px}.daily-task-card:before{inset:8px}.daily-task-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:18px}.daily-task-head h2{font-size:24px;margin:10px 0 0;font-weight:600}.daily-task-count{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;background:#7a2e22;color:#f4e6c8;font-weight:800;box-shadow:0 2px 5px rgba(57,42,25,.22)}.daily-task-list{display:grid;gap:8px;max-height:360px;overflow:auto;padding-right:4px}.daily-task-row{position:relative;z-index:1;display:grid;grid-template-columns:24px 1fr 24px;align-items:center;gap:12px;padding:13px 14px;border:1px solid rgba(160,106,44,.22);background:rgba(255,250,240,.62);color:#392a19;text-decoration:none;border-radius:2px;transition:background .15s ease,border-color .15s ease,transform .15s ease}.daily-task-row:hover{background:#fffaf0;border-color:rgba(160,106,44,.48);transform:translateX(2px)}.daily-task-row.high{border-left:4px solid #9a412f}.daily-task-row.medium{border-left:4px solid #b5792d}.daily-task-check{width:18px;height:18px;border:1.5px solid #a06a2c;border-radius:2px;background:#fffaf0;display:grid;place-items:center;color:#48633d;font-size:13px;font-weight:800}.daily-task-check.done{border-color:#6f8b58;background:rgba(111,139,88,.08)}.daily-task-copy{display:grid;gap:3px;min-width:0}.daily-task-copy strong{font-size:14.5px;line-height:1.35}.daily-task-copy small{color:#7a6549;font-size:12.5px;line-height:1.4}.daily-task-arrow{color:#a06a2c;font-size:18px;text-align:right}.daily-task-empty{position:relative;z-index:1;display:flex;align-items:center;gap:12px;color:#455a3b;background:rgba(95,122,82,.08);border:1px solid rgba(95,122,82,.22);padding:14px 16px}
-.daily-grid-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:30px}.daily-card{background:#f8f0dc;border:1px solid #d9c391;border-radius:2px;box-shadow:0 1px 2px rgba(57,42,25,.08),0 10px 24px rgba(57,42,25,.10);position:relative}.daily-stat{padding:26px 22px 24px;display:flex;flex-direction:column;gap:14px}.daily-stat.alert{border-color:#b97b3b}.daily-seal{width:46px;height:46px;border-radius:50%;background:radial-gradient(circle at 32% 28%,#9c4432,#7a2e22 55%,#5a1f17 100%);display:flex;align-items:center;justify-content:center;color:#e9c99a;box-shadow:0 3px 6px rgba(57,42,25,.3),inset 0 1px 1px rgba(255,255,255,.25)}.daily-seal svg{width:20px;height:20px}.daily-stat-num{font-family:Georgia,'Times New Roman',serif;font-weight:700;font-size:36px;line-height:1}.daily-stat-label{font-size:15px;color:#7a6549;font-style:italic}
-.daily-fleuron{display:flex;align-items:center;gap:14px;margin:34px 0 26px;color:#a06a2c}.daily-fleuron span{flex:1;height:1px;background:linear-gradient(90deg,transparent,rgba(160,106,44,.4) 40%,rgba(160,106,44,.4) 60%,transparent)}.daily-fleuron svg{width:20px;height:20px}.daily-grid-mid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.daily-mid-card{padding:28px 30px}.daily-mid-eyebrow svg{width:16px;height:16px}.daily-mid-card h2{font-family:Georgia,'Times New Roman',serif;font-size:24px;font-weight:600;margin:16px 0 5px}.daily-mid-date{font-size:16px;color:#7a6549;font-style:italic;margin:2px 0 4px}.daily-mid-format{font-size:14.5px;color:#a5906c;margin:0 0 20px}.daily-ghost{display:inline-block;background:transparent;border:1.5px solid rgba(160,106,44,.4);color:#5c3a1e;text-decoration:none;font-size:14.5px;font-weight:700;padding:10px 20px;border-radius:2px}.daily-request-list{display:grid;gap:10px}.daily-watch{border-radius:2px;padding:16px 18px;margin-top:12px;font-size:14.5px;line-height:1.55;display:grid;gap:6px}.daily-watch.good{background:rgba(95,122,82,.1);border:1px solid rgba(95,122,82,.25);color:#455a3b}.daily-watch.alert{background:rgba(160,106,44,.09);border:1px solid rgba(160,106,44,.28)}.daily-inline-link{color:#7a2e22;font-weight:700;text-decoration:none}
-.daily-grid-nav{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}.daily-nav-card{padding:26px 22px;text-decoration:none;color:#392a19;transition:transform .15s ease,box-shadow .15s ease,border-color .15s ease}.daily-nav-card:hover{transform:translateY(-3px) rotate(-.25deg);border-color:rgba(160,106,44,.4);box-shadow:0 10px 20px rgba(57,42,25,.14)}.daily-nav-icon{color:#a06a2c;margin-bottom:15px}.daily-nav-icon svg{width:23px;height:23px}.daily-nav-card h3{font-family:Georgia,'Times New Roman',serif;font-size:21px;font-weight:600;margin:0 0 4px}.daily-nav-card p{font-size:14px;color:#7a6549;margin:0;font-style:italic}.daily-footer-mark{text-align:center;margin-top:38px;color:#a5906c;font-size:12px;letter-spacing:.14em;text-transform:uppercase;display:flex;align-items:center;justify-content:center;gap:10px}
-@media(max-width:820px){.daily-frame{padding:20px 18px 28px}.daily-grid-stats,.daily-grid-nav{grid-template-columns:repeat(2,1fr)}.daily-grid-mid{grid-template-columns:1fr}.daily-hero{padding:32px 28px}.daily-hero-actions{width:100%}.daily-task-card{padding:24px 22px}}
-@media(max-width:520px){.daily-dashboard-shell{padding:20px 8px 50px}.daily-frame{border-left:0;border-right:0}.daily-frame:before{display:none}.daily-grid-stats,.daily-grid-nav{grid-template-columns:1fr 1fr;gap:10px}.daily-stat{padding:20px 16px}.daily-seal{width:40px;height:40px}.daily-stat-num{font-size:30px}.daily-nav-card{padding:20px 16px}.daily-task-row{grid-template-columns:22px 1fr 18px;padding:12px 10px}.daily-task-copy small{font-size:12px}}
+const css = `
+.dash-shell{min-height:100vh;padding:34px 18px 70px;color:#392a19;background:linear-gradient(180deg,#eadfbf 0%,#e0cf9f 100%);font-family:Georgia,'Times New Roman',serif}.dash-frame{max-width:1180px;margin:auto;border:1px solid rgba(160,106,44,.42);padding:30px;position:relative}.dash-frame:before{content:'';position:absolute;inset:7px;border:1px solid rgba(160,106,44,.25);pointer-events:none}.dash-topline{position:relative;z-index:1;display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin-bottom:24px}.dash-kicker,.eyebrow{font-family:Arial,sans-serif;text-transform:uppercase;letter-spacing:.14em;font-size:11px;font-weight:800;color:#9b682d}.dash-topline h1{font-size:clamp(2rem,4vw,3rem);margin:8px 0 10px}.dash-topline p{margin:0;color:#756149;max-width:690px;line-height:1.6}.service-link{color:#5c3a1e;font-weight:700;text-decoration:none;border-bottom:1px solid #a06a2c;padding-bottom:3px;white-space:nowrap}.dash-layout{position:relative;z-index:1;display:grid;grid-template-columns:minmax(0,1fr) 290px;gap:22px}.dash-main{display:grid;gap:20px}.dash-sidebar{display:grid;gap:12px;align-content:start;position:sticky;top:18px}.card{background:#f8f0dc;border:1px solid #d9c391;box-shadow:0 8px 20px rgba(57,42,25,.09);text-decoration:none;color:inherit}.profile-card{display:grid;grid-template-columns:64px 1fr 24px;gap:16px;align-items:center;padding:22px 24px}.profile-card:hover,.side-card:hover,.task:hover,.watch-item:hover{border-color:#a06a2c}.avatar{width:58px;height:58px;border-radius:50%;display:grid;place-items:center;background:#7a2e22;color:#f4e6c8;font-size:25px;font-weight:700}.profile-copy h2{margin:5px 0 2px;font-size:22px}.profile-copy p{margin:0;color:#725e46}.profile-copy small{display:block;margin-top:6px;color:#917a5d}.arrow{color:#a06a2c;font-size:20px}.task-card{padding:24px}.section-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.section-head h2,.info-card h2{margin:7px 0 0;font-size:23px}.count{min-width:38px;height:38px;padding:0 10px;border-radius:999px;display:grid;place-items:center;background:#7a2e22;color:#f4e6c8;font-weight:800}.task-list{display:grid;gap:8px;margin-top:18px;max-height:350px;overflow:auto}.task{display:grid;grid-template-columns:20px 1fr 20px;gap:12px;align-items:center;padding:12px 14px;border:1px solid rgba(160,106,44,.22);background:rgba(255,250,240,.65);text-decoration:none;color:inherit}.task.high{border-left:4px solid #9a412f}.task.medium{border-left:4px solid #b5792d}.box{width:17px;height:17px;border:1.5px solid #a06a2c;background:#fffaf0}.task-copy{display:grid;gap:3px}.task-copy small{color:#78644c;line-height:1.35}.empty,.good{margin-top:18px;padding:14px 16px;background:rgba(95,122,82,.09);border:1px solid rgba(95,122,82,.22);color:#455a3b}.main-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}.info-card{padding:22px}.info-card p{color:#78644c;line-height:1.5}.bigline{font-size:17px;font-style:italic}.text-link{font-weight:800;color:#7a2e22;text-decoration:none}.watch-item{display:grid;gap:4px;margin-top:10px;padding:11px 12px;border:1px solid rgba(160,106,44,.22);text-decoration:none;color:inherit}.watch-item span{font-size:12px;color:#7a2e22}.side-card{min-height:70px;padding:15px;display:grid;grid-template-columns:42px 1fr auto;gap:12px;align-items:center}.side-card.muted{opacity:.55}.side-icon{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:#7a2e22;color:#f4e6c8;font-family:Arial,sans-serif;font-weight:800}.side-copy{display:grid;gap:3px}.side-copy strong{font-size:16px}.side-copy small{color:#806c52;font-family:Arial,sans-serif;font-size:11px}.badge{font-family:Arial,sans-serif;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;padding:5px 6px;background:#7a2e22;color:#f4e6c8}.dash-error{position:relative;z-index:1;margin-bottom:18px;padding:12px;border:1px solid #a64b3b;background:#fff2ee;color:#7d2e22}
+@media(max-width:900px){.dash-layout{grid-template-columns:1fr}.dash-sidebar{position:static;grid-template-columns:repeat(2,minmax(0,1fr));grid-row:1}.dash-main{grid-row:2}.dash-topline{flex-direction:column}.main-grid{grid-template-columns:1fr}}
+@media(max-width:560px){.dash-shell{padding:18px 8px 45px}.dash-frame{padding:20px 14px}.dash-sidebar{grid-template-columns:1fr}.profile-card{grid-template-columns:50px 1fr 18px;padding:18px}.avatar{width:46px;height:46px}.task-card{padding:18px}}
 `;
