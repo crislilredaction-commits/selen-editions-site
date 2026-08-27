@@ -47,13 +47,13 @@ export async function POST(request: Request) {
   const [{ data: session, error: sessionError }, { data: enrolment, error: enrolmentError }] = await Promise.all([
     context.admin
       .from("daily_sessions")
-      .select("id,status")
+      .select("id,status,formation_id")
       .eq("organisation_id", context.organisationId)
       .eq("id", sessionId)
       .maybeSingle(),
     context.admin
       .from("daily_session_enrolments")
-      .select("id,status")
+      .select("id,status,learner_id")
       .eq("organisation_id", context.organisationId)
       .eq("session_id", sessionId)
       .eq("id", enrolmentId)
@@ -93,6 +93,10 @@ export async function POST(request: Request) {
       document_type: "learning_assessment_evidence",
       linked_object_type: "enrolment",
       linked_object_id: enrolmentId,
+      formation_id: session.formation_id,
+      session_id: sessionId,
+      learner_id: enrolment.learner_id,
+      enrolment_id: enrolmentId,
       version: 1,
       status: "to_check",
       logical_name: `evaluation-acquis-${originalName}`,
@@ -105,14 +109,16 @@ export async function POST(request: Request) {
       updated_by: context.user.id,
       is_current: true,
       metadata: {
+        formation_id: session.formation_id,
         session_id: sessionId,
+        learner_id: enrolment.learner_id,
         enrolment_id: enrolmentId,
         original_filename: file.name,
         source: "daily_external_learning_assessment",
         uploaded_at: new Date().toISOString(),
       },
     })
-    .select("id,logical_name,status,created_at")
+    .select("id,logical_name,status,formation_id,session_id,learner_id,enrolment_id,created_at")
     .single();
 
   if (documentError || !document) {
