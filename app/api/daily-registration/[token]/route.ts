@@ -11,8 +11,9 @@ import {
 
 type Params = { params: Promise<{ token: string }> };
 
-const SESSION_SELECT = "id,user_id,registration_token,registration_status,adaptation_needed,companies,beneficiaries,individual_beneficiaries,daily_formations(id,title,status,global_objective,target_audience,prerequisites,duration_hours,duration_days,modality,modality_details,access_delays,registration_methods,price,detailed_program,detailed_program_document_url,accessibility,pedagogical_resources,pedagogical_methods,evaluation_methods,positioning_mode,positioning_questions)" as const;
-const FORMATION_SELECT = "id,user_id,public_registration_token,public_registration_enabled,title,status,global_objective,target_audience,prerequisites,duration_hours,duration_days,modality,modality_details,access_delays,registration_methods,price,detailed_program,detailed_program_document_url,accessibility,pedagogical_resources,pedagogical_methods,evaluation_methods,positioning_mode,positioning_questions" as const;
+const FORMATION_FIELDS = "id,user_id,title,status,global_objective,target_audience,prerequisites,duration_hours,duration_days,modality,modality_details,access_delays,registration_methods,price,detailed_program,detailed_program_document_url,accessibility,pedagogical_resources,pedagogical_methods,evaluation_methods,positioning_mode,positioning_questions,contact_phone,contact_email,contact_website" as const;
+const SESSION_SELECT = `id,user_id,registration_token,registration_status,adaptation_needed,companies,beneficiaries,individual_beneficiaries,daily_formations(${FORMATION_FIELDS})` as const;
+const FORMATION_SELECT = `id,user_id,public_registration_token,public_registration_enabled,title,status,global_objective,target_audience,prerequisites,duration_hours,duration_days,modality,modality_details,access_delays,registration_methods,price,detailed_program,detailed_program_document_url,accessibility,pedagogical_resources,pedagogical_methods,evaluation_methods,positioning_mode,positioning_questions,contact_phone,contact_email,contact_website` as const;
 const APPLICATION_CONSENT_TEXT =
   "Je certifie l'exactitude des informations renseignées dans ce dossier de candidature et confirme ma demande d'inscription à cette formation.";
 const MAX_SIGNATURE_LENGTH = 500_000;
@@ -121,6 +122,27 @@ async function findFormation(token: string) {
   return data;
 }
 
+async function findOrganisation(userId: string) {
+  const supabase = getAdminSupabase();
+  const { data, error } = await supabase
+    .from("daily_onboarding")
+    .select("organisation_name,organisation_logo_url,address,platform_contact_email")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) {
+    console.warn("Daily registration: organisation identity unavailable", error.message);
+    return null;
+  }
+  if (!data) return null;
+  return {
+    name: data.organisation_name ?? null,
+    logo_url: data.organisation_logo_url ?? null,
+    address: data.address ?? null,
+    email: data.platform_contact_email ?? null,
+  };
+}
+
 export async function GET(_request: Request, { params }: Params) {
   const { token } = await params;
   const clean = cleanToken(token);
@@ -128,9 +150,11 @@ export async function GET(_request: Request, { params }: Params) {
 
   const session = await findSession(clean);
   if (session) {
+    const organisation = await findOrganisation(session.user_id);
     return NextResponse.json({
       registrationKind: "session",
       session,
+      organisation,
       beneficiaryQuestions: DAILY_NEED_QUESTIONS,
       companyQuestions: DAILY_COMPANY_QUESTIONS,
       positioningQuestions: DAILY_POSITIONING_QUESTIONS,
@@ -140,9 +164,11 @@ export async function GET(_request: Request, { params }: Params) {
 
   const formation = await findFormation(clean);
   if (!formation) return NextResponse.json({ error: "Lien introuvable ou expiré." }, { status: 404 });
+  const organisation = await findOrganisation(formation.user_id);
 
   return NextResponse.json({
     registrationKind: "formation",
+    organisation,
     session: {
       id: null,
       user_id: formation.user_id,
@@ -231,16 +257,12 @@ export async function POST(request: Request, { params }: Params) {
 
     return NextResponse.json({
       response,
-      summary: {
-        task: "Créer une session ou rattacher cette demande à une session.",
-      },
+      summary: { task: "Créer une session ou rattacher cette demande à une session." },
       registrationKind: "formation",
     });
   }
 
-  if (!session) {
-    return NextResponse.json({ error: "Lien introuvable ou expiré." }, { status: 404 });
-  }
+  if (!session) return NextResponse.json({ error: "Lien introuvable ou expiré." }, { status: 404 });
 
   const { data: response, error } = await supabase
     .from("daily_registration_responses")
