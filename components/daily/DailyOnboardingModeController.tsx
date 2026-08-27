@@ -21,11 +21,16 @@ export default function DailyOnboardingModeController() {
   useEffect(() => {
     let stepApplied = false;
     const requestedStep = new URLSearchParams(window.location.search).get("step");
+    const targetStep = requestedStep === "1" || requestedStep === "2"
+      ? requestedStep
+      : document.referrer.includes("/client/daily")
+        ? "2"
+        : null;
 
     const sync = () => {
       hideLegacyAssistanceBlocks();
-      if (!stepApplied && requestedStep === "1") {
-        const stepButton = Array.from(document.querySelectorAll("button")).find((button) => button.textContent?.trim() === "1");
+      if (!stepApplied && targetStep) {
+        const stepButton = Array.from(document.querySelectorAll("button")).find((button) => button.textContent?.trim() === targetStep);
         if (stepButton instanceof HTMLButtonElement) {
           stepApplied = true;
           stepButton.click();
