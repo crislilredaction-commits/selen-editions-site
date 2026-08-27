@@ -10,18 +10,7 @@ export default function DailyClientLayout({ children }: { children: React.ReactN
 
   return (
     <>
-      {hideNavigation ? null : <nav
-        aria-label="Navigation Selen Daily"
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          gap: ".55rem",
-          flexWrap: "wrap",
-          padding: ".75rem 1rem",
-          borderBottom: "1px solid var(--sepia-mid)",
-          background: "var(--paper)",
-        }}
-      >
+      {hideNavigation ? null : <nav aria-label="Navigation Selen Daily" style={{ display: "flex", justifyContent: "center", gap: ".55rem", flexWrap: "wrap", padding: ".75rem 1rem", borderBottom: "1px solid var(--sepia-mid)", background: "var(--paper)" }}>
         <Link href="/client/daily/a-faire" style={actionLinkStyle}>À faire</Link>
         <Link href="/client/daily/formations" style={linkStyle}>Formations</Link>
         <Link href="/client/daily/formations/evaluation" style={linkStyle}>Modèles d’évaluation</Link>
@@ -50,17 +39,5 @@ export default function DailyClientLayout({ children }: { children: React.ReactN
   );
 }
 
-const linkStyle: React.CSSProperties = {
-  color: "var(--rust)",
-  textDecoration: "none",
-  border: "1px solid var(--sepia-mid)",
-  padding: ".5rem .8rem",
-  background: "rgba(201,160,85,.08)",
-};
-
-const actionLinkStyle: React.CSSProperties = {
-  ...linkStyle,
-  fontWeight: 800,
-  borderColor: "var(--rust)",
-  background: "rgba(138,75,36,.1)",
-};
+const linkStyle: React.CSSProperties = { color: "var(--rust)", textDecoration: "none", border: "1px solid var(--sepia-mid)", padding: ".5rem .8rem", background: "rgba(201,160,85,.08)" };
+const actionLinkStyle: React.CSSProperties = { ...linkStyle, fontWeight: 800, borderColor: "var(--rust)", background: "rgba(138,75,36,.1)" };
