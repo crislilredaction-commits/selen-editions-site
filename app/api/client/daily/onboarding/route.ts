@@ -25,7 +25,18 @@ function boolValue(value: unknown) {
   return value === true || value === "true" || value === "on";
 }
 
-function trainerRows(value: unknown) {
+type TrainerRow = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string | null;
+  cv_url: string | null;
+  cv_pending: boolean;
+  trainer_access_planned: boolean;
+  trainer_access_status: string;
+};
+
+function trainerRows(value: unknown): TrainerRow[] {
   if (!Array.isArray(value)) return [];
   return value
     .map((row) => {
@@ -49,12 +60,31 @@ function buildSupportTasks(payload: {
   qualiopi_certificate_pending: boolean;
   nda_or_bpf_document_pending: boolean;
   welcome_booklet_pending: boolean;
+  first_nda_year: boolean;
+  trainers: TrainerRow[];
 }) {
+  const trainerTasks = payload.trainers
+    .filter((trainer) => trainer.cv_pending && !trainer.cv_url)
+    .map((trainer, index) => {
+      const trainerName = [trainer.first_name, trainer.last_name].filter(Boolean).join(" ").trim() || `formateur ${index + 1}`;
+      return {
+        key: `trainer_cv:${trainer.id || trainer.email || index + 1}`,
+        label: `CV de ${trainerName} à fournir`,
+        status: "todo",
+      };
+    });
+
   return [
     payload.insee_document_pending ? { key: "insee", label: "Avis INSEE à fournir", status: "todo" } : null,
     payload.qualiopi_certificate_pending ? { key: "qualiopi_certificate", label: "Certificat Qualiopi à fournir", status: "todo" } : null,
-    payload.nda_or_bpf_document_pending ? { key: "nda_or_bpf", label: "Attestation NDA ou dernier BPF à fournir", status: "todo" } : null,
+    !payload.first_nda_year && payload.nda_or_bpf_document_pending
+      ? { key: "nda_or_bpf", label: "Dernier BPF à fournir", status: "todo" }
+      : null,
+    payload.first_nda_year
+      ? { key: "bpf_first_nda_year", label: "Première année de NDA : BPF non requis", status: "not_applicable" }
+      : null,
     payload.welcome_booklet_pending ? { key: "welcome_booklet", label: "Livret d'accueil à fournir", status: "todo" } : null,
+    ...trainerTasks,
   ].filter(Boolean);
 }
 
@@ -285,6 +315,8 @@ export async function PATCH(req: Request) {
   const now = new Date().toISOString();
   const setupChoice = clean(body.setup_choice);
   const qualiopiStatus = clean(body.qualiopi_status);
+  const firstNdaYear = boolValue(body.first_nda_year);
+  const rows = trainerRows(body.trainers);
 
   const payload = {
     user_id: auth.user.id,
@@ -301,11 +333,11 @@ export async function PATCH(req: Request) {
     qualiopi_status: ["yes", "no", "planned"].includes(qualiopiStatus) ? qualiopiStatus : null,
     insee_document_pending: boolValue(body.insee_document_pending),
     qualiopi_certificate_pending: boolValue(body.qualiopi_certificate_pending),
-    nda_or_bpf_document_pending: boolValue(body.nda_or_bpf_document_pending),
+    nda_or_bpf_document_pending: firstNdaYear ? false : boolValue(body.nda_or_bpf_document_pending),
     welcome_booklet_pending: boolValue(body.welcome_booklet_pending),
     insee_document_url: clean(body.insee_document_url) || null,
     qualiopi_certificate_url: clean(body.qualiopi_certificate_url) || null,
-    nda_or_bpf_document_url: clean(body.nda_or_bpf_document_url) || null,
+    nda_or_bpf_document_url: firstNdaYear ? null : clean(body.nda_or_bpf_document_url) || null,
     welcome_booklet_url: clean(body.welcome_booklet_url) || null,
     platform_contact_first_name: clean(body.platform_contact_first_name) || null,
     platform_contact_last_name: clean(body.platform_contact_last_name) || null,
@@ -317,6 +349,8 @@ export async function PATCH(req: Request) {
       qualiopi_certificate_pending: boolValue(body.qualiopi_certificate_pending),
       nda_or_bpf_document_pending: boolValue(body.nda_or_bpf_document_pending),
       welcome_booklet_pending: boolValue(body.welcome_booklet_pending),
+      first_nda_year: firstNdaYear,
+      trainers: rows,
     }),
     completed_at: status === "completed" ? now : null,
   };
@@ -330,7 +364,6 @@ export async function PATCH(req: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   if (Array.isArray(body.trainers)) {
-    const rows = trainerRows(body.trainers);
     const existingIds = rows.map((row) => row.id).filter(Boolean);
 
     if (existingIds.length > 0) {
