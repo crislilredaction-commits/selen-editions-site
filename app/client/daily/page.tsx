@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import ClientSupportBar from "@/components/ClientSupportBar";
@@ -8,6 +8,15 @@ import { assistanceFetch, withAssistanceToken } from "@/components/AgentAssistan
 import { createSupabaseBrowserClient } from "@/app/lib/supabase/client";
 
 type DailyStatus = "draft" | "review" | "validated" | "correction_requested" | "archived";
+type PositioningQuestion = {
+  id: string;
+  label: string;
+  help_text: string;
+  required: boolean;
+  type: "single_choice" | "multiple_choice" | "free_text" | "scale_1_5";
+  options: string[];
+  order: number;
+};
 type Formation = {
   id: string;
   title: string;
@@ -28,28 +37,6 @@ type Formation = {
   positioning_questions?: PositioningQuestion[] | null;
   [key: string]: string | number | boolean | PositioningQuestion[] | null | undefined;
 };
-type DailySession = {
-  id: string;
-  formation_id: string;
-  modality: string;
-  status: string;
-  start_date?: string | null;
-  end_date?: string | null;
-  schedule_blocks?: ScheduleBlock[] | null;
-  companies?: Company[] | null;
-  beneficiaries?: Participant[] | null;
-  individual_beneficiaries?: Participant[] | null;
-  registration_token?: string | null;
-  registration_status?: string | null;
-  registration_summary?: Record<string, unknown> | null;
-  adaptation_needed?: boolean | null;
-  daily_registration_recipients?: RegistrationRecipient[] | null;
-  daily_conventions?: DailyConvention[] | null;
-  daily_convocations?: DailyConvocation[] | null;
-  daily_portal_access_tokens?: DailyPortalAccess[] | null;
-  daily_formations?: Pick<Formation, "id" | "title" | "status" | "version"> | null;
-  [key: string]: string | number | boolean | ScheduleBlock[] | Company[] | Participant[] | RegistrationRecipient[] | DailyConvention[] | DailyConvocation[] | DailyPortalAccess[] | Pick<Formation, "id" | "title" | "status" | "version"> | Record<string, unknown> | null | undefined;
-};
 type ScheduleBlock = { date: string; start: string; end: string; note: string };
 type Participant = { first_name: string; last_name: string; email: string; phone?: string };
 type Company = { name: string; address: string; siret: string; email: string; participants: Participant[] };
@@ -62,6 +49,13 @@ type RegistrationRecipient = {
   sent_at: string | null;
   last_error: string | null;
 };
+type DailyConventionSignature = {
+  id: string;
+  signatory_type: string;
+  signatory_name: string | null;
+  status: string | null;
+  signed_at: string | null;
+};
 type DailyConvention = {
   id: string;
   recipient_type: string;
@@ -73,13 +67,6 @@ type DailyConvention = {
   status: string | null;
   generated_at: string | null;
   daily_convention_signatures?: DailyConventionSignature[] | null;
-};
-type DailyConventionSignature = {
-  id: string;
-  signatory_type: string;
-  signatory_name: string | null;
-  status: string | null;
-  signed_at: string | null;
 };
 type DailyPortalAccess = {
   id: string;
@@ -102,24 +89,32 @@ type DailyConvocation = {
   sent_at: string | null;
   generated_at: string | null;
 };
-type PositioningQuestion = {
+type DailySession = {
   id: string;
-  label: string;
-  help_text: string;
-  required: boolean;
-  type: "single_choice" | "multiple_choice" | "free_text" | "scale_1_5";
-  options: string[];
-  order: number;
-};
-type DailyTrainer = {
-  id: string;
-  first_name: string;
-  last_name: string;
-  email?: string | null;
+  formation_id: string;
+  modality: string;
+  status: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  schedule_blocks?: ScheduleBlock[] | null;
+  companies?: Company[] | null;
+  beneficiaries?: Participant[] | null;
+  individual_beneficiaries?: Participant[] | null;
+  registration_token?: string | null;
+  registration_status?: string | null;
+  adaptation_needed?: boolean | null;
+  daily_registration_recipients?: RegistrationRecipient[] | null;
+  daily_conventions?: DailyConvention[] | null;
+  daily_convocations?: DailyConvocation[] | null;
+  daily_portal_access_tokens?: DailyPortalAccess[] | null;
+  daily_formations?: Pick<Formation, "id" | "title" | "status" | "version"> | null;
+  [key: string]: unknown;
 };
 type FormValue = string | number | boolean | null | undefined;
 type FormState = Record<string, FormValue | PositioningQuestion[] | string[]>;
 type SaveStatus = "idle" | "saving" | "saved" | "error";
+
+const DETAILED_PROGRAM_EXAMPLE = `Module 1\nDurée :\nChapitre 1 :\nChapitre 2 :\n\nModule 2\nDurée :\nChapitre 1 :\nChapitre 2 :`;
 
 const emptyFormation = {
   title: "",
@@ -151,19 +146,6 @@ const emptyFormation = {
   positioning_mode: "off_platform",
   positioning_questions: [] as PositioningQuestion[],
   status: "draft",
-};
-
-const emptySession = {
-  formation_id: "",
-  start_date: "",
-  end_date: "",
-  modality: "presentiel",
-  distance_mode: "synchrone",
-  blended_elearning_periods: "",
-  blended_in_person_days: "",
-  location_address: "",
-  remote_url: "",
-  status: "ready",
 };
 
 function formatStatus(status?: string) {
@@ -230,24 +212,7 @@ function sessionTimeline(session: DailySession) {
 
 function help(text: string) {
   return (
-    <span
-      title={text}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        width: 18,
-        height: 18,
-        borderRadius: "50%",
-        border: "1px solid var(--sepia-mid)",
-        color: "var(--rust)",
-        fontSize: 12,
-        fontWeight: 800,
-        marginLeft: 6,
-      }}
-    >
-      ?
-    </span>
+    <span title={text} style={s.helpBubble}>?</span>
   );
 }
 
@@ -272,27 +237,9 @@ export default function ClientDailyPage() {
   const [email, setEmail] = useState<string | null>(null);
   const [formations, setFormations] = useState<Formation[]>([]);
   const [sessions, setSessions] = useState<DailySession[]>([]);
-  const [dailyTrainers, setDailyTrainers] = useState<DailyTrainer[]>([]);
   const [formationForm, setFormationForm] = useState<FormState>(emptyFormation);
   const [editingFormationId, setEditingFormationId] = useState("");
-  const [sessionForm, setSessionForm] = useState<FormState>(emptySession);
-  const [editingSessionId, setEditingSessionId] = useState("");
   const [lastCreatedFormationId, setLastCreatedFormationId] = useState("");
-  const [scheduleBlocks, setScheduleBlocks] = useState<ScheduleBlock[]>([
-    { date: "", start: "", end: "", note: "" },
-  ]);
-  const [companies, setCompanies] = useState<Company[]>([
-    { name: "", address: "", siret: "", email: "", participants: [{ first_name: "", last_name: "", email: "" }] },
-  ]);
-  const [beneficiaries, setBeneficiaries] = useState<Participant[]>([
-    { first_name: "", last_name: "", email: "", phone: "" },
-  ]);
-  const [individualBeneficiaries, setIndividualBeneficiaries] = useState<Participant[]>([
-    { first_name: "", last_name: "", email: "", phone: "" },
-  ]);
-  const [selectedTrainerIds, setSelectedTrainerIds] = useState<string[]>([]);
-
-  const activeFormations = formations.filter((formation) => formation.status !== "archived");
 
   const loadDaily = useCallback(async () => {
     const [formationRes, sessionRes] = await Promise.all([
@@ -309,7 +256,6 @@ export default function ClientDailyPage() {
 
   useEffect(() => {
     let cancelled = false;
-
     async function boot() {
       try {
         const { data, error: authError } = await supabase.auth.getUser();
@@ -326,75 +272,37 @@ export default function ClientDailyPage() {
             setFormationForm({ ...emptyFormation, ...JSON.parse(draft), contact_email: userEmail ?? "" });
             setFormationAutosaveStatus("saved");
           } else {
-            setFormationForm((current) => ({
-              ...current,
-              contact_email: userEmail ?? "",
-            }));
+            setFormationForm((current) => ({ ...current, contact_email: userEmail ?? "" }));
           }
         } catch {
           setFormationAutosaveStatus("error");
-          setFormationForm((current) => ({
-            ...current,
-            contact_email: userEmail ?? "",
-          }));
+          setFormationForm((current) => ({ ...current, contact_email: userEmail ?? "" }));
         }
 
-        const onboardingRes = await assistanceFetch("/api/client/daily/onboarding", {
-          cache: "no-store",
-        });
+        const onboardingRes = await assistanceFetch("/api/client/daily/onboarding", { cache: "no-store" });
         const onboardingData = await onboardingRes.json().catch(() => null);
-
         if (!onboardingRes.ok) {
-          console.warn("Selen Daily : accès ou onboarding indisponible.", {
-            status: onboardingRes.status,
-            error: onboardingData?.error,
-          });
           if (!cancelled) {
-            setOpenError(
-              onboardingData?.error ??
-                "Impossible d'ouvrir Selen Daily. Revenez au bureau Selen ou contactez Selen.",
-            );
+            setOpenError(onboardingData?.error ?? "Impossible d'ouvrir Selen Daily. Revenez au bureau Selen ou contactez Selen.");
             setLoading(false);
           }
           return;
         }
-
         if (onboardingData?.onboarding?.status !== "completed") {
-          console.info("Selen Daily : onboarding incomplet, redirection.", {
-            status: onboardingData?.onboarding?.status ?? "absent",
-          });
           router.replace("/client/daily/onboarding");
           return;
         }
-
-        console.info("Selen Daily : onboarding terminé, ouverture du dashboard.");
-
-        if (!cancelled) {
-          setDailyTrainers((onboardingData?.trainers ?? []) as DailyTrainer[]);
-        }
-
         await loadDaily();
-        if (!cancelled) {
-          setLoading(false);
-        }
+        if (!cancelled) setLoading(false);
       } catch (bootError) {
-        console.error("Selen Daily : chargement impossible.", bootError);
         if (!cancelled) {
-          setOpenError(
-            bootError instanceof Error
-              ? bootError.message
-              : "Impossible d'ouvrir Selen Daily pour le moment.",
-          );
+          setOpenError(bootError instanceof Error ? bootError.message : "Impossible d'ouvrir Selen Daily pour le moment.");
           setLoading(false);
         }
       }
     }
-
     void boot();
-
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [loadDaily, router, supabase]);
 
   useEffect(() => {
@@ -411,16 +319,17 @@ export default function ClientDailyPage() {
     return () => window.clearTimeout(timer);
   }, [formationForm, loading]);
 
+  const lastCreatedFormation = useMemo(
+    () => formations.find((formation) => formation.id === lastCreatedFormationId) ?? null,
+    [formations, lastCreatedFormationId],
+  );
+
   function updateFormation(key: string, value: FormValue | string[]) {
     setFormationForm((current) => ({ ...current, [key]: value }));
   }
 
   function updatePositioningQuestions(questions: PositioningQuestion[]) {
     setFormationForm((current) => ({ ...current, positioning_questions: questions }));
-  }
-
-  function updateSession(key: string, value: FormValue) {
-    setSessionForm((current) => ({ ...current, [key]: value }));
   }
 
   async function submitFormation(event: React.FormEvent<HTMLFormElement>) {
@@ -431,10 +340,7 @@ export default function ClientDailyPage() {
     const res = await assistanceFetch("/api/client/daily/formations", {
       method: editingFormationId ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...formationForm,
-        id: editingFormationId || undefined,
-      }),
+      body: JSON.stringify({ ...formationForm, id: editingFormationId || undefined }),
     });
     const data = await res.json().catch(() => null);
     setSaving(false);
@@ -443,18 +349,8 @@ export default function ClientDailyPage() {
       return;
     }
     const savedFormation = data?.formation as Formation | undefined;
-    setMessage(
-      data?.versioned
-        ? "Nouvelle version bien reçue. Selen va la relire avant validation."
-        : "Formation enregistrée. Vous pouvez poursuivre tranquillement.",
-    );
-    if (!editingFormationId && savedFormation?.id) {
-      setLastCreatedFormationId(savedFormation.id);
-      setSessionForm((current) => ({
-        ...current,
-        formation_id: savedFormation.id,
-      }));
-    }
+    setMessage(data?.versioned ? "Nouvelle version bien reçue. Selen va la relire avant validation." : "Formation enregistrée.");
+    if (!editingFormationId && savedFormation?.id) setLastCreatedFormationId(savedFormation.id);
     window.localStorage.removeItem("selen-daily-formation-draft");
     setFormationAutosaveStatus("idle");
     setFormationForm({ ...emptyFormation, contact_email: email ?? "" });
@@ -480,6 +376,7 @@ export default function ClientDailyPage() {
 
   function editFormation(formation: Formation) {
     setEditingFormationId(formation.id);
+    setLastCreatedFormationId("");
     setFormationForm({
       ...emptyFormation,
       ...formation,
@@ -490,89 +387,6 @@ export default function ClientDailyPage() {
       positioning_mode: formation.positioning_mode ?? "off_platform",
       positioning_questions: Array.isArray(formation.positioning_questions) ? formation.positioning_questions : [],
     });
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-
-  function normalizeRows<T extends Record<string, string>>(rows: T[], requiredKey: keyof T) {
-    return rows.filter((row) => String(row[requiredKey] ?? "").trim());
-  }
-
-  function normalizeParticipants(rows: Participant[]) {
-    return rows.filter((row) => row.first_name.trim() || row.last_name.trim() || row.email.trim());
-  }
-
-  function normalizeCompanies(rows: Company[]) {
-    return rows
-      .map((company) => ({
-        ...company,
-        participants: normalizeParticipants(company.participants ?? []),
-      }))
-      .filter(
-        (company) =>
-          company.name.trim() ||
-          company.address.trim() ||
-          company.siret.trim() ||
-          company.participants.length > 0,
-      );
-  }
-
-  async function submitSession(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSaving(true);
-    setError("");
-    setMessage("");
-    const res = await assistanceFetch("/api/client/daily/sessions", {
-      method: editingSessionId ? "PATCH" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...sessionForm,
-        id: editingSessionId || undefined,
-        schedule_blocks: normalizeRows(scheduleBlocks, "date"),
-        companies: normalizeCompanies(companies),
-        beneficiaries: normalizeParticipants(beneficiaries),
-        individual_beneficiaries: normalizeParticipants(individualBeneficiaries),
-        trainer_ids: selectedTrainerIds,
-      }),
-    });
-    const data = await res.json().catch(() => null);
-    setSaving(false);
-    if (!res.ok) {
-      setError(data?.error ?? "La session n'a pas pu être enregistrée. Vous pouvez réessayer dans un instant.");
-      return;
-    }
-    setMessage(data?.validationWarning ?? "Session enregistrée. Selen peut maintenant préparer la suite.");
-    setSessionForm(emptySession);
-    setEditingSessionId("");
-    setScheduleBlocks([{ date: "", start: "", end: "", note: "" }]);
-    setCompanies([{ name: "", address: "", siret: "", email: "", participants: [{ first_name: "", last_name: "", email: "" }] }]);
-    setBeneficiaries([{ first_name: "", last_name: "", email: "", phone: "" }]);
-    setIndividualBeneficiaries([{ first_name: "", last_name: "", email: "", phone: "" }]);
-    setSelectedTrainerIds([]);
-    await loadDaily();
-  }
-
-  function editSession(session: DailySession) {
-    setEditingSessionId(session.id);
-    setSessionForm({
-      ...emptySession,
-      formation_id: session.formation_id,
-      start_date: String(session.start_date ?? ""),
-      end_date: String(session.end_date ?? ""),
-      modality: session.modality,
-      distance_mode: String(session.distance_mode ?? "synchrone"),
-      blended_elearning_periods: String(session.blended_elearning_periods ?? ""),
-      blended_in_person_days: String(session.blended_in_person_days ?? ""),
-      location_address: String(session.location_address ?? ""),
-      remote_url: String(session.remote_url ?? ""),
-      status: session.status,
-    });
-    setScheduleBlocks(session.schedule_blocks?.length ? session.schedule_blocks : [{ date: "", start: "", end: "", note: "" }]);
-    setCompanies(session.companies?.length ? session.companies : [{ name: "", address: "", siret: "", email: "", participants: [{ first_name: "", last_name: "", email: "" }] }]);
-    setBeneficiaries(session.beneficiaries?.length ? session.beneficiaries : [{ first_name: "", last_name: "", email: "" }]);
-    setIndividualBeneficiaries(
-      session.individual_beneficiaries?.length ? session.individual_beneficiaries : [{ first_name: "", last_name: "", email: "" }],
-    );
-    setSelectedTrainerIds(Array.isArray(session.trainer_ids) ? session.trainer_ids.map(String) : []);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -597,31 +411,14 @@ export default function ClientDailyPage() {
     return `${window.location.origin}/daily-inscription/${token}`;
   }
 
-  function getFormationRegistrationUrl(token?: string | null) {
-    return getRegistrationUrl(token);
-  }
-
   async function copyRegistrationLink(token?: string | null) {
     const url = getRegistrationUrl(token);
     if (!url) return;
     await navigator.clipboard.writeText(url);
-    setMessage("Lien d'inscription copié. Vous pouvez le transmettre aux personnes concernées.");
+    setMessage("Lien d'inscription copié.");
   }
 
-  async function copyFormationRegistrationLink(token?: string | null) {
-    const url = getFormationRegistrationUrl(token);
-    if (!url) return;
-    await navigator.clipboard.writeText(url);
-    setMessage("Lien d'inscription spontané copié. Vous pouvez le partager sur votre site, vos réseaux ou par email.");
-  }
-
-  if (loading) {
-    return (
-      <main className="gazette-paper" style={s.page}>
-        <p style={s.muted}>Ouverture de Selen Daily...</p>
-      </main>
-    );
-  }
+  if (loading) return <main className="gazette-paper" style={s.page}><p style={s.muted}>Ouverture de Selen Daily...</p></main>;
 
   if (openError) {
     return (
@@ -633,13 +430,6 @@ export default function ClientDailyPage() {
             <p className="gazette-label">Selen Daily</p>
             <h1 style={s.cardTitle}>Ouverture impossible</h1>
             <p style={s.error}>{openError}</p>
-            <button
-              type="button"
-              className="btn-ink"
-              onClick={() => router.push("/client")}
-            >
-              <span>Retour au bureau Selen</span>
-            </button>
           </section>
         </div>
       </main>
@@ -657,270 +447,123 @@ export default function ClientDailyPage() {
         </div>
 
         <p style={formationAutosaveStatus === "error" ? s.warning : s.muted}>
-          {formationAutosaveStatus === "saving"
-            ? "Enregistrement du brouillon..."
-            : formationAutosaveStatus === "saved"
-              ? "Brouillon enregistre"
-              : formationAutosaveStatus === "error"
-                ? "Le brouillon n'a pas pu être enregistré"
-                : ""}
+          {formationAutosaveStatus === "saving" ? "Enregistrement du brouillon..." : formationAutosaveStatus === "saved" ? "Brouillon enregistré" : formationAutosaveStatus === "error" ? "Le brouillon n'a pas pu être enregistré" : ""}
         </p>
 
-        <section style={s.grid}>
-          <form onSubmit={submitFormation} style={s.card}>
-            <p className="gazette-label">Formation Daily</p>
-            <h2 style={s.cardTitle}>{editingFormationId ? "Modifier la formation" : "Créer une formation"}</h2>
+        <form onSubmit={submitFormation} style={s.card}>
+          <p className="gazette-label">Formation Daily</p>
+          <h2 style={s.cardTitle}>{editingFormationId ? "Modifier la formation" : "Créer une formation"}</h2>
 
-            <Input label="Intitulé de la formation" value={formationForm.title} onChange={(value) => updateFormation("title", value)} required />
-            <Textarea label="Objectif principal" value={formationForm.global_objective} onChange={(value) => updateFormation("global_objective", value)} required />
-            <p style={s.helpText}>Commencez par un verbe d&apos;action à l&apos;infinitif décrivant ce que le participant saura faire à l&apos;issue de la formation : maîtriser, identifier, appliquer, réaliser, utiliser, analyser ou acquérir. Évitez « savoir » et « comprendre », trop difficiles à évaluer.</p>
-            <div style={s.dynamic}>
-              <div style={s.dynamicHead}><strong>Objectifs pédagogiques</strong><button type="button" className="btn-ghost" onClick={() => updateFormation("learning_objectives", [...((formationForm.learning_objectives as string[]) ?? []), ""])}><span>Ajouter un objectif</span></button></div>
-              {((formationForm.learning_objectives as string[]) ?? [""]).map((objective, index) => (
-                <div key={index} style={s.objectiveRow}>
-                  <Input label={`Objectif ${index + 1}`} value={objective} onChange={(value) => updateFormation("learning_objectives", ((formationForm.learning_objectives as string[]) ?? []).map((item, itemIndex) => itemIndex === index ? value : item))} required={index === 0} />
-                  {((formationForm.learning_objectives as string[]) ?? []).length > 1 ? <button type="button" className="btn-ghost" onClick={() => updateFormation("learning_objectives", ((formationForm.learning_objectives as string[]) ?? []).filter((_, itemIndex) => itemIndex !== index))}><span>Retirer</span></button> : null}
-                </div>
-              ))}
+          <Input label="Intitulé de la formation" value={formationForm.title} onChange={(value) => updateFormation("title", value)} required />
+          <Textarea label="Objectif principal" value={formationForm.global_objective} onChange={(value) => updateFormation("global_objective", value)} required />
+          <p style={s.helpText}>Commencez par un verbe d&apos;action à l&apos;infinitif décrivant ce que le participant saura faire à l&apos;issue de la formation.</p>
+
+          <div style={s.dynamic}>
+            <div style={s.dynamicHead}>
+              <strong>Objectifs pédagogiques</strong>
+              <button type="button" className="btn-ghost" onClick={() => updateFormation("learning_objectives", [...((formationForm.learning_objectives as string[]) ?? []), ""])}><span>Ajouter un objectif</span></button>
             </div>
-            <Textarea label="Public visé" value={formationForm.target_audience} onChange={(value) => updateFormation("target_audience", value)} required />
-            <Textarea label="Prérequis" value={formationForm.prerequisites} onChange={(value) => updateFormation("prerequisites", value)} required />
-            <p style={s.helpText}>Indiquez uniquement les conditions réellement nécessaires. Si votre organisme est certifié Qualiopi, chaque prérequis déclaré devra être vérifié pour chaque apprenant et cette vérification devra pouvoir être prouvée.</p>
-
-            <div style={s.twoCols}>
-              <Input label="Durée en heures" type="number" value={formationForm.duration_hours} onChange={(value) => updateFormation("duration_hours", value)} required />
-              <Input label="Durée en jours" type="number" value={formationForm.duration_days} onChange={(value) => updateFormation("duration_days", value)} required />
-            </div>
-
-            {fieldLabel("Modalités pédagogiques")}
-            <select style={s.input} value={String(formationForm.modality ?? "")} onChange={(event) => updateFormation("modality", event.target.value)}>
-              <option value="presentiel">Présentiel</option>
-              <option value="distanciel">Distanciel</option>
-              <option value="mixte">Mixte</option>
-            </select>
-            <p style={s.helpText}>Indiquez comment la formation se déroule : en présentiel, à distance ou avec un mélange des deux.</p>
-            <Input label={"Délais d'accès"} value={formationForm.access_delays} onChange={(value) => updateFormation("access_delays", value)} required />
-            <p style={s.helpText}>Indiquez le délai habituel entre la demande d&apos;inscription et l&apos;entrée en formation.</p>
-            <Input label="Tarif TTC" value={formationForm.price} onChange={(value) => updateFormation("price", value)} required />
-            <FileUploadField label="Programme de formation (Word ou PDF)" kind="training_program_source" value={String(formationForm.detailed_program_document_url ?? "")} onUploaded={(url) => updateFormation("detailed_program_document_url", url)} accept=".doc,.docx,.pdf" />
-            <a href="/templates/modele-programme-formation-selen.docx" download style={s.inlineLink}>Télécharger la trame de programme Selen</a>
-            <Textarea label="Moyens pédagogiques et techniques mobilisés" value={formationForm.pedagogical_resources} onChange={(value) => updateFormation("pedagogical_resources", value)} required />
-            <p style={s.helpText}>Décrivez les supports, outils, matériels et méthodes réellement utilisés : supports de cours, vidéoprojecteur, ordinateur, visioconférence, logiciels, matériel professionnel, exercices, études de cas, mises en situation, démonstrations et travaux individuels ou collectifs. Précisez comment théorie et pratique s&apos;alternent.</p>
-            <Textarea
-              label={"Modalités d'évaluation des acquis"}
-              value={formationForm.evaluation_methods}
-              onChange={(value) => updateFormation("evaluation_methods", value)}
-              required
-            />
-            <p style={s.helpText}>Expliquez comment les acquis sont vérifiés : questionnaire, mise en situation, exercice pratique, étude de cas...</p>
-
-            <PositioningQuestionnaireEditor
-              mode={String(formationForm.positioning_mode ?? "off_platform")}
-              questions={Array.isArray(formationForm.positioning_questions) ? formationForm.positioning_questions.filter((question): question is PositioningQuestion => typeof question === "object" && question !== null && "type" in question) : []}
-              onModeChange={(value) => updateFormation("positioning_mode", value)}
-              onQuestionsChange={updatePositioningQuestions}
-            />
-            <p style={s.helpText}>Le positionnement est un questionnaire de connaissances réalisé avant la formation pour évaluer le niveau de départ et identifier les besoins d&apos;adaptation. Il est obligatoire pour un organisme certifié Qualiopi.</p>
-            <FileUploadField label="Questionnaire de positionnement existant (Word ou PDF), facultatif" kind="positioning_questionnaire_source" value={String(formationForm.positioning_document_url ?? "")} onUploaded={(url) => updateFormation("positioning_document_url", url)} accept=".doc,.docx,.pdf" />
-
-            <label style={s.check}>
-              <input
-                type="checkbox"
-                checked={Boolean(formationForm.results_pending)}
-                onChange={(event) => updateFormation("results_pending", event.target.checked)}
-              />
-              {"Nouvelle formation / pas encore d'indicateurs de résultats"}
-              {help("Les indicateurs de résultats pourront être complétés après les premières sessions.")}
-            </label>
-
-            {!formationForm.results_pending ? (
-              <div style={s.threeCols}>
-                <Input label="Nombre de bénéficiaires" type="number" value={formationForm.result_beneficiary_count} onChange={(value) => updateFormation("result_beneficiary_count", value)} />
-                <Input label="Taux de satisfaction (%)" type="number" value={formationForm.result_satisfaction_rate} onChange={(value) => updateFormation("result_satisfaction_rate", value)} />
-                <Input label="Taux de réussite (%)" type="number" value={formationForm.result_success_rate} onChange={(value) => updateFormation("result_success_rate", value)} />
+            {((formationForm.learning_objectives as string[]) ?? [""]).map((objective, index) => (
+              <div key={index} style={s.objectiveRow}>
+                <Input label={`Objectif ${index + 1}`} value={objective} onChange={(value) => updateFormation("learning_objectives", ((formationForm.learning_objectives as string[]) ?? []).map((item, itemIndex) => itemIndex === index ? value : item))} required={index === 0} />
+                {((formationForm.learning_objectives as string[]) ?? []).length > 1 ? <button type="button" className="btn-ghost" onClick={() => updateFormation("learning_objectives", ((formationForm.learning_objectives as string[]) ?? []).filter((_, itemIndex) => itemIndex !== index))}><span>Retirer</span></button> : null}
               </div>
-            ) : null}
+            ))}
+          </div>
 
+          <Textarea label="Public visé" value={formationForm.target_audience} onChange={(value) => updateFormation("target_audience", value)} required />
+          <Textarea label="Prérequis" value={formationForm.prerequisites} onChange={(value) => updateFormation("prerequisites", value)} required />
+          <p style={s.helpText}>Indiquez uniquement les conditions réellement nécessaires. Chaque prérequis déclaré doit pouvoir être vérifié.</p>
+
+          <div style={s.twoCols}>
+            <Input label="Durée en heures" type="number" value={formationForm.duration_hours} onChange={(value) => updateFormation("duration_hours", value)} required />
+            <Input label="Durée en jours" type="number" value={formationForm.duration_days} onChange={(value) => updateFormation("duration_days", value)} required />
+          </div>
+
+          {fieldLabel("Modalités pédagogiques")}
+          <select style={s.input} value={String(formationForm.modality ?? "")} onChange={(event) => updateFormation("modality", event.target.value)}>
+            <option value="presentiel">Présentiel</option>
+            <option value="distanciel">Distanciel</option>
+            <option value="mixte">Mixte</option>
+          </select>
+          <Input label="Délais d'accès" value={formationForm.access_delays} onChange={(value) => updateFormation("access_delays", value)} required />
+          <Input label="Tarif TTC" value={formationForm.price} onChange={(value) => updateFormation("price", value)} required />
+
+          <Textarea
+            label="Contenu détaillé de la formation"
+            value={formationForm.detailed_program}
+            onChange={(value) => updateFormation("detailed_program", value)}
+            required
+            rows={10}
+            placeholder={DETAILED_PROGRAM_EXAMPLE}
+          />
+          <p style={s.helpText}>Présentez le contenu sous la forme Module, Durée, puis Chapitres. Ajoutez autant de modules et de chapitres que nécessaire.</p>
+
+          <FileUploadField label="Programme de formation (Word ou PDF)" kind="training_program_source" value={String(formationForm.detailed_program_document_url ?? "")} onUploaded={(url) => updateFormation("detailed_program_document_url", url)} accept=".doc,.docx,.pdf" />
+          <a href="/templates/modele-programme-formation-selen.docx" download style={s.downloadLink}><span aria-hidden="true">⇩</span> Télécharger la trame de programme Selen</a>
+
+          <Textarea label="Moyens pédagogiques et techniques mobilisés" value={formationForm.pedagogical_resources} onChange={(value) => updateFormation("pedagogical_resources", value)} required />
+          <Textarea label="Modalités d'évaluation des acquis" value={formationForm.evaluation_methods} onChange={(value) => updateFormation("evaluation_methods", value)} required />
+
+          <PositioningQuestionnaireEditor
+            mode={String(formationForm.positioning_mode ?? "off_platform")}
+            questions={Array.isArray(formationForm.positioning_questions) ? formationForm.positioning_questions.filter((question): question is PositioningQuestion => typeof question === "object" && question !== null && "type" in question) : []}
+            onModeChange={(value) => updateFormation("positioning_mode", value)}
+            onQuestionsChange={updatePositioningQuestions}
+          />
+          <p style={s.helpText}>Le positionnement permet d&apos;évaluer le niveau de départ et d&apos;identifier les besoins d&apos;adaptation.</p>
+          <FileUploadField label="Questionnaire de positionnement existant (Word ou PDF), facultatif" kind="positioning_questionnaire_source" value={String(formationForm.positioning_document_url ?? "")} onUploaded={(url) => updateFormation("positioning_document_url", url)} accept=".doc,.docx,.pdf" />
+
+          <label style={s.check}>
+            <input type="checkbox" checked={Boolean(formationForm.results_pending)} onChange={(event) => updateFormation("results_pending", event.target.checked)} />
+            Nouvelle formation / pas encore d&apos;indicateurs de résultats
+            {help("Les indicateurs de résultats pourront être complétés après les premières sessions.")}
+          </label>
+
+          {!formationForm.results_pending ? (
             <div style={s.threeCols}>
-              <Input label="Téléphone" value={formationForm.contact_phone} onChange={(value) => updateFormation("contact_phone", value)} required />
-              <Input label="Email" type="email" value={formationForm.contact_email} onChange={(value) => updateFormation("contact_email", value)} required />
-              <Input label="Site internet" value={formationForm.contact_website} onChange={(value) => updateFormation("contact_website", value)} />
+              <Input label="Nombre de bénéficiaires" type="number" value={formationForm.result_beneficiary_count} onChange={(value) => updateFormation("result_beneficiary_count", value)} />
+              <Input label="Taux de satisfaction (%)" type="number" value={formationForm.result_satisfaction_rate} onChange={(value) => updateFormation("result_satisfaction_rate", value)} />
+              <Input label="Taux de réussite (%)" type="number" value={formationForm.result_success_rate} onChange={(value) => updateFormation("result_success_rate", value)} />
             </div>
-            <p style={s.helpText}>Indiquez les coordonnées de l&apos;organisme de formation que les apprenants peuvent utiliser pour vous contacter. Elles apparaîtront sur les documents générés par Selen.</p>
+          ) : null}
 
-            <div style={s.actions}>
-              <div style={s.actionMessages}>
-                {message ? <p style={s.notice}>{message}</p> : null}
-                {error ? <p style={s.error}>{error}</p> : null}
-                {lastCreatedFormationId ? (
-                  <div style={s.linkBox}>
-                    <strong>Formation créée</strong>
-                    <span>Vous pouvez créer une session maintenant ou revenir plus tard depuis le dashboard Daily.</span>
-                    <div style={s.actions}>
-                      <button type="button" className="btn-ghost" onClick={() => setLastCreatedFormationId("")}>
-                        <span>Accéder au dashboard Daily</span>
-                      </button>
-                      <Link href="/client/daily/sessions" className="btn-ink"><span>Créer une session</span></Link>
-                      <button type="button" className="btn-ghost" onClick={() => setLastCreatedFormationId("")}>
-                        <span>Créer plus tard</span>
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
+          <div style={s.threeCols}>
+            <Input label="Téléphone" value={formationForm.contact_phone} onChange={(value) => updateFormation("contact_phone", value)} required />
+            <Input label="Email" type="email" value={formationForm.contact_email} onChange={(value) => updateFormation("contact_email", value)} required />
+            <Input label="Site internet" value={formationForm.contact_website} onChange={(value) => updateFormation("contact_website", value)} />
+          </div>
+          <p style={s.helpText}>Ces coordonnées sont celles de l&apos;organisme de formation et seront visibles par les personnes qui consultent le dossier d&apos;inscription.</p>
+
+          {lastCreatedFormation ? (
+            <div style={s.successBox}>
+              <strong>Formation créée : {lastCreatedFormation.title}</strong>
+              {lastCreatedFormation.public_registration_token ? (
+                <>
+                  <span style={s.label}>Lien d&apos;inscription</span>
+                  <input style={s.input} readOnly value={getRegistrationUrl(lastCreatedFormation.public_registration_token)} />
+                  <button type="button" className="btn-ghost" onClick={() => void copyRegistrationLink(lastCreatedFormation.public_registration_token)}><span>Copier le lien</span></button>
+                </>
+              ) : <span>Le lien d&apos;inscription est en cours de préparation.</span>}
+              <div style={s.actions}>
+                <Link href={`/client/daily/sessions?formation=${lastCreatedFormation.id}`} className="btn-ink"><span>Créer une session</span></Link>
+                <button type="button" className="btn-ghost" onClick={() => { setLastCreatedFormationId(""); window.scrollTo({ top: 0, behavior: "smooth" }); }}><span>Créer une autre formation</span></button>
+                <Link href="/client/daily" className="btn-ghost"><span>Créer la session plus tard</span></Link>
               </div>
-              <button className="btn-ink" type="submit" disabled={saving}>
-                <span>{saving ? "Enregistrement..." : editingFormationId ? "Enregistrer la modification" : "Créer la formation"}</span>
-              </button>
-              {editingFormationId ? (
-                <button type="button" className="btn-ghost" onClick={() => { setEditingFormationId(""); setFormationForm({ ...emptyFormation, contact_email: email ?? "" }); }}>
-                  <span>Annuler</span>
-                </button>
-              ) : null}
             </div>
-          </form>
+          ) : null}
 
-          {editingSessionId ? (
-          <form onSubmit={submitSession} style={s.card}>
-            <p className="gazette-label">Session associée</p>
-            <h2 style={s.cardTitle}>{editingSessionId ? "Modifier la session" : "Créer une session"}</h2>
-
-            {fieldLabel("Formation")}
-            <select style={s.input} value={String(sessionForm.formation_id ?? "")} onChange={(event) => updateSession("formation_id", event.target.value)} required>
-              <option value="">Sélectionner une formation</option>
-              {activeFormations.map((formation) => (
-                <option key={formation.id} value={formation.id}>
-                  {formation.title} - {formatStatus(formation.status)}
-                </option>
-              ))}
-            </select>
-
-            <div style={s.twoCols}>
-              <Input label="Date de début" type="date" value={sessionForm.start_date} onChange={(value) => updateSession("start_date", value)} required />
-              <Input label="Date de fin" type="date" value={sessionForm.end_date} onChange={(value) => updateSession("end_date", value)} required />
+          <div style={s.actions}>
+            <div style={s.actionMessages}>
+              {message ? <p style={s.notice}>{message}</p> : null}
+              {error ? <p style={s.error}>{error}</p> : null}
             </div>
-
-            {sessionForm.formation_id && activeFormations.find((formation) => formation.id === sessionForm.formation_id)?.status !== "validated" ? (
-              <p style={s.notice}>
-                {"La session est prête à accueillir les inscriptions. Les documents officiels partiront quand le programme, le positionnement et l'évaluation auront été validés."}
-              </p>
-            ) : null}
-
-            {fieldLabel("Modalité", "Blended learning / mixte : alternance de temps à distance et de jours en présentiel.")}
-            <select style={s.input} value={String(sessionForm.modality ?? "")} onChange={(event) => updateSession("modality", event.target.value)}>
-              <option value="presentiel">Présentiel</option>
-              <option value="distanciel">Distanciel</option>
-              <option value="mixte">Blended learning / mixte</option>
-            </select>
-
-            {sessionForm.modality === "distanciel" ? (
-              <>
-                {fieldLabel("Organisation à distance", "À distance en direct = visio avec horaires. À distance à son rythme = e-learning asynchrone.")}
-                <select style={s.input} value={String(sessionForm.distance_mode ?? "")} onChange={(event) => updateSession("distance_mode", event.target.value)}>
-                  <option value="synchrone">À distance en direct</option>
-                  <option value="asynchrone">À distance à son rythme</option>
-                </select>
-              </>
-            ) : null}
-
-            {sessionForm.modality === "mixte" ? (
-              <>
-                <Textarea label="Périodes en e-learning" value={sessionForm.blended_elearning_periods} onChange={(value) => updateSession("blended_elearning_periods", value)} />
-                <Textarea label="Jours en présentiel" value={sessionForm.blended_in_person_days} onChange={(value) => updateSession("blended_in_person_days", value)} />
-              </>
-            ) : null}
-
-            <DynamicRows
-              title="Dates et horaires"
-              rows={scheduleBlocks}
-              setRows={setScheduleBlocks}
-              fields={[
-                ["date", "Date"],
-                ["start", "Début"],
-                ["end", "Fin"],
-                ["note", "Note"],
-              ]}
-              blank={{ date: "", start: "", end: "", note: "" }}
-            />
-
-            {(sessionForm.modality === "presentiel" || sessionForm.modality === "mixte") ? (
-              <Textarea label="Adresse physique" value={sessionForm.location_address} onChange={(value) => updateSession("location_address", value)} required />
-            ) : null}
-            {(sessionForm.modality === "distanciel" || sessionForm.modality === "mixte") ? (
-              <Input label="Lien visio / plateforme" value={sessionForm.remote_url} onChange={(value) => updateSession("remote_url", value)} required />
-            ) : null}
-
-            <CompanyRows rows={companies} setRows={setCompanies} />
-            <DynamicRows
-              title="Bénéficiaires rattachés à une entreprise"
-              rows={beneficiaries}
-              setRows={setBeneficiaries}
-              fields={[["first_name", "Prénom"], ["last_name", "Nom"], ["email", "Email"], ["phone", "Téléphone"]]}
-              blank={{ first_name: "", last_name: "", email: "", phone: "" }}
-            />
-            <DynamicRows
-              title="Bénéficiaires individuels"
-              rows={individualBeneficiaries}
-              setRows={setIndividualBeneficiaries}
-              fields={[["first_name", "Prénom"], ["last_name", "Nom"], ["email", "Email"], ["phone", "Téléphone"]]}
-              blank={{ first_name: "", last_name: "", email: "", phone: "" }}
-            />
-
-            {dailyTrainers.length > 0 ? (
-              <div style={s.dynamic}>
-                <strong>Formateurs associés à la session</strong>
-                {dailyTrainers.map((trainer) => {
-                  const checked = selectedTrainerIds.includes(trainer.id);
-                  return (
-                    <label key={trainer.id} style={s.check}>
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={(event) =>
-                          setSelectedTrainerIds((current) =>
-                            event.target.checked
-                              ? [...current, trainer.id]
-                              : current.filter((id) => id !== trainer.id),
-                          )
-                        }
-                      />
-                      {trainer.first_name} {trainer.last_name}
-                    </label>
-                  );
-                })}
-              </div>
-            ) : null}
-
-            <div style={s.actions}>
-              <div style={s.actionMessages}>
-                {message ? <p style={s.notice}>{message}</p> : null}
-                {error ? <p style={s.error}>{error}</p> : null}
-              </div>
-              <button className="btn-ink" type="submit" disabled={saving || activeFormations.length === 0}>
-                <span>{editingSessionId ? "Enregistrer la session" : "Créer la session"}</span>
-              </button>
-              <button type="button" className="btn-ghost" onClick={() => setEditingSessionId("")}>
-                <span>Annuler</span>
-              </button>
-            </div>
-          </form>
-          ) : (
-            <section style={s.card}>
-              <p className="gazette-label">Session associée</p>
-              <h2 style={s.cardTitle}>Créer une session quand vous êtes prêt</h2>
-              <p style={s.muted}>
-                Commencez par créer votre formation. Vous pourrez ensuite créer une session maintenant, ou plus tard depuis cette page.
-              </p>
-              <button
-                type="button"
-                className="btn-ink"
-                disabled={activeFormations.length === 0}
-                onClick={() => router.push("/client/daily/sessions")}
-              >
-                <span>Créer une session</span>
-              </button>
-            </section>
-          )}
-        </section>
+            <button className="btn-ink" type="submit" disabled={saving}>
+              <span>{saving ? "Enregistrement..." : editingFormationId ? "Enregistrer la modification" : "Créer la formation"}</span>
+            </button>
+            {editingFormationId ? <button type="button" className="btn-ghost" onClick={() => { setEditingFormationId(""); setFormationForm({ ...emptyFormation, contact_email: email ?? "" }); }}><span>Annuler</span></button> : null}
+          </div>
+        </form>
 
         <section style={s.grid}>
           <ListCard title="Formations" empty="Aucune formation Daily pour le moment.">
@@ -931,22 +574,18 @@ export default function ClientDailyPage() {
                 <p>{formation.duration_hours} h / {formation.duration_days} j - {formation.modality}</p>
                 {formation.public_registration_token ? (
                   <div style={s.linkBox}>
-                    <strong>Lien d&apos;inscription spontanée</strong>
-                    <input style={s.input} readOnly value={getFormationRegistrationUrl(formation.public_registration_token)} />
-                    <p style={s.muted}>
-                      Vous pouvez copier ce lien sur votre site, vos réseaux sociaux ou dans vos emails. Les demandes reçues apparaîtront dans Selen afin que vous puissiez créer ou compléter une session.
-                    </p>
-                    {formation.spontaneous_registration_task_status === "to_attach" ? (
-                      <p style={s.warning}>Créer une session ou rattacher cette demande à une session.</p>
-                    ) : null}
-                    <button type="button" className="btn-ghost" onClick={() => void copyFormationRegistrationLink(formation.public_registration_token)}>
-                      <span>Copier le lien</span>
-                    </button>
+                    <strong>Lien d&apos;inscription</strong>
+                    <input style={s.input} readOnly value={getRegistrationUrl(formation.public_registration_token)} />
+                    <p style={s.muted}>Retrouvez ici le lien public de cette formation à tout moment.</p>
+                    {formation.spontaneous_registration_task_status === "to_attach" ? <p style={s.warning}>Une demande reçue doit être rattachée à une session.</p> : null}
+                    <div style={s.actions}>
+                      <button type="button" className="btn-ghost" onClick={() => void copyRegistrationLink(formation.public_registration_token)}><span>Copier le lien</span></button>
+                      <Link href={`/client/daily/sessions?formation=${formation.id}`} className="btn-ink"><span>Créer une session</span></Link>
+                    </div>
                   </div>
                 ) : null}
                 <div style={s.actions}>
                   <button type="button" className="btn-ghost" onClick={() => editFormation(formation)}><span>Modifier</span></button>
-                  <button type="button" className="btn-ghost" onClick={() => router.push("/client/daily/sessions")}><span>Créer une session</span></button>
                   <button type="button" className="btn-ghost" onClick={() => archiveFormation(formation.id)}><span>Archiver / supprimer</span></button>
                 </div>
               </article>
@@ -960,119 +599,54 @@ export default function ClientDailyPage() {
                 <span>{formatStatus(session.status)} - {session.modality}</span>
                 <span>Dossier d&apos;inscription : {formatRegistrationStatus(session.registration_status)}</span>
                 <p>{(session.schedule_blocks ?? []).length} bloc(s) planifié(s)</p>
-                <p>
-                  {(session.individual_beneficiaries ?? []).length} apprenant(s) individuel(s) ·{" "}
-                  {(session.companies ?? []).length} entreprise(s)
-                </p>
+                <p>{(session.individual_beneficiaries ?? []).length} apprenant(s) individuel(s) · {(session.companies ?? []).length} entreprise(s)</p>
                 <div style={s.linkBox}>
                   <strong>Timeline globale</strong>
-                  {sessionTimeline(session).map(([label, status]) => (
-                    <span key={label}>{label} : {status}</span>
-                  ))}
+                  {sessionTimeline(session).map(([label, status]) => <span key={label}>{label} : {status}</span>)}
                 </div>
                 {session.registration_token ? (
                   <div style={s.linkBox}>
-                    <strong>Lien d&apos;inscription</strong>
+                    <strong>Lien d&apos;inscription de la session</strong>
                     <input style={s.input} readOnly value={getRegistrationUrl(session.registration_token)} />
-                    <p style={s.muted}>
-                      Votre lien d&apos;inscription est prêt. Selen vérifie le dossier avant envoi aux participants,
-                      pour éviter les oublis et garder un dossier propre.
-                    </p>
-                    <button type="button" className="btn-ghost" onClick={() => void copyRegistrationLink(session.registration_token)}>
-                      <span>Copier le lien</span>
-                    </button>
+                    <button type="button" className="btn-ghost" onClick={() => void copyRegistrationLink(session.registration_token)}><span>Copier le lien</span></button>
                   </div>
                 ) : null}
                 {session.daily_registration_recipients?.length ? (
                   <div style={s.linkBox}>
                     <strong>Suivi des dossiers envoyés</strong>
-                    {session.daily_registration_recipients.map((recipient) => (
-                      <span key={recipient.id}>
-                        {recipient.recipient_name || recipient.recipient_email || "Destinataire"} :{" "}
-                        {formatRecipientStatus(recipient.status)}
-                        {recipient.sent_at ? ` le ${new Date(recipient.sent_at).toLocaleDateString("fr-FR")}` : ""}
-                        {recipient.last_error ? ` - ${recipient.last_error}` : ""}
-                      </span>
-                    ))}
+                    {session.daily_registration_recipients.map((recipient) => <span key={recipient.id}>{recipient.recipient_name || recipient.recipient_email || "Destinataire"} : {formatRecipientStatus(recipient.status)}</span>)}
                   </div>
-                ) : (
-                  <p style={s.muted}>Les dossiers seront envoyés après la vérification Selen.</p>
-                )}
+                ) : null}
                 <div style={s.linkBox}>
                   <strong>Conventions</strong>
-                  {session.daily_conventions?.length ? (
-                    session.daily_conventions.map((convention) => (
-                      <div key={convention.id} style={s.signatureMiniBox}>
-                        <a
-                          href={withAssistanceToken(`/api/client/daily/conventions/download?id=${convention.id}`)}
-                          target="_blank"
-                          rel="noreferrer"
-                          style={s.inlineLink}
-                        >
-                          {convention.recipient_type === "company" ? "Entreprise" : "Beneficiaire"}{" "}
-                          {convention.company_name || convention.recipient_name || "Daily"} - v{convention.version}
-                          {convention.generated_at ? ` - ${new Date(convention.generated_at).toLocaleDateString("fr-FR")}` : ""}
-                          {" - "}{formatConventionSignatureStatus(convention)}
-                        </a>
-                        {convention.daily_convention_signatures?.map((signature) => (
-                          <span key={signature.id}>
-                            {signature.signatory_type} : {signature.status === "signed" ? "signée" : "signature attendue"}
-                            {signature.signed_at ? ` le ${new Date(signature.signed_at).toLocaleDateString("fr-FR")}` : ""}
-                          </span>
-                        ))}
-                      </div>
-                    ))
-                  ) : (
-                    <span>Non générée. Selen la prépare après vérification des informations utiles.</span>
-                  )}
+                  {session.daily_conventions?.length ? session.daily_conventions.map((convention) => (
+                    <div key={convention.id} style={s.signatureMiniBox}>
+                      <a href={withAssistanceToken(`/api/client/daily/conventions/download?id=${convention.id}`)} target="_blank" rel="noreferrer" style={s.inlineLink}>
+                        {convention.recipient_type === "company" ? "Entreprise" : "Bénéficiaire"} {convention.company_name || convention.recipient_name || "Daily"} - v{convention.version} - {formatConventionSignatureStatus(convention)}
+                      </a>
+                    </div>
+                  )) : <span>Non générée.</span>}
                 </div>
                 <div style={s.linkBox}>
                   <strong>Convocations</strong>
-                  {session.daily_convocations?.length ? (
-                    session.daily_convocations.map((convocation) => (
-                      <a
-                        key={convocation.id}
-                        href={withAssistanceToken(`/api/client/daily/convocations/download?id=${convocation.id}`)}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={s.inlineLink}
-                      >
-                        {convocation.recipient_type === "trainer" ? "Formateur" : convocation.recipient_type === "company" ? "Entreprise" : "Beneficiaire"}{" "}
-                        {convocation.company_name || convocation.recipient_name || "Daily"} - v{convocation.version}
-                        {convocation.status === "sent" && convocation.sent_at ? ` - envoyée le ${new Date(convocation.sent_at).toLocaleDateString("fr-FR")}` : " - générée"}
-                      </a>
-                    ))
-                  ) : (
-                    <span>À venir après préparation par Selen.</span>
-                  )}
+                  {session.daily_convocations?.length ? session.daily_convocations.map((convocation) => (
+                    <a key={convocation.id} href={withAssistanceToken(`/api/client/daily/convocations/download?id=${convocation.id}`)} target="_blank" rel="noreferrer" style={s.inlineLink}>
+                      {convocation.recipient_type === "trainer" ? "Formateur" : convocation.recipient_type === "company" ? "Entreprise" : "Bénéficiaire"} {convocation.company_name || convocation.recipient_name || "Daily"} - v{convocation.version}
+                    </a>
+                  )) : <span>À venir après préparation.</span>}
                 </div>
                 {session.daily_portal_access_tokens?.length ? (
                   <div style={s.linkBox}>
                     <strong>Portails</strong>
                     {session.daily_portal_access_tokens.map((portal) => (
-                      <span key={portal.id}>
-                        {portal.portal_type === "learner" ? "Apprenant" : portal.portal_type === "enterprise" ? "Entreprise" : "Formateur"}{" "}
-                        {portal.entity_name || portal.entity_email || ""} :{" "}
-                        <a href={portalUrl(portal.portal_type, portal.token)} target="_blank" rel="noreferrer" style={s.inlineLink}>
-                          ouvrir
-                        </a>
-                        {portal.status === "viewed" ? " - consulté" : " - à transmettre"}
-                      </span>
+                      <span key={portal.id}>{portal.portal_type === "learner" ? "Apprenant" : portal.portal_type === "enterprise" ? "Entreprise" : "Formateur"} {portal.entity_name || portal.entity_email || ""} : <a href={portalUrl(portal.portal_type, portal.token)} target="_blank" rel="noreferrer" style={s.inlineLink}>ouvrir</a></span>
                     ))}
                   </div>
                 ) : null}
-                {session.registration_status === "summary_to_review" || session.registration_status === "summary_validated" ? (
-                  <p style={s.notice}>Des réponses ont été reçues et sont en cours de suivi par Selen.</p>
-                ) : null}
-                {session.adaptation_needed ? (
-                  <p style={s.warning}>Une adaptation ou un point d&apos;attention a été signalé.</p>
-                ) : null}
-                {session.daily_formations?.status !== "validated" ? (
-                  <p style={s.warning}>Selen finalise la vérification des documents officiels.</p>
-                ) : null}
+                {session.adaptation_needed ? <p style={s.warning}>Une adaptation ou un point d&apos;attention a été signalé.</p> : null}
                 <div style={s.actions}>
-                  <button type="button" className="btn-ghost" onClick={() => editSession(session)}><span>Modifier</span></button>
-                  <button type="button" className="btn-ghost" onClick={() => archiveSession(session.id)}><span>Archiver</span></button>
+                  <Link href={`/client/daily/sessions?session=${session.id}`} className="btn-ghost"><span>Modifier</span></Link>
+                  <button type="button" className="btn-ghost" onClick={() => void archiveSession(session.id)}><span>Archiver</span></button>
                 </div>
               </article>
             ))}
@@ -1084,26 +658,17 @@ export default function ClientDailyPage() {
 }
 
 function Input({ label, helpText, value, onChange, type = "text", required = false }: { label: string; helpText?: string; value: FormValue | PositioningQuestion[] | string[]; onChange: (value: string) => void; type?: string; required?: boolean }) {
-  return (
-    <div style={s.field}>
-      {fieldLabel(label, helpText)}
-      <input style={s.input} type={type} value={String(value ?? "")} onChange={(event) => onChange(event.target.value)} required={required} />
-    </div>
-  );
+  return <div style={s.field}>{fieldLabel(label, helpText)}<input style={s.input} type={type} value={String(value ?? "")} onChange={(event) => onChange(event.target.value)} required={required} /></div>;
 }
 
-function Textarea({ label, helpText, value, onChange, required = false, rows = 3 }: { label: string; helpText?: string; value: FormValue | PositioningQuestion[] | string[]; onChange: (value: string) => void; required?: boolean; rows?: number }) {
-  return (
-    <div style={s.field}>
-      {fieldLabel(label, helpText)}
-      <textarea style={{ ...s.input, minHeight: rows * 34, paddingTop: 10 }} value={String(value ?? "")} onChange={(event) => onChange(event.target.value)} required={required} />
-    </div>
-  );
+function Textarea({ label, helpText, value, onChange, required = false, rows = 3, placeholder = "" }: { label: string; helpText?: string; value: FormValue | PositioningQuestion[] | string[]; onChange: (value: string) => void; required?: boolean; rows?: number; placeholder?: string }) {
+  return <div style={s.field}>{fieldLabel(label, helpText)}<textarea style={{ ...s.input, minHeight: rows * 34, paddingTop: 10 }} value={String(value ?? "")} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} required={required} /></div>;
 }
 
 function FileUploadField({ label, kind, value, onUploaded, accept }: { label: string; kind: string; value: string; onUploaded: (url: string) => void; accept: string }) {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
 
   async function upload(file: File) {
     setUploading(true);
@@ -1124,206 +689,48 @@ function FileUploadField({ label, kind, value, onUploaded, accept }: { label: st
   return (
     <div style={s.field}>
       <span style={s.label}>{label}</span>
-      <input type="file" accept={accept} disabled={uploading} onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(file); }} />
-      {uploading ? <span style={s.muted}>Import en cours…</span> : value ? <span style={s.uploaded}>Document importé ✓</span> : null}
+      <input ref={inputRef} type="file" accept={accept} disabled={uploading} style={{ display: "none" }} onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(file); }} />
+      <button type="button" style={s.fileButton} disabled={uploading} onClick={() => inputRef.current?.click()}>{uploading ? "Import en cours…" : "Choisir un fichier"}</button>
+      {!uploading && value ? <span style={s.uploaded}>Document importé ✓</span> : null}
       {uploadError ? <span style={s.warning}>{uploadError}</span> : null}
     </div>
   );
 }
 
-function CompanyRows({ rows, setRows }: { rows: Company[]; setRows: (rows: Company[]) => void }) {
-  const blankParticipant = { first_name: "", last_name: "", email: "" };
-  const blankCompany = { name: "", address: "", siret: "", email: "", participants: [blankParticipant] };
-
-  function updateCompany(index: number, patch: Partial<Company>) {
-    setRows(rows.map((row, rowIndex) => (rowIndex === index ? { ...row, ...patch } : row)));
-  }
-
-  function updateParticipant(companyIndex: number, participantIndex: number, patch: Partial<Participant>) {
-    setRows(
-      rows.map((company, rowIndex) => {
-        if (rowIndex !== companyIndex) return company;
-        return {
-          ...company,
-          participants: company.participants.map((participant, itemIndex) =>
-            itemIndex === participantIndex ? { ...participant, ...patch } : participant,
-          ),
-        };
-      }),
-    );
-  }
-
-  return (
-    <div style={s.dynamic}>
-      <div style={s.dynamicHead}>
-        <strong>Entreprises</strong>
-        <button type="button" className="btn-ghost" onClick={() => setRows([...rows, { ...blankCompany, participants: [{ ...blankParticipant }] }])}>
-          <span>Ajouter</span>
-        </button>
-      </div>
-      {rows.map((company, index) => (
-        <div key={index} style={s.companyBox}>
-          <div style={s.rowGrid}>
-            <input style={s.input} placeholder="Nom de l'entreprise" value={company.name} onChange={(event) => updateCompany(index, { name: event.target.value })} />
-            <input style={s.input} placeholder="Adresse" value={company.address} onChange={(event) => updateCompany(index, { address: event.target.value })} />
-            <input style={s.input} placeholder="SIRET" value={company.siret} onChange={(event) => updateCompany(index, { siret: event.target.value })} />
-            <input style={s.input} placeholder="Email entreprise" value={company.email} onChange={(event) => updateCompany(index, { email: event.target.value })} />
-            <button type="button" className="btn-ghost" onClick={() => setRows(rows.filter((_, rowIndex) => rowIndex !== index))}>
-              <span>Retirer</span>
-            </button>
-          </div>
-          <strong>Participants de l&apos;entreprise</strong>
-          {(company.participants ?? []).map((participant, participantIndex) => (
-            <div key={participantIndex} style={s.rowGrid}>
-              <input style={s.input} placeholder="Prénom" value={participant.first_name} onChange={(event) => updateParticipant(index, participantIndex, { first_name: event.target.value })} />
-              <input style={s.input} placeholder="Nom" value={participant.last_name} onChange={(event) => updateParticipant(index, participantIndex, { last_name: event.target.value })} />
-              <input style={s.input} placeholder="Email" value={participant.email} onChange={(event) => updateParticipant(index, participantIndex, { email: event.target.value })} />
-              <button
-                type="button"
-                className="btn-ghost"
-                onClick={() =>
-                  updateCompany(index, {
-                    participants: company.participants.filter((_, itemIndex) => itemIndex !== participantIndex),
-                  })
-                }
-              >
-                <span>Retirer</span>
-              </button>
-            </div>
-          ))}
-          <button
-            type="button"
-            className="btn-ghost"
-            onClick={() => updateCompany(index, { participants: [...(company.participants ?? []), { ...blankParticipant }] })}
-          >
-            <span>Ajouter un participant</span>
-          </button>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function DynamicRows<T extends Record<string, string>>({ title, rows, setRows, fields, blank }: { title: string; rows: T[]; setRows: (rows: T[]) => void; fields: [keyof T, string][]; blank: T }) {
-  return (
-    <div style={s.dynamic}>
-      <div style={s.dynamicHead}>
-        <strong>{title}</strong>
-        <button type="button" className="btn-ghost" onClick={() => setRows([...rows, { ...blank }])}><span>Ajouter</span></button>
-      </div>
-      {rows.map((row, index) => (
-        <div key={index} style={s.rowGrid}>
-          {fields.map(([key, label]) => (
-            <input
-              key={String(key)}
-              style={s.input}
-              placeholder={label}
-              value={String(row[key] ?? "")}
-              onChange={(event) => setRows(rows.map((item, itemIndex) => itemIndex === index ? { ...item, [key]: event.target.value } : item))}
-            />
-          ))}
-          <button type="button" className="btn-ghost" onClick={() => setRows(rows.filter((_, itemIndex) => itemIndex !== index))}><span>Retirer</span></button>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function PositioningQuestionnaireEditor({
-  mode,
-  questions,
-  onModeChange,
-  onQuestionsChange,
-}: {
-  mode: string;
-  questions: PositioningQuestion[];
-  onModeChange: (value: string) => void;
-  onQuestionsChange: (questions: PositioningQuestion[]) => void;
-}) {
+function PositioningQuestionnaireEditor({ mode, questions, onModeChange, onQuestionsChange }: { mode: string; questions: PositioningQuestion[]; onModeChange: (value: string) => void; onQuestionsChange: (questions: PositioningQuestion[]) => void }) {
   function reorder(nextQuestions: PositioningQuestion[]) {
     onQuestionsChange(nextQuestions.map((question, index) => ({ ...question, order: index + 1 })));
   }
-
   function addQuestion() {
-    reorder([
-      ...questions,
-      {
-        id: `question_${Date.now()}`,
-        label: "",
-        help_text: "",
-        required: true,
-        type: "free_text",
-        options: [],
-        order: questions.length + 1,
-      },
-    ]);
+    reorder([...questions, { id: `question_${Date.now()}`, label: "", help_text: "", required: true, type: "free_text", options: [], order: questions.length + 1 }]);
   }
-
   function updateQuestion(index: number, patch: Partial<PositioningQuestion>) {
     reorder(questions.map((question, itemIndex) => itemIndex === index ? { ...question, ...patch } : question));
   }
-
   function removeQuestion(index: number) {
     if (!window.confirm("Supprimer cette question de positionnement ?")) return;
     reorder(questions.filter((_, itemIndex) => itemIndex !== index));
   }
-
   function moveQuestion(index: number, direction: -1 | 1) {
     const target = index + direction;
     if (target < 0 || target >= questions.length) return;
     const next = [...questions];
-    const current = next[index];
-    next[index] = next[target];
-    next[target] = current;
+    [next[index], next[target]] = [next[target], next[index]];
     reorder(next);
   }
-
   function duplicateQuestion(index: number) {
     const source = questions[index];
-    reorder([
-      ...questions.slice(0, index + 1),
-      { ...source, id: `question_${Date.now()}`, label: `${source.label} - copie` },
-      ...questions.slice(index + 1),
-    ]);
+    reorder([...questions.slice(0, index + 1), { ...source, id: `question_${Date.now()}`, label: `${source.label} - copie` }, ...questions.slice(index + 1)]);
   }
 
   return (
     <section style={s.dynamic}>
       <div style={s.dynamicHead}>
         <strong>Questionnaire de positionnement</strong>
-        {mode === "selen" ? (
-          <button type="button" className="btn-ghost" onClick={addQuestion}>
-            <span>Ajouter une question</span>
-          </button>
-        ) : null}
+        {mode === "selen" ? <button type="button" className="btn-ghost" onClick={addQuestion}><span>Ajouter une question</span></button> : null}
       </div>
-
-      <label style={s.check}>
-        <input
-          type="radio"
-          name="positioning_mode_choice"
-          checked={mode === "selen"}
-          onChange={() => onModeChange("selen")}
-        />
-        Je veux integrer le positionnement dans Selen
-      </label>
-      <label style={s.check}>
-        <input
-          type="radio"
-          name="positioning_mode_choice"
-          checked={mode !== "selen"}
-          onChange={() => onModeChange("off_platform")}
-        />
-        Je ferai le positionnement hors plateforme
-      </label>
-
-      {mode !== "selen" ? (
-        <p style={s.notice}>
-          Vous pourrez importer ou conserver votre preuve de positionnement selon vos modalites habituelles.
-          Selen indiquera simplement que le positionnement est realise hors plateforme.
-        </p>
-      ) : null}
-
+      <label style={s.check}><input type="radio" name="positioning_mode_choice" checked={mode === "selen"} onChange={() => onModeChange("selen")} /> Je veux intégrer le positionnement dans Selen</label>
+      <label style={s.check}><input type="radio" name="positioning_mode_choice" checked={mode !== "selen"} onChange={() => onModeChange("off_platform")} /> Je ferai le positionnement hors plateforme</label>
       {mode === "selen" ? (
         <div style={s.dynamic}>
           {questions.map((question, index) => (
@@ -1337,68 +744,38 @@ function PositioningQuestionnaireEditor({
                   <button type="button" className="btn-ghost" onClick={() => removeQuestion(index)}><span>Supprimer</span></button>
                 </div>
               </div>
-              <Input label="Intitule de la question" value={question.label} onChange={(value) => updateQuestion(index, { label: value })} required />
-              <Input label="Aide / precision facultative" value={question.help_text} onChange={(value) => updateQuestion(index, { help_text: value })} />
+              <Input label="Intitulé de la question" value={question.label} onChange={(value) => updateQuestion(index, { label: value })} required />
+              <Input label="Aide / précision facultative" value={question.help_text} onChange={(value) => updateQuestion(index, { help_text: value })} />
               <div style={s.twoCols}>
                 <label style={s.field}>
-                  <span style={s.label}>Type de reponse</span>
-                  <select
-                    style={s.input}
-                    value={question.type}
-                    onChange={(event) => updateQuestion(index, { type: event.target.value as PositioningQuestion["type"], options: [] })}
-                  >
-                    <option value="single_choice">Choix unique</option>
-                    <option value="multiple_choice">Choix multiple</option>
-                    <option value="free_text">Texte libre</option>
-                    <option value="scale_1_5">Echelle de 1 a 5</option>
+                  <span style={s.label}>Type de réponse</span>
+                  <select style={s.input} value={question.type} onChange={(event) => updateQuestion(index, { type: event.target.value as PositioningQuestion["type"], options: [] })}>
+                    <option value="single_choice">Choix unique</option><option value="multiple_choice">Choix multiple</option><option value="free_text">Texte libre</option><option value="scale_1_5">Échelle de 1 à 5</option>
                   </select>
                 </label>
-                <label style={s.check}>
-                  <input
-                    type="checkbox"
-                    checked={question.required}
-                    onChange={(event) => updateQuestion(index, { required: event.target.checked })}
-                  />
-                  Question obligatoire
-                </label>
+                <label style={s.check}><input type="checkbox" checked={question.required} onChange={(event) => updateQuestion(index, { required: event.target.checked })} /> Question obligatoire</label>
               </div>
-              {["single_choice", "multiple_choice"].includes(question.type) ? (
-                <Textarea
-                  label="Options de reponse, une par ligne"
-                  value={question.options.join("\n")}
-                  onChange={(value) => updateQuestion(index, { options: value.split("\n") })}
-                  rows={3}
-                />
-              ) : null}
+              {["single_choice", "multiple_choice"].includes(question.type) ? <Textarea label="Options de réponse, une par ligne" value={question.options.join("\n")} onChange={(value) => updateQuestion(index, { options: value.split("\n") })} rows={3} /> : null}
             </article>
           ))}
           {questions.length === 0 ? <p style={s.muted}>Ajoutez au moins une question avant l&apos;envoi en validation.</p> : null}
         </div>
-      ) : null}
+      ) : <p style={s.notice}>Le positionnement restera réalisé hors plateforme.</p>}
     </section>
   );
 }
 
 function ListCard({ title, empty, children }: { title: string; empty: string; children: React.ReactNode }) {
   const hasChildren = Array.isArray(children) ? children.length > 0 : Boolean(children);
-  return (
-    <section style={s.card}>
-      <p className="gazette-label">Suivi</p>
-      <h2 style={s.cardTitle}>{title}</h2>
-      {hasChildren ? children : <p style={s.muted}>{empty}</p>}
-    </section>
-  );
+  return <section style={s.card}><p className="gazette-label">Suivi</p><h2 style={s.cardTitle}>{title}</h2>{hasChildren ? children : <p style={s.muted}>{empty}</p>}</section>;
 }
 
 const s: Record<string, React.CSSProperties> = {
   page: { maxWidth: 1220, margin: "0 auto", padding: "2rem 1.5rem 4rem" },
   compactHeading: { marginBottom: "1rem", display: "grid", gap: "0.25rem" },
   homeLink: { display: "inline-flex", marginBottom: "1rem", color: "var(--rust)", fontWeight: 800, textDecoration: "none" },
-  hero: { padding: "2rem", marginBottom: "1.5rem" },
-  heroTitle: { color: "var(--parchment)", marginBottom: "0.5rem" },
-  heroText: { color: "var(--sepia-mid)", lineHeight: 1.65, maxWidth: 760 },
-  grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: "1rem", marginBottom: "1rem" },
-  card: { background: "var(--paper)", border: "1px solid var(--sepia-mid)", borderLeft: "4px solid var(--ocre-gold)", padding: "1.2rem", display: "grid", gap: "0.9rem" },
+  grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: "1rem", marginTop: "1rem", marginBottom: "1rem" },
+  card: { background: "var(--paper)", border: "1px solid var(--sepia-mid)", borderLeft: "4px solid var(--ocre-gold)", padding: "1.2rem", display: "grid", gap: "0.9rem", marginBottom: "1rem" },
   cardTitle: { color: "var(--ink)", margin: 0 },
   field: { display: "grid", gap: "0.35rem" },
   label: { color: "var(--ink)", fontWeight: 700, fontSize: "0.92rem" },
@@ -1407,18 +784,23 @@ const s: Record<string, React.CSSProperties> = {
   threeCols: { display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "0.7rem" },
   check: { display: "flex", gap: "0.55rem", alignItems: "center", color: "var(--ink-soft)", lineHeight: 1.4 },
   actions: { display: "flex", gap: "0.6rem", flexWrap: "wrap", alignItems: "center" },
+  actionMessages: { flex: "1 1 300px" },
   notice: { border: "1px solid rgba(106,138,74,0.45)", background: "rgba(106,138,74,0.08)", color: "#496532", padding: "0.75rem", lineHeight: 1.5 },
   warning: { color: "var(--rust)", fontWeight: 700, margin: 0 },
   error: { border: "1px solid var(--rust)", background: "rgba(138,75,36,0.08)", color: "var(--rust)", padding: "0.75rem", lineHeight: 1.5 },
   muted: { color: "var(--ink-soft)", lineHeight: 1.6 },
+  helpText: { color: "var(--ink-soft)", lineHeight: 1.5, margin: "-0.35rem 0 0.25rem", fontSize: "0.9rem" },
+  helpBubble: { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 18, height: 18, borderRadius: "50%", border: "1px solid var(--sepia-mid)", color: "var(--rust)", fontSize: 12, fontWeight: 800, marginLeft: 6 },
   dynamic: { display: "grid", gap: "0.6rem", border: "1px solid rgba(178,138,98,0.28)", padding: "0.8rem" },
-  dynamicHead: { display: "flex", justifyContent: "space-between", gap: "0.6rem", alignItems: "center", color: "var(--ink)" },
+  dynamicHead: { display: "flex", justifyContent: "space-between", gap: "0.6rem", alignItems: "center", color: "var(--ink)", flexWrap: "wrap" },
   objectiveRow: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: "0.6rem", alignItems: "end" },
   uploaded: { color: "#496532", fontWeight: 700 },
-  rowGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "0.5rem", alignItems: "center" },
+  fileButton: { justifySelf: "start", border: "1px solid var(--rust)", background: "rgba(255,250,239,0.9)", color: "var(--rust)", padding: "0.65rem 1rem", fontSize: "0.95rem", fontWeight: 800, cursor: "pointer", borderRadius: 4 },
   companyBox: { display: "grid", gap: "0.55rem", border: "1px solid rgba(178,138,98,0.22)", padding: "0.7rem", background: "rgba(255,250,239,0.42)" },
   linkBox: { display: "grid", gap: "0.5rem", border: "1px solid rgba(106,138,74,0.35)", background: "rgba(106,138,74,0.06)", padding: "0.75rem" },
+  successBox: { display: "grid", gap: "0.7rem", border: "2px solid rgba(106,138,74,0.55)", background: "rgba(106,138,74,0.08)", padding: "1rem" },
   signatureMiniBox: { display: "grid", gap: "0.3rem", borderTop: "1px solid rgba(106,138,74,0.22)", paddingTop: "0.45rem" },
   inlineLink: { color: "var(--rust)", fontWeight: 800, textDecoration: "none" },
+  downloadLink: { display: "inline-flex", alignItems: "center", gap: "0.45rem", width: "fit-content", color: "var(--rust)", fontWeight: 800, textDecoration: "none", border: "1px solid rgba(138,75,36,0.45)", padding: "0.6rem 0.8rem" },
   listItem: { display: "grid", gap: "0.35rem", border: "1px solid rgba(178,138,98,0.32)", background: "rgba(248,239,223,0.45)", padding: "0.9rem", color: "var(--ink-soft)" },
 };
