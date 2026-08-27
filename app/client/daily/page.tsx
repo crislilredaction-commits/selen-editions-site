@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/app/lib/supabase/client";
 import { assistanceFetch } from "@/components/AgentAssistanceBanner";
 import DailyDashboardOverview from "@/components/daily/DailyDashboardOverview";
+import LoadingMascot from "@/components/ui/LoadingMascot";
 
 export default function ClientDailyPage() {
   const router = useRouter();
@@ -53,7 +54,7 @@ export default function ClientDailyPage() {
   }, [router, supabase]);
 
   if (loading) {
-    return <main style={{ maxWidth: 1120, margin: "0 auto", padding: "3rem 1.25rem" }}>Ouverture de votre tableau de bord Daily…</main>;
+    return <LoadingMascot message="Sélion ouvre votre tableau de bord Daily…" />;
   }
 
   if (error) {
