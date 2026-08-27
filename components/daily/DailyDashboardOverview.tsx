@@ -131,10 +131,10 @@ export default function DailyDashboardOverview() {
     () => formations.filter((formation) => formation.spontaneous_registration_task_status === "to_attach" && !futureSessions.some((session) => session.formation_id === formation.id)),
     [formations, futureSessions],
   );
-  const sortedActions = useMemo(
-    () => [...actions].sort((a, b) => ({ high: 0, medium: 1, normal: 2 }[a.priority] - ({ high: 0, medium: 1, normal: 2 }[b.priority])),
-    [actions],
-  );
+  const sortedActions = useMemo(() => {
+    const priorityRank: Record<ActionItem["priority"], number> = { high: 0, medium: 1, normal: 2 };
+    return [...actions].sort((a, b) => priorityRank[a.priority] - priorityRank[b.priority]);
+  }, [actions]);
   const readySessions = futureSessions.filter((session) => session.status === "ready").length;
   const next = futureSessions[0] ?? null;
   const organisationName = workspace?.organisation?.name?.trim() || null;
