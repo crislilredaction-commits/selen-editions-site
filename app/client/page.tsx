@@ -265,7 +265,6 @@ export default function ClientDashboardPage() {
     loadClientSpace();
   }, [router, supabase]);
 
-
   async function signOut() {
     await supabase.auth.signOut();
     router.push("/client/login");
@@ -521,13 +520,13 @@ export default function ClientDashboardPage() {
 
                 <div style={{ display: "grid", gap: "0.5rem" }}>
                   {hasActivePreauditAccess ? (
-                  <button
-                    type="button"
-                    className="btn-ink"
-                    onClick={() => router.push(withAssistanceToken("/client/preaudit"))}
-                  >
-                    <span>Commencer ou reprendre mon auto-audit →</span>
-                  </button>
+                    <button
+                      type="button"
+                      className="btn-ink"
+                      onClick={() => router.push(withAssistanceToken("/client/preaudit"))}
+                    >
+                      <span>Commencer ou reprendre mon auto-audit →</span>
+                    </button>
                   ) : null}
 
                   <button
@@ -600,38 +599,49 @@ export default function ClientDashboardPage() {
 
             {hasDailyAccess ? (
               <article
-              style={{
-                background: "var(--paper)",
-                border: "1px solid var(--sepia-mid)",
-                borderLeft: "4px solid var(--rust)",
-                padding: "1.2rem",
-              }}
-            >
-              <p className="gazette-label">Selen Daily</p>
-
-              <h2 style={{ color: "var(--ink)", marginBottom: "0.5rem" }}>
-                Vos formations et sessions
-              </h2>
-
-              <p
                 style={{
-                  color: "var(--ink-soft)",
-                  lineHeight: 1.6,
-                  marginBottom: "1rem",
+                  background: "var(--paper)",
+                  border: "1px solid var(--sepia-mid)",
+                  borderLeft: "4px solid var(--rust)",
+                  padding: "1.2rem",
                 }}
               >
-                Créez vos formations, préparez les sessions associées et laissez
-                Selen vérifier les éléments avant l’envoi des documents
-                officiels.
-              </p>
+                <p className="gazette-label">Selen Daily</p>
 
-              <button
-                type="button"
-                className="btn-ink"
-                onClick={() => router.push(withAssistanceToken("/client/daily"))}
-              >
-                <span>Accéder à Selen Daily →</span>
-              </button>
+                <h2 style={{ color: "var(--ink)", marginBottom: "0.5rem" }}>
+                  Vos formations et sessions
+                </h2>
+
+                <p
+                  style={{
+                    color: "var(--ink-soft)",
+                    lineHeight: 1.6,
+                    marginBottom: "1rem",
+                  }}
+                >
+                  Créez vos formations, préparez les sessions associées et laissez
+                  Selen vérifier les éléments avant l’envoi des documents
+                  officiels.
+                </p>
+
+                <div style={{ display: "flex", gap: "0.7rem", flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    className="btn-ink"
+                    onClick={() => router.push(withAssistanceToken("/client/daily"))}
+                  >
+                    <span>Accéder à Selen Daily →</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    onClick={() =>
+                      router.push(withAssistanceToken("/client/daily/onboarding?step=1"))
+                    }
+                  >
+                    <span>Paramètres initiaux</span>
+                  </button>
+                </div>
               </article>
             ) : null}
           </section>
