@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { assistanceFetch } from "@/components/AgentAssistanceBanner";
 
 type Formation = { id: string; title: string; status: string; version: number };
@@ -94,6 +95,8 @@ function registrationLabel(status?: string | null) {
 }
 
 export default function DailySessionsPage() {
+  const searchParams = useSearchParams();
+  const queryAppliedRef = useRef(false);
   const [formations, setFormations] = useState<Formation[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
@@ -171,6 +174,23 @@ export default function DailySessionsPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  useEffect(() => {
+    if (loading || queryAppliedRef.current) return;
+    const sessionId = searchParams.get("session");
+    if (sessionId) {
+      const session = sessions.find((item) => item.id === sessionId);
+      if (session) editSession(session);
+      queryAppliedRef.current = true;
+      return;
+    }
+    const formationId = searchParams.get("formation");
+    if (formationId && formations.some((formation) => formation.id === formationId)) {
+      setForm((current) => ({ ...current, formation_id: formationId }));
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+    queryAppliedRef.current = true;
+  }, [formations, loading, searchParams, sessions]);
+
   function updateBlock(index: number, patch: Partial<ScheduleBlock>) {
     setForm((current) => ({ ...current, schedule_blocks: current.schedule_blocks.map((block, i) => i === index ? { ...block, ...patch } : block) }));
   }
@@ -192,6 +212,7 @@ export default function DailySessionsPage() {
       if (!response.ok) throw new Error(data.error ?? "Enregistrement impossible.");
       setMessage(editingId ? "Session mise à jour." : "Session créée.");
       if (data.validationWarning) setMessage(`${editingId ? "Session mise à jour." : "Session créée."} ${data.validationWarning}`);
+      queryAppliedRef.current = true;
       resetForm();
       await load();
     } catch (cause) {
@@ -240,7 +261,7 @@ export default function DailySessionsPage() {
         <div>
           <p style={styles.eyebrow}>Selen Daily · Exploitation</p>
           <h1 style={styles.h1}>Sessions</h1>
-          <p style={styles.lead}>Une session applique une formation à des dates, un lieu, des formateurs et un commanditaire précis. Le dossier apprenant détaillé viendra dans le Lot 2D.</p>
+          <p style={styles.lead}>Crée ici une session seulement quand tu as des dates ou une action de formation à planifier. La formation reste réutilisable autant de fois que nécessaire.</p>
         </div>
         <div style={styles.stat}><strong>{sessions.filter((s) => s.status !== "archived").length}</strong><span>sessions actives</span></div>
       </header>
@@ -250,7 +271,7 @@ export default function DailySessionsPage() {
 
       <section style={styles.card}>
         <div style={styles.sectionTitle}>
-          <div><h2 style={styles.h2}>{editingId ? "Modifier la session" : "Nouvelle session"}</h2><p style={styles.muted}>Prépare ici le cadre opérationnel. Les inscriptions et pièces seront gérées dans le dossier de session.</p></div>
+          <div><h2 style={styles.h2}>{editingId ? "Modifier la session" : "Nouvelle session"}</h2><p style={styles.muted}>La formation est préselectionnée lorsque tu arrives depuis sa fiche.</p></div>
           {editingId ? <button type="button" onClick={resetForm} style={styles.secondary}>Annuler</button> : null}
         </div>
 
@@ -283,16 +304,16 @@ export default function DailySessionsPage() {
 
           <div style={styles.full}>
             <label style={styles.label}>Formateur(s)</label>
-            {trainers.length === 0 ? <p style={styles.muted}>Aucun formateur actif dans la fiche organisme. Tu peux préparer la session sans formateur et l'affecter plus tard.</p> : <div style={styles.checkGrid}>{trainers.map((trainer) => <label key={trainer.id} style={styles.checkbox}><input type="checkbox" checked={form.trainer_ids.includes(trainer.id)} onChange={(e) => setForm({ ...form, trainer_ids: e.target.checked ? [...form.trainer_ids, trainer.id] : form.trainer_ids.filter((id) => id !== trainer.id) })} /> <span><strong>{trainer.display_name}</strong>{trainer.professional_email ? ` · ${trainer.professional_email}` : ""} · {trainer.status}</span></label>)}</div>}
+            {trainers.length === 0 ? <p style={styles.muted}>Aucun formateur actif dans la fiche organisme. Tu peux préparer la session sans formateur et l&apos;affecter plus tard.</p> : <div style={styles.checkGrid}>{trainers.map((trainer) => <label key={trainer.id} style={styles.checkbox}><input type="checkbox" checked={form.trainer_ids.includes(trainer.id)} onChange={(e) => setForm({ ...form, trainer_ids: e.target.checked ? [...form.trainer_ids, trainer.id] : form.trainer_ids.filter((id) => id !== trainer.id) })} /> <span><strong>{trainer.display_name}</strong>{trainer.professional_email ? ` · ${trainer.professional_email}` : ""} · {trainer.status}</span></label>)}</div>}
           </div>
 
-          <div style={styles.full}><h3 style={styles.h3}>Commanditaire / entreprise</h3><p style={styles.muted}>Ces données restent compatibles avec la V0. Elles seront normalisées avec les apprenants au Lot 2D.</p></div>
+          <div style={styles.full}><h3 style={styles.h3}>Commanditaire / entreprise</h3></div>
           <Field label="Entreprise"><input value={company.name} onChange={(e) => updateCompany({ name: e.target.value })} style={styles.input} /></Field>
           <Field label="SIRET"><input value={company.siret} onChange={(e) => updateCompany({ siret: e.target.value })} style={styles.input} /></Field>
           <Field label="Email"><input type="email" value={company.email} onChange={(e) => updateCompany({ email: e.target.value })} style={styles.input} /></Field>
           <Field label="Adresse"><input value={company.address} onChange={(e) => updateCompany({ address: e.target.value })} style={styles.input} /></Field>
 
-          <div style={styles.full}><button type="submit" disabled={saving || formations.length === 0} style={styles.primary}>{saving ? "Enregistrement…" : editingId ? "Enregistrer la session" : "Créer la session"}</button>{formations.length === 0 ? <p style={styles.warning}>Crée d'abord une formation dans le catalogue.</p> : null}</div>
+          <div style={styles.full}><button type="submit" disabled={saving || formations.length === 0} style={styles.primary}>{saving ? "Enregistrement…" : editingId ? "Enregistrer la session" : "Créer la session"}</button>{formations.length === 0 ? <p style={styles.warning}>Crée d&apos;abord une formation dans le catalogue.</p> : null}</div>
         </form>
       </section>
 
