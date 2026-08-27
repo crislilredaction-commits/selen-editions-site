@@ -1,9 +1,15 @@
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 export default function DailyClientLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const hideNavigation = pathname === "/client/daily" || pathname === "/client/daily/onboarding";
+
   return (
     <>
-      <nav
+      {hideNavigation ? null : <nav
         aria-label="Navigation Selen Daily"
         style={{
           display: "flex",
@@ -36,7 +42,7 @@ export default function DailyClientLayout({ children }: { children: React.ReactN
         <Link href="/client/daily/formateur/suivi-annuel" style={linkStyle}>Mon suivi formateur</Link>
         <Link href="/client/daily/formateur/cv" style={linkStyle}>Mon CV</Link>
         <Link href="/client/daily/formateurs/suivi-annuel" style={linkStyle}>Suivi des formateurs</Link>
-      </nav>
+      </nav>}
       {children}
     </>
   );
