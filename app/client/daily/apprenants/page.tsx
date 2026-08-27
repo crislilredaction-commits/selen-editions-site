@@ -2,125 +2,28 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { assistanceFetch } from "@/components/AgentAssistanceBanner";
+import LoadingMascot from "@/components/ui/LoadingMascot";
 
-type Learner = { id: string; first_name: string; last_name: string; email?: string | null; phone?: string | null; company_name?: string | null; job_title?: string | null; status: string };
-type Session = { id: string; internal_reference?: string | null; start_date?: string | null; end_date?: string | null; daily_formations?: { title?: string | null } | null };
-type Enrolment = { id: string; session_id: string; learner_id: string; status: string; funding_type: string; funding_organisation?: string | null; positioning_status: string; prerequisites_status: string; daily_learners?: Learner | null; daily_sessions?: Session | null };
-type SupportNeed = { enrolment_id: string; has_specific_needs: boolean; needs_description?: string | null; planned_accommodations?: string | null; contact_requested: boolean };
+type Learner={id:string;first_name:string;last_name:string;email?:string|null;phone?:string|null;company_name?:string|null;job_title?:string|null;status:string};
+type Session={id:string;internal_reference?:string|null;start_date?:string|null;end_date?:string|null;daily_formations?:{title?:string|null}|null};
+type Enrolment={id:string;session_id:string;learner_id:string;status:string;funding_type:string;funding_organisation?:string|null;positioning_status:string;prerequisites_status:string;daily_learners?:Learner|null;daily_sessions?:Session|null};
+type SupportNeed={enrolment_id:string;has_specific_needs:boolean;needs_description?:string|null;planned_accommodations?:string|null;contact_requested:boolean};
+const card:React.CSSProperties={border:"1px solid var(--sepia-mid)",background:"var(--paper)",padding:"1rem",borderRadius:8};
+const field:React.CSSProperties={width:"100%",padding:".6rem",border:"1px solid var(--sepia-mid)",background:"white"};
 
-const card: React.CSSProperties = { border: "1px solid var(--sepia-mid)", background: "var(--paper)", padding: "1rem", borderRadius: 8 };
-const field: React.CSSProperties = { width: "100%", padding: ".6rem", border: "1px solid var(--sepia-mid)", background: "white" };
-
-export default function DailyLearnersPage() {
-  const [learners, setLearners] = useState<Learner[]>([]);
-  const [enrolments, setEnrolments] = useState<Enrolment[]>([]);
-  const [supportNeeds, setSupportNeeds] = useState<SupportNeed[]>([]);
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [selectedLearner, setSelectedLearner] = useState("");
-  const [selectedSession, setSelectedSession] = useState("");
-
-  const load = useCallback(async () => {
-    setError("");
-    try {
-      const [learnersRes, sessionsRes] = await Promise.all([
-        assistanceFetch("/api/client/daily/learners", { cache: "no-store" }),
-        assistanceFetch("/api/client/daily/sessions", { cache: "no-store" }),
-      ]);
-      const learnerData = await learnersRes.json().catch(() => ({}));
-      const sessionData = await sessionsRes.json().catch(() => ({}));
-      if (!learnersRes.ok) throw new Error(learnerData.error ?? "Impossible de charger les apprenants.");
-      if (!sessionsRes.ok) throw new Error(sessionData.error ?? "Impossible de charger les sessions.");
-      setLearners(learnerData.learners ?? []);
-      setEnrolments(learnerData.enrolments ?? []);
-      setSupportNeeds(learnerData.supportNeeds ?? []);
-      setSessions((sessionData.sessions ?? []).filter((session: { status?: string }) => session.status !== "archived"));
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Chargement impossible.");
-    }
-  }, []);
-
-  useEffect(() => { void load(); }, [load]);
-
-  const supportByEnrolment = useMemo(() => new Map(supportNeeds.map((item) => [item.enrolment_id, item])), [supportNeeds]);
-
-  async function createLearner(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setSaving(true); setError(""); setMessage("");
-    const form = new FormData(event.currentTarget);
-    const response = await assistanceFetch("/api/client/daily/learners", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "learner", first_name: form.get("first_name"), last_name: form.get("last_name"), email: form.get("email"), phone: form.get("phone"), company_name: form.get("company_name"), job_title: form.get("job_title") }),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) setError(data.error ?? "Création impossible.");
-    else { setMessage("Apprenant ajouté."); event.currentTarget.reset(); await load(); }
-    setSaving(false);
-  }
-
-  async function enrol(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setSaving(true); setError(""); setMessage("");
-    const form = new FormData(event.currentTarget);
-    const response = await assistanceFetch("/api/client/daily/learners", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "enrolment", learner_id: selectedLearner, session_id: selectedSession, funding_type: form.get("funding_type"), funding_organisation: form.get("funding_organisation"), company_name: form.get("company_name"), company_contact_name: form.get("company_contact_name"), company_contact_email: form.get("company_contact_email") }),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) setError(data.error ?? "Inscription impossible.");
-    else { setMessage("Apprenant inscrit à la session."); setSelectedLearner(""); setSelectedSession(""); event.currentTarget.reset(); await load(); }
-    setSaving(false);
-  }
-
-  async function updateEnrolment(id: string, patch: Record<string, string>) {
-    setError(""); setMessage("");
-    const response = await assistanceFetch("/api/client/daily/learners", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, ...patch }) });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) return setError(data.error ?? "Mise à jour impossible.");
-    setMessage("Inscription mise à jour."); await load();
-  }
-
-  async function saveSupport(event: FormEvent<HTMLFormElement>, enrolmentId: string) {
-    event.preventDefault(); setError(""); setMessage("");
-    const form = new FormData(event.currentTarget);
-    const hasNeeds = form.get("has_specific_needs") === "on";
-    const response = await assistanceFetch("/api/client/daily/learners", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "support", enrolment_id: enrolmentId, has_specific_needs: hasNeeds, needs_description: form.get("needs_description"), planned_accommodations: form.get("planned_accommodations"), contact_requested: form.get("contact_requested") === "on" }) });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) return setError(data.error ?? "Enregistrement impossible.");
-    setMessage("Besoins d’adaptation mis à jour."); await load();
-  }
-
-  return (
-    <main style={{ maxWidth: 1180, margin: "0 auto", padding: "2rem 1rem", display: "grid", gap: "1rem" }}>
-      <header><p style={{ color: "var(--rust)", fontWeight: 700 }}>SELEN DAILY</p><h1>Apprenants & inscriptions</h1><p>Un apprenant est enregistré une seule fois dans votre organisme, puis peut être inscrit à plusieurs sessions.</p></header>
-      {error && <p style={{ color: "#a33" }}>{error}</p>}{message && <p style={{ color: "#476b3b" }}>{message}</p>}
-
-      <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: "1rem" }}>
-        <form onSubmit={createLearner} style={card}><h2>Nouvel apprenant</h2><div style={{ display: "grid", gap: ".65rem" }}>
-          <input name="first_name" placeholder="Prénom *" required style={field}/><input name="last_name" placeholder="Nom *" required style={field}/><input name="email" type="email" placeholder="Email" style={field}/><input name="phone" placeholder="Téléphone" style={field}/><input name="company_name" placeholder="Entreprise" style={field}/><input name="job_title" placeholder="Fonction" style={field}/><button disabled={saving}>Ajouter l’apprenant</button>
-        </div></form>
-        <form onSubmit={enrol} style={card}><h2>Inscrire à une session</h2><div style={{ display: "grid", gap: ".65rem" }}>
-          <select required value={selectedLearner} onChange={(e)=>setSelectedLearner(e.target.value)} style={field}><option value="">Choisir un apprenant</option>{learners.filter(l=>l.status==="active").map(l=><option key={l.id} value={l.id}>{l.first_name} {l.last_name}</option>)}</select>
-          <select required value={selectedSession} onChange={(e)=>setSelectedSession(e.target.value)} style={field}><option value="">Choisir une session</option>{sessions.map(s=><option key={s.id} value={s.id}>{s.daily_formations?.title ?? "Session"} · {s.internal_reference ?? s.start_date ?? s.id.slice(0,8)}</option>)}</select>
-          <select name="funding_type" defaultValue="unknown" style={field}><option value="unknown">Financement à préciser</option><option value="employer">Employeur</option><option value="opco">OPCO</option><option value="public_funder">Financeur public</option><option value="self_funded">Autofinancement</option><option value="other">Autre</option></select>
-          <input name="funding_organisation" placeholder="Nom du financeur" style={field}/><input name="company_name" placeholder="Entreprise commanditaire" style={field}/><input name="company_contact_name" placeholder="Contact entreprise" style={field}/><input name="company_contact_email" type="email" placeholder="Email du contact" style={field}/><button disabled={saving}>Créer l’inscription</button>
-        </div></form>
-      </section>
-
-      <section style={card}><h2>Répertoire des apprenants</h2>{learners.length===0 ? <p>Aucun apprenant pour le moment.</p> : <div style={{ display: "grid", gap: ".6rem" }}>{learners.map(l=><div key={l.id} style={{ borderTop: "1px solid var(--sepia-mid)", paddingTop: ".6rem" }}><strong>{l.first_name} {l.last_name}</strong>{l.email ? ` · ${l.email}` : ""}{l.company_name ? ` · ${l.company_name}` : ""}{l.job_title ? ` · ${l.job_title}` : ""}</div>)}</div>}</section>
-
-      <section style={{ display: "grid", gap: "1rem" }}><h2>Inscriptions</h2>{enrolments.length===0 ? <p>Aucune inscription.</p> : enrolments.map((e)=>{ const n=supportByEnrolment.get(e.id); return <article key={e.id} style={card}>
-        <h3>{e.daily_learners?.first_name} {e.daily_learners?.last_name}</h3><p>{e.daily_sessions?.daily_formations?.title ?? "Session"} · {e.daily_sessions?.internal_reference ?? e.daily_sessions?.start_date ?? ""}</p>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: ".6rem" }}>
-          <label>Statut<select value={e.status} onChange={(ev)=>void updateEnrolment(e.id,{status:ev.target.value})} style={field}><option value="invited">Invité</option><option value="pending">En attente</option><option value="confirmed">Confirmé</option><option value="declined">Refusé</option><option value="cancelled">Annulé</option><option value="completed">Terminé</option></select></label>
-          <label>Positionnement<select value={e.positioning_status} onChange={(ev)=>void updateEnrolment(e.id,{positioning_status:ev.target.value})} style={field}><option value="not_started">Non démarré</option><option value="sent">Envoyé</option><option value="submitted">Répondu</option><option value="reviewed">Relu</option></select></label>
-          <label>Prérequis<select value={e.prerequisites_status} onChange={(ev)=>void updateEnrolment(e.id,{prerequisites_status:ev.target.value})} style={field}><option value="not_reviewed">Non vérifiés</option><option value="met">Validés</option><option value="not_met">Non remplis</option><option value="to_clarify">À clarifier</option></select></label>
-        </div>
-        <form onSubmit={(ev)=>void saveSupport(ev,e.id)} style={{ marginTop: "1rem", display: "grid", gap: ".5rem" }}>
-          <label><input type="checkbox" name="has_specific_needs" defaultChecked={n?.has_specific_needs ?? false}/> Besoins d’adaptation ou d’accessibilité à prévoir</label>
-          <textarea name="needs_description" defaultValue={n?.needs_description ?? ""} placeholder="Décrire uniquement les besoins utiles à l’organisation de la formation" style={field}/><textarea name="planned_accommodations" defaultValue={n?.planned_accommodations ?? ""} placeholder="Adaptations prévues" style={field}/><label><input type="checkbox" name="contact_requested" defaultChecked={n?.contact_requested ?? false}/> Un échange complémentaire est nécessaire</label><button>Enregistrer les adaptations</button>
-        </form>
-      </article>;})}</section>
-    </main>
-  );
+export default function DailyLearnersPage(){
+ const[learners,setLearners]=useState<Learner[]>([]);const[enrolments,setEnrolments]=useState<Enrolment[]>([]);const[supportNeeds,setSupportNeeds]=useState<SupportNeed[]>([]);const[sessions,setSessions]=useState<Session[]>([]);const[error,setError]=useState("");const[message,setMessage]=useState("");const[saving,setSaving]=useState(false);const[loading,setLoading]=useState(true);const[selectedLearner,setSelectedLearner]=useState("");const[selectedSession,setSelectedSession]=useState("");const[showCreate,setShowCreate]=useState(false);
+ const load=useCallback(async()=>{setError("");try{const[lr,sr]=await Promise.all([assistanceFetch("/api/client/daily/learners",{cache:"no-store"}),assistanceFetch("/api/client/daily/sessions",{cache:"no-store"})]);const ld=await lr.json().catch(()=>({}));const sd=await sr.json().catch(()=>({}));if(!lr.ok)throw new Error(ld.error??"Impossible de charger les apprenants.");if(!sr.ok)throw new Error(sd.error??"Impossible de charger les sessions.");setLearners(ld.learners??[]);setEnrolments(ld.enrolments??[]);setSupportNeeds(ld.supportNeeds??[]);setSessions((sd.sessions??[]).filter((x:{status?:string})=>x.status!=="archived"));}catch(e){setError(e instanceof Error?e.message:"Chargement impossible.")}finally{setLoading(false)}},[]);
+ useEffect(()=>{void load()},[load]);
+ const supportByEnrolment=useMemo(()=>new Map(supportNeeds.map(x=>[x.enrolment_id,x])),[supportNeeds]);
+ async function createLearner(e:FormEvent<HTMLFormElement>){e.preventDefault();setSaving(true);setError("");setMessage("");const f=new FormData(e.currentTarget);const r=await assistanceFetch("/api/client/daily/learners",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"learner",first_name:f.get("first_name"),last_name:f.get("last_name"),email:f.get("email"),phone:f.get("phone"),company_name:f.get("company_name"),job_title:f.get("job_title")})});const d=await r.json().catch(()=>({}));if(!r.ok)setError(d.error??"Création impossible.");else{setMessage("Apprenant ajouté.");e.currentTarget.reset();setShowCreate(false);await load()}setSaving(false)}
+ async function enrol(e:FormEvent<HTMLFormElement>){e.preventDefault();setSaving(true);setError("");setMessage("");const f=new FormData(e.currentTarget);const r=await assistanceFetch("/api/client/daily/learners",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"enrolment",learner_id:selectedLearner,session_id:selectedSession,funding_type:f.get("funding_type"),funding_organisation:f.get("funding_organisation"),company_name:f.get("company_name"),company_contact_name:f.get("company_contact_name"),company_contact_email:f.get("company_contact_email")})});const d=await r.json().catch(()=>({}));if(!r.ok)setError(d.error??"Inscription impossible.");else{setMessage("Apprenant inscrit à la session.");setSelectedLearner("");setSelectedSession("");e.currentTarget.reset();await load()}setSaving(false)}
+ async function updateEnrolment(id:string,patch:Record<string,string>){setError("");setMessage("");const r=await assistanceFetch("/api/client/daily/learners",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,...patch})});const d=await r.json().catch(()=>({}));if(!r.ok){setError(d.error??"Mise à jour impossible.");return}setMessage("Inscription mise à jour.");await load()}
+ async function saveSupport(e:FormEvent<HTMLFormElement>,enrolmentId:string){e.preventDefault();setError("");setMessage("");const f=new FormData(e.currentTarget);const r=await assistanceFetch("/api/client/daily/learners",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"support",enrolment_id:enrolmentId,has_specific_needs:f.get("has_specific_needs")==="on",needs_description:f.get("needs_description"),planned_accommodations:f.get("planned_accommodations"),contact_requested:f.get("contact_requested")==="on"})});const d=await r.json().catch(()=>({}));if(!r.ok){setError(d.error??"Enregistrement impossible.");return}setMessage("Besoins d’adaptation mis à jour.");await load()}
+ if(loading)return <LoadingMascot message="Sélion rassemble les apprenants…"/>;
+ return <main style={{maxWidth:1180,margin:"0 auto",padding:"2rem 1rem",display:"grid",gap:"1rem"}}><header><p style={{color:"var(--rust)",fontWeight:700}}>SELEN DAILY</p><h1>Apprenants & inscriptions</h1><p>Un apprenant est enregistré une seule fois dans votre organisme, puis peut être inscrit à plusieurs sessions.</p></header>{error?<p style={{color:"#a33"}}>{error}</p>:null}{message?<p style={{color:"#476b3b"}}>{message}</p>:null}
+ <section style={card}><button type="button" onClick={()=>setShowCreate(v=>!v)} aria-expanded={showCreate} style={{width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",border:0,background:"transparent",fontWeight:800,fontSize:"1.05rem",cursor:"pointer",padding:0}}><span>Créer un nouvel apprenant</span><span>{showCreate?"▲":"▼"}</span></button>{showCreate?<form onSubmit={createLearner} style={{display:"grid",gap:".65rem",marginTop:"1rem"}}><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:".65rem"}}><input name="first_name" placeholder="Prénom *" required style={field}/><input name="last_name" placeholder="Nom *" required style={field}/><input name="email" type="email" placeholder="Email" style={field}/><input name="phone" placeholder="Téléphone" style={field}/><input name="company_name" placeholder="Entreprise" style={field}/><input name="job_title" placeholder="Fonction" style={field}/></div><button disabled={saving} style={{width:"fit-content",padding:".65rem 1rem"}}>Ajouter l’apprenant</button></form>:<p style={{margin:".55rem 0 0",color:"var(--ink-soft)",fontSize:13}}>Le formulaire reste masqué tant que vous n’avez pas besoin d’ajouter quelqu’un.</p>}</section>
+ <form onSubmit={enrol} style={card}><h2>Inscrire un apprenant à une session</h2><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:".65rem"}}><select required value={selectedLearner} onChange={e=>setSelectedLearner(e.target.value)} style={field}><option value="">Choisir un apprenant</option>{learners.filter(l=>l.status==="active").map(l=><option key={l.id} value={l.id}>{l.first_name} {l.last_name}</option>)}</select><select required value={selectedSession} onChange={e=>setSelectedSession(e.target.value)} style={field}><option value="">Choisir une session</option>{sessions.map(s=><option key={s.id} value={s.id}>{s.daily_formations?.title??"Session"} · {s.internal_reference??s.start_date??s.id.slice(0,8)}</option>)}</select><select name="funding_type" defaultValue="unknown" style={field}><option value="unknown">Financement à préciser</option><option value="employer">Employeur</option><option value="opco">OPCO</option><option value="public_funder">Financeur public</option><option value="self_funded">Autofinancement</option><option value="other">Autre</option></select><input name="funding_organisation" placeholder="Nom du financeur" style={field}/><input name="company_name" placeholder="Entreprise commanditaire" style={field}/><input name="company_contact_name" placeholder="Contact entreprise" style={field}/><input name="company_contact_email" type="email" placeholder="Email du contact" style={field}/></div><button disabled={saving} style={{marginTop:".7rem"}}>Créer l’inscription</button></form>
+ <section style={card}><h2>Répertoire des apprenants</h2>{learners.length===0?<p>Aucun apprenant pour le moment.</p>:<div style={{display:"grid",gap:".6rem"}}>{learners.map(l=><div key={l.id} style={{borderTop:"1px solid var(--sepia-mid)",paddingTop:".6rem"}}><strong>{l.first_name} {l.last_name}</strong>{l.email?` · ${l.email}`:""}{l.company_name?` · ${l.company_name}`:""}{l.job_title?` · ${l.job_title}`:""}</div>)}</div>}</section>
+ <section style={{display:"grid",gap:"1rem"}}><h2>Inscriptions</h2>{enrolments.length===0?<p>Aucune inscription.</p>:enrolments.map(enrolment=>{const n=supportByEnrolment.get(enrolment.id);return <article key={enrolment.id} style={card}><h3>{enrolment.daily_learners?.first_name} {enrolment.daily_learners?.last_name}</h3><p>{enrolment.daily_sessions?.daily_formations?.title??"Session"} · {enrolment.daily_sessions?.internal_reference??enrolment.daily_sessions?.start_date??""}</p><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:".6rem"}}><label>Statut<select value={enrolment.status} onChange={e=>void updateEnrolment(enrolment.id,{status:e.target.value})} style={field}><option value="invited">Invité</option><option value="pending">En attente</option><option value="confirmed">Confirmé</option><option value="declined">Refusé</option><option value="cancelled">Annulé</option><option value="completed">Terminé</option></select></label><label>Positionnement<select value={enrolment.positioning_status} onChange={e=>void updateEnrolment(enrolment.id,{positioning_status:e.target.value})} style={field}><option value="not_started">Non démarré</option><option value="sent">Envoyé</option><option value="submitted">Répondu</option><option value="reviewed">Relu</option></select></label><label>Prérequis<select value={enrolment.prerequisites_status} onChange={e=>void updateEnrolment(enrolment.id,{prerequisites_status:e.target.value})} style={field}><option value="not_reviewed">Non vérifiés</option><option value="met">Validés</option><option value="not_met">Non remplis</option><option value="to_clarify">À clarifier</option></select></label></div><form onSubmit={e=>void saveSupport(e,enrolment.id)} style={{marginTop:"1rem",display:"grid",gap:".5rem"}}><label><input type="checkbox" name="has_specific_needs" defaultChecked={n?.has_specific_needs??false}/> Besoins d’adaptation ou d’accessibilité à prévoir</label><textarea name="needs_description" defaultValue={n?.needs_description??""} placeholder="Décrire uniquement les besoins utiles à l’organisation de la formation" style={field}/><textarea name="planned_accommodations" defaultValue={n?.planned_accommodations??""} placeholder="Adaptations prévues" style={field}/><label><input type="checkbox" name="contact_requested" defaultChecked={n?.contact_requested??false}/> Un échange complémentaire est nécessaire</label><button>Enregistrer les adaptations</button></form></article>})}</section></main>
 }
