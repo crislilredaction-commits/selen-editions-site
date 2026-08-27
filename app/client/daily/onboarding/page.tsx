@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import ClientSupportBar from "@/components/ClientSupportBar";
 import { assistanceFetch } from "@/components/AgentAssistanceBanner";
 import { createSupabaseBrowserClient } from "@/app/lib/supabase/client";
 
@@ -249,7 +248,6 @@ export default function DailyOnboardingPage() {
   if (error && !loadedRef.current) {
     return (
       <main className="gazette-paper" style={{ minHeight: "100vh" }}>
-        <ClientSupportBar email={email} context="le paramétrage Selen Daily" />
         <div style={s.page}>
           <section style={s.card}>
             <p className="gazette-label">Selen Daily</p>
@@ -270,7 +268,6 @@ export default function DailyOnboardingPage() {
 
   return (
     <main className="gazette-paper" style={{ minHeight: "100vh" }}>
-      <ClientSupportBar email={email} context="le paramétrage Selen Daily" />
       <div style={s.page}>
         <div style={s.compactHeading}>
           <p className="gazette-label">Selen Daily</p>

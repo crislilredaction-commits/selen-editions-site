@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import ClientSupportBar from "@/components/ClientSupportBar";
 import { assistanceFetch, withAssistanceToken } from "@/components/AgentAssistanceBanner";
 import { createSupabaseBrowserClient } from "@/app/lib/supabase/client";
 
@@ -626,7 +625,6 @@ export default function ClientDailyPage() {
   if (openError) {
     return (
       <main className="gazette-paper" style={{ minHeight: "100vh" }}>
-        <ClientSupportBar email={email} context="Selen Daily" />
         <div style={s.page}>
           <Link href="/client" style={s.homeLink}>Retour au bureau Selen</Link>
           <section style={s.card}>
@@ -648,7 +646,6 @@ export default function ClientDailyPage() {
 
   return (
     <main className="gazette-paper" style={{ minHeight: "100vh" }}>
-      <ClientSupportBar email={email} context="Selen Daily" />
       <div style={s.page}>
         <Link href="/client" style={s.homeLink}>Retour au bureau Selen</Link>
         <div style={s.compactHeading}>

@@ -34,6 +34,11 @@ test("le client peut demander un accompagnement pendant tout le paramétrage aut
   assert.match(onboardingPage, /setup_choice: "video" as const/);
 });
 
+test("les bandeaux supérieurs sont retirés du paramétrage et de la création de formation", () => {
+  assert.doesNotMatch(onboardingPage, /<ClientSupportBar/);
+  assert.doesNotMatch(dailyPage, /<ClientSupportBar/);
+});
+
 test("la création d'une session est orientée vers sa page dédiée", () => {
   assert.match(dailyPage, /router\.push\("\/client\/daily\/sessions"\)/);
   assert.doesNotMatch(dailyPage, /showSessionForm/);
