@@ -7,6 +7,32 @@ import {
 import { blockedAgentAssistanceResponse } from "@/lib/server/agentAssistance";
 import { createUniqueStorageFileName } from "@/lib/server/storageFileNames";
 
+const MAX_PROGRAM_UPLOAD_BYTES = 10 * 1024 * 1024;
+const ALLOWED_PROGRAM_EXTENSIONS = new Set(["pdf", "doc", "docx"]);
+const ALLOWED_PROGRAM_MIME_TYPES = new Set([
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+]);
+
+function validateProgramUpload(file: File) {
+  const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+
+  if (!ALLOWED_PROGRAM_EXTENSIONS.has(extension)) {
+    return "Format non autorisé. Utilisez un fichier PDF, DOC ou DOCX.";
+  }
+
+  if (file.type && !ALLOWED_PROGRAM_MIME_TYPES.has(file.type)) {
+    return "Format non autorisé. Utilisez un fichier PDF, DOC ou DOCX.";
+  }
+
+  if (file.size > MAX_PROGRAM_UPLOAD_BYTES) {
+    return "Le fichier est trop volumineux. La taille maximale est de 10 Mo.";
+  }
+
+  return null;
+}
+
 export async function POST(req: Request) {
   try {
     const supabase = getAdminSupabase();
@@ -53,6 +79,13 @@ export async function POST(req: Request) {
         },
         { status: 400 },
       );
+    }
+
+    if (hasFile && file instanceof File) {
+      const uploadError = validateProgramUpload(file);
+      if (uploadError) {
+        return NextResponse.json({ error: uploadError }, { status: 400 });
+      }
     }
 
     const access = await verifyClientNdaDossierAccess(supabase, dossierId, req);
