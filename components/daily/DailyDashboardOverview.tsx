@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { assistanceFetch } from "@/components/AgentAssistanceBanner";
+import LoadingMascot from "@/components/ui/LoadingMascot";
 
 type Formation = {
   id: string;
@@ -115,6 +116,10 @@ export default function DailyDashboardOverview() {
   const next = futureSessions[0] ?? null;
   const organisationName = workspace?.organisation?.name?.trim() || null;
 
+  if (loading) {
+    return <LoadingMascot message="Sélion rassemble votre activité…" />;
+  }
+
   return (
     <main className="daily-dashboard-shell">
       <style>{dashboardCss}</style>
@@ -126,7 +131,7 @@ export default function DailyDashboardOverview() {
               <div className="daily-eyebrow"><span className="daily-feather"><FeatherIcon /></span>Selen Daily</div>
               <h1>Votre activité, en un coup d&apos;œil</h1>
               <div className="daily-hero-rule" />
-              <p>{loading ? "Selen rassemble votre activité…" : requestsToPlan.length > 0 ? "Une demande mérite votre attention. Rien ne presse dans le vide : Selen vous montre exactement où agir." : <>Tout avance{organisationName ? ` chez ${organisationName}` : ""}. Gardez le cap, Selen vous montre seulement ce qui mérite vraiment votre attention.</>}</p>
+              <p>{requestsToPlan.length > 0 ? "Une demande mérite votre attention. Rien ne presse dans le vide : Selen vous montre exactement où agir." : <>Tout avance{organisationName ? ` chez ${organisationName}` : ""}. Gardez le cap, Selen vous montre seulement ce qui mérite vraiment votre attention.</>}</p>
             </div>
             <div className="daily-hero-actions">
               <Link href="/client/daily/a-faire" className="daily-primary">Voir ce qui est à faire</Link>
