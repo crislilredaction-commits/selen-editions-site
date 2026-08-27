@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
-import { getDailyOrganisationReadContext } from "@/lib/server/dailyOrganisationContext";
+import {
+  getDailyOrganisationBillingUserId,
+  getDailyOrganisationReadContext,
+} from "@/lib/server/dailyOrganisationContext";
 
 type ActionItem = {
   id: string;
-  kind: "dossier" | "positioning" | "prerequisite" | "adaptation" | "trainer";
+  kind: "dossier" | "positioning" | "prerequisite" | "adaptation" | "trainer" | "onboarding";
   priority: "high" | "medium" | "normal";
   title: string;
   detail: string;
@@ -29,6 +32,12 @@ type EnrolmentRelation = {
   daily_sessions?: SessionRelation | SessionRelation[] | null;
 };
 
+type SupportTask = {
+  key?: string | null;
+  label?: string | null;
+  status?: string | null;
+};
+
 function one<T>(value: T | T[] | null | undefined): T | null {
   if (Array.isArray(value)) return value[0] ?? null;
   return value ?? null;
@@ -49,7 +58,23 @@ export async function GET(req: Request) {
   const context = await getDailyOrganisationReadContext(req, ["sessions", "trainings"]);
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
 
-  const [{ data: sessions, error: sessionsError }, { data: checklist, error: checklistError }, { data: enrolments, error: enrolmentsError }, { data: supportNeeds, error: needsError }] = await Promise.all([
+  let billingUserId: string;
+  try {
+    billingUserId = await getDailyOrganisationBillingUserId(context.organisationId, context.user.id);
+  } catch (cause) {
+    return NextResponse.json(
+      { error: cause instanceof Error ? cause.message : "Impossible de retrouver le paramétrage Daily." },
+      { status: 500 },
+    );
+  }
+
+  const [
+    { data: sessions, error: sessionsError },
+    { data: checklist, error: checklistError },
+    { data: enrolments, error: enrolmentsError },
+    { data: supportNeeds, error: needsError },
+    { data: onboarding, error: onboardingError },
+  ] = await Promise.all([
     context.admin
       .from("daily_sessions")
       .select("id,internal_reference,start_date,end_date,status,trainer_ids,daily_formations(title)")
@@ -71,13 +96,35 @@ export async function GET(req: Request) {
       .select("id,enrolment_id,has_specific_needs,needs_description,planned_accommodations,contact_requested,daily_session_enrolments(id,session_id,status,daily_learners(first_name,last_name),daily_sessions(id,internal_reference,start_date,end_date,status,daily_formations(title)))")
       .eq("organisation_id", context.organisationId)
       .eq("has_specific_needs", true),
+    context.admin
+      .from("daily_onboarding")
+      .select("support_tasks")
+      .eq("user_id", billingUserId)
+      .maybeSingle(),
   ]);
 
-  const error = sessionsError ?? checklistError ?? enrolmentsError ?? needsError;
+  const error = sessionsError ?? checklistError ?? enrolmentsError ?? needsError ?? onboardingError;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const actions: ActionItem[] = [];
   const sessionsById = new Map((sessions ?? []).map((session) => [session.id, session]));
+
+  const onboardingTasks = Array.isArray(onboarding?.support_tasks)
+    ? (onboarding.support_tasks as SupportTask[])
+    : [];
+  for (const task of onboardingTasks) {
+    if (task.status !== "todo" || !task.label) continue;
+    actions.push({
+      id: `onboarding:${task.key ?? task.label}`,
+      kind: "onboarding",
+      priority: "medium",
+      title: task.label,
+      detail: "Ce document a été indiqué comme à fournir plus tard pendant le paramétrage initial.",
+      href: "/client/daily/onboarding",
+      sessionId: null,
+      sessionLabel: "Paramétrage Daily",
+    });
+  }
 
   for (const item of checklist ?? []) {
     if (!["todo", "in_progress", "blocked"].includes(item.status)) continue;
@@ -177,6 +224,7 @@ export async function GET(req: Request) {
       dossier: actions.filter((item) => item.kind === "dossier").length,
       learners: actions.filter((item) => ["positioning", "prerequisite", "adaptation"].includes(item.kind)).length,
       trainers: actions.filter((item) => item.kind === "trainer").length,
+      onboarding: actions.filter((item) => item.kind === "onboarding").length,
     },
   });
 }
