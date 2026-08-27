@@ -29,6 +29,17 @@ test("les documents de recette utilisent un import de fichier contrôlé", () =>
   assert.match(onboardingPage, /type="file"/);
 });
 
+test("le NDA est exigé lorsqu'il existe et les imports utilisent un bouton encadré explicite", () => {
+  assert.match(onboardingPage, /label="Numéro NDA"/);
+  assert.match(onboardingPage, /Si votre organisme possède déjà un numéro de déclaration d&apos;activité, il doit être renseigné ici\./);
+  assert.doesNotMatch(onboardingPage, /NDA[^\n]{0,40}facultatif/i);
+  assert.match(onboardingPage, /style=\{s\.fileInput\}/);
+  assert.match(onboardingPage, /style=\{s\.fileButton\}/);
+  assert.match(onboardingPage, /Choisir un fichier/);
+  assert.match(onboardingPage, /fileInput: \{ display: "none" \}/);
+  assert.match(onboardingPage, /fileButton: \{[^\n]*border: "1px solid var\(--rust\)"/);
+});
+
 test("le client peut demander un accompagnement pendant tout le paramétrage autonome", () => {
   assert.match(onboardingPage, /form\.current_step > 1 && form\.setup_choice === "self"/);
   assert.match(onboardingPage, /Je souhaite être accompagné/);
