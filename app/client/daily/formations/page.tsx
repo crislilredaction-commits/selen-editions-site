@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { assistanceFetch } from "@/components/AgentAssistanceBanner";
 
 type Question = { id: string; label: string; help_text: string; required: boolean; type: "single_choice" | "multiple_choice" | "free_text" | "scale_1_5"; options: string[]; order: number };
@@ -41,6 +42,7 @@ function registrationUrl(token?: string | null) {
 }
 
 export default function DailyFormationsPage() {
+  const router = useRouter();
   const [formations, setFormations] = useState<Formation[]>([]);
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
@@ -50,6 +52,7 @@ export default function DailyFormationsPage() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [showArchived, setShowArchived] = useState(false);
+  const [firstCreatedFormationId, setFirstCreatedFormationId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -77,6 +80,7 @@ export default function DailyFormationsPage() {
     setError("");
   }
   function editFormation(formation: Formation) {
+    setFirstCreatedFormationId(null);
     setMessage(""); setEditingId(formation.id);
     setForm({
       title: formation.title, global_objective: formation.global_objective,
@@ -103,19 +107,22 @@ export default function DailyFormationsPage() {
   async function save(event: FormEvent) {
     event.preventDefault(); setSaving(true); setError(""); setMessage("");
     try {
+      const wasEditing = Boolean(editingId);
+      const wasFirstFormation = !wasEditing && formations.filter((formation) => formation.status !== "archived").length === 0;
       const response = await assistanceFetch("/api/client/daily/formations", {
         method: editingId ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, id: editingId }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error ?? "Enregistrement impossible.");
-      const wasEditing = Boolean(editingId);
+      if (wasFirstFormation && data.formation?.id) setFirstCreatedFormationId(data.formation.id);
       resetForm();
-      setMessage(data.versioned ? "Nouvelle version créée et envoyée en validation Selen." : wasEditing ? "Formation mise à jour." : "Formation créée. Vous pouvez en ajouter une autre ou créer une session quand vous le souhaitez.");
+      setMessage(data.versioned ? "Nouvelle version créée et envoyée en validation Selen." : wasEditing ? "Formation mise à jour." : wasFirstFormation ? "Votre première formation est créée." : "Formation créée.");
       await load();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Enregistrement impossible."); }
     finally { setSaving(false); }
   }
   async function action(action: "duplicate" | "archive", id: string) {
+    setFirstCreatedFormationId(null);
     setError(""); setMessage("");
     const response = await assistanceFetch("/api/client/daily/formations", {
       method: action === "archive" ? "DELETE" : "POST", headers: { "Content-Type": "application/json" },
@@ -139,6 +146,20 @@ export default function DailyFormationsPage() {
   return <main style={styles.main}>
     <header style={styles.hero}><div><p style={styles.eyebrow}>Selen Daily · Catalogue</p><h1 style={styles.h1}>Formations</h1><p style={styles.lead}>Une formation est un modèle réutilisable. Les dates, participants et affectations opérationnelles vivent ensuite dans les sessions.</p></div><div style={styles.stat}><strong>{formations.filter((f) => f.status !== "archived").length}</strong><span>formations actives</span></div></header>
     {error ? <div style={styles.error}>{error}</div> : null}{message ? <div style={styles.success}>{message}</div> : null}
+
+    {firstCreatedFormationId ? (
+      <section style={styles.completionCard}>
+        <div>
+          <p style={styles.eyebrow}>Première formation créée</p>
+          <h2 style={styles.h2}>Que souhaitez-vous faire maintenant ?</h2>
+          <p style={styles.muted}>Vous pouvez créer immédiatement la première session de cette formation ou rejoindre votre tableau de bord.</p>
+        </div>
+        <div style={styles.completionActions}>
+          <button type="button" style={styles.primary} onClick={() => router.push(`/client/daily/sessions?formation=${encodeURIComponent(firstCreatedFormationId)}`)}>Créer une session</button>
+          <button type="button" style={styles.secondary} onClick={() => router.push("/client/daily")}>Aller au dashboard</button>
+        </div>
+      </section>
+    ) : null}
 
     <section style={styles.card}>
       <div style={styles.sectionTitle}><div><h2 style={styles.h2}>{editingId ? "Modifier la formation" : "Nouvelle formation"}</h2><p style={styles.muted}>Les informations structurantes alimenteront les programmes et futurs documents Daily. Vous pouvez enregistrer autant de formations que nécessaire.</p></div>{editingId ? <button type="button" onClick={resetForm} style={styles.secondary}>Annuler</button> : null}</div>
@@ -207,6 +228,7 @@ const styles: Record<string, React.CSSProperties> = {
   main: { maxWidth: 1180, margin: "0 auto", padding: "2rem 1rem 4rem", color: "var(--ink)" }, hero: { display: "flex", justifyContent: "space-between", gap: "1rem", alignItems: "flex-end", flexWrap: "wrap", marginBottom: "1.5rem" },
   eyebrow: { textTransform: "uppercase", letterSpacing: ".12em", fontSize: 12, color: "var(--rust)", fontWeight: 800 }, h1: { fontSize: "clamp(2rem,5vw,3.4rem)", margin: ".2rem 0" }, h2: { margin: 0, fontSize: "1.35rem" }, lead: { maxWidth: 760, color: "var(--ink-soft)", lineHeight: 1.6 },
   stat: { minWidth: 150, padding: "1rem", border: "1px solid var(--sepia-mid)", background: "var(--paper)", display: "grid", gap: 4 }, card: { background: "var(--paper)", border: "1px solid var(--sepia-mid)", padding: "1.25rem", marginBottom: "1.25rem", boxShadow: "0 10px 30px rgba(59,45,33,.05)" },
+  completionCard: { background: "rgba(106,138,74,.08)", border: "1px solid rgba(106,138,74,.42)", padding: "1.25rem", marginBottom: "1.25rem", display: "flex", justifyContent: "space-between", gap: "1rem", alignItems: "center", flexWrap: "wrap", boxShadow: "0 10px 30px rgba(59,45,33,.05)" }, completionActions: { display: "flex", gap: ".65rem", flexWrap: "wrap", alignItems: "center" },
   sectionTitle: { display: "flex", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap", alignItems: "center", marginBottom: "1rem" }, form: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: "1rem" }, field: { display: "grid", gap: 6, alignContent: "start" }, full: { gridColumn: "1 / -1", display: "grid", gap: 8 }, label: { fontWeight: 750, fontSize: 14 },
   input: { width: "100%", padding: ".72rem .78rem", border: "1px solid var(--sepia-mid)", background: "#fffdf8", color: "var(--ink)", boxSizing: "border-box" }, textarea: { width: "100%", minHeight: 88, padding: ".72rem .78rem", border: "1px solid var(--sepia-mid)", background: "#fffdf8", color: "var(--ink)", boxSizing: "border-box", resize: "vertical" }, largeTextarea: { width: "100%", minHeight: 150, padding: ".72rem .78rem", border: "1px solid var(--sepia-mid)", background: "#fffdf8", color: "var(--ink)", boxSizing: "border-box", resize: "vertical" },
   primary: { border: 0, background: "var(--rust)", color: "white", padding: ".8rem 1rem", fontWeight: 800, cursor: "pointer" }, secondary: { border: "1px solid var(--sepia-mid)", background: "rgba(201,160,85,.08)", color: "var(--rust)", padding: ".6rem .8rem", fontWeight: 700, cursor: "pointer" }, smallButton: { border: "1px solid #c8b8a4", background: "transparent", color: "var(--ink-soft)", padding: ".5rem .7rem", cursor: "pointer" }, row: { display: "flex", gap: ".6rem", alignItems: "center", flexWrap: "wrap" }, grid2: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: ".8rem" }, checkGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(250px,1fr))", gap: ".5rem" }, questionCard: { border: "1px solid var(--sepia-mid)", padding: ".8rem", display: "grid", gap: ".7rem", background: "rgba(201,160,85,.04)" }, checkbox: { display: "inline-flex", gap: 7, alignItems: "center", fontSize: 14 }, error: { padding: ".8rem 1rem", background: "#fff0ee", border: "1px solid #d9998e", marginBottom: "1rem" }, success: { padding: ".8rem 1rem", background: "#eff8ef", border: "1px solid #99bd99", marginBottom: "1rem" }, warning: { padding: ".6rem .7rem", background: "#fff8e6", borderLeft: "3px solid #c99f55" }, muted: { color: "var(--ink-soft)", margin: ".35rem 0", fontSize: 14 }, list: { display: "grid", gap: ".75rem" }, listCard: { display: "flex", gap: "1rem", justifyContent: "space-between", flexWrap: "wrap", borderTop: "1px solid var(--sepia-mid)", paddingTop: "1rem" }, badge: { display: "inline-block", border: "1px solid var(--sepia-mid)", padding: ".2rem .45rem", fontSize: 12, background: "rgba(201,160,85,.08)" }, actions: { display: "flex", gap: ".45rem", flexWrap: "wrap", alignItems: "flex-start" },
