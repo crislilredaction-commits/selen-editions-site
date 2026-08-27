@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import DailyDashboardOverview from "@/components/daily/DailyDashboardOverview";
 
 export default function DailyClientLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const hideNavigation = pathname === "/client/daily" || pathname === "/client/daily/onboarding";
+  const hideNavigation = pathname === "/client/daily" || pathname === "/client/daily/onboarding" || pathname === "/client/daily/sessions";
 
   return (
     <>
@@ -43,6 +44,7 @@ export default function DailyClientLayout({ children }: { children: React.ReactN
         <Link href="/client/daily/formateur/cv" style={linkStyle}>Mon CV</Link>
         <Link href="/client/daily/formateurs/suivi-annuel" style={linkStyle}>Suivi des formateurs</Link>
       </nav>}
+      {pathname === "/client/daily" ? <DailyDashboardOverview /> : null}
       {children}
     </>
   );
