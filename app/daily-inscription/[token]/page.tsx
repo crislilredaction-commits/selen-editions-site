@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
 import Header from "@/components/Header";
 import ApplicationSignature from "@/components/daily/ApplicationSignature";
 import ProgramDetails from "@/components/daily/ProgramDetails";
@@ -34,8 +34,8 @@ function initialMode() {
     : "beneficiary";
 }
 
-export default function DailyRegistrationPage({ params }: { params: { token: string } }) {
-  const token = params.token;
+export default function DailyRegistrationPage({ params }: { params: Promise<{ token: string }> }) {
+  const { token } = use(params);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
