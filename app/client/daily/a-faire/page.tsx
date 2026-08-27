@@ -6,7 +6,7 @@ import { assistanceFetch } from "@/components/AgentAssistanceBanner";
 
 type ActionItem = {
   id: string;
-  kind: "dossier" | "positioning" | "prerequisite" | "adaptation" | "trainer";
+  kind: "dossier" | "positioning" | "prerequisite" | "adaptation" | "trainer" | "onboarding";
   priority: "high" | "medium" | "normal";
   title: string;
   detail: string;
@@ -17,7 +17,7 @@ type ActionItem = {
 
 type ActionResponse = {
   actions: ActionItem[];
-  counts: { total: number; high: number; dossier: number; learners: number; trainers: number };
+  counts: { total: number; high: number; dossier: number; learners: number; trainers: number; onboarding?: number };
 };
 
 const kindLabel: Record<ActionItem["kind"], string> = {
@@ -26,6 +26,7 @@ const kindLabel: Record<ActionItem["kind"], string> = {
   prerequisite: "Prérequis",
   adaptation: "Adaptation",
   trainer: "Intervenant",
+  onboarding: "Paramétrage",
 };
 
 export default function DailyActionCenterPage() {
@@ -79,10 +80,12 @@ export default function DailyActionCenterPage() {
             <Metric value={data.counts.dossier} label="dans les dossiers" />
             <Metric value={data.counts.learners} label="côté apprenants" />
             <Metric value={data.counts.trainers} label="intervenants à associer" />
+            <Metric value={data.counts.onboarding ?? 0} label="documents à fournir" />
           </section>
 
           <div style={s.filters}>
             <FilterButton active={filter === "all"} onClick={() => setFilter("all")}>Tout</FilterButton>
+            <FilterButton active={filter === "onboarding"} onClick={() => setFilter("onboarding")}>Documents à fournir</FilterButton>
             <FilterButton active={filter === "dossier"} onClick={() => setFilter("dossier")}>Dossiers</FilterButton>
             <FilterButton active={filter === "positioning"} onClick={() => setFilter("positioning")}>Positionnements</FilterButton>
             <FilterButton active={filter === "prerequisite"} onClick={() => setFilter("prerequisite")}>Prérequis</FilterButton>
