@@ -1,27 +1,37 @@
 import { NextResponse } from "next/server";
 import { createClient as createServerSupabaseClient } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
-import { createDailySetupEvent, deleteDailySetupEvent, getDailySetupSlots, isDailySetupSlotFree } from "@/lib/server/dailySetupCalendar";
+import { createDailySetupEvent, deleteDailySetupEvent, getDailySetupSlots, getNextDailySetupSlot, isDailySetupSlotFree } from "@/lib/server/dailySetupCalendar";
 
 function clean(value: unknown) { return typeof value === "string" ? value.trim() : ""; }
 
 async function authClient() {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase.auth.getUser();
-  if (error || !data.user?.id || !data.user.email) return null;
-  return { id: data.user.id, email: data.user.email.trim().toLowerCase() };
+  const user = data.user;
+  if (error || !user?.id || !user.email) return null;
+  return { id: user.id, email: user.email.trim().toLowerCase() };
+}
+
+async function profile(client:{id:string;email:string}) {
+  const admin = getAdminSupabase();
+  const { data: onboarding } = await admin.from("daily_onboarding").select("manager_first_name,manager_last_name,platform_contact_first_name,platform_contact_last_name,platform_contact_email").eq("user_id", client.id).maybeSingle();
+  return { firstName: onboarding?.platform_contact_first_name || onboarding?.manager_first_name || "", lastName: onboarding?.platform_contact_last_name || onboarding?.manager_last_name || "", email: client.email };
 }
 
 export async function GET(req: Request) {
   const client = await authClient();
   if (!client) return NextResponse.json({ error: "Connexion client requise." }, { status: 401 });
-  const date = new URL(req.url).searchParams.get("date")?.trim() ?? "";
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return NextResponse.json({ error: "Date invalide." }, { status: 400 });
+  const url = new URL(req.url);
   try {
+    if (url.searchParams.get("next") === "1") {
+      const nextAvailable = await getNextDailySetupSlot();
+      return NextResponse.json({ nextAvailable, profile: await profile(client) });
+    }
+    const date = url.searchParams.get("date")?.trim() ?? "";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return NextResponse.json({ error: "Date invalide." }, { status: 400 });
     const slots = await getDailySetupSlots(date);
-    const admin = getAdminSupabase();
-    const { data: onboarding } = await admin.from("daily_onboarding").select("manager_first_name,manager_last_name,platform_contact_first_name,platform_contact_last_name,platform_contact_email").eq("user_id", client.id).maybeSingle();
-    return NextResponse.json({ slots, profile: { firstName: onboarding?.platform_contact_first_name || onboarding?.manager_first_name || "", lastName: onboarding?.platform_contact_last_name || onboarding?.manager_last_name || "", email: client.email } });
+    return NextResponse.json({ slots, profile: await profile(client) });
   } catch (cause) {
     return NextResponse.json({ error: cause instanceof Error ? cause.message : "Impossible de charger les créneaux." }, { status: 500 });
   }
@@ -60,13 +70,7 @@ export async function POST(req: Request) {
       client_id: client.id,
       booking_group_id: crypto.randomUUID(),
       slot_index: 1,
-      metadata: {
-        appointment_label: "Paramétrage Selen Daily - 1 h",
-        booking_kind: "daily_setup",
-        google_meet_link: event.meetUrl ?? null,
-        google_event_link: event.eventUrl ?? null,
-        source_flow: "daily_onboarding_accompanied",
-      },
+      metadata: { appointment_label: "Paramétrage Selen Daily - 1 h", booking_kind: "daily_setup", google_meet_link: event.meetUrl ?? null, google_event_link: event.eventUrl ?? null, source_flow: "daily_onboarding_accompanied" },
     }).select("id").single();
     if (error || !data) {
       await deleteDailySetupEvent(event.eventId);
