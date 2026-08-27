@@ -14,9 +14,10 @@ type Formation = {
   positioning_mode: string; positioning_questions: Question[]; results_pending: boolean; result_beneficiary_count?: number | null;
   result_satisfaction_rate?: number | null; result_success_rate?: number | null; status: string; version: number;
   validation_note?: string | null; updated_at: string;
+  public_registration_token?: string | null; public_registration_enabled?: boolean | null; spontaneous_registration_task_status?: string | null;
 };
 type Workspace = { organisation?: { name?: string }; capabilities?: { trainings?: boolean }; trainers?: Trainer[] };
-type FormState = Omit<Formation, "id" | "version" | "updated_at" | "validation_note">;
+type FormState = Omit<Formation, "id" | "version" | "updated_at" | "validation_note" | "public_registration_token" | "public_registration_enabled" | "spontaneous_registration_task_status">;
 
 const emptyForm: FormState = {
   title: "", global_objective: "", learning_objectives: [""], allowed_trainer_ids: [], target_audience: "", prerequisites: "",
@@ -33,6 +34,10 @@ function statusLabel(status: string) {
 }
 function newQuestion(index: number): Question {
   return { id: crypto.randomUUID(), label: "", help_text: "", required: true, type: "free_text", options: [], order: index + 1 };
+}
+function registrationUrl(token?: string | null) {
+  if (!token || typeof window === "undefined") return "";
+  return `${window.location.origin}/daily-inscription/${token}`;
 }
 
 export default function DailyFormationsPage() {
@@ -103,8 +108,9 @@ export default function DailyFormationsPage() {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error ?? "Enregistrement impossible.");
+      const wasEditing = Boolean(editingId);
       resetForm();
-      setMessage(data.versioned ? "Nouvelle version créée et envoyée en validation Selen." : editingId ? "Formation mise à jour." : "Formation créée.");
+      setMessage(data.versioned ? "Nouvelle version créée et envoyée en validation Selen." : wasEditing ? "Formation mise à jour." : "Formation créée. Vous pouvez en ajouter une autre ou créer une session quand vous le souhaitez.");
       await load();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Enregistrement impossible."); }
     finally { setSaving(false); }
@@ -120,6 +126,12 @@ export default function DailyFormationsPage() {
     setMessage(action === "duplicate" ? "Copie créée en brouillon." : data.archived ? "Formation archivée." : "Formation supprimée.");
     await load();
   }
+  async function copyRegistrationLink(token?: string | null) {
+    const url = registrationUrl(token);
+    if (!url) return;
+    await navigator.clipboard.writeText(url);
+    setMessage("Lien d'inscription copié.");
+  }
 
   if (loading) return <main style={styles.main}><p>Chargement du catalogue…</p></main>;
   if (workspace && workspace.capabilities?.trainings === false) return <main style={styles.main}><h1>Formations</h1><p>Ton accès ne comprend pas la gestion des formations.</p></main>;
@@ -129,7 +141,7 @@ export default function DailyFormationsPage() {
     {error ? <div style={styles.error}>{error}</div> : null}{message ? <div style={styles.success}>{message}</div> : null}
 
     <section style={styles.card}>
-      <div style={styles.sectionTitle}><div><h2 style={styles.h2}>{editingId ? "Modifier la formation" : "Nouvelle formation"}</h2><p style={styles.muted}>Les informations structurantes alimenteront les programmes et futurs documents Daily.</p></div>{editingId ? <button type="button" onClick={resetForm} style={styles.secondary}>Annuler</button> : null}</div>
+      <div style={styles.sectionTitle}><div><h2 style={styles.h2}>{editingId ? "Modifier la formation" : "Nouvelle formation"}</h2><p style={styles.muted}>Les informations structurantes alimenteront les programmes et futurs documents Daily. Vous pouvez enregistrer autant de formations que nécessaire.</p></div>{editingId ? <button type="button" onClick={resetForm} style={styles.secondary}>Annuler</button> : null}</div>
       <form onSubmit={save} style={styles.form}>
         <Field label="Intitulé *"><input required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} style={styles.input} /></Field>
         <Field label="Objectif global *"><textarea required value={form.global_objective} onChange={(e) => setForm({ ...form, global_objective: e.target.value })} style={styles.textarea} /></Field>
@@ -152,9 +164,7 @@ export default function DailyFormationsPage() {
         <Field label="Téléphone de contact *"><input required value={form.contact_phone} onChange={(e) => setForm({ ...form, contact_phone: e.target.value })} style={styles.input} /></Field>
         <Field label="Email de contact *"><input type="email" required value={form.contact_email} onChange={(e) => setForm({ ...form, contact_email: e.target.value })} style={styles.input} /></Field>
         <Field label="Site web"><input value={form.contact_website ?? ""} onChange={(e) => setForm({ ...form, contact_website: e.target.value })} style={styles.input} /></Field>
-
         <div style={styles.full}><label style={styles.label}>Formateurs autorisés</label><p style={styles.muted}>{"Laisse vide pour autoriser tous les formateurs actifs de l'organisme. Sinon, les sessions de cette formation ne proposeront que les personnes cochées."}</p>{activeTrainers.length === 0 ? <p style={styles.muted}>{"Aucun formateur actif n'est encore renseigné."}</p> : <div style={styles.checkGrid}>{activeTrainers.map((trainer) => <label key={trainer.id} style={styles.checkbox}><input type="checkbox" checked={form.allowed_trainer_ids.includes(trainer.id)} onChange={(e) => setForm({ ...form, allowed_trainer_ids: e.target.checked ? [...form.allowed_trainer_ids, trainer.id] : form.allowed_trainer_ids.filter((id) => id !== trainer.id) })} /><span><strong>{trainer.display_name}</strong>{trainer.professional_email ? ` · ${trainer.professional_email}` : ""}</span></label>)}</div>}</div>
-
         <Field label="Positionnement"><select value={form.positioning_mode} onChange={(e) => setForm({ ...form, positioning_mode: e.target.value, positioning_questions: e.target.value === "selen" && form.positioning_questions.length === 0 ? [newQuestion(0)] : form.positioning_questions })} style={styles.input}><option value="off_platform">Hors plateforme</option><option value="selen">Questionnaire Selen</option></select></Field>
         {form.positioning_mode === "selen" ? <div style={styles.full}><label style={styles.label}>Questions de positionnement</label>{form.positioning_questions.map((question, index) => <div key={question.id} style={styles.questionCard}><div style={styles.grid2}><Field label={`Question ${index + 1}`}><input value={question.label} onChange={(e) => updateQuestion(index, { label: e.target.value })} style={styles.input} /></Field><Field label="Type"><select value={question.type} onChange={(e) => updateQuestion(index, { type: e.target.value as Question["type"], options: ["single_choice", "multiple_choice"].includes(e.target.value) ? question.options : [] })} style={styles.input}><option value="free_text">Texte libre</option><option value="single_choice">Choix unique</option><option value="multiple_choice">Choix multiple</option><option value="scale_1_5">Échelle 1 à 5</option></select></Field></div>{["single_choice", "multiple_choice"].includes(question.type) ? <Field label="Options (une par ligne)"><textarea value={question.options.join("\n")} onChange={(e) => updateQuestion(index, { options: e.target.value.split("\n") })} style={styles.textarea} /></Field> : null}<label style={styles.checkbox}><input type="checkbox" checked={question.required} onChange={(e) => updateQuestion(index, { required: e.target.checked })} /> Réponse obligatoire</label><button type="button" style={styles.smallButton} onClick={() => setForm({ ...form, positioning_questions: form.positioning_questions.filter((_, i) => i !== index) })}>Retirer la question</button></div>)}<button type="button" style={styles.secondary} onClick={() => setForm({ ...form, positioning_questions: [...form.positioning_questions, newQuestion(form.positioning_questions.length)] })}>+ Ajouter une question</button></div> : null}
         <Field label="Statut de travail"><select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} style={styles.input}><option value="draft">Brouillon</option><option value="review">Envoyer en validation Selen</option>{editingId ? <option value="correction_requested">À corriger</option> : null}</select></Field>
@@ -162,7 +172,33 @@ export default function DailyFormationsPage() {
       </form>
     </section>
 
-    <section style={styles.card}><div style={styles.sectionTitle}><div><h2 style={styles.h2}>Catalogue</h2><p style={styles.muted}>Duplique une formation récurrente au lieu de tout ressaisir.</p></div><label style={styles.checkbox}><input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} /> Voir les archivées</label></div>{visibleFormations.length === 0 ? <p style={styles.muted}>Aucune formation pour le moment.</p> : <div style={styles.list}>{visibleFormations.map((formation) => <article key={formation.id} style={styles.listCard}><div style={{ flex: 1 }}><div style={styles.row}><strong>{formation.title}</strong><span style={styles.badge}>{statusLabel(formation.status)}</span><span style={styles.muted}>v{formation.version}</span></div><p style={styles.muted}>{formation.duration_hours} h · {formation.duration_days} j · {formation.modality} · {formation.allowed_trainer_ids?.length ? `${formation.allowed_trainer_ids.length} formateur(s) autorisé(s)` : "tous les formateurs actifs"}</p><p>{formation.global_objective}</p>{formation.validation_note ? <p style={styles.warning}>Retour Selen : {formation.validation_note}</p> : null}</div><div style={styles.actions}>{formation.status !== "archived" ? <button type="button" style={styles.secondary} onClick={() => editFormation(formation)}>Modifier</button> : null}<button type="button" style={styles.secondary} onClick={() => void action("duplicate", formation.id)}>Dupliquer</button>{formation.status !== "archived" ? <button type="button" style={styles.smallButton} onClick={() => void action("archive", formation.id)}>Archiver</button> : null}</div></article>)}</div>}</section>
+    <section style={styles.card}>
+      <div style={styles.sectionTitle}><div><h2 style={styles.h2}>Catalogue</h2><p style={styles.muted}>Retrouvez ici vos formations, leurs versions et leur lien d&apos;inscription.</p></div><label style={styles.checkbox}><input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} /> Voir les archivées</label></div>
+      {visibleFormations.length === 0 ? <p style={styles.muted}>Aucune formation pour le moment.</p> : (
+        <div style={styles.list}>{visibleFormations.map((formation) => (
+          <article key={formation.id} style={styles.listCard}>
+            <div style={{ flex: 1, minWidth: 280 }}>
+              <div style={styles.row}><strong>{formation.title}</strong><span style={styles.badge}>{statusLabel(formation.status)}</span><span style={styles.muted}>v{formation.version}</span></div>
+              <p style={styles.muted}>{formation.duration_hours} h · {formation.duration_days} j · {formation.modality} · {formation.allowed_trainer_ids?.length ? `${formation.allowed_trainer_ids.length} formateur(s) autorisé(s)` : "tous les formateurs actifs"}</p>
+              <p>{formation.global_objective}</p>
+              {formation.public_registration_token ? (
+                <div style={styles.registrationBox}>
+                  <strong>Lien d&apos;inscription</strong>
+                  <input style={styles.input} readOnly value={registrationUrl(formation.public_registration_token)} />
+                  <div style={styles.row}>
+                    <a href={registrationUrl(formation.public_registration_token)} target="_blank" rel="noreferrer" style={styles.registrationLink}>Ouvrir le lien</a>
+                    <button type="button" style={styles.secondary} onClick={() => void copyRegistrationLink(formation.public_registration_token)}>Copier le lien</button>
+                  </div>
+                  {formation.spontaneous_registration_task_status === "to_attach" ? <p style={styles.warning}>Une inscription reçue reste à rattacher à une session.</p> : null}
+                </div>
+              ) : null}
+              {formation.validation_note ? <p style={styles.warning}>Retour Selen : {formation.validation_note}</p> : null}
+            </div>
+            <div style={styles.actions}>{formation.status !== "archived" ? <button type="button" style={styles.secondary} onClick={() => editFormation(formation)}>Modifier</button> : null}<button type="button" style={styles.secondary} onClick={() => void action("duplicate", formation.id)}>Dupliquer</button>{formation.status !== "archived" ? <button type="button" style={styles.smallButton} onClick={() => void action("archive", formation.id)}>Archiver</button> : null}</div>
+          </article>
+        ))}</div>
+      )}
+    </section>
   </main>;
 }
 
@@ -174,4 +210,5 @@ const styles: Record<string, React.CSSProperties> = {
   sectionTitle: { display: "flex", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap", alignItems: "center", marginBottom: "1rem" }, form: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: "1rem" }, field: { display: "grid", gap: 6, alignContent: "start" }, full: { gridColumn: "1 / -1", display: "grid", gap: 8 }, label: { fontWeight: 750, fontSize: 14 },
   input: { width: "100%", padding: ".72rem .78rem", border: "1px solid var(--sepia-mid)", background: "#fffdf8", color: "var(--ink)", boxSizing: "border-box" }, textarea: { width: "100%", minHeight: 88, padding: ".72rem .78rem", border: "1px solid var(--sepia-mid)", background: "#fffdf8", color: "var(--ink)", boxSizing: "border-box", resize: "vertical" }, largeTextarea: { width: "100%", minHeight: 150, padding: ".72rem .78rem", border: "1px solid var(--sepia-mid)", background: "#fffdf8", color: "var(--ink)", boxSizing: "border-box", resize: "vertical" },
   primary: { border: 0, background: "var(--rust)", color: "white", padding: ".8rem 1rem", fontWeight: 800, cursor: "pointer" }, secondary: { border: "1px solid var(--sepia-mid)", background: "rgba(201,160,85,.08)", color: "var(--rust)", padding: ".6rem .8rem", fontWeight: 700, cursor: "pointer" }, smallButton: { border: "1px solid #c8b8a4", background: "transparent", color: "var(--ink-soft)", padding: ".5rem .7rem", cursor: "pointer" }, row: { display: "flex", gap: ".6rem", alignItems: "center", flexWrap: "wrap" }, grid2: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: ".8rem" }, checkGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(250px,1fr))", gap: ".5rem" }, questionCard: { border: "1px solid var(--sepia-mid)", padding: ".8rem", display: "grid", gap: ".7rem", background: "rgba(201,160,85,.04)" }, checkbox: { display: "inline-flex", gap: 7, alignItems: "center", fontSize: 14 }, error: { padding: ".8rem 1rem", background: "#fff0ee", border: "1px solid #d9998e", marginBottom: "1rem" }, success: { padding: ".8rem 1rem", background: "#eff8ef", border: "1px solid #99bd99", marginBottom: "1rem" }, warning: { padding: ".6rem .7rem", background: "#fff8e6", borderLeft: "3px solid #c99f55" }, muted: { color: "var(--ink-soft)", margin: ".35rem 0", fontSize: 14 }, list: { display: "grid", gap: ".75rem" }, listCard: { display: "flex", gap: "1rem", justifyContent: "space-between", flexWrap: "wrap", borderTop: "1px solid var(--sepia-mid)", paddingTop: "1rem" }, badge: { display: "inline-block", border: "1px solid var(--sepia-mid)", padding: ".2rem .45rem", fontSize: 12, background: "rgba(201,160,85,.08)" }, actions: { display: "flex", gap: ".45rem", flexWrap: "wrap", alignItems: "flex-start" },
+  registrationBox: { display: "grid", gap: ".45rem", marginTop: ".7rem", padding: ".75rem", border: "1px solid rgba(106,138,74,.42)", background: "rgba(106,138,74,.06)" }, registrationLink: { color: "var(--rust)", fontWeight: 800, textDecoration: "none", border: "1px solid var(--ocre-dark)", padding: ".48rem .7rem" },
 };
