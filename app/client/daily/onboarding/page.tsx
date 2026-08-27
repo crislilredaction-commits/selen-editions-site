@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import ClientSupportBar from "@/components/ClientSupportBar";
 import { assistanceFetch } from "@/components/AgentAssistanceBanner";
 import { createSupabaseBrowserClient } from "@/app/lib/supabase/client";
 
@@ -15,6 +14,7 @@ type Trainer = {
   cv_url: string;
   cv_pending: boolean;
   trainer_access_planned: boolean;
+  is_manager: boolean;
 };
 type OnboardingForm = {
   status: "not_started" | "in_progress" | "completed";
@@ -40,9 +40,7 @@ type OnboardingForm = {
   platform_contact_role: string;
   platform_contact_email: string;
   organisation_logo_url: string;
-  convocation_template_url: string;
-  convention_template_url: string;
-  welcome_booklet_template_url: string;
+  platform_contact_is_manager: boolean;
 };
 
 const emptyForm: OnboardingForm = {
@@ -69,9 +67,7 @@ const emptyForm: OnboardingForm = {
   platform_contact_role: "",
   platform_contact_email: "",
   organisation_logo_url: "",
-  convocation_template_url: "",
-  convention_template_url: "",
-  welcome_booklet_template_url: "",
+  platform_contact_is_manager: false,
 };
 
 const blankTrainer: Trainer = {
@@ -81,6 +77,7 @@ const blankTrainer: Trainer = {
   cv_url: "",
   cv_pending: false,
   trainer_access_planned: true,
+  is_manager: false,
 };
 
 function statusLabel(status: SaveStatus) {
@@ -114,11 +111,7 @@ export default function DailyOnboardingPage() {
       body: JSON.stringify({
         ...nextForm,
         trainers: nextTrainers,
-        document_templates: [
-          { document_type: "convocation", template_name: "Modele convocation client", public_url: nextForm.convocation_template_url },
-          { document_type: "convention", template_name: "Modele convention client", public_url: nextForm.convention_template_url },
-          { document_type: "livret_accueil", template_name: "Livret d'accueil client", public_url: nextForm.welcome_booklet_template_url },
-        ],
+        document_templates: [],
       }),
     });
     const data = await res.json().catch(() => null);
@@ -166,9 +159,6 @@ export default function DailyOnboardingPage() {
         }
 
         if (payload?.onboarding) {
-          const templates = Array.isArray(payload.documentTemplates) ? payload.documentTemplates : [];
-          const templateUrl = (type: string) =>
-            text(templates.find((template: Record<string, unknown>) => template.document_type === type)?.public_url);
           if (!cancelled) {
             setForm({
               ...emptyForm,
@@ -177,14 +167,15 @@ export default function DailyOnboardingPage() {
               qualiopi_status: payload.onboarding.qualiopi_status ?? "",
               platform_contact_email: payload.onboarding.platform_contact_email ?? data.user.email ?? "",
               organisation_logo_url: payload.onboarding.organisation_logo_url ?? "",
-              convocation_template_url: templateUrl("convocation"),
-              convention_template_url: templateUrl("convention"),
-              welcome_booklet_template_url: templateUrl("livret_accueil"),
+              platform_contact_is_manager:
+                payload.onboarding.platform_contact_first_name === payload.onboarding.manager_first_name &&
+                payload.onboarding.platform_contact_last_name === payload.onboarding.manager_last_name &&
+                payload.onboarding.platform_contact_email === data.user.email,
             });
           }
         }
 
-        if (!cancelled && payload?.trainers?.length) setTrainers(payload.trainers);
+        if (!cancelled && payload?.trainers?.length) setTrainers(payload.trainers.map((trainer: Trainer) => ({ ...trainer, is_manager: false })));
         loadedRef.current = true;
       } catch (bootError) {
         console.error("Selen Daily onboarding : chargement impossible.", bootError);
@@ -232,6 +223,12 @@ export default function DailyOnboardingPage() {
     if (ok) router.push("/client/daily");
   }
 
+  async function requestAssistance() {
+    const next = { ...form, setup_choice: "video" as const, status: "in_progress" as const };
+    setForm(next);
+    await save(next, trainers);
+  }
+
   function updateTrainer(index: number, patch: Partial<Trainer>) {
     setTrainers((current) =>
       current.map((trainer, trainerIndex) =>
@@ -251,7 +248,6 @@ export default function DailyOnboardingPage() {
   if (error && !loadedRef.current) {
     return (
       <main className="gazette-paper" style={{ minHeight: "100vh" }}>
-        <ClientSupportBar email={email} context="le paramétrage Selen Daily" />
         <div style={s.page}>
           <section style={s.card}>
             <p className="gazette-label">Selen Daily</p>
@@ -272,20 +268,14 @@ export default function DailyOnboardingPage() {
 
   return (
     <main className="gazette-paper" style={{ minHeight: "100vh" }}>
-      <ClientSupportBar email={email} context="le paramétrage Selen Daily" />
       <div style={s.page}>
-        <header className="gazette-cta" style={s.hero}>
-          <p className="gazette-label">Bienvenue dans Selen Daily</p>
-          <h1 className="gazette-hero-title" style={s.heroTitle}>
-            Paramétrage initial
-          </h1>
-          <p style={s.heroText}>
-            {"On va préparer ton espace en quelques étapes pour que tes formations, documents et suivis soient bien rangés dès le départ."}
-          </p>
+        <div style={s.compactHeading}>
+          <p className="gazette-label">Selen Daily</p>
+          <h1 style={s.title}>Paramétrage initial</h1>
           <p style={saveStatus === "error" ? s.saveError : s.saveStatus}>
             {statusLabel(saveStatus)}
           </p>
-        </header>
+        </div>
 
         {error ? <p style={s.error}>{error}</p> : null}
 
@@ -321,9 +311,9 @@ export default function DailyOnboardingPage() {
               </div>
               {form.setup_choice === "video" ? (
                 <div style={s.appointmentBox}>
-                  <strong>Préparons d'abord votre rendez-vous</strong>
+                  <strong>{"Préparons d'abord votre rendez-vous"}</strong>
                   <p>
-                    Commencez par transmettre les documents demandés dans les étapes suivantes. Selen pourra ainsi préremplir au maximum votre espace avant l'échange et limiter les saisies manuelles.
+                    {"Commencez par transmettre les documents demandés dans les étapes suivantes. Selen pourra ainsi préremplir au maximum votre espace avant l'échange et limiter les saisies manuelles."}
                   </p>
                   <p style={{ margin: 0 }}>
                     Le rendez-vous de mise en place pourra être planifié au minimum 24 h après la transmission des documents nécessaires.
@@ -342,11 +332,8 @@ export default function DailyOnboardingPage() {
               <p className="gazette-label">Étape 2</p>
               <h2 style={s.title}>Informations de l&apos;organisme</h2>
               <Input label="Nom de l&apos;organisme de formation" value={form.organisation_name} onChange={(value) => update("organisation_name", value)} />
-              <Input label="SIRET" value={form.siret} onChange={(value) => update("siret", value)} />
               <Input label="Numéro NDA, facultatif" value={form.nda_number} onChange={(value) => update("nda_number", value)} />
-              <Input label="Logo de l'organisme, URL du fichier" value={form.organisation_logo_url} onChange={(value) => update("organisation_logo_url", value)} />
-              <p style={s.muted}>Le logo sera utilisé sur les documents générés avec une taille maîtrisée, environ 60 à 70 mm de large au maximum.</p>
-              <Textarea label="Adresse" value={form.address} onChange={(value) => update("address", value)} />
+              <FileUploadField label="Logo de l'organisme" kind="organisation_logo" accept=".png,.jpg,.jpeg,.webp" value={form.organisation_logo_url} onUploaded={(url) => update("organisation_logo_url", url)} />
               <div style={s.twoCols}>
                 <Input label="Prénom du dirigeant" value={form.manager_first_name} onChange={(value) => update("manager_first_name", value)} />
                 <Input label="Nom du dirigeant" value={form.manager_last_name} onChange={(value) => update("manager_last_name", value)} />
@@ -362,23 +349,12 @@ export default function DailyOnboardingPage() {
                 <p style={s.notice}>{"Aucun souci. Quand le moment viendra, Selen pourra t'aider à préparer le chemin vers Qualiopi."}</p>
               ) : null}
               <div style={s.stackSmall}>
-                <strong>Bibliotheque documentaire</strong>
-                <p style={s.muted}>
-                  Si vous avez déjà vos propres documents, vous pouvez les déposer ici. Selen les utilisera en priorité. Si vous préférez, nous pouvons aussi préparer les documents avec les modèles Selen.
-                </p>
-                <Input label="Modele client - convocation" value={form.convocation_template_url} onChange={(value) => update("convocation_template_url", value)} />
-                <Input label="Modele client - convention" value={form.convention_template_url} onChange={(value) => update("convention_template_url", value)} />
-                <Input label="Livret d'accueil client" value={form.welcome_booklet_template_url} onChange={(value) => update("welcome_booklet_template_url", value)} />
-              </div>
-              <div style={s.stackSmall}>
-                <Input label="Avis INSEE, URL du fichier" value={form.insee_document_url} onChange={(value) => update("insee_document_url", value)} />
+                <FileUploadField label="Avis de situation INSEE (PDF)" kind="insee_notice" accept=".pdf" value={form.insee_document_url} onUploaded={(url) => update("insee_document_url", url)} />
+                <p style={s.muted}>Le SIRET et l&apos;adresse seront repris depuis cet avis puis vérifiés avant validation.</p>
                 <label style={s.check}><input type="checkbox" checked={form.insee_document_pending} onChange={(event) => update("insee_document_pending", event.target.checked)} /> Avis INSEE à fournir plus tard</label>
-                <Input label="Certificat Qualiopi, URL du fichier si concerné" value={form.qualiopi_certificate_url} onChange={(value) => update("qualiopi_certificate_url", value)} />
-                <label style={s.check}><input type="checkbox" checked={form.qualiopi_certificate_pending} onChange={(event) => update("qualiopi_certificate_pending", event.target.checked)} /> Certificat Qualiopi à fournir plus tard</label>
-                <Input label="Attestation NDA ou dernier BPF, URL du fichier" value={form.nda_or_bpf_document_url} onChange={(value) => update("nda_or_bpf_document_url", value)} />
-                <label style={s.check}><input type="checkbox" checked={form.nda_or_bpf_document_pending} onChange={(event) => update("nda_or_bpf_document_pending", event.target.checked)} /> Attestation NDA ou dernier BPF à fournir plus tard</label>
-                <Input label="Livret d'accueil, URL du fichier" value={form.welcome_booklet_url} onChange={(value) => update("welcome_booklet_url", value)} />
-                <label style={s.check}><input type="checkbox" checked={form.welcome_booklet_pending} onChange={(event) => update("welcome_booklet_pending", event.target.checked)} /> Livret d'accueil à fournir plus tard</label>
+                {form.qualiopi_status === "yes" ? <><FileUploadField label="Certificat Qualiopi (PDF)" kind="qualiopi_certificate" accept=".pdf" value={form.qualiopi_certificate_url} onUploaded={(url) => update("qualiopi_certificate_url", url)} /><label style={s.check}><input type="checkbox" checked={form.qualiopi_certificate_pending} onChange={(event) => update("qualiopi_certificate_pending", event.target.checked)} /> Certificat Qualiopi à fournir plus tard</label></> : null}
+                <FileUploadField label="Dernier BPF (PDF), s'il existe" kind="bpf" accept=".pdf" value={form.nda_or_bpf_document_url} onUploaded={(url) => update("nda_or_bpf_document_url", url)} />
+                <label style={s.check}><input type="checkbox" checked={form.nda_or_bpf_document_pending} onChange={(event) => update("nda_or_bpf_document_pending", event.target.checked)} /> BPF à fournir plus tard</label>
               </div>
             </div>
           ) : null}
@@ -392,18 +368,18 @@ export default function DailyOnboardingPage() {
               <p className="gazette-label">Étape 4</p>
               <h2 style={s.title}>Formateurs</h2>
               <p style={s.muted}>
-                Un accès formateur sera créé pour chaque formateur afin qu'il puisse consulter les informations utiles à ses sessions : dates, participants, besoins d'adaptation et documents de préparation.
+                {"Un accès formateur sera créé pour chaque formateur afin qu'il puisse consulter les informations utiles à ses sessions : dates, participants, besoins d'adaptation et documents de préparation."}
               </p>
               {trainers.map((trainer, index) => (
                 <div key={trainer.id ?? index} style={s.trainer}>
+                  <label style={s.check}><input type="checkbox" checked={trainer.is_manager} onChange={(event) => updateTrainer(index, event.target.checked ? { is_manager: true, first_name: form.manager_first_name, last_name: form.manager_last_name, email: email ?? form.platform_contact_email } : { is_manager: false })} /> Le formateur est également le dirigeant de l&apos;organisme</label>
                   <div style={s.twoCols}>
-                    <Input label="Prénom" value={trainer.first_name} onChange={(value) => updateTrainer(index, { first_name: value })} />
-                    <Input label="Nom" value={trainer.last_name} onChange={(value) => updateTrainer(index, { last_name: value })} />
+                    <Input label="Prénom" value={trainer.first_name} onChange={(value) => updateTrainer(index, { first_name: value })} disabled={trainer.is_manager} />
+                    <Input label="Nom" value={trainer.last_name} onChange={(value) => updateTrainer(index, { last_name: value })} disabled={trainer.is_manager} />
                   </div>
-                  <Input label="Email" value={trainer.email} onChange={(value) => updateTrainer(index, { email: value })} />
-                  <Input label="CV du formateur, URL du fichier" value={trainer.cv_url} onChange={(value) => updateTrainer(index, { cv_url: value })} />
-                  <label style={s.check}><input type="checkbox" checked={trainer.cv_pending} onChange={(event) => updateTrainer(index, { cv_pending: event.target.checked })} /> CV à fournir si Qualiopi</label>
-                  <p style={s.muted}>Accès formateur préparé : l'envoi email sera branché quand le portail formateur sera finalisé.</p>
+                  <Input label="Email" value={trainer.email} onChange={(value) => updateTrainer(index, { email: value })} disabled={trainer.is_manager} />
+                  <FileUploadField label="CV du formateur (Word ou PDF)" kind="trainer_cv" slot={`trainer-${index + 1}`} accept=".doc,.docx,.pdf" value={trainer.cv_url} onUploaded={(url) => updateTrainer(index, { cv_url: url })} />
+                  <p style={s.muted}>Le formateur pourra consulter ses sessions, les informations utiles sur les participants et les adaptations prévues, accéder aux documents de préparation et renseigner son suivi. Il ne pourra pas administrer l&apos;organisme, ses utilisateurs ni les autres formateurs. Son accès ne sera pas envoyé immédiatement : après vérification de son profil par Selen, il recevra son invitation par email avant sa première session affectée.</p>
                 </div>
               ))}
               <button type="button" className="btn-ghost" onClick={() => setTrainers((current) => [...current, { ...blankTrainer }])}>
@@ -421,15 +397,15 @@ export default function DailyOnboardingPage() {
               <p className="gazette-label">Étape 6</p>
               <h2 style={s.title}>Interlocuteur plateforme</h2>
               <p style={s.muted}>
-                Ce prénom servira pour dire bonjour dans la plateforme et dans les
-                mails. L&apos;email recevra les communications de suivi si besoin.
+                Indiquez ici la personne qui sera la plus amenée à administrer l&apos;organisme et ses activités depuis Selen.
               </p>
+              <label style={s.check}><input type="checkbox" checked={form.platform_contact_is_manager} onChange={(event) => setForm((current) => event.target.checked ? { ...current, platform_contact_is_manager: true, platform_contact_first_name: current.manager_first_name, platform_contact_last_name: current.manager_last_name, platform_contact_email: email ?? current.platform_contact_email } : { ...current, platform_contact_is_manager: false })} /> L&apos;interlocuteur plateforme est le dirigeant</label>
               <div style={s.twoCols}>
-                <Input label="Prénom" value={form.platform_contact_first_name} onChange={(value) => update("platform_contact_first_name", value)} />
-                <Input label="Nom" value={form.platform_contact_last_name} onChange={(value) => update("platform_contact_last_name", value)} />
+                <Input label="Prénom" value={form.platform_contact_first_name} onChange={(value) => update("platform_contact_first_name", value)} disabled={form.platform_contact_is_manager} />
+                <Input label="Nom" value={form.platform_contact_last_name} onChange={(value) => update("platform_contact_last_name", value)} disabled={form.platform_contact_is_manager} />
               </div>
               <Input label="Fonction / qualité" value={form.platform_contact_role} onChange={(value) => update("platform_contact_role", value)} />
-              <Input label="Email de contact" value={form.platform_contact_email} onChange={(value) => update("platform_contact_email", value)} />
+              <Input label="Email de contact" value={form.platform_contact_email} onChange={(value) => update("platform_contact_email", value)} disabled={form.platform_contact_is_manager} />
             </div>
           ) : null}
 
@@ -444,6 +420,30 @@ export default function DailyOnboardingPage() {
               <button type="button" className="btn-ink" onClick={() => void finish()}>
                 <span>Terminer et créer ma première formation</span>
               </button>
+            </div>
+          ) : null}
+
+          {form.current_step > 1 && form.setup_choice === "self" ? (
+            <div style={s.assistanceBox}>
+              <div>
+                <strong>Besoin d&apos;être accompagné finalement&nbsp;?</strong>
+                <p style={s.assistanceText}>
+                  Tu peux changer d&apos;avis à tout moment. Les informations déjà saisies sont conservées et aideront Selen à préparer le rendez-vous.
+                </p>
+              </div>
+              <button type="button" className="btn-ghost" onClick={() => void requestAssistance()}>
+                <span>Je souhaite être accompagné</span>
+              </button>
+            </div>
+          ) : null}
+
+          {form.current_step > 1 && form.setup_choice === "video" ? (
+            <div style={s.appointmentBox}>
+              <strong>Demande d&apos;accompagnement prise en compte</strong>
+              <p style={{ margin: 0 }}>
+                Continue à transmettre les informations et documents disponibles. Le rendez-vous pourra être planifié au minimum 24 h après leur transmission.
+              </p>
+              <a href="/support" style={s.inlineLink}>Contacter Selen si besoin</a>
             </div>
           ) : null}
 
@@ -473,26 +473,49 @@ function TextStep({ title, text: value }: { title: string; text: string }) {
   );
 }
 
-function Input({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+function Input({ label, value, onChange, disabled = false }: { label: string; value: string; onChange: (value: string) => void; disabled?: boolean }) {
   return (
     <label style={s.field}>
       <span style={s.label}>{label}</span>
-      <input style={s.input} value={text(value)} onChange={(event) => onChange(event.target.value)} />
+      <input style={s.input} value={text(value)} disabled={disabled} onChange={(event) => onChange(event.target.value)} />
     </label>
   );
 }
 
-function Textarea({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+function FileUploadField({ label, kind, slot = "principal", value, onUploaded, accept }: { label: string; kind: string; slot?: string; value: string; onUploaded: (url: string) => void; accept: string }) {
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+
+  async function upload(file: File) {
+    setUploading(true);
+    setUploadError("");
+    const body = new FormData();
+    body.set("file", file);
+    body.set("kind", kind);
+    body.set("slot", slot);
+    const response = await assistanceFetch("/api/client/daily/uploads", { method: "POST", body });
+    const data = await response.json().catch(() => null);
+    setUploading(false);
+    if (!response.ok) {
+      setUploadError(data?.error ?? "Import impossible.");
+      return;
+    }
+    onUploaded(String(data.url ?? ""));
+  }
+
   return (
-    <label style={s.field}>
+    <div style={s.field}>
       <span style={s.label}>{label}</span>
-      <textarea style={{ ...s.input, minHeight: 92, paddingTop: 10 }} value={text(value)} onChange={(event) => onChange(event.target.value)} />
-    </label>
+      <input type="file" accept={accept} disabled={uploading} onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(file); }} />
+      {uploading ? <span style={s.muted}>Import en cours…</span> : value ? <span style={s.uploaded}>Document importé ✓</span> : null}
+      {uploadError ? <span style={s.saveError}>{uploadError}</span> : null}
+    </div>
   );
 }
 
 const s: Record<string, React.CSSProperties> = {
   page: { maxWidth: 980, margin: "0 auto", padding: "2rem 1.5rem 4rem" },
+  compactHeading: { marginBottom: "1rem", display: "grid", gap: "0.25rem" },
   hero: { padding: "2rem", marginBottom: "1rem" },
   heroTitle: { color: "var(--parchment)", marginBottom: "0.5rem" },
   heroText: { color: "var(--sepia-mid)", lineHeight: 1.65, maxWidth: 720 },
@@ -513,11 +536,14 @@ const s: Record<string, React.CSSProperties> = {
   choiceOn: { border: "1px solid var(--rust)", background: "rgba(138,75,36,0.1)", color: "var(--rust)", padding: "1rem", fontWeight: 900 },
   notice: { border: "1px solid rgba(106,138,74,0.45)", background: "rgba(106,138,74,0.08)", color: "#496532", padding: "0.8rem", lineHeight: 1.55 },
   appointmentBox: { border: "1px solid rgba(106,138,74,0.45)", background: "rgba(106,138,74,0.08)", color: "var(--ink)", padding: "1rem", lineHeight: 1.55, display: "grid", gap: "0.75rem" },
+  assistanceBox: { border: "1px solid rgba(178,138,98,0.45)", background: "rgba(255,255,255,0.28)", color: "var(--ink)", padding: "1rem", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" },
+  assistanceText: { color: "var(--ink-soft)", lineHeight: 1.55, margin: "0.35rem 0 0", maxWidth: 620 },
   inlineLink: { color: "var(--rust)", fontWeight: 800, textDecoration: "none" },
   twoCols: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "0.75rem" },
   field: { display: "grid", gap: "0.35rem" },
   label: { color: "var(--ink)", fontWeight: 800 },
   input: { width: "100%", border: "1px solid rgba(178,138,98,0.55)", background: "rgba(255,250,239,0.86)", color: "var(--ink)", padding: "0.7rem", fontSize: "0.95rem", boxSizing: "border-box" },
+  uploaded: { color: "#496532", fontWeight: 700 },
   check: { color: "var(--ink-soft)", display: "flex", gap: "0.5rem", alignItems: "center" },
   trainer: { display: "grid", gap: "0.7rem", border: "1px solid rgba(178,138,98,0.28)", padding: "0.85rem" },
   actions: { display: "flex", gap: "0.7rem", justifyContent: "space-between", flexWrap: "wrap", borderTop: "1px solid rgba(178,138,98,0.28)", paddingTop: "1rem" },
