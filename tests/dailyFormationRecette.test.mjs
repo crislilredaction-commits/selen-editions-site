@@ -28,6 +28,12 @@ test("les documents de recette utilisent un import de fichier contrôlé", () =>
   assert.match(onboardingPage, /type="file"/);
 });
 
+test("le client peut demander un accompagnement pendant tout le paramétrage autonome", () => {
+  assert.match(onboardingPage, /form\.current_step > 1 && form\.setup_choice === "self"/);
+  assert.match(onboardingPage, /Je souhaite être accompagné/);
+  assert.match(onboardingPage, /setup_choice: "video" as const/);
+});
+
 test("la création d'une session est orientée vers sa page dédiée", () => {
   assert.match(dailyPage, /router\.push\("\/client\/daily\/sessions"\)/);
   assert.doesNotMatch(dailyPage, /showSessionForm/);

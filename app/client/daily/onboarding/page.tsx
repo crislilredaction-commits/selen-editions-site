@@ -224,6 +224,12 @@ export default function DailyOnboardingPage() {
     if (ok) router.push("/client/daily");
   }
 
+  async function requestAssistance() {
+    const next = { ...form, setup_choice: "video" as const, status: "in_progress" as const };
+    setForm(next);
+    await save(next, trainers);
+  }
+
   function updateTrainer(index: number, patch: Partial<Trainer>) {
     setTrainers((current) =>
       current.map((trainer, trainerIndex) =>
@@ -420,6 +426,30 @@ export default function DailyOnboardingPage() {
             </div>
           ) : null}
 
+          {form.current_step > 1 && form.setup_choice === "self" ? (
+            <div style={s.assistanceBox}>
+              <div>
+                <strong>Besoin d&apos;être accompagné finalement&nbsp;?</strong>
+                <p style={s.assistanceText}>
+                  Tu peux changer d&apos;avis à tout moment. Les informations déjà saisies sont conservées et aideront Selen à préparer le rendez-vous.
+                </p>
+              </div>
+              <button type="button" className="btn-ghost" onClick={() => void requestAssistance()}>
+                <span>Je souhaite être accompagné</span>
+              </button>
+            </div>
+          ) : null}
+
+          {form.current_step > 1 && form.setup_choice === "video" ? (
+            <div style={s.appointmentBox}>
+              <strong>Demande d&apos;accompagnement prise en compte</strong>
+              <p style={{ margin: 0 }}>
+                Continue à transmettre les informations et documents disponibles. Le rendez-vous pourra être planifié au minimum 24 h après leur transmission.
+              </p>
+              <a href="/support" style={s.inlineLink}>Contacter Selen si besoin</a>
+            </div>
+          ) : null}
+
           <div style={s.actions}>
             <button type="button" className="btn-ghost" disabled={form.current_step <= 1} onClick={() => void goTo(Math.max(1, form.current_step - 1))}>
               <span>Précédent</span>
@@ -509,6 +539,8 @@ const s: Record<string, React.CSSProperties> = {
   choiceOn: { border: "1px solid var(--rust)", background: "rgba(138,75,36,0.1)", color: "var(--rust)", padding: "1rem", fontWeight: 900 },
   notice: { border: "1px solid rgba(106,138,74,0.45)", background: "rgba(106,138,74,0.08)", color: "#496532", padding: "0.8rem", lineHeight: 1.55 },
   appointmentBox: { border: "1px solid rgba(106,138,74,0.45)", background: "rgba(106,138,74,0.08)", color: "var(--ink)", padding: "1rem", lineHeight: 1.55, display: "grid", gap: "0.75rem" },
+  assistanceBox: { border: "1px solid rgba(178,138,98,0.45)", background: "rgba(255,255,255,0.28)", color: "var(--ink)", padding: "1rem", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" },
+  assistanceText: { color: "var(--ink-soft)", lineHeight: 1.55, margin: "0.35rem 0 0", maxWidth: 620 },
   inlineLink: { color: "var(--rust)", fontWeight: 800, textDecoration: "none" },
   twoCols: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "0.75rem" },
   field: { display: "grid", gap: "0.35rem" },
