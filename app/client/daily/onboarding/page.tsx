@@ -17,6 +17,7 @@ type Trainer = {
   trainer_access_planned: boolean;
   is_manager: boolean;
 };
+type SupportTask = { key?: string; label?: string; status?: string };
 type OnboardingForm = {
   status: "not_started" | "in_progress" | "completed";
   current_step: number;
@@ -34,6 +35,7 @@ type OnboardingForm = {
   qualiopi_certificate_url: string;
   nda_or_bpf_document_pending: boolean;
   nda_or_bpf_document_url: string;
+  first_nda_year: boolean;
   welcome_booklet_pending: boolean;
   welcome_booklet_url: string;
   platform_contact_first_name: string;
@@ -61,6 +63,7 @@ const emptyForm: OnboardingForm = {
   qualiopi_certificate_url: "",
   nda_or_bpf_document_pending: false,
   nda_or_bpf_document_url: "",
+  first_nda_year: false,
   welcome_booklet_pending: false,
   welcome_booklet_url: "",
   platform_contact_first_name: "",
@@ -90,6 +93,12 @@ function statusLabel(status: SaveStatus) {
 
 function text(value: unknown) {
   return typeof value === "string" ? value : "";
+}
+
+function isFirstNdaYear(supportTasks: unknown) {
+  return Array.isArray(supportTasks) && (supportTasks as SupportTask[]).some(
+    (task) => task?.key === "bpf_first_nda_year" && task?.status === "not_applicable",
+  );
 }
 
 export default function DailyOnboardingPage() {
@@ -166,6 +175,7 @@ export default function DailyOnboardingPage() {
               ...payload.onboarding,
               setup_choice: payload.onboarding.setup_choice ?? "",
               qualiopi_status: payload.onboarding.qualiopi_status ?? "",
+              first_nda_year: isFirstNdaYear(payload.onboarding.support_tasks),
               platform_contact_email: payload.onboarding.platform_contact_email ?? data.user.email ?? "",
               organisation_logo_url: payload.onboarding.organisation_logo_url ?? "",
               platform_contact_is_manager:
@@ -176,7 +186,15 @@ export default function DailyOnboardingPage() {
           }
         }
 
-        if (!cancelled && payload?.trainers?.length) setTrainers(payload.trainers.map((trainer: Trainer) => ({ ...trainer, is_manager: false })));
+        if (!cancelled && payload?.trainers?.length) {
+          setTrainers(payload.trainers.map((trainer: Trainer) => ({
+            ...blankTrainer,
+            ...trainer,
+            cv_url: trainer.cv_url ?? "",
+            cv_pending: Boolean(trainer.cv_pending),
+            is_manager: false,
+          })));
+        }
         loadedRef.current = true;
       } catch (bootError) {
         console.error("Selen Daily onboarding : chargement impossible.", bootError);
@@ -255,11 +273,7 @@ export default function DailyOnboardingPage() {
             <p className="gazette-label">Selen Daily</p>
             <h1 style={s.title}>Paramétrage indisponible</h1>
             <p style={s.error}>{error}</p>
-            <button
-              type="button"
-              className="btn-ink"
-              onClick={() => router.push("/client")}
-            >
+            <button type="button" className="btn-ink" onClick={() => router.push("/client")}>
               <span>Retour au bureau Selen</span>
             </button>
           </section>
@@ -275,21 +289,14 @@ export default function DailyOnboardingPage() {
         <div style={s.compactHeading}>
           <p className="gazette-label">Selen Daily</p>
           <h1 style={s.title}>Paramétrage initial</h1>
-          <p style={saveStatus === "error" ? s.saveError : s.saveStatus}>
-            {statusLabel(saveStatus)}
-          </p>
+          <p style={saveStatus === "error" ? s.saveError : s.saveStatus}>{statusLabel(saveStatus)}</p>
         </div>
 
         {error ? <p style={s.error}>{error}</p> : null}
 
         <nav style={s.steps}>
           {[1, 2, 3, 4, 5, 6, 7].map((step) => (
-            <button
-              key={step}
-              type="button"
-              onClick={() => void goTo(step)}
-              style={step === form.current_step ? s.stepActive : s.step}
-            >
+            <button key={step} type="button" onClick={() => void goTo(step)} style={step === form.current_step ? s.stepActive : s.step}>
               {step}
             </button>
           ))}
@@ -300,30 +307,17 @@ export default function DailyOnboardingPage() {
             <div style={s.stack}>
               <p className="gazette-label">Étape 1</p>
               <h2 style={s.title}>On commence doucement</h2>
-              <p style={s.muted}>
-                Choisis comment tu préfères paramétrer ton espace. Tu pourras revenir
-                plus tard, chaque champ est sauvegardé automatiquement.
-              </p>
+              <p style={s.muted}>Choisis comment tu préfères paramétrer ton espace. Tu pourras revenir plus tard, chaque champ est sauvegardé automatiquement.</p>
               <div style={s.choiceGrid}>
-                <button type="button" style={form.setup_choice === "self" ? s.choiceOn : s.choice} onClick={() => update("setup_choice", "self")}>
-                  Je paramètre seul
-                </button>
-                <button type="button" style={form.setup_choice === "video" ? s.choiceOn : s.choice} onClick={() => update("setup_choice", "video")}>
-                  Je souhaite être accompagné
-                </button>
+                <button type="button" style={form.setup_choice === "self" ? s.choiceOn : s.choice} onClick={() => update("setup_choice", "self")}>Je paramètre seul</button>
+                <button type="button" style={form.setup_choice === "video" ? s.choiceOn : s.choice} onClick={() => update("setup_choice", "video")}>Je souhaite être accompagné</button>
               </div>
               {form.setup_choice === "video" ? (
                 <div style={s.appointmentBox}>
                   <strong>{"Préparons d'abord votre rendez-vous"}</strong>
-                  <p>
-                    {"Commencez par transmettre les documents demandés dans les étapes suivantes. Selen pourra ainsi préremplir au maximum votre espace avant l'échange et limiter les saisies manuelles."}
-                  </p>
-                  <p style={{ margin: 0 }}>
-                    Le rendez-vous de mise en place pourra être planifié au minimum 24 h après la transmission des documents nécessaires.
-                  </p>
-                  <button type="button" className="btn-ink" onClick={() => void goTo(2)}>
-                    <span>Commencer par transmettre mes informations</span>
-                  </button>
+                  <p>{"Commencez par transmettre les documents demandés dans les étapes suivantes. Selen pourra ainsi préremplir au maximum votre espace avant l'échange et limiter les saisies manuelles."}</p>
+                  <p style={{ margin: 0 }}>Le rendez-vous de mise en place pourra être planifié au minimum 24 h après la transmission des documents nécessaires.</p>
+                  <button type="button" className="btn-ink" onClick={() => void goTo(2)}><span>Commencer par transmettre mes informations</span></button>
                   <a href="/support" style={s.inlineLink}>Contacter Selen si besoin</a>
                 </div>
               ) : null}
@@ -351,31 +345,44 @@ export default function DailyOnboardingPage() {
                 <option value="no">Non</option>
                 <option value="planned">Prévu par la suite</option>
               </select>
-              {form.qualiopi_status === "planned" ? (
-                <p style={s.notice}>{"Aucun souci. Quand le moment viendra, Selen pourra t'aider à préparer le chemin vers Qualiopi."}</p>
-              ) : null}
+              {form.qualiopi_status === "planned" ? <p style={s.notice}>{"Aucun souci. Quand le moment viendra, Selen pourra t'aider à préparer le chemin vers Qualiopi."}</p> : null}
               <div style={s.stackSmall}>
-                <FileUploadField label="Avis de situation INSEE (PDF)" kind="insee_notice" accept=".pdf" value={form.insee_document_url} onUploaded={(url) => update("insee_document_url", url)} />
+                <FileUploadField label="Avis de situation INSEE (PDF)" kind="insee_notice" accept=".pdf" value={form.insee_document_url} onUploaded={(url) => { update("insee_document_url", url); update("insee_document_pending", false); }} />
                 <p style={s.muted}>Le SIRET et l&apos;adresse seront repris depuis cet avis puis vérifiés avant validation.</p>
                 <label style={s.check}><input type="checkbox" checked={form.insee_document_pending} onChange={(event) => update("insee_document_pending", event.target.checked)} /> Avis INSEE à fournir plus tard</label>
-                {form.qualiopi_status === "yes" ? <><FileUploadField label="Certificat Qualiopi (PDF)" kind="qualiopi_certificate" accept=".pdf" value={form.qualiopi_certificate_url} onUploaded={(url) => update("qualiopi_certificate_url", url)} /><label style={s.check}><input type="checkbox" checked={form.qualiopi_certificate_pending} onChange={(event) => update("qualiopi_certificate_pending", event.target.checked)} /> Certificat Qualiopi à fournir plus tard</label></> : null}
-                <FileUploadField label="Dernier BPF (PDF), s'il existe" kind="bpf" accept=".pdf" value={form.nda_or_bpf_document_url} onUploaded={(url) => update("nda_or_bpf_document_url", url)} />
-                <label style={s.check}><input type="checkbox" checked={form.nda_or_bpf_document_pending} onChange={(event) => update("nda_or_bpf_document_pending", event.target.checked)} /> BPF à fournir plus tard</label>
+                {form.qualiopi_status === "yes" ? <><FileUploadField label="Certificat Qualiopi (PDF)" kind="qualiopi_certificate" accept=".pdf" value={form.qualiopi_certificate_url} onUploaded={(url) => { update("qualiopi_certificate_url", url); update("qualiopi_certificate_pending", false); }} /><label style={s.check}><input type="checkbox" checked={form.qualiopi_certificate_pending} onChange={(event) => update("qualiopi_certificate_pending", event.target.checked)} /> Certificat Qualiopi à fournir plus tard</label></> : null}
+                <label style={s.check}>
+                  <input
+                    type="checkbox"
+                    checked={form.first_nda_year}
+                    onChange={(event) => setForm((current) => ({
+                      ...current,
+                      first_nda_year: event.target.checked,
+                      nda_or_bpf_document_pending: event.target.checked ? false : current.nda_or_bpf_document_pending,
+                      nda_or_bpf_document_url: event.target.checked ? "" : current.nda_or_bpf_document_url,
+                    }))}
+                  />
+                  C&apos;est ma première année de NDA
+                </label>
+                {form.first_nda_year ? (
+                  <p style={s.notice}>Aucun BPF n&apos;est demandé pour cette première année de NDA.</p>
+                ) : (
+                  <>
+                    <FileUploadField label="Dernier BPF (PDF)" kind="bpf" accept=".pdf" value={form.nda_or_bpf_document_url} onUploaded={(url) => { update("nda_or_bpf_document_url", url); update("nda_or_bpf_document_pending", false); }} />
+                    <label style={s.check}><input type="checkbox" checked={form.nda_or_bpf_document_pending} onChange={(event) => update("nda_or_bpf_document_pending", event.target.checked)} /> BPF à fournir plus tard</label>
+                  </>
+                )}
               </div>
             </div>
           ) : null}
 
-          {form.current_step === 3 ? (
-            <TextStep title="Le fil de l'eau" text="Plus tu utilises Selen au fil de l'eau, moins tu cours après les preuves au moment de l'audit." />
-          ) : null}
+          {form.current_step === 3 ? <TextStep title="Le fil de l'eau" text="Plus tu utilises Selen au fil de l'eau, moins tu cours après les preuves au moment de l'audit." /> : null}
 
           {form.current_step === 4 ? (
             <div style={s.stack}>
               <p className="gazette-label">Étape 4</p>
               <h2 style={s.title}>Formateurs</h2>
-              <p style={s.muted}>
-                {"Un accès formateur sera créé pour chaque formateur afin qu'il puisse consulter les informations utiles à ses sessions : dates, participants, besoins d'adaptation et documents de préparation."}
-              </p>
+              <p style={s.muted}>{"Un accès formateur sera créé pour chaque formateur afin qu'il puisse consulter les informations utiles à ses sessions : dates, participants, besoins d'adaptation et documents de préparation."}</p>
               {trainers.map((trainer, index) => (
                 <div key={trainer.id ?? index} style={s.trainer}>
                   <label style={s.check}><input type="checkbox" checked={trainer.is_manager} onChange={(event) => updateTrainer(index, event.target.checked ? { is_manager: true, first_name: form.manager_first_name, last_name: form.manager_last_name, email: email ?? form.platform_contact_email } : { is_manager: false })} /> Le formateur est également le dirigeant de l&apos;organisme</label>
@@ -384,27 +391,24 @@ export default function DailyOnboardingPage() {
                     <Input label="Nom" value={trainer.last_name} onChange={(value) => updateTrainer(index, { last_name: value })} disabled={trainer.is_manager} />
                   </div>
                   <Input label="Email" value={trainer.email} onChange={(value) => updateTrainer(index, { email: value })} disabled={trainer.is_manager} />
-                  <FileUploadField label="CV du formateur (Word ou PDF)" kind="trainer_cv" slot={`trainer-${index + 1}`} accept=".doc,.docx,.pdf" value={trainer.cv_url} onUploaded={(url) => updateTrainer(index, { cv_url: url })} />
+                  <FileUploadField label="CV du formateur (Word ou PDF)" kind="trainer_cv" slot={`trainer-${index + 1}`} accept=".doc,.docx,.pdf" value={trainer.cv_url} onUploaded={(url) => updateTrainer(index, { cv_url: url, cv_pending: false })} />
+                  <label style={s.check}><input type="checkbox" checked={trainer.cv_pending} onChange={(event) => updateTrainer(index, { cv_pending: event.target.checked })} /> CV à fournir plus tard</label>
                   <p style={s.muted}>Le formateur pourra consulter ses sessions, les informations utiles sur les participants et les adaptations prévues, accéder aux documents de préparation et renseigner son suivi. Il ne pourra pas administrer l&apos;organisme, ses utilisateurs ni les autres formateurs. Son accès ne sera pas envoyé immédiatement : après vérification de son profil par Selen, il recevra son invitation par email avant sa première session affectée.</p>
                 </div>
               ))}
-              <button type="button" className="btn-ghost" onClick={() => setTrainers((current) => [...current, { ...blankTrainer }])}>
-                <span>Ajouter un formateur</span>
+              <button type="button" style={s.outlineButton} onClick={() => setTrainers((current) => [...current, { ...blankTrainer }])}>
+                Ajouter un formateur
               </button>
             </div>
           ) : null}
 
-          {form.current_step === 5 ? (
-            <TextStep title="Les bons liens, au bon moment" text="Ces informations permettront de préparer les bons documents, d&apos;envoyer les bons liens, et d&apos;éviter les oublis." />
-          ) : null}
+          {form.current_step === 5 ? <TextStep title="Les bons liens, au bon moment" text="Ces informations permettront de préparer les bons documents, d&apos;envoyer les bons liens, et d&apos;éviter les oublis." /> : null}
 
           {form.current_step === 6 ? (
             <div style={s.stack}>
               <p className="gazette-label">Étape 6</p>
               <h2 style={s.title}>Interlocuteur plateforme</h2>
-              <p style={s.muted}>
-                Indiquez ici la personne qui sera la plus amenée à administrer l&apos;organisme et ses activités depuis Selen.
-              </p>
+              <p style={s.muted}>Indiquez ici la personne qui sera la plus amenée à administrer l&apos;organisme et ses activités depuis Selen.</p>
               <label style={s.check}><input type="checkbox" checked={form.platform_contact_is_manager} onChange={(event) => setForm((current) => event.target.checked ? { ...current, platform_contact_is_manager: true, platform_contact_first_name: current.manager_first_name, platform_contact_last_name: current.manager_last_name, platform_contact_email: email ?? current.platform_contact_email } : { ...current, platform_contact_is_manager: false })} /> L&apos;interlocuteur plateforme est le dirigeant</label>
               <div style={s.twoCols}>
                 <Input label="Prénom" value={form.platform_contact_first_name} onChange={(value) => update("platform_contact_first_name", value)} disabled={form.platform_contact_is_manager} />
@@ -419,13 +423,8 @@ export default function DailyOnboardingPage() {
             <div style={s.stack}>
               <p className="gazette-label">Confirmation</p>
               <h2 style={s.title}>Ton espace Daily est prêt à démarrer</h2>
-              <p style={s.muted}>
-                Tu pourras modifier ces informations plus tard depuis les paramètres
-                Daily. La prochaine étape utile : créer ta première formation.
-              </p>
-              <button type="button" className="btn-ink" onClick={() => void finish()}>
-                <span>Terminer et créer ma première formation</span>
-              </button>
+              <p style={s.muted}>Tu pourras modifier ces informations plus tard depuis les paramètres Daily. La prochaine étape utile : créer ta première formation.</p>
+              <button type="button" className="btn-ink" onClick={() => void finish()}><span>Terminer et créer ma première formation</span></button>
             </div>
           ) : null}
 
@@ -433,35 +432,23 @@ export default function DailyOnboardingPage() {
             <div style={s.assistanceBox}>
               <div>
                 <strong>Besoin d&apos;être accompagné finalement&nbsp;?</strong>
-                <p style={s.assistanceText}>
-                  Tu peux changer d&apos;avis à tout moment. Les informations déjà saisies sont conservées et aideront Selen à préparer le rendez-vous.
-                </p>
+                <p style={s.assistanceText}>Tu peux changer d&apos;avis à tout moment. Les informations déjà saisies sont conservées et aideront Selen à préparer le rendez-vous.</p>
               </div>
-              <button type="button" className="btn-ghost" onClick={() => void requestAssistance()}>
-                <span>Je souhaite être accompagné</span>
-              </button>
+              <button type="button" className="btn-ghost" onClick={() => void requestAssistance()}><span>Je souhaite être accompagné</span></button>
             </div>
           ) : null}
 
           {form.current_step > 1 && form.setup_choice === "video" ? (
             <div style={s.appointmentBox}>
               <strong>Demande d&apos;accompagnement prise en compte</strong>
-              <p style={{ margin: 0 }}>
-                Continue à transmettre les informations et documents disponibles. Le rendez-vous pourra être planifié au minimum 24 h après leur transmission.
-              </p>
+              <p style={{ margin: 0 }}>Continue à transmettre les informations et documents disponibles. Le rendez-vous pourra être planifié au minimum 24 h après leur transmission.</p>
               <a href="/support" style={s.inlineLink}>Contacter Selen si besoin</a>
             </div>
           ) : null}
 
           <div style={s.actions}>
-            <button type="button" className="btn-ghost" disabled={form.current_step <= 1} onClick={() => void goTo(Math.max(1, form.current_step - 1))}>
-              <span>Précédent</span>
-            </button>
-            {form.current_step < 7 ? (
-              <button type="button" className="btn-ink" onClick={() => void goTo(Math.min(7, form.current_step + 1))}>
-                <span>Continuer</span>
-              </button>
-            ) : null}
+            <button type="button" className="btn-ghost" disabled={form.current_step <= 1} onClick={() => void goTo(Math.max(1, form.current_step - 1))}><span>Précédent</span></button>
+            {form.current_step < 7 ? <button type="button" className="btn-ink" onClick={() => void goTo(Math.min(7, form.current_step + 1))}><span>Continuer</span></button> : null}
           </div>
         </section>
       </div>
@@ -513,25 +500,8 @@ function FileUploadField({ label, kind, slot = "principal", value, onUploaded, a
   return (
     <div style={s.field}>
       <span style={s.label}>{label}</span>
-      <input
-        ref={inputRef}
-        type="file"
-        accept={accept}
-        disabled={uploading}
-        style={s.fileInput}
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-          if (file) void upload(file);
-        }}
-      />
-      <button
-        type="button"
-        style={s.fileButton}
-        disabled={uploading}
-        onClick={() => inputRef.current?.click()}
-      >
-        {uploading ? "Import en cours…" : "Choisir un fichier"}
-      </button>
+      <input ref={inputRef} type="file" accept={accept} disabled={uploading} style={s.fileInput} onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(file); }} />
+      <button type="button" style={s.fileButton} disabled={uploading} onClick={() => inputRef.current?.click()}>{uploading ? "Import en cours…" : "Choisir un fichier"}</button>
       {!uploading && value ? <span style={s.uploaded}>Document importé ✓</span> : null}
       {uploadError ? <span style={s.saveError}>{uploadError}</span> : null}
     </div>
@@ -571,6 +541,7 @@ const s: Record<string, React.CSSProperties> = {
   input: { width: "100%", border: "1px solid rgba(178,138,98,0.55)", background: "rgba(255,250,239,0.86)", color: "var(--ink)", padding: "0.7rem", fontSize: "0.95rem", boxSizing: "border-box" },
   fileInput: { display: "none" },
   fileButton: { justifySelf: "start", border: "1px solid var(--rust)", background: "rgba(255,250,239,0.9)", color: "var(--rust)", padding: "0.65rem 1rem", fontSize: "0.95rem", fontWeight: 800, cursor: "pointer", borderRadius: 4 },
+  outlineButton: { justifySelf: "start", border: "1px solid var(--rust)", background: "rgba(255,250,239,0.9)", color: "var(--rust)", padding: "0.65rem 1rem", fontSize: "0.95rem", fontWeight: 800, cursor: "pointer", borderRadius: 4 },
   uploaded: { color: "#496532", fontWeight: 700 },
   check: { color: "var(--ink-soft)", display: "flex", gap: "0.5rem", alignItems: "center" },
   trainer: { display: "grid", gap: "0.7rem", border: "1px solid rgba(178,138,98,0.28)", padding: "0.85rem" },
