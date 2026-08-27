@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getDailyOrganisationContext } from "@/lib/server/dailyOrganisationContext";
+import { getDailyOrganisationBillingUserId, getDailyOrganisationContext } from "@/lib/server/dailyOrganisationContext";
 
 const MAX_SIZE = 10 * 1024 * 1024;
 const FIELDS: Record<string, string> = {
@@ -13,7 +13,7 @@ function safe(value: string) {
 }
 
 export async function POST(req: Request) {
-  const context = await getDailyOrganisationContext(req, "legal_profile");
+  const context = await getDailyOrganisationContext(req, "sessions");
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
 
   const form = await req.formData().catch(() => null);
@@ -33,10 +33,11 @@ export async function POST(req: Request) {
 
   const { data: publicData } = context.admin.storage.from("documents").getPublicUrl(storagePath);
   const url = publicData.publicUrl;
+  const billingUserId = await getDailyOrganisationBillingUserId(context.organisationId, context.user.id);
   const { error: updateError } = await context.admin
     .from("daily_onboarding")
     .update({ [column]: url, updated_at: new Date().toISOString() })
-    .eq("user_id", context.user.id);
+    .eq("user_id", billingUserId);
 
   if (updateError) {
     await context.admin.storage.from("documents").remove([storagePath]);
