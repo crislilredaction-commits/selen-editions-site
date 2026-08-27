@@ -118,12 +118,13 @@ type DailyTrainer = {
   email?: string | null;
 };
 type FormValue = string | number | boolean | null | undefined;
-type FormState = Record<string, FormValue | PositioningQuestion[]>;
+type FormState = Record<string, FormValue | PositioningQuestion[] | string[]>;
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 
 const emptyFormation = {
   title: "",
   global_objective: "",
+  learning_objectives: [""],
   target_audience: "",
   prerequisites: "",
   duration_hours: "",
@@ -276,7 +277,6 @@ export default function ClientDailyPage() {
   const [editingFormationId, setEditingFormationId] = useState("");
   const [sessionForm, setSessionForm] = useState<FormState>(emptySession);
   const [editingSessionId, setEditingSessionId] = useState("");
-  const [showSessionForm, setShowSessionForm] = useState(false);
   const [lastCreatedFormationId, setLastCreatedFormationId] = useState("");
   const [scheduleBlocks, setScheduleBlocks] = useState<ScheduleBlock[]>([
     { date: "", start: "", end: "", note: "" },
@@ -411,7 +411,7 @@ export default function ClientDailyPage() {
     return () => window.clearTimeout(timer);
   }, [formationForm, loading]);
 
-  function updateFormation(key: string, value: FormValue) {
+  function updateFormation(key: string, value: FormValue | string[]) {
     setFormationForm((current) => ({ ...current, [key]: value }));
   }
 
@@ -450,7 +450,6 @@ export default function ClientDailyPage() {
     );
     if (!editingFormationId && savedFormation?.id) {
       setLastCreatedFormationId(savedFormation.id);
-      setShowSessionForm(false);
       setSessionForm((current) => ({
         ...current,
         formation_id: savedFormation.id,
@@ -544,7 +543,6 @@ export default function ClientDailyPage() {
     setMessage(data?.validationWarning ?? "Session enregistrée. Selen peut maintenant préparer la suite.");
     setSessionForm(emptySession);
     setEditingSessionId("");
-    setShowSessionForm(false);
     setScheduleBlocks([{ date: "", start: "", end: "", note: "" }]);
     setCompanies([{ name: "", address: "", siret: "", email: "", participants: [{ first_name: "", last_name: "", email: "" }] }]);
     setBeneficiaries([{ first_name: "", last_name: "", email: "", phone: "" }]);
@@ -555,7 +553,6 @@ export default function ClientDailyPage() {
 
   function editSession(session: DailySession) {
     setEditingSessionId(session.id);
-    setShowSessionForm(true);
     setSessionForm({
       ...emptySession,
       formation_id: session.formation_id,
@@ -654,14 +651,10 @@ export default function ClientDailyPage() {
       <ClientSupportBar email={email} context="Selen Daily" />
       <div style={s.page}>
         <Link href="/client" style={s.homeLink}>Retour au bureau Selen</Link>
-        <header className="gazette-cta" style={s.hero}>
+        <div style={s.compactHeading}>
           <p className="gazette-label">Selen Daily</p>
-          <h1 className="gazette-hero-title" style={s.heroTitle}>Formations et sessions</h1>
-          <p style={s.heroText}>
-            Créez vos programmes de formation, préparez vos sessions et laissez Selen
-            {" vérifier les éléments avant l'envoi des documents officiels."}
-          </p>
-        </header>
+          <h1 style={s.cardTitle}>Créer une formation</h1>
+        </div>
 
         <p style={formationAutosaveStatus === "error" ? s.warning : s.muted}>
           {formationAutosaveStatus === "saving"
@@ -679,9 +672,20 @@ export default function ClientDailyPage() {
             <h2 style={s.cardTitle}>{editingFormationId ? "Modifier la formation" : "Créer une formation"}</h2>
 
             <Input label="Intitulé de la formation" value={formationForm.title} onChange={(value) => updateFormation("title", value)} required />
-            <Textarea label="Objectif global" value={formationForm.global_objective} onChange={(value) => updateFormation("global_objective", value)} required />
+            <Textarea label="Objectif principal" value={formationForm.global_objective} onChange={(value) => updateFormation("global_objective", value)} required />
+            <p style={s.helpText}>Commencez par un verbe d&apos;action à l&apos;infinitif décrivant ce que le participant saura faire à l&apos;issue de la formation : maîtriser, identifier, appliquer, réaliser, utiliser, analyser ou acquérir. Évitez « savoir » et « comprendre », trop difficiles à évaluer.</p>
+            <div style={s.dynamic}>
+              <div style={s.dynamicHead}><strong>Objectifs pédagogiques</strong><button type="button" className="btn-ghost" onClick={() => updateFormation("learning_objectives", [...((formationForm.learning_objectives as string[]) ?? []), ""])}><span>Ajouter un objectif</span></button></div>
+              {((formationForm.learning_objectives as string[]) ?? [""]).map((objective, index) => (
+                <div key={index} style={s.objectiveRow}>
+                  <Input label={`Objectif ${index + 1}`} value={objective} onChange={(value) => updateFormation("learning_objectives", ((formationForm.learning_objectives as string[]) ?? []).map((item, itemIndex) => itemIndex === index ? value : item))} required={index === 0} />
+                  {((formationForm.learning_objectives as string[]) ?? []).length > 1 ? <button type="button" className="btn-ghost" onClick={() => updateFormation("learning_objectives", ((formationForm.learning_objectives as string[]) ?? []).filter((_, itemIndex) => itemIndex !== index))}><span>Retirer</span></button> : null}
+                </div>
+              ))}
+            </div>
             <Textarea label="Public visé" value={formationForm.target_audience} onChange={(value) => updateFormation("target_audience", value)} required />
             <Textarea label="Prérequis" value={formationForm.prerequisites} onChange={(value) => updateFormation("prerequisites", value)} required />
+            <p style={s.helpText}>Indiquez uniquement les conditions réellement nécessaires. Si votre organisme est certifié Qualiopi, chaque prérequis déclaré devra être vérifié pour chaque apprenant et cette vérification devra pouvoir être prouvée.</p>
 
             <div style={s.twoCols}>
               <Input label="Durée en heures" type="number" value={formationForm.duration_hours} onChange={(value) => updateFormation("duration_hours", value)} required />
@@ -695,14 +699,13 @@ export default function ClientDailyPage() {
               <option value="mixte">Mixte</option>
             </select>
             <p style={s.helpText}>Indiquez comment la formation se déroule : en présentiel, à distance ou avec un mélange des deux.</p>
-            <Textarea label="Précisions sur les modalités" value={formationForm.modality_details} onChange={(value) => updateFormation("modality_details", value)} required />
             <Input label={"Délais d'accès"} value={formationForm.access_delays} onChange={(value) => updateFormation("access_delays", value)} required />
             <p style={s.helpText}>Indiquez le délai habituel entre la demande d&apos;inscription et l&apos;entrée en formation.</p>
-            <Input label="Tarif" value={formationForm.price} onChange={(value) => updateFormation("price", value)} required />
-            <Textarea label="Contenu / programme détaillé" value={formationForm.detailed_program} onChange={(value) => updateFormation("detailed_program", value)} required rows={6} />
-            <Input label="Document programme déjà existant, URL du fichier" value={formationForm.detailed_program_document_url} onChange={(value) => updateFormation("detailed_program_document_url", value)} />
+            <Input label="Tarif TTC" value={formationForm.price} onChange={(value) => updateFormation("price", value)} required />
+            <FileUploadField label="Programme de formation (Word ou PDF)" kind="training_program_source" value={String(formationForm.detailed_program_document_url ?? "")} onUploaded={(url) => updateFormation("detailed_program_document_url", url)} accept=".doc,.docx,.pdf" />
+            <a href="/templates/modele-programme-formation-selen.docx" download style={s.inlineLink}>Télécharger la trame de programme Selen</a>
             <Textarea label="Moyens pédagogiques et techniques mobilisés" value={formationForm.pedagogical_resources} onChange={(value) => updateFormation("pedagogical_resources", value)} required />
-            <p style={s.helpText}>Exemples : supports PDF, exercices, cas pratiques, visio, plateforme e-learning, matériel utilisé.</p>
+            <p style={s.helpText}>Décrivez les supports, outils, matériels et méthodes réellement utilisés : supports de cours, vidéoprojecteur, ordinateur, visioconférence, logiciels, matériel professionnel, exercices, études de cas, mises en situation, démonstrations et travaux individuels ou collectifs. Précisez comment théorie et pratique s&apos;alternent.</p>
             <Textarea
               label={"Modalités d'évaluation des acquis"}
               value={formationForm.evaluation_methods}
@@ -713,10 +716,12 @@ export default function ClientDailyPage() {
 
             <PositioningQuestionnaireEditor
               mode={String(formationForm.positioning_mode ?? "off_platform")}
-              questions={Array.isArray(formationForm.positioning_questions) ? formationForm.positioning_questions : []}
+              questions={Array.isArray(formationForm.positioning_questions) ? formationForm.positioning_questions.filter((question): question is PositioningQuestion => typeof question === "object" && question !== null && "type" in question) : []}
               onModeChange={(value) => updateFormation("positioning_mode", value)}
               onQuestionsChange={updatePositioningQuestions}
             />
+            <p style={s.helpText}>Le positionnement est un questionnaire de connaissances réalisé avant la formation pour évaluer le niveau de départ et identifier les besoins d&apos;adaptation. Il est obligatoire pour un organisme certifié Qualiopi.</p>
+            <FileUploadField label="Questionnaire de positionnement existant (Word ou PDF), facultatif" kind="positioning_questionnaire_source" value={String(formationForm.positioning_document_url ?? "")} onUploaded={(url) => updateFormation("positioning_document_url", url)} accept=".doc,.docx,.pdf" />
 
             <label style={s.check}>
               <input
@@ -741,7 +746,7 @@ export default function ClientDailyPage() {
               <Input label="Email" type="email" value={formationForm.contact_email} onChange={(value) => updateFormation("contact_email", value)} required />
               <Input label="Site internet" value={formationForm.contact_website} onChange={(value) => updateFormation("contact_website", value)} />
             </div>
-            <p style={s.helpText}>La date de génération du document sera ajoutée automatiquement par Selen.</p>
+            <p style={s.helpText}>Indiquez les coordonnées de l&apos;organisme de formation que les apprenants peuvent utiliser pour vous contacter. Elles apparaîtront sur les documents générés par Selen.</p>
 
             <div style={s.actions}>
               <div style={s.actionMessages}>
@@ -755,9 +760,7 @@ export default function ClientDailyPage() {
                       <button type="button" className="btn-ghost" onClick={() => setLastCreatedFormationId("")}>
                         <span>Accéder au dashboard Daily</span>
                       </button>
-                      <button type="button" className="btn-ink" onClick={() => { setShowSessionForm(true); setSessionForm((current) => ({ ...current, formation_id: lastCreatedFormationId })); }}>
-                        <span>Créer une session maintenant</span>
-                      </button>
+                      <Link href="/client/daily/sessions" className="btn-ink"><span>Créer une session</span></Link>
                       <button type="button" className="btn-ghost" onClick={() => setLastCreatedFormationId("")}>
                         <span>Créer plus tard</span>
                       </button>
@@ -776,7 +779,7 @@ export default function ClientDailyPage() {
             </div>
           </form>
 
-          {showSessionForm || editingSessionId ? (
+          {editingSessionId ? (
           <form onSubmit={submitSession} style={s.card}>
             <p className="gazette-label">Session associée</p>
             <h2 style={s.cardTitle}>{editingSessionId ? "Modifier la session" : "Créer une session"}</h2>
@@ -895,15 +898,9 @@ export default function ClientDailyPage() {
               <button className="btn-ink" type="submit" disabled={saving || activeFormations.length === 0}>
                 <span>{editingSessionId ? "Enregistrer la session" : "Créer la session"}</span>
               </button>
-              {editingSessionId ? (
-                <button type="button" className="btn-ghost" onClick={() => setEditingSessionId("")}>
-                  <span>Annuler</span>
-                </button>
-              ) : (
-                <button type="button" className="btn-ghost" onClick={() => setShowSessionForm(false)}>
-                  <span>Créer plus tard</span>
-                </button>
-              )}
+              <button type="button" className="btn-ghost" onClick={() => setEditingSessionId("")}>
+                <span>Annuler</span>
+              </button>
             </div>
           </form>
           ) : (
@@ -917,7 +914,7 @@ export default function ClientDailyPage() {
                 type="button"
                 className="btn-ink"
                 disabled={activeFormations.length === 0}
-                onClick={() => setShowSessionForm(true)}
+                onClick={() => router.push("/client/daily/sessions")}
               >
                 <span>Créer une session</span>
               </button>
@@ -949,7 +946,7 @@ export default function ClientDailyPage() {
                 ) : null}
                 <div style={s.actions}>
                   <button type="button" className="btn-ghost" onClick={() => editFormation(formation)}><span>Modifier</span></button>
-                  <button type="button" className="btn-ghost" onClick={() => { setShowSessionForm(true); setSessionForm((current) => ({ ...current, formation_id: formation.id })); }}><span>Créer une session</span></button>
+                  <button type="button" className="btn-ghost" onClick={() => router.push("/client/daily/sessions")}><span>Créer une session</span></button>
                   <button type="button" className="btn-ghost" onClick={() => archiveFormation(formation.id)}><span>Archiver / supprimer</span></button>
                 </div>
               </article>
@@ -1086,7 +1083,7 @@ export default function ClientDailyPage() {
   );
 }
 
-function Input({ label, helpText, value, onChange, type = "text", required = false }: { label: string; helpText?: string; value: FormValue | PositioningQuestion[]; onChange: (value: string) => void; type?: string; required?: boolean }) {
+function Input({ label, helpText, value, onChange, type = "text", required = false }: { label: string; helpText?: string; value: FormValue | PositioningQuestion[] | string[]; onChange: (value: string) => void; type?: string; required?: boolean }) {
   return (
     <div style={s.field}>
       {fieldLabel(label, helpText)}
@@ -1095,11 +1092,41 @@ function Input({ label, helpText, value, onChange, type = "text", required = fal
   );
 }
 
-function Textarea({ label, helpText, value, onChange, required = false, rows = 3 }: { label: string; helpText?: string; value: FormValue | PositioningQuestion[]; onChange: (value: string) => void; required?: boolean; rows?: number }) {
+function Textarea({ label, helpText, value, onChange, required = false, rows = 3 }: { label: string; helpText?: string; value: FormValue | PositioningQuestion[] | string[]; onChange: (value: string) => void; required?: boolean; rows?: number }) {
   return (
     <div style={s.field}>
       {fieldLabel(label, helpText)}
       <textarea style={{ ...s.input, minHeight: rows * 34, paddingTop: 10 }} value={String(value ?? "")} onChange={(event) => onChange(event.target.value)} required={required} />
+    </div>
+  );
+}
+
+function FileUploadField({ label, kind, value, onUploaded, accept }: { label: string; kind: string; value: string; onUploaded: (url: string) => void; accept: string }) {
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+
+  async function upload(file: File) {
+    setUploading(true);
+    setUploadError("");
+    const body = new FormData();
+    body.set("file", file);
+    body.set("kind", kind);
+    const response = await assistanceFetch("/api/client/daily/uploads", { method: "POST", body });
+    const data = await response.json().catch(() => null);
+    setUploading(false);
+    if (!response.ok) {
+      setUploadError(data?.error ?? "Import impossible.");
+      return;
+    }
+    onUploaded(String(data.url ?? ""));
+  }
+
+  return (
+    <div style={s.field}>
+      <span style={s.label}>{label}</span>
+      <input type="file" accept={accept} disabled={uploading} onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(file); }} />
+      {uploading ? <span style={s.muted}>Import en cours…</span> : value ? <span style={s.uploaded}>Document importé ✓</span> : null}
+      {uploadError ? <span style={s.warning}>{uploadError}</span> : null}
     </div>
   );
 }
@@ -1339,7 +1366,7 @@ function PositioningQuestionnaireEditor({
                 <Textarea
                   label="Options de reponse, une par ligne"
                   value={question.options.join("\n")}
-                  onChange={(value) => updateQuestion(index, { options: value.split("\n").map((option) => option.trim()).filter(Boolean) })}
+                  onChange={(value) => updateQuestion(index, { options: value.split("\n") })}
                   rows={3}
                 />
               ) : null}
@@ -1365,6 +1392,7 @@ function ListCard({ title, empty, children }: { title: string; empty: string; ch
 
 const s: Record<string, React.CSSProperties> = {
   page: { maxWidth: 1220, margin: "0 auto", padding: "2rem 1.5rem 4rem" },
+  compactHeading: { marginBottom: "1rem", display: "grid", gap: "0.25rem" },
   homeLink: { display: "inline-flex", marginBottom: "1rem", color: "var(--rust)", fontWeight: 800, textDecoration: "none" },
   hero: { padding: "2rem", marginBottom: "1.5rem" },
   heroTitle: { color: "var(--parchment)", marginBottom: "0.5rem" },
@@ -1385,6 +1413,8 @@ const s: Record<string, React.CSSProperties> = {
   muted: { color: "var(--ink-soft)", lineHeight: 1.6 },
   dynamic: { display: "grid", gap: "0.6rem", border: "1px solid rgba(178,138,98,0.28)", padding: "0.8rem" },
   dynamicHead: { display: "flex", justifyContent: "space-between", gap: "0.6rem", alignItems: "center", color: "var(--ink)" },
+  objectiveRow: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: "0.6rem", alignItems: "end" },
+  uploaded: { color: "#496532", fontWeight: 700 },
   rowGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "0.5rem", alignItems: "center" },
   companyBox: { display: "grid", gap: "0.55rem", border: "1px solid rgba(178,138,98,0.22)", padding: "0.7rem", background: "rgba(255,250,239,0.42)" },
   linkBox: { display: "grid", gap: "0.5rem", border: "1px solid rgba(106,138,74,0.35)", background: "rgba(106,138,74,0.06)", padding: "0.75rem" },

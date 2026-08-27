@@ -4,8 +4,7 @@ import { getDailyOrganisationContext, getDailyOrganisationReadContext } from "@/
 
 const REQUIRED_FIELDS = [
   "title", "global_objective", "target_audience", "prerequisites", "duration_hours", "duration_days",
-  "modality", "modality_details", "access_delays", "price", "detailed_program", "pedagogical_methods",
-  "pedagogical_resources", "evaluation_methods", "contact_phone", "contact_email",
+  "modality", "access_delays", "price", "pedagogical_resources", "evaluation_methods", "contact_phone", "contact_email",
 ];
 const STATUSES = new Set(["draft", "review", "validated", "correction_requested", "archived"]);
 const MODALITIES = new Set(["presentiel", "distanciel", "mixte"]);
@@ -98,12 +97,12 @@ function buildPayload(body: Record<string, unknown>, userId: string, organisatio
     title: text(body, "title"), global_objective: text(body, "global_objective"), learning_objectives: learningObjectives,
     allowed_trainer_ids: allowedTrainerIds,
     target_audience: text(body, "target_audience"), prerequisites: text(body, "prerequisites"),
-    duration_hours: durationHours, duration_days: durationDays, modality, modality_details: text(body, "modality_details"),
+    duration_hours: durationHours, duration_days: durationDays, modality, modality_details: text(body, "modality_details") || modality,
     access_delays: text(body, "access_delays"),
     registration_methods: text(body, "registration_methods") || "Les modalités d'inscription sont préparées et suivies par Selen Daily.",
     price: text(body, "price"), detailed_program: text(body, "detailed_program"), detailed_program_document_url: nullableText(body, "detailed_program_document_url"),
     accessibility: text(body, "accessibility") || "La formation est accessible aux personnes en situation de handicap. Les besoins d'adaptation sont analysés dans le dossier d'inscription et suivis par Selen.",
-    disability_referent: nullableText(body, "disability_referent"), pedagogical_methods: text(body, "pedagogical_methods"),
+    disability_referent: nullableText(body, "disability_referent"), pedagogical_methods: text(body, "pedagogical_methods") || text(body, "pedagogical_resources"),
     pedagogical_resources: text(body, "pedagogical_resources"), evaluation_methods: text(body, "evaluation_methods"),
     result_beneficiary_count: resultsPending ? null : intValue(body, "result_beneficiary_count"),
     result_satisfaction_rate: resultsPending ? null : numberValue(body, "result_satisfaction_rate"),

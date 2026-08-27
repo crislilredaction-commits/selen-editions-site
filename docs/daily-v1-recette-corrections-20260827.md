@@ -119,6 +119,12 @@ Texte cible : « Indiquez les coordonnées de l'organisme de formation que les a
 - Réduire fortement la taille et la dominance visuelle du bouton actuel.
 - Une formation reste un modèle réutilisable ; la session contient les dates, participants et éléments opérationnels.
 
+## Anomalies bloquantes constatées pendant la recette
+
+- Dans une question de positionnement à choix unique ou multiple, la saisie des options supprimait immédiatement les espaces et les retours à la ligne. La valeur brute doit rester éditable pendant la frappe ; le nettoyage des options ne doit intervenir qu'à la validation serveur.
+- Le formulaire affichait un objectif principal, mais n'envoyait aucun tableau `learning_objectives` alors que l'API exige au moins un objectif pédagogique. Le formulaire doit proposer explicitement un ou plusieurs objectifs pédagogiques et transmettre les valeurs renseignées.
+- Ces anomalies empêchant de créer la formation, elles rendent la poursuite de la recette impossible et doivent être corrigées dans le même lot que les ajustements validés ci-dessus.
+
 ## À valider avec Lil
 
 Aucun point bloquant dans cette note. Les formulations exactes des aides peuvent être ajustées au fil de la recette tant que les règles métier ci-dessus sont préservées.
