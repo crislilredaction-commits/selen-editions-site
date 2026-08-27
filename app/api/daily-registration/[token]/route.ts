@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
+import { sendDailyRegistrationConfirmation } from "@/lib/server/dailyRegistrationEmails";
 import {
   buildDailyRegistrationSummary,
   DAILY_COMPANY_QUESTIONS,
@@ -11,8 +12,20 @@ import {
 
 type Params = { params: Promise<{ token: string }> };
 
+type PublicSession = {
+  id: string;
+  formation_id: string;
+  start_date: string | null;
+  end_date: string | null;
+  modality: string;
+  distance_mode: string | null;
+  status: string;
+  schedule_blocks: unknown[];
+  max_participants: number | null;
+};
+
 const FORMATION_FIELDS = "id,user_id,title,status,global_objective,target_audience,prerequisites,duration_hours,duration_days,modality,modality_details,access_delays,registration_methods,price,detailed_program,detailed_program_document_url,accessibility,pedagogical_resources,pedagogical_methods,evaluation_methods,positioning_mode,positioning_questions,contact_phone,contact_email,contact_website" as const;
-const SESSION_SELECT = `id,user_id,registration_token,registration_status,adaptation_needed,companies,beneficiaries,individual_beneficiaries,daily_formations(${FORMATION_FIELDS})` as const;
+const SESSION_SELECT = `id,user_id,formation_id,start_date,end_date,modality,distance_mode,status,schedule_blocks,registration_token,registration_status,adaptation_needed,companies,beneficiaries,individual_beneficiaries,daily_formations(${FORMATION_FIELDS})` as const;
 const FORMATION_SELECT = `id,user_id,public_registration_token,public_registration_enabled,title,status,global_objective,target_audience,prerequisites,duration_hours,duration_days,modality,modality_details,access_delays,registration_methods,price,detailed_program,detailed_program_document_url,accessibility,pedagogical_resources,pedagogical_methods,evaluation_methods,positioning_mode,positioning_questions,contact_phone,contact_email,contact_website` as const;
 const APPLICATION_CONSENT_TEXT =
   "Je certifie l'exactitude des informations renseignées dans ce dossier de candidature et confirme ma demande d'inscription à cette formation.";
@@ -34,6 +47,27 @@ function jsonObject(value: unknown) {
 
 function jsonArray(value: unknown) {
   return Array.isArray(value) ? value : [];
+}
+
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function sessionLabel(session: Pick<PublicSession, "start_date" | "end_date">) {
+  if (!session.start_date) return null;
+  const format = (value: string) => new Intl.DateTimeFormat("fr-FR", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "Europe/Paris",
+  }).format(new Date(`${value}T12:00:00Z`));
+  return session.end_date && session.end_date !== session.start_date
+    ? `du ${format(session.start_date)} au ${format(session.end_date)}`
+    : `le ${format(session.start_date)}`;
+}
+
+function isAsynchronous(session: Pick<PublicSession, "modality" | "distance_mode">) {
+  return session.modality === "distanciel" && session.distance_mode === "asynchrone";
 }
 
 function hasExplicitAdaptationAnswer(answers: Record<string, unknown>) {
@@ -122,6 +156,20 @@ async function findFormation(token: string) {
   return data;
 }
 
+async function findFutureSessions(formationId: string) {
+  const supabase = getAdminSupabase();
+  const { data, error } = await supabase
+    .from("daily_sessions")
+    .select("id,formation_id,start_date,end_date,modality,distance_mode,status,schedule_blocks,max_participants")
+    .eq("formation_id", formationId)
+    .eq("status", "ready")
+    .gte("start_date", todayIso())
+    .order("start_date", { ascending: true });
+
+  if (error) throw new Error(error.message);
+  return (data ?? []) as PublicSession[];
+}
+
 async function findOrganisation(userId: string) {
   const supabase = getAdminSupabase();
   const { data, error } = await supabase
@@ -143,6 +191,15 @@ async function findOrganisation(userId: string) {
   };
 }
 
+async function sendConfirmationSafely(input: Parameters<typeof sendDailyRegistrationConfirmation>[0]) {
+  try {
+    return await sendDailyRegistrationConfirmation(input);
+  } catch (error) {
+    console.warn("Daily registration: confirmation email failed", error);
+    return { sent: false, reason: "send_failed" as const };
+  }
+}
+
 export async function GET(_request: Request, { params }: Params) {
   const { token } = await params;
   const clean = cleanToken(token);
@@ -155,6 +212,8 @@ export async function GET(_request: Request, { params }: Params) {
       registrationKind: "session",
       session,
       organisation,
+      availableSessions: [],
+      deliveryMode: session.modality === "distanciel" && session.distance_mode === "asynchrone" ? "asynchronous" : "scheduled",
       beneficiaryQuestions: DAILY_NEED_QUESTIONS,
       companyQuestions: DAILY_COMPANY_QUESTIONS,
       positioningQuestions: DAILY_POSITIONING_QUESTIONS,
@@ -164,11 +223,23 @@ export async function GET(_request: Request, { params }: Params) {
 
   const formation = await findFormation(clean);
   if (!formation) return NextResponse.json({ error: "Lien introuvable ou expiré." }, { status: 404 });
-  const organisation = await findOrganisation(formation.user_id);
+  const [organisation, futureSessions] = await Promise.all([
+    findOrganisation(formation.user_id),
+    findFutureSessions(formation.id),
+  ]);
+  const asynchronousSessions = futureSessions.filter(isAsynchronous);
+  const availableSessions = futureSessions.filter((item) => !isAsynchronous(item));
+  const deliveryMode = availableSessions.length === 0 && asynchronousSessions.length > 0
+    ? "asynchronous"
+    : availableSessions.length > 0
+      ? "scheduled"
+      : "date_to_plan";
 
   return NextResponse.json({
     registrationKind: "formation",
     organisation,
+    availableSessions,
+    deliveryMode,
     session: {
       id: null,
       user_id: formation.user_id,
@@ -225,40 +296,77 @@ export async function POST(request: Request, { params }: Params) {
     signature_ip_address: signature.value.ip_address,
     signature_user_agent: signature.value.user_agent,
   };
+  const respondentEmail = text(body, "respondent_email").toLowerCase();
+  const respondentFirstName = text(body, "respondent_first_name");
 
   if (formation) {
+    const futureSessions = await findFutureSessions(formation.id);
+    const publicSessions = futureSessions.filter((item) => !isAsynchronous(item));
+    const asyncSession = futureSessions.find(isAsynchronous) ?? null;
+    const requestedSessionId = text(body, "selected_session_id");
+    let attachedSession: PublicSession | null = null;
+
+    if (requestedSessionId) {
+      attachedSession = publicSessions.find((item) => item.id === requestedSessionId) ?? null;
+      if (!attachedSession) {
+        return NextResponse.json({ error: "La session choisie n'est plus disponible. Merci d'actualiser le dossier et de choisir une autre date." }, { status: 409 });
+      }
+    } else if (publicSessions.length === 0 && asyncSession) {
+      attachedSession = asyncSession;
+    }
+
+    const nextStep = attachedSession
+      ? isAsynchronous(attachedSession) ? "asynchronous" : "scheduled"
+      : "date_to_plan";
+
     const { data: response, error } = await supabase
       .from("daily_formation_registration_requests")
       .insert({
         formation_id: formation.id,
         user_id: formation.user_id,
         response_type: responseType,
-        respondent_first_name: text(body, "respondent_first_name") || null,
+        respondent_first_name: respondentFirstName || null,
         respondent_last_name: text(body, "respondent_last_name") || null,
-        respondent_email: text(body, "respondent_email").toLowerCase() || null,
+        respondent_email: respondentEmail || null,
         company_name: responseType === "company" ? text(body, "company_name") || null : null,
         participants: responseType === "company" ? jsonArray(body.participants) : [],
         need_answers: needAnswers,
         positioning_answers: positioningAnswers,
         adaptation_needed: adaptationNeeded,
-        status: "to_attach",
+        attached_session_id: attachedSession?.id ?? null,
+        status: attachedSession ? "attached" : "to_attach",
         submitted_at: signature.value.signed_at,
         ...signatureFields,
       })
-      .select("id,status,submitted_at,signature_signed_at")
+      .select("id,status,attached_session_id,submitted_at,signature_signed_at")
       .single();
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
     await supabase
       .from("daily_formations")
-      .update({ spontaneous_registration_task_status: "to_attach" })
+      .update({ spontaneous_registration_task_status: attachedSession ? "none" : "to_attach" })
       .eq("id", formation.id);
+
+    const organisation = await findOrganisation(formation.user_id);
+    const confirmation = await sendConfirmationSafely({
+      email: respondentEmail,
+      firstName: respondentFirstName || null,
+      organisationName: organisation?.name ?? null,
+      formationTitle: formation.title,
+      nextStep,
+      sessionLabel: attachedSession ? sessionLabel(attachedSession) : null,
+    });
 
     return NextResponse.json({
       response,
-      summary: { task: "Créer une session ou rattacher cette demande à une session." },
+      summary: {
+        task: attachedSession ? null : "Caler une date avec le formateur puis recontacter le candidat.",
+      },
       registrationKind: "formation",
+      nextStep,
+      organisationName: organisation?.name ?? null,
+      confirmationEmailSent: confirmation.sent,
     });
   }
 
@@ -270,9 +378,9 @@ export async function POST(request: Request, { params }: Params) {
       session_id: session.id,
       user_id: session.user_id,
       response_type: responseType,
-      respondent_first_name: text(body, "respondent_first_name") || null,
+      respondent_first_name: respondentFirstName || null,
       respondent_last_name: text(body, "respondent_last_name") || null,
-      respondent_email: text(body, "respondent_email").toLowerCase() || null,
+      respondent_email: respondentEmail || null,
       company_name: responseType === "company" ? text(body, "company_name") || null : null,
       participants: responseType === "company" ? jsonArray(body.participants) : [],
       need_answers: needAnswers,
@@ -306,5 +414,24 @@ export async function POST(request: Request, { params }: Params) {
     })
     .eq("id", session.id);
 
-  return NextResponse.json({ response, summary });
+  const organisation = await findOrganisation(session.user_id);
+  const legacyNextStep = session.modality === "distanciel" && session.distance_mode === "asynchrone"
+    ? "asynchronous"
+    : "scheduled";
+  const confirmation = await sendConfirmationSafely({
+    email: respondentEmail,
+    firstName: respondentFirstName || null,
+    organisationName: organisation?.name ?? null,
+    formationTitle: session.daily_formations?.title ?? null,
+    nextStep: legacyNextStep,
+    sessionLabel: sessionLabel(session as unknown as PublicSession),
+  });
+
+  return NextResponse.json({
+    response,
+    summary,
+    nextStep: legacyNextStep,
+    organisationName: organisation?.name ?? null,
+    confirmationEmailSent: confirmation.sent,
+  });
 }
