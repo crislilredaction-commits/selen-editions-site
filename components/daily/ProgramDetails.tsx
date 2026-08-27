@@ -20,6 +20,16 @@ type FormationProgram = {
   pedagogical_resources?: string | null;
   pedagogical_methods?: string | null;
   evaluation_methods?: string | null;
+  contact_phone?: string | null;
+  contact_email?: string | null;
+  contact_website?: string | null;
+};
+
+type OrganisationIdentity = {
+  name?: string | null;
+  logo_url?: string | null;
+  address?: string | null;
+  email?: string | null;
 };
 
 function Value({ label, value }: { label: string; value?: string | number | null }) {
@@ -34,6 +44,7 @@ function Value({ label, value }: { label: string; value?: string | number | null
 
 export default function ProgramDetails({ token }: { token: string }) {
   const [formation, setFormation] = useState<FormationProgram | null>(null);
+  const [organisation, setOrganisation] = useState<OrganisationIdentity | null>(null);
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -42,12 +53,13 @@ export default function ProgramDetails({ token }: { token: string }) {
       const response = await fetch(`/api/daily-registration/${token}`, { cache: "no-store" });
       if (!response.ok) return;
       const data = await response.json().catch(() => null);
-      if (!cancelled) setFormation(data?.session?.daily_formations ?? null);
+      if (!cancelled) {
+        setFormation(data?.session?.daily_formations ?? null);
+        setOrganisation(data?.organisation ?? null);
+      }
     }
     void load();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [token]);
 
   if (!formation) return null;
@@ -57,13 +69,31 @@ export default function ProgramDetails({ token }: { token: string }) {
     formation.duration_days ? `${formation.duration_days} jour(s)` : "",
   ].filter(Boolean).join(" · ");
 
+  const contactEmail = formation.contact_email || organisation?.email;
+
   return (
-    <section style={styles.card} aria-label="Programme de la formation">
+    <section style={styles.card} aria-label="Organisme et programme de la formation">
+      <div style={styles.organisationBox}>
+        {organisation?.logo_url ? (
+          <img src={organisation.logo_url} alt={organisation.name ? `Logo ${organisation.name}` : "Logo de l'organisme de formation"} style={styles.logo} />
+        ) : null}
+        <div style={styles.organisationText}>
+          <p style={styles.kicker}>Organisme de formation</p>
+          <h1 style={styles.organisationName}>{organisation?.name || "Votre organisme de formation"}</h1>
+          {organisation?.address ? <p style={styles.contactLine}>{organisation.address}</p> : null}
+          <div style={styles.contacts}>
+            {formation.contact_phone ? <span>Tél. {formation.contact_phone}</span> : null}
+            {contactEmail ? <a href={`mailto:${contactEmail}`} style={styles.contactLink}>{contactEmail}</a> : null}
+            {formation.contact_website ? <a href={formation.contact_website} target="_blank" rel="noreferrer" style={styles.contactLink}>{formation.contact_website}</a> : null}
+          </div>
+        </div>
+      </div>
+
       <div style={styles.heading}>
         <div>
-          <p style={styles.kicker}>Formation choisie</p>
+          <p style={styles.kicker}>Formation concernée</p>
           <h2 style={styles.title}>{formation.title ?? "Programme de formation"}</h2>
-          <p style={styles.muted}>Vous pouvez consulter le programme avant de compléter votre dossier.</p>
+          <p style={styles.muted}>Consultez les informations de la formation avant de compléter votre dossier d&apos;inscription.</p>
         </div>
         <button type="button" className={open ? "btn-ghost" : "btn-ink"} onClick={() => setOpen((value) => !value)}>
           <span>{open ? "Masquer le programme" : "Consulter le programme"}</span>
@@ -87,13 +117,7 @@ export default function ProgramDetails({ token }: { token: string }) {
           <Value label="Évaluation" value={formation.evaluation_methods} />
           <Value label="Accessibilité" value={formation.accessibility} />
           {formation.detailed_program_document_url ? (
-            <a
-              className="btn-ghost"
-              href={formation.detailed_program_document_url}
-              target="_blank"
-              rel="noreferrer"
-              style={styles.link}
-            >
+            <a className="btn-ghost" href={formation.detailed_program_document_url} target="_blank" rel="noreferrer" style={styles.link}>
               <span>Ouvrir le document programme</span>
             </a>
           ) : null}
@@ -104,21 +128,15 @@ export default function ProgramDetails({ token }: { token: string }) {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  card: {
-    background: "var(--paper)",
-    border: "1px solid var(--sepia-mid)",
-    borderLeft: "4px solid var(--ocre-gold)",
-    padding: "1.2rem",
-    display: "grid",
-    gap: "1rem",
-  },
-  heading: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    flexWrap: "wrap",
-    gap: "1rem",
-  },
+  card: { background: "var(--paper)", border: "1px solid var(--sepia-mid)", borderLeft: "4px solid var(--ocre-gold)", padding: "1.2rem", display: "grid", gap: "1rem" },
+  organisationBox: { display: "flex", gap: "1rem", alignItems: "center", flexWrap: "wrap", paddingBottom: "1rem", borderBottom: "1px solid rgba(178,138,98,0.3)" },
+  logo: { width: 88, height: 88, objectFit: "contain", background: "#fff", border: "1px solid rgba(178,138,98,0.3)", padding: "0.35rem" },
+  organisationText: { display: "grid", gap: "0.25rem", minWidth: 0 },
+  organisationName: { margin: 0, color: "var(--ink)", fontSize: "clamp(1.45rem, 4vw, 2.15rem)" },
+  contactLine: { margin: 0, color: "var(--ink-soft)", lineHeight: 1.5 },
+  contacts: { display: "flex", flexWrap: "wrap", gap: "0.45rem 1rem", color: "var(--ink-soft)", fontSize: "0.92rem" },
+  contactLink: { color: "var(--rust)", fontWeight: 700, textDecoration: "none" },
+  heading: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "1rem" },
   kicker: { margin: 0, color: "var(--ink-soft)", fontWeight: 800, fontSize: "0.8rem", textTransform: "uppercase", letterSpacing: "0.08em" },
   title: { margin: "0.25rem 0", color: "var(--ink)" },
   muted: { margin: 0, color: "var(--ink-soft)", lineHeight: 1.5 },
