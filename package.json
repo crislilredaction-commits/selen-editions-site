@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test:nda-guards": "node --test tests/ndaRouteGuards.test.mjs",
-    "test:daily-ux-guards": "node --test tests/dailyOnboardingUxGuards.test.mjs"
+    "test:daily-ux-guards": "node --test tests/dailyOnboardingUxGuards.test.mjs tests/dailyDashboardUxGuards.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.2",
