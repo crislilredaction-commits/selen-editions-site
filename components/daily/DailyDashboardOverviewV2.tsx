@@ -13,6 +13,7 @@ type Onboarding = {
  organisation_name?:string|null;
  manager_first_name?:string|null;
  manager_last_name?:string|null;
+ nda_number?:string|null;
  qualiopi_status?:string|null;
  quality_tracking_enabled?:boolean|null;
  first_nda_year?:boolean|null;
@@ -31,7 +32,7 @@ function missingDocumentActions(onboarding:Onboarding|null):ActionItem[]{
  const add=(id:string,title:string)=>items.push({id:`missing-doc:${id}`,priority:"medium",title,detail:"Cette pièce administrative manque encore dans le profil de votre organisme.",href:"/client/daily/mon-compte#documents-organisme",sessionLabel:"Profil organisme"});
  if(!onboarding.insee_document_url)add("insee","Avis INSEE à fournir");
  if(onboarding.qualiopi_status==="yes"&&!onboarding.qualiopi_certificate_url)add("qualiopi","Certificat Qualiopi à fournir");
- if(!onboarding.first_nda_year&&!onboarding.nda_or_bpf_document_url)add("bpf","Dernier BPF à fournir");
+ if(Boolean(onboarding.nda_number?.trim())&&!onboarding.first_nda_year&&!onboarding.nda_or_bpf_document_url)add("bpf","Dernier BPF à fournir");
  return items;
 }
 
