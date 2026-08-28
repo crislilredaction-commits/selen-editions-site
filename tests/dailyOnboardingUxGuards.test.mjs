@@ -6,6 +6,14 @@ const onboardingPage = await readFile(
   new URL("../app/client/daily/onboarding/page.tsx", import.meta.url),
   "utf8",
 );
+const dashboardPage = await readFile(
+  new URL("../components/daily/DailyDashboardOverviewV2.tsx", import.meta.url),
+  "utf8",
+);
+const accountPanel = await readFile(
+  new URL("../components/daily/DailyAccountPanel.tsx", import.meta.url),
+  "utf8",
+);
 
 test("le NDA n'est pas présenté comme facultatif lorsqu'il existe", () => {
   assert.match(onboardingPage, /<Input label="Numéro NDA"/);
@@ -23,4 +31,15 @@ test("les imports utilisent un bouton encadré explicite plutôt que le sélecte
   assert.match(onboardingPage, /Choisir un fichier/);
   assert.match(onboardingPage, /fileInput: \{ display: "none" \}/);
   assert.match(onboardingPage, /fileButton: \{[^\n]*border: "1px solid var\(--rust\)"/);
+});
+
+test("le BPF n'est réclamé qu'aux organismes qui ont un NDA et ne sont pas en première année", () => {
+  assert.match(dashboardPage, /nda_number\?:string\|null/);
+  assert.match(
+    dashboardPage,
+    /Boolean\(onboarding\.nda_number\?\.trim\(\)\)&&!onboarding\.first_nda_year&&!onboarding\.nda_or_bpf_document_url/,
+  );
+  assert.match(accountPanel, /const hasNda=Boolean\(text\(org\.nda_number\|\|onboarding\?\.nda_number\)\.trim\(\)\)/);
+  assert.match(accountPanel, /required:hasNda&&!firstNdaYear/);
+  assert.match(accountPanel, /Non requis tant que l'organisme n'a pas de NDA/);
 });
