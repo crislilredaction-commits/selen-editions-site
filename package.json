@@ -4,10 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "npm run test:nda-guards && next build",
+    "build": "npm run test:nda-guards && npm run test:daily-ux-guards && next build",
     "start": "next start",
     "lint": "eslint",
-    "test:nda-guards": "node --test tests/ndaRouteGuards.test.mjs"
+    "test:nda-guards": "node --test tests/ndaRouteGuards.test.mjs",
+    "test:daily-ux-guards": "node --test tests/dailyOnboardingUxGuards.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.2",
