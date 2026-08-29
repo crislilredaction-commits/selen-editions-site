@@ -78,7 +78,7 @@ function buildPayload(body: Record<string, unknown>, userId: string, organisatio
   const positioningMode = POSITIONING_MODES.has(text(body, "positioning_mode")) ? text(body, "positioning_mode") : "off_platform";
   const positioningQuestions = cleanPositioningQuestions(body.positioning_questions);
   if (positioningMode === "selen") {
-    if (positioningQuestions.length === 0) return { error: "Ajoutez au moins une question de positionnement ou choisissez le positionnement hors plateforme." };
+    if (positioningQuestions.length === 0) return { error: "Ajoutez au moins une question de positionnement ou choisissez votre questionnaire Word/PDF." };
     if (positioningQuestions.some((q) => ["single_choice", "multiple_choice"].includes(q.type) && q.options.length === 0)) {
       return { error: "Les questions à choix doivent proposer au moins une option." };
     }
@@ -97,10 +97,13 @@ function buildPayload(body: Record<string, unknown>, userId: string, organisatio
     title: text(body, "title"), global_objective: text(body, "global_objective"), learning_objectives: learningObjectives,
     allowed_trainer_ids: allowedTrainerIds,
     target_audience: text(body, "target_audience"), prerequisites: text(body, "prerequisites"),
-    duration_hours: durationHours, duration_days: durationDays, modality, modality_details: text(body, "modality_details") || modality,
+    duration_hours: durationHours, duration_days: durationDays, modality, modality_details: modality,
     access_delays: text(body, "access_delays"),
     registration_methods: text(body, "registration_methods") || "Les modalités d'inscription sont préparées et suivies par Selen Daily.",
-    price: text(body, "price"), detailed_program: text(body, "detailed_program"), detailed_program_document_url: nullableText(body, "detailed_program_document_url"),
+    price: text(body, "price"),
+    detailed_program: "",
+    detailed_program_document_url: nullableText(body, "detailed_program_document_url"),
+    positioning_questionnaire_document_url: positioningMode === "off_platform" ? nullableText(body, "positioning_questionnaire_document_url") : null,
     accessibility: text(body, "accessibility") || "La formation est accessible aux personnes en situation de handicap. Les besoins d'adaptation sont analysés dans le dossier d'inscription et suivis par Selen.",
     disability_referent: nullableText(body, "disability_referent"), pedagogical_methods: text(body, "pedagogical_methods") || text(body, "pedagogical_resources"),
     pedagogical_resources: text(body, "pedagogical_resources"), evaluation_methods: text(body, "evaluation_methods"),
@@ -140,7 +143,7 @@ export async function POST(req: Request) {
     const { data, error } = await context.admin.from("daily_formations").insert({
       ...copy, user_id: context.user.id, organisation_id: context.organisationId, title: `${source.title} — copie`, status: "draft", version: 1,
       validation_note: null, previous_version_id: null, archived_at: null, spontaneous_registration_task_status: "none",
-      public_registration_token: registrationToken(), updated_visible_at: new Date().toISOString().slice(0, 10),
+      public_registration_token: registrationToken(), public_registration_enabled: true, updated_visible_at: new Date().toISOString().slice(0, 10),
     }).select("*").single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ formation: data, duplicated: true });
@@ -171,15 +174,14 @@ export async function PATCH(req: Request) {
   if (!existing) return NextResponse.json({ error: "Formation introuvable." }, { status: 404 });
   if (existing.status === "archived") return NextResponse.json({ error: "Une ancienne version archivée ne peut pas être modifiée." }, { status: 400 });
 
-  // Un brouillon n'est pas encore une version publiée : le modifier en place évite
-  // de créer artificiellement une nouvelle version et conserve son token public unique.
-  if (existing.status === "draft") {
+  if (["draft", "review", "correction_requested"].includes(existing.status)) {
+    const nextStatus = existing.status === "correction_requested" ? "review" : built.payload.status;
     const { data, error } = await context.admin.from("daily_formations").update({
       ...built.payload,
       learning_assessment_mode: existing.learning_assessment_mode,
       learning_assessment_instructions: existing.learning_assessment_instructions,
       learning_assessment_questions: existing.learning_assessment_questions,
-      status: built.payload.status,
+      status: nextStatus,
       version: existing.version ?? 1,
       previous_version_id: existing.previous_version_id ?? null,
       public_registration_token: existing.public_registration_token ?? registrationToken(),
@@ -190,28 +192,48 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ formation: data, versioned: false, retainedVersion: true });
   }
 
-  const nextStatus = existing.status === "validated" ? "review" : built.payload.status;
-  const archivedAt = new Date().toISOString();
+  const { data: pendingRows, error: pendingError } = await context.admin
+    .from("daily_formations")
+    .select("*")
+    .eq("organisation_id", context.organisationId)
+    .eq("previous_version_id", existing.id)
+    .in("status", ["review", "correction_requested"])
+    .order("version", { ascending: false })
+    .limit(1);
+  if (pendingError) return NextResponse.json({ error: pendingError.message }, { status: 500 });
+  const pendingSuccessor = pendingRows?.[0] ?? null;
+
+  if (pendingSuccessor) {
+    const { data, error } = await context.admin.from("daily_formations").update({
+      ...built.payload,
+      learning_assessment_mode: pendingSuccessor.learning_assessment_mode ?? existing.learning_assessment_mode,
+      learning_assessment_instructions: pendingSuccessor.learning_assessment_instructions ?? existing.learning_assessment_instructions,
+      learning_assessment_questions: pendingSuccessor.learning_assessment_questions ?? existing.learning_assessment_questions,
+      status: "review",
+      version: pendingSuccessor.version,
+      previous_version_id: existing.id,
+      public_registration_token: pendingSuccessor.public_registration_token ?? registrationToken(),
+      public_registration_enabled: false,
+      archived_at: null,
+    }).eq("id", pendingSuccessor.id).eq("organisation_id", context.organisationId).select("*").single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ formation: data, versioned: false, reusedPendingVersion: true, previousValidatedVersionStillPublished: true });
+  }
+
   const { data: created, error: insertError } = await context.admin.from("daily_formations").insert({
     ...built.payload,
     learning_assessment_mode: existing.learning_assessment_mode,
     learning_assessment_instructions: existing.learning_assessment_instructions,
     learning_assessment_questions: existing.learning_assessment_questions,
-    status: nextStatus,
+    status: "review",
     version: Number(existing.version ?? 1) + 1,
     previous_version_id: existing.id,
-    public_registration_token: existing.public_registration_token ?? registrationToken(),
-    public_registration_enabled: existing.public_registration_enabled ?? true,
+    public_registration_token: registrationToken(),
+    public_registration_enabled: false,
   }).select("*").single();
   if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
 
-  const { error: archiveError } = await context.admin.from("daily_formations").update({ status: "archived", archived_at: archivedAt }).eq("id", existing.id).eq("organisation_id", context.organisationId);
-  if (archiveError) {
-    await context.admin.from("daily_formations").update({ status: "archived", archived_at: archivedAt }).eq("id", created.id).eq("organisation_id", context.organisationId);
-    return NextResponse.json({ error: "La nouvelle version a été conservée mais n'a pas pu remplacer proprement la version précédente. Aucun programme actif n'a été écrasé." }, { status: 500 });
-  }
-
-  return NextResponse.json({ formation: created, versioned: nextStatus === "review", retainedVersion: true });
+  return NextResponse.json({ formation: created, versioned: true, retainedVersion: true, previousValidatedVersionStillPublished: true });
 }
 
 export async function DELETE(req: Request) {

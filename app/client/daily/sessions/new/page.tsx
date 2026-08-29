@@ -1,2 +1,5 @@
-import { redirect } from "next/navigation";
-export default function DailyNewSessionRedirect(){redirect("/client/daily/sessions")}
+import DailyFirstSessionCreator from "@/components/daily/DailyFirstSessionCreator";
+
+export default function DailyFirstSessionPage() {
+  return <DailyFirstSessionCreator />;
+}
