@@ -632,15 +632,6 @@ export default function ClientDashboardPage() {
                   >
                     <span>Accéder à Selen Daily →</span>
                   </button>
-                  <button
-                    type="button"
-                    className="btn-ghost"
-                    onClick={() =>
-                      router.push(withAssistanceToken("/client/daily/onboarding?step=1"))
-                    }
-                  >
-                    <span>Paramètres initiaux</span>
-                  </button>
                 </div>
               </article>
             ) : null}

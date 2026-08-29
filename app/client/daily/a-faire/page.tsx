@@ -6,7 +6,7 @@ import { assistanceFetch } from "@/components/AgentAssistanceBanner";
 
 type ActionItem = {
   id: string;
-  kind: "dossier" | "positioning" | "prerequisite" | "adaptation" | "trainer" | "onboarding";
+  kind: "dossier" | "positioning" | "prerequisite" | "adaptation" | "trainer" | "onboarding" | "quality";
   priority: "high" | "medium" | "normal";
   title: string;
   detail: string;
@@ -17,7 +17,7 @@ type ActionItem = {
 
 type ActionResponse = {
   actions: ActionItem[];
-  counts: { total: number; high: number; dossier: number; learners: number; trainers: number; onboarding?: number };
+  counts: { total: number; high: number; dossier: number; learners: number; trainers: number; onboarding?: number; quality?: number };
 };
 
 const kindLabel: Record<ActionItem["kind"], string> = {
@@ -27,6 +27,7 @@ const kindLabel: Record<ActionItem["kind"], string> = {
   adaptation: "Adaptation",
   trainer: "Intervenant",
   onboarding: "Paramétrage",
+  quality: "Suivi Qualité",
 };
 
 export default function DailyActionCenterPage() {
@@ -81,6 +82,7 @@ export default function DailyActionCenterPage() {
             <Metric value={data.counts.learners} label="côté apprenants" />
             <Metric value={data.counts.trainers} label="intervenants à associer" />
             <Metric value={data.counts.onboarding ?? 0} label="documents à fournir" />
+            <Metric value={data.counts.quality ?? 0} label="suivi qualité" />
           </section>
 
           <div style={s.filters}>
@@ -91,6 +93,7 @@ export default function DailyActionCenterPage() {
             <FilterButton active={filter === "prerequisite"} onClick={() => setFilter("prerequisite")}>Prérequis</FilterButton>
             <FilterButton active={filter === "adaptation"} onClick={() => setFilter("adaptation")}>Adaptations</FilterButton>
             <FilterButton active={filter === "trainer"} onClick={() => setFilter("trainer")}>Intervenants</FilterButton>
+            <FilterButton active={filter === "quality"} onClick={() => setFilter("quality")}>Suivi Qualité</FilterButton>
           </div>
 
           {data.actions.length === 0 ? (
