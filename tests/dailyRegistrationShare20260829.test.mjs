@@ -18,6 +18,15 @@ test("le client dispose du lien court et du QR code", () => {
   assert.match(page, /J'ai intégré ce lien/);
 });
 
+test("les outils d'inscription sont visibles directement depuis les formations", () => {
+  const page = read("app/client/daily/formations/page.tsx");
+  const tools = read("components/daily/DailyRegistrationTools.tsx");
+  assert.match(page, /DailyRegistrationTools/);
+  assert.match(tools, /Liens et QR codes de vos formations validées/);
+  assert.match(tools, /Copier le lien/);
+  assert.match(tools, /Télécharger le QR code/);
+});
+
 test("À faire remonte la diffusion après validation", () => {
   const api = read("app/api/client/daily/action-center/route.ts");
   const page = read("app/client/daily/a-faire/page.tsx");
@@ -25,6 +34,13 @@ test("À faire remonte la diffusion après validation", () => {
   assert.match(api, /kind:"registration"/);
   assert.match(page, /Liens d'inscription/);
   assert.match(page, /Voir le lien et le QR code/);
+});
+
+test("le côté client masque le vocabulaire Studio et les retours internes", () => {
+  const guard = read("components/ClientVouvoiementGuard.tsx");
+  assert.match(guard, /\["Selen Studio", "Selen"\]/);
+  assert.match(guard, /Corrections demandées/);
+  assert.match(guard, /paragraph\.remove\(\)/);
 });
 
 test("la veille client affiche la synthèse Selen en vouvoiement", () => {
