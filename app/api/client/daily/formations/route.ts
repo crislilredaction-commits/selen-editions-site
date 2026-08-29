@@ -171,6 +171,25 @@ export async function PATCH(req: Request) {
   if (!existing) return NextResponse.json({ error: "Formation introuvable." }, { status: 404 });
   if (existing.status === "archived") return NextResponse.json({ error: "Une ancienne version archivée ne peut pas être modifiée." }, { status: 400 });
 
+  // Un brouillon n'est pas encore une version publiée : le modifier en place évite
+  // de créer artificiellement une nouvelle version et conserve son token public unique.
+  if (existing.status === "draft") {
+    const { data, error } = await context.admin.from("daily_formations").update({
+      ...built.payload,
+      learning_assessment_mode: existing.learning_assessment_mode,
+      learning_assessment_instructions: existing.learning_assessment_instructions,
+      learning_assessment_questions: existing.learning_assessment_questions,
+      status: built.payload.status,
+      version: existing.version ?? 1,
+      previous_version_id: existing.previous_version_id ?? null,
+      public_registration_token: existing.public_registration_token ?? registrationToken(),
+      public_registration_enabled: existing.public_registration_enabled ?? true,
+      archived_at: null,
+    }).eq("id", existing.id).eq("organisation_id", context.organisationId).select("*").single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ formation: data, versioned: false, retainedVersion: true });
+  }
+
   const nextStatus = existing.status === "validated" ? "review" : built.payload.status;
   const archivedAt = new Date().toISOString();
   const { data: created, error: insertError } = await context.admin.from("daily_formations").insert({
