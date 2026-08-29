@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import DailyFriendlyBanner from "@/components/daily/DailyFriendlyBanner";
 
 export default function DailyClientLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -10,9 +11,11 @@ export default function DailyClientLayout({ children }: { children: React.ReactN
     pathname === "/client/daily/onboarding" ||
     pathname === "/client/daily/invitation";
   const showDashboardBack = !isDashboard && !isStandaloneFlow;
+  const showFriendlyBanner = !isStandaloneFlow;
 
   return (
     <>
+      {showFriendlyBanner ? <DailyFriendlyBanner /> : null}
       {showDashboardBack ? (
         <div style={backBarStyle}>
           <Link href="/client/daily" style={backLinkStyle}>
