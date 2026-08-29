@@ -10,6 +10,14 @@ const replacements: Array<[string, string]> = [
   ["Tu pourras modifier ces informations plus tard depuis les paramètres Daily. La prochaine étape utile : créer ta première formation.", "Vous pourrez modifier ces informations plus tard depuis les paramètres Daily. La prochaine étape utile : créer votre première formation."],
   ["Tu peux changer d'avis à tout moment. Les informations déjà saisies sont conservées et aideront Selen à préparer le rendez-vous.", "Vous pouvez changer d'avis à tout moment. Les informations déjà saisies sont conservées et aideront Selen à préparer le rendez-vous."],
   ["Continue à transmettre les informations et documents disponibles. Le rendez-vous pourra être planifié au minimum 24 h après leur transmission.", "Continuez à transmettre les informations et documents disponibles. Le rendez-vous pourra être planifié au minimum 24 h après leur transmission."],
+  ["Brouillon · vérification Selen", "Brouillon"],
+  ["En validation Selen", "En validation"],
+  ["Selen Studio", "Selen"],
+  ["Créez vos programmes, transmettez-les à Selen pour validation et conservez automatiquement leurs versions.", "Créez vos programmes, envoyez-les en validation et conservez automatiquement leurs versions."],
+  ["Nouvelle version envoyée à Selen. La version validée actuelle reste publiée jusqu’à validation.", "Nouvelle version envoyée en validation. La version validée actuelle reste publiée jusqu’à validation."],
+  ["Formation mise à jour et renvoyée à Selen pour vérification.", "Formation mise à jour et renvoyée en vérification."],
+  ["La version actuellement validée reste publiée et conserve son lien d’inscription jusqu’à ce que Selen valide vos modifications.", "La version actuellement validée reste publiée et conserve son lien d’inscription jusqu’à validation de vos modifications."],
+  ["Retour Selen :", "Corrections demandées :"],
 ];
 
 function normalize(root: ParentNode) {
@@ -21,6 +29,16 @@ function normalize(root: ParentNode) {
     let next = value;
     for (const [from, to] of replacements) next = next.replaceAll(from, to);
     if (next !== value) node.nodeValue = next;
+  }
+
+  if (root instanceof HTMLElement || root === document.body) {
+    const scope = root instanceof HTMLElement ? root : document.body;
+    for (const paragraph of Array.from(scope.querySelectorAll("p"))) {
+      const text = paragraph.textContent?.trim() ?? "";
+      if (text.startsWith("Corrections demandées :") && paragraph.closest("article")) {
+        paragraph.remove();
+      }
+    }
   }
 }
 
