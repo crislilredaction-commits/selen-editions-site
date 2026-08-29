@@ -18,13 +18,16 @@ test("le client dispose du lien court et du QR code", () => {
   assert.match(page, /J'ai intégré ce lien/);
 });
 
-test("les outils d'inscription sont visibles directement depuis les formations", () => {
+test("le lien et le QR sont intégrés dans la carte de la formation", () => {
   const page = read("app/client/daily/formations/page.tsx");
-  const tools = read("components/daily/DailyRegistrationTools.tsx");
-  assert.match(page, /DailyRegistrationTools/);
-  assert.match(tools, /Liens et QR codes de vos formations validées/);
-  assert.match(tools, /Copier le lien/);
-  assert.match(tools, /Télécharger le QR code/);
+  const manager = read("components/daily/DailyFormationsManager.tsx");
+  assert.doesNotMatch(page, /DailyRegistrationTools/);
+  assert.match(manager, /Dossier d'inscription public/);
+  assert.match(manager, /Votre lien est prêt à être diffusé/);
+  assert.match(manager, /Copier le lien/);
+  assert.match(manager, /Télécharger le QR code/);
+  assert.match(manager, /registrationPanel/);
+  assert.doesNotMatch(manager, /<p style=\{s\.note\}>Retour Selen/);
 });
 
 test("À faire remonte la diffusion après validation", () => {
