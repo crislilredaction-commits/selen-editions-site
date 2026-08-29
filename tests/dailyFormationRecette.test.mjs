@@ -58,3 +58,10 @@ test("la création d'une session est orientée vers sa page dédiée", () => {
   assert.match(dailyPage, /router\.push\("\/client\/daily\/sessions"\)/);
   assert.doesNotMatch(dailyPage, /showSessionForm/);
 });
+
+test("un brouillon de formation est modifié en place sans recréer son token public", () => {
+  assert.match(formationsRoute, /if \(existing\.status === "draft"\)/);
+  assert.match(formationsRoute, /\.from\("daily_formations"\)\.update\(\{/);
+  assert.match(formationsRoute, /public_registration_token: existing\.public_registration_token \?\? registrationToken\(\)/);
+  assert.match(formationsRoute, /versioned: false/);
+});
