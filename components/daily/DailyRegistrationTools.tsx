@@ -15,8 +15,10 @@ export default function DailyRegistrationTools() {
   const [formations, setFormations] = useState<Formation[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+  const [origin, setOrigin] = useState("");
 
   useEffect(() => {
+    setOrigin(window.location.origin);
     let cancelled = false;
     async function load() {
       try {
@@ -66,7 +68,7 @@ export default function DailyRegistrationTools() {
               <div style={s.tools}>
                 <div style={s.linkColumn}>
                   <label style={s.label}>Lien court d'inscription</label>
-                  <code style={s.code}>{typeof window !== "undefined" ? `${window.location.origin}${shortPath}` : shortPath}</code>
+                  <code style={s.code}>{origin ? `${origin}${shortPath}` : shortPath}</code>
                   <div style={s.actions}>
                     <button type="button" style={s.primary} onClick={() => void copy(formation.public_registration_token)}>Copier le lien</button>
                     <a href={shortPath} target="_blank" rel="noreferrer" style={s.secondary}>Tester le lien</a>
@@ -98,7 +100,7 @@ const s: Record<string, React.CSSProperties> = {
   grid: { display: "grid", gap: 12 },
   card: { padding: "1.2rem", border: "1px solid #d8b989", background: "#fffaf0", borderRadius: 16, display: "grid", gap: 14 },
   badge: { display: "inline-block", fontSize: 11, fontWeight: 800, padding: ".3rem .55rem", borderRadius: 999, background: "#edf5e7", color: "#4f6f3c" },
-  tools: { display: "grid", gridTemplateColumns: "minmax(0,1fr) 180px", gap: 18, alignItems: "center" },
+  tools: { display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(150px,180px)", gap: 18, alignItems: "center" },
   linkColumn: { display: "grid", gap: 8 },
   qrColumn: { display: "grid", gap: 8, justifyItems: "center" },
   label: { fontSize: 12, fontWeight: 800 },
