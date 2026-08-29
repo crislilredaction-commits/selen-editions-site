@@ -6,7 +6,7 @@ import { assistanceFetch } from "@/components/AgentAssistanceBanner";
 
 type ActionItem = {
   id: string;
-  kind: "dossier" | "positioning" | "prerequisite" | "adaptation" | "trainer" | "onboarding" | "quality";
+  kind: "dossier" | "positioning" | "prerequisite" | "adaptation" | "trainer" | "onboarding" | "quality" | "registration";
   priority: "high" | "medium" | "normal";
   title: string;
   detail: string;
@@ -17,7 +17,7 @@ type ActionItem = {
 
 type ActionResponse = {
   actions: ActionItem[];
-  counts: { total: number; high: number; dossier: number; learners: number; trainers: number; onboarding?: number; quality?: number };
+  counts: { total: number; high: number; dossier: number; learners: number; trainers: number; onboarding?: number; quality?: number; registration?: number };
 };
 
 const kindLabel: Record<ActionItem["kind"], string> = {
@@ -28,6 +28,7 @@ const kindLabel: Record<ActionItem["kind"], string> = {
   trainer: "Intervenant",
   onboarding: "Paramétrage",
   quality: "Suivi Qualité",
+  registration: "Inscription publique",
 };
 
 export default function DailyActionCenterPage() {
@@ -78,6 +79,7 @@ export default function DailyActionCenterPage() {
           <section style={s.metrics} aria-label="Synthèse des actions">
             <Metric value={data.counts.total} label="actions à traiter" />
             <Metric value={data.counts.high} label="prioritaires" emphasis={data.counts.high > 0} />
+            <Metric value={data.counts.registration ?? 0} label="liens à diffuser" emphasis={(data.counts.registration ?? 0) > 0} />
             <Metric value={data.counts.dossier} label="dans les dossiers" />
             <Metric value={data.counts.learners} label="côté apprenants" />
             <Metric value={data.counts.trainers} label="intervenants à associer" />
@@ -87,6 +89,7 @@ export default function DailyActionCenterPage() {
 
           <div style={s.filters}>
             <FilterButton active={filter === "all"} onClick={() => setFilter("all")}>Tout</FilterButton>
+            <FilterButton active={filter === "registration"} onClick={() => setFilter("registration")}>Liens d'inscription</FilterButton>
             <FilterButton active={filter === "onboarding"} onClick={() => setFilter("onboarding")}>Documents à fournir</FilterButton>
             <FilterButton active={filter === "dossier"} onClick={() => setFilter("dossier")}>Dossiers</FilterButton>
             <FilterButton active={filter === "positioning"} onClick={() => setFilter("positioning")}>Positionnements</FilterButton>
@@ -106,19 +109,19 @@ export default function DailyActionCenterPage() {
           ) : (
             <section style={s.list}>
               {actions.map((item) => (
-                <article key={item.id} style={{ ...s.card, ...(item.priority === "high" ? s.highCard : {}) }}>
+                <article key={item.id} style={{ ...s.card, ...(item.priority === "high" ? s.highCard : item.kind === "registration" ? s.registrationCard : {}) }}>
                   <div style={s.cardHead}>
                     <div>
-                      <span style={item.priority === "high" ? s.highBadge : item.priority === "medium" ? s.mediumBadge : s.badge}>
-                        {item.priority === "high" ? "Prioritaire" : item.priority === "medium" ? "À prévoir" : kindLabel[item.kind]}
+                      <span style={item.priority === "high" ? s.highBadge : item.kind === "registration" ? s.registrationBadge : item.priority === "medium" ? s.mediumBadge : s.badge}>
+                        {item.kind === "registration" ? "Programme validé" : item.priority === "high" ? "Prioritaire" : item.priority === "medium" ? "À prévoir" : kindLabel[item.kind]}
                       </span>
-                      {item.priority !== "normal" ? <span style={s.kind}>{kindLabel[item.kind]}</span> : null}
+                      {item.priority !== "normal" && item.kind !== "registration" ? <span style={s.kind}>{kindLabel[item.kind]}</span> : null}
                     </div>
                     {item.sessionLabel ? <span style={s.session}>{item.sessionLabel}</span> : null}
                   </div>
                   <h2 style={s.title}>{item.title}</h2>
                   <p style={s.detail}>{item.detail}</p>
-                  <Link href={item.href} style={s.link}>Ouvrir l’espace concerné →</Link>
+                  <Link href={item.href} style={s.link}>{item.kind === "registration" ? "Voir le lien et le QR code →" : "Ouvrir l’espace concerné →"}</Link>
                 </article>
               ))}
             </section>
@@ -138,30 +141,10 @@ function FilterButton({ active, onClick, children }: { active: boolean; onClick:
 }
 
 const s: Record<string, React.CSSProperties> = {
-  page: { minHeight: "100vh", padding: "2rem clamp(1rem, 4vw, 3rem) 4rem", color: "var(--ink)" },
-  hero: { maxWidth: 980, margin: "0 auto 1.5rem", padding: "1.4rem" },
-  heroTitle: { margin: ".25rem 0 .55rem", fontSize: "clamp(1.8rem, 5vw, 3rem)" },
-  heroText: { margin: 0, maxWidth: 760, lineHeight: 1.6 },
-  metrics: { maxWidth: 980, margin: "0 auto 1.2rem", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(145px, 1fr))", gap: ".7rem" },
-  metric: { border: "1px solid var(--sepia-mid)", background: "rgba(255,250,240,.7)", padding: ".9rem", display: "grid", gap: ".2rem" },
-  metricEmphasis: { border: "2px solid #9a412f", background: "rgba(154,65,47,.07)" },
-  metricValue: { fontSize: "1.7rem", color: "var(--rust)" },
-  filters: { maxWidth: 980, margin: "0 auto 1rem", display: "flex", flexWrap: "wrap", gap: ".5rem" },
-  filterButton: { border: "1px solid var(--sepia-mid)", background: "var(--paper)", color: "var(--rust)", padding: ".55rem .75rem", cursor: "pointer", fontWeight: 700 },
-  filterActive: { background: "var(--rust)", color: "#fffaf0", borderColor: "var(--rust)" },
-  list: { maxWidth: 980, margin: "0 auto", display: "grid", gap: ".8rem" },
-  card: { border: "1px solid var(--sepia-mid)", background: "rgba(255,250,240,.82)", padding: "1rem 1.1rem" },
-  highCard: { borderLeft: "5px solid #9a412f" },
-  cardHead: { display: "flex", gap: ".75rem", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" },
-  badge: { display: "inline-block", padding: ".22rem .5rem", border: "1px solid var(--sepia-mid)", fontSize: ".78rem", fontWeight: 800 },
-  mediumBadge: { display: "inline-block", padding: ".22rem .5rem", border: "1px solid #b5792d", background: "rgba(181,121,45,.1)", fontSize: ".78rem", fontWeight: 800 },
-  highBadge: { display: "inline-block", padding: ".22rem .5rem", border: "1px solid #9a412f", background: "rgba(154,65,47,.1)", color: "#7b2f21", fontSize: ".78rem", fontWeight: 800 },
-  kind: { marginLeft: ".45rem", fontSize: ".78rem", color: "var(--sepia-dark)" },
-  session: { fontSize: ".85rem", color: "var(--sepia-dark)" },
-  title: { margin: ".7rem 0 .35rem", fontSize: "1.1rem" },
-  detail: { margin: "0 0 .75rem", lineHeight: 1.5 },
-  link: { color: "var(--rust)", fontWeight: 800, textDecoration: "none" },
-  empty: { maxWidth: 980, margin: "1rem auto", border: "1px solid #6f8b58", background: "rgba(111,139,88,.08)", padding: "1rem 1.2rem" },
-  muted: { color: "var(--sepia-dark)" },
-  error: { maxWidth: 980, margin: "1rem auto", padding: ".8rem", border: "1px solid #9a412f", color: "#7b2f21" },
+  page: { minHeight: "100vh", padding: "2rem clamp(1rem, 4vw, 3rem) 4rem", color: "var(--ink)" }, hero: { maxWidth: 980, margin: "0 auto 1.5rem", padding: "1.4rem" }, heroTitle: { margin: ".25rem 0 .55rem", fontSize: "clamp(1.8rem, 5vw, 3rem)" }, heroText: { margin: 0, maxWidth: 760, lineHeight: 1.6 },
+  metrics: { maxWidth: 980, margin: "0 auto 1.2rem", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))", gap: ".7rem" }, metric: { border: "1px solid var(--sepia-mid)", background: "rgba(255,250,240,.7)", padding: ".9rem", display: "grid", gap: ".2rem" }, metricEmphasis: { border: "2px solid #9a6b32", background: "rgba(181,121,45,.08)" }, metricValue: { fontSize: "1.7rem", color: "var(--rust)" },
+  filters: { maxWidth: 980, margin: "0 auto 1rem", display: "flex", flexWrap: "wrap", gap: ".5rem" }, filterButton: { border: "1px solid var(--sepia-mid)", background: "var(--paper)", color: "var(--rust)", padding: ".55rem .75rem", cursor: "pointer", fontWeight: 700 }, filterActive: { background: "var(--rust)", color: "#fffaf0", borderColor: "var(--rust)" },
+  list: { maxWidth: 980, margin: "0 auto", display: "grid", gap: ".8rem" }, card: { border: "1px solid var(--sepia-mid)", background: "rgba(255,250,240,.82)", padding: "1rem 1.1rem" }, highCard: { borderLeft: "5px solid #9a412f" }, registrationCard: { borderLeft: "5px solid #71875d", background: "rgba(236,247,226,.72)" }, cardHead: { display: "flex", gap: ".75rem", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" },
+  badge: { display: "inline-block", padding: ".22rem .5rem", border: "1px solid var(--sepia-mid)", fontSize: ".78rem", fontWeight: 800 }, mediumBadge: { display: "inline-block", padding: ".22rem .5rem", border: "1px solid #b5792d", background: "rgba(181,121,45,.1)", fontSize: ".78rem", fontWeight: 800 }, highBadge: { display: "inline-block", padding: ".22rem .5rem", border: "1px solid #9a412f", background: "rgba(154,65,47,.1)", color: "#7b2f21", fontSize: ".78rem", fontWeight: 800 }, registrationBadge: { display: "inline-block", padding: ".22rem .5rem", border: "1px solid #71875d", background: "rgba(113,135,93,.12)", color: "#4e693b", fontSize: ".78rem", fontWeight: 800 },
+  kind: { marginLeft: ".45rem", fontSize: ".78rem", color: "var(--sepia-dark)" }, session: { fontSize: ".85rem", color: "var(--sepia-dark)" }, title: { margin: ".7rem 0 .35rem", fontSize: "1.1rem" }, detail: { margin: "0 0 .75rem", lineHeight: 1.5 }, link: { color: "var(--rust)", fontWeight: 800, textDecoration: "none" }, empty: { maxWidth: 980, margin: "1rem auto", border: "1px solid #6f8b58", background: "rgba(111,139,88,.08)", padding: "1rem 1.2rem" }, muted: { color: "var(--sepia-dark)" }, error: { maxWidth: 980, margin: "1rem auto", padding: ".8rem", border: "1px solid #9a412f", color: "#7b2f21" },
 };
