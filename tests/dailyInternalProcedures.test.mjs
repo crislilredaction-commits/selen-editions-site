@@ -12,6 +12,9 @@ test("les trois procédures du cahier des charges sont les seules initialisées"
     assert.match(route, new RegExp(type));
     assert.match(migration, new RegExp(type));
   }
+  assert.match(route, /Parcours administratif de l’apprenant et remise des documents/);
+  assert.match(route, /Satisfaction des parties prenantes/);
+  assert.match(route, /Prévention et gestion des absences et abandons/);
 });
 
 test("les écritures passent par l'espace organisme et ne sont pas ouvertes directement aux utilisateurs", () => {
@@ -23,9 +26,9 @@ test("les écritures passent par l'espace organisme et ne sont pas ouvertes dire
 });
 
 test("le client formalise ses propres procédures sans exposer la cuisine interne Selen", () => {
-  assert.match(page, /Parcours administratif de l’apprenant/);
-  assert.match(page, /Satisfaction des parties prenantes/);
-  assert.match(page, /absences et abandons/i);
+  assert.match(page, /parcours administratif/i);
+  assert.match(page, /parties prenantes/i);
+  assert.match(page, /absences, ruptures de parcours et abandons/i);
   assert.match(page, /sans exposer ses propres méthodes internes/);
 });
 
