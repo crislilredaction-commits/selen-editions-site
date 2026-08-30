@@ -12,11 +12,14 @@ export default function DailyClientLayout({ children }: { children: React.ReactN
     pathname === "/client/daily/invitation";
   const showDashboardBack = !isDashboard && !isStandaloneFlow;
   const showFriendlyBanner = !isStandaloneFlow;
-  const contextualLink = pathname === "/client/daily/qualite"
-    ? { href: "/client/daily/qualiopi", label: "Cycle Qualiopi" }
-    : pathname === "/client/daily/qualiopi"
-      ? { href: "/client/daily/qualite", label: "Suivi Qualité" }
-      : null;
+  const contextualLinks = pathname === "/client/daily/qualite"
+    ? [
+        { href: "/client/daily/qualiopi", label: "Cycle Qualiopi" },
+        { href: "/client/daily/procedures", label: "Procédures internes" },
+      ]
+    : pathname === "/client/daily/qualiopi" || pathname === "/client/daily/procedures"
+      ? [{ href: "/client/daily/qualite", label: "Suivi Qualité" }]
+      : [];
 
   return (
     <>
@@ -26,7 +29,7 @@ export default function DailyClientLayout({ children }: { children: React.ReactN
           <Link href="/client/daily" style={backLinkStyle}>
             ← Retour au tableau de bord
           </Link>
-          {contextualLink ? <Link href={contextualLink.href} style={backLinkStyle}>{contextualLink.label}</Link> : null}
+          {contextualLinks.map((link) => <Link key={link.href} href={link.href} style={backLinkStyle}>{link.label}</Link>)}
         </div>
       ) : null}
       {children}
