@@ -93,7 +93,7 @@ export default function DailySessionFollowupPage() {
   return <main style={{ maxWidth: 1100, margin: "0 auto", padding: "2rem 1rem 4rem", color: "#3f2b1d" }}>
     <p style={{ fontWeight: 800, color: "#8a4b24" }}>Selen Daily · Pendant la formation</p>
     <h1>Déroulement, incidents & adaptations</h1>
-    <p>Consigne uniquement les événements utiles au dossier : difficulté rencontrée, incident ou adaptation effectivement mise en place.</p>
+    <p>Consignez uniquement les événements utiles au dossier : difficulté rencontrée, incident ou adaptation effectivement mise en place.</p>
     {error ? <p style={{ padding: ".7rem", border: "1px solid #8a4b24" }}>{error}</p> : null}
     {message ? <p style={{ padding: ".7rem", border: "1px solid #6a8a4a" }}>{message}</p> : null}
 
