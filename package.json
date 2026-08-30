@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "npm run test:nda-guards && npm run test:daily-ux-guards && npm run test:daily-collapsed-guards && npm run test:daily-action-center-guards && npm run test:daily-qualiopi-guards && npm run test:daily-procedures-guards && npm run test:daily-satisfaction-guards && next build",
+    "build": "npm run test:nda-guards && npm run test:daily-ux-guards && npm run test:daily-collapsed-guards && npm run test:daily-action-center-guards && npm run test:daily-qualiopi-guards && npm run test:daily-procedures-guards && npm run test:daily-satisfaction-guards && npm run test:daily-session-followup-guards && next build",
     "start": "next start",
     "lint": "eslint",
     "test:nda-guards": "node --test tests/ndaRouteGuards.test.mjs",
@@ -13,7 +13,8 @@
     "test:daily-action-center-guards": "node --test tests/dailyActionCenterGuards.test.mjs",
     "test:daily-qualiopi-guards": "node --test tests/dailyQualiopiSettingsGuards.test.mjs tests/dailyQualiopiSurveillance.test.mjs",
     "test:daily-procedures-guards": "node --test tests/dailyInternalProcedures.test.mjs",
-    "test:daily-satisfaction-guards": "node --test tests/dailySatisfactionCadence.test.mjs tests/dailySatisfactionResponseFinalization.test.mjs"
+    "test:daily-satisfaction-guards": "node --test tests/dailySatisfactionCadence.test.mjs tests/dailySatisfactionResponseFinalization.test.mjs",
+    "test:daily-session-followup-guards": "node --test tests/dailySessionFollowupProvenance.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.2",
