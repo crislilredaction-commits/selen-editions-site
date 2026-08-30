@@ -23,6 +23,8 @@ type Entry = {
   description?: string | null;
   action_taken?: string | null;
   status: "open" | "resolved";
+  author_role?: string | null;
+  author_name?: string | null;
 };
 
 function formationTitle(session: Session) {
@@ -272,6 +274,9 @@ export default function TrainerSessionFollowupPage() {
                         {new Date(entry.occurred_at).toLocaleString("fr-FR")}
                         {entry.entry_type !== "note" ? ` · ${levelLabels[entry.level]}` : ""}
                         {enrolment ? ` · ${learnerName(enrolment)}` : ""}
+                      </p>
+                      <p style={styles.entryMeta}>
+                        <strong>Ajouté par :</strong> {entry.author_name || "Auteur non renseigné (historique antérieur)"}{entry.author_role ? ` · ${entry.author_role}` : ""}
                       </p>
                     </div>
                     <span style={{ ...styles.statusBadge, ...(operationalOpen && entry.level === "critical" ? styles.criticalBadge : {}) }}>
