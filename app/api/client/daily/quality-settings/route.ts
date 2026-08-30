@@ -24,20 +24,46 @@ async function resolveBillingUserId(organisationId: string) {
   return subscriptions?.[0]?.user_id ?? null;
 }
 
+async function readCanonicalQualiopi(organisationId: string) {
+  const { data, error } = await getAdminSupabase()
+    .from("organisations")
+    .select("qualiopi_status,qualiopi_valid_from,qualiopi_valid_until")
+    .eq("id", organisationId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("Organisme Daily introuvable.");
+  const status = String(data.qualiopi_status ?? "unknown").toLowerCase();
+  return {
+    status,
+    required: status === "yes" || status === "certified",
+    validFrom: data.qualiopi_valid_from ?? null,
+    validUntil: data.qualiopi_valid_until ?? null,
+  };
+}
+
 export async function GET() {
   const context = await getDailyClientWorkspace();
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
   try {
-    const billingUserId = await resolveBillingUserId(context.workspace.membership.organisation_id);
+    const organisationId = context.workspace.membership.organisation_id;
+    const [billingUserId, qualiopi] = await Promise.all([
+      resolveBillingUserId(organisationId),
+      readCanonicalQualiopi(organisationId),
+    ]);
     if (!billingUserId) return NextResponse.json({ error: "Abonnement Daily introuvable." }, { status: 404 });
     const { data, error } = await getAdminSupabase()
       .from("daily_onboarding")
-      .select("qualiopi_status,quality_tracking_enabled")
+      .select("quality_tracking_enabled")
       .eq("user_id", billingUserId)
       .maybeSingle();
     if (error) throw error;
-    const required = data?.qualiopi_status === "yes";
-    return NextResponse.json({ required, enabled: required || data?.quality_tracking_enabled !== false });
+    return NextResponse.json({
+      required: qualiopi.required,
+      enabled: qualiopi.required || data?.quality_tracking_enabled !== false,
+      qualiopiStatus: qualiopi.status,
+      qualiopiValidFrom: qualiopi.validFrom,
+      qualiopiValidUntil: qualiopi.validUntil,
+    });
   } catch (cause) {
     return NextResponse.json({ error: cause instanceof Error ? cause.message : "Réglage indisponible." }, { status: 500 });
   }
@@ -50,21 +76,29 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: "Accès au profil de l’organisme requis." }, { status: 403 });
   }
   try {
-    const billingUserId = await resolveBillingUserId(context.workspace.membership.organisation_id);
+    const organisationId = context.workspace.membership.organisation_id;
+    const [billingUserId, qualiopi] = await Promise.all([
+      resolveBillingUserId(organisationId),
+      readCanonicalQualiopi(organisationId),
+    ]);
     if (!billingUserId) return NextResponse.json({ error: "Abonnement Daily introuvable." }, { status: 404 });
-    const admin = getAdminSupabase();
-    const { data: onboarding, error: readError } = await admin
-      .from("daily_onboarding")
-      .select("qualiopi_status")
-      .eq("user_id", billingUserId)
-      .maybeSingle();
-    if (readError) throw readError;
-    const required = onboarding?.qualiopi_status === "yes";
     const body = await req.json().catch(() => ({})) as Record<string, unknown>;
-    const enabled = required ? true : body.enabled !== false;
-    const { error } = await admin.from("daily_onboarding").update({ quality_tracking_enabled: enabled }).eq("user_id", billingUserId);
+    if (typeof body.enabled !== "boolean") {
+      return NextResponse.json({ error: "Valeur de suivi qualité invalide." }, { status: 400 });
+    }
+    const enabled = qualiopi.required ? true : body.enabled;
+    const { error } = await getAdminSupabase()
+      .from("daily_onboarding")
+      .update({ quality_tracking_enabled: enabled })
+      .eq("user_id", billingUserId);
     if (error) throw error;
-    return NextResponse.json({ required, enabled });
+    return NextResponse.json({
+      required: qualiopi.required,
+      enabled,
+      qualiopiStatus: qualiopi.status,
+      qualiopiValidFrom: qualiopi.validFrom,
+      qualiopiValidUntil: qualiopi.validUntil,
+    });
   } catch (cause) {
     return NextResponse.json({ error: cause instanceof Error ? cause.message : "Modification impossible." }, { status: 500 });
   }
