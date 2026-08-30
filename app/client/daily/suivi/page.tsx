@@ -6,7 +6,7 @@ import { assistanceFetch } from "@/components/AgentAssistanceBanner";
 type Session = { id: string; internal_reference?: string | null; start_date?: string | null; end_date?: string | null; daily_formations?: { title?: string } | { title?: string }[] | null };
 type Learner = { first_name?: string | null; last_name?: string | null; email?: string | null };
 type Enrolment = { id: string; status: string; daily_learners?: Learner | Learner[] | null };
-type Entry = { id: string; enrolment_id?: string | null; entry_type: "incident" | "adaptation"; level: "info" | "attention" | "critical"; occurred_at: string; summary: string; description?: string | null; action_taken?: string | null; status: "open" | "resolved"; resolved_at?: string | null };
+type Entry = { id: string; enrolment_id?: string | null; entry_type: "incident" | "adaptation"; level: "info" | "attention" | "critical"; occurred_at: string; summary: string; description?: string | null; action_taken?: string | null; status: "open" | "resolved"; resolved_at?: string | null; author_role?: string | null; author_name?: string | null };
 
 function formationTitle(session: Session) {
   const formation = Array.isArray(session.daily_formations) ? session.daily_formations[0] : session.daily_formations;
@@ -126,6 +126,7 @@ export default function DailySessionFollowupPage() {
         return <article key={entry.id} style={{ padding: "1rem", background: "#fffaf0", border: entry.level === "critical" ? "2px solid #8a4b24" : "1px solid #d8b989" }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: ".7rem", flexWrap: "wrap" }}><strong>{entry.entry_type === "adaptation" ? "Adaptation" : "Incident"} · {entry.summary}</strong><span>{entry.status === "resolved" ? "Traité" : "Ouvert"}</span></div>
           <p style={{ marginBottom: ".3rem" }}>{new Date(entry.occurred_at).toLocaleString("fr-FR")} · {entry.level}{enrolment ? ` · ${learnerName(enrolment)}` : ""}</p>
+          <p style={{ marginTop: 0, color: "#70503b", fontSize: ".9rem" }}><strong>Ajouté par :</strong> {entry.author_name || "Auteur non renseigné (historique antérieur)"}{entry.author_role ? ` · ${entry.author_role}` : ""}</p>
           {entry.description ? <p>{entry.description}</p> : null}
           {entry.action_taken ? <p><strong>Action :</strong> {entry.action_taken}</p> : null}
           {entry.status === "open" ? <button type="button" disabled={busy} onClick={() => void resolve(entry)}>Marquer comme traité</button> : null}
