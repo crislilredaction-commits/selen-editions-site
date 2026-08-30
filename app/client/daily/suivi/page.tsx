@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { assistanceFetch } from "@/components/AgentAssistanceBanner";
+import DailySessionFollowupSummary from "@/components/daily/DailySessionFollowupSummary";
 
 type Session = { id: string; internal_reference?: string | null; start_date?: string | null; end_date?: string | null; daily_formations?: { title?: string } | { title?: string }[] | null };
 type Learner = { first_name?: string | null; last_name?: string | null; email?: string | null };
@@ -105,6 +106,8 @@ export default function DailySessionFollowupPage() {
         </select>
       </label>
     </section>
+
+    {sessionId ? <DailySessionFollowupSummary sessionId={sessionId} /> : null}
 
     {sessionId ? <section style={{ padding: "1rem", background: "#fffaf0", border: "1px solid #d8b989", marginBottom: "1rem", display: "grid", gap: ".75rem" }}>
       <h2 style={{ margin: 0 }}>Ajouter un élément de suivi</h2>
