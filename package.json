@@ -4,13 +4,14 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "npm run test:nda-guards && npm run test:daily-ux-guards && npm run test:daily-collapsed-guards && npm run test:daily-action-center-guards && next build",
+    "build": "npm run test:nda-guards && npm run test:daily-ux-guards && npm run test:daily-collapsed-guards && npm run test:daily-action-center-guards && npm run test:daily-qualiopi-guards && next build",
     "start": "next start",
     "lint": "eslint",
     "test:nda-guards": "node --test tests/ndaRouteGuards.test.mjs",
     "test:daily-ux-guards": "node --test tests/dailyOnboardingUxGuards.test.mjs tests/dailyDashboardUxGuards.test.mjs",
     "test:daily-collapsed-guards": "node --test tests/dailyCollapsedFlows.test.mjs",
-    "test:daily-action-center-guards": "node --test tests/dailyActionCenterGuards.test.mjs"
+    "test:daily-action-center-guards": "node --test tests/dailyActionCenterGuards.test.mjs",
+    "test:daily-qualiopi-guards": "node --test tests/dailyQualiopiSettingsGuards.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.2",
@@ -26,8 +27,8 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
+    "@types/react": "^19.2.3",
+    "@types/react-dom": "^19.2.3",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",
