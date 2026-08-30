@@ -11,7 +11,7 @@
     "test:daily-ux-guards": "node --test tests/dailyOnboardingUxGuards.test.mjs tests/dailyDashboardUxGuards.test.mjs",
     "test:daily-collapsed-guards": "node --test tests/dailyCollapsedFlows.test.mjs",
     "test:daily-action-center-guards": "node --test tests/dailyActionCenterGuards.test.mjs",
-    "test:daily-qualiopi-guards": "node --test tests/dailyQualiopiSettingsGuards.test.mjs"
+    "test:daily-qualiopi-guards": "node --test tests/dailyQualiopiSettingsGuards.test.mjs tests/dailyQualiopiSurveillance.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.2",

@@ -12,6 +12,11 @@ export default function DailyClientLayout({ children }: { children: React.ReactN
     pathname === "/client/daily/invitation";
   const showDashboardBack = !isDashboard && !isStandaloneFlow;
   const showFriendlyBanner = !isStandaloneFlow;
+  const contextualLink = pathname === "/client/daily/qualite"
+    ? { href: "/client/daily/qualiopi", label: "Cycle Qualiopi" }
+    : pathname === "/client/daily/qualiopi"
+      ? { href: "/client/daily/qualite", label: "Suivi Qualité" }
+      : null;
 
   return (
     <>
@@ -21,6 +26,7 @@ export default function DailyClientLayout({ children }: { children: React.ReactN
           <Link href="/client/daily" style={backLinkStyle}>
             ← Retour au tableau de bord
           </Link>
+          {contextualLink ? <Link href={contextualLink.href} style={backLinkStyle}>{contextualLink.label}</Link> : null}
         </div>
       ) : null}
       {children}
@@ -34,6 +40,8 @@ const backBarStyle: React.CSSProperties = {
   padding: "1rem 1rem 0",
   display: "flex",
   justifyContent: "flex-start",
+  gap: ".65rem",
+  flexWrap: "wrap",
 };
 
 const backLinkStyle: React.CSSProperties = {
