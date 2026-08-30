@@ -12,14 +12,17 @@ test("le statut Qualiopi est lu depuis l'organisme canonique", () => {
 });
 
 test("le suivi qualité reste forcé pour un organisme Qualiopi", () => {
-  assert.match(route, /required: status === "yes" \|\| status === "certified"/);
-  assert.match(route, /enabled: qualiopi\.required \|\| data\?\.quality_tracking_enabled !== false/);
+  assert.match(route, /required: status === "certified"/);
+  assert.match(route, /qualiopi\.required \|\| data\?\.quality_tracking_enabled !== false/);
   assert.match(route, /const enabled = qualiopi\.required \? true : body\.enabled/);
 });
 
 test("les dates du cycle Qualiopi sont exposées au client", () => {
   assert.match(route, /qualiopiValidFrom: qualiopi\.validFrom/);
   assert.match(route, /qualiopiValidUntil: qualiopi\.validUntil/);
+  assert.match(route, /qualiopiSurveillanceAuditDate: qualiopi\.surveillanceAuditDate/);
+  assert.match(route, /qualiopiSurveillanceWindowStart: qualiopi\.surveillanceWindowStart/);
+  assert.match(route, /qualiopiSurveillanceWindowEnd: qualiopi\.surveillanceWindowEnd/);
 });
 
 test("le PATCH refuse une valeur de suivi qualité ambiguë", () => {
