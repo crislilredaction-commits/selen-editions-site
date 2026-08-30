@@ -27,7 +27,7 @@ async function resolveBillingUserId(organisationId: string) {
 async function readCanonicalQualiopi(organisationId: string) {
   const { data, error } = await getAdminSupabase()
     .from("organisations")
-    .select("qualiopi_status,qualiopi_valid_from,qualiopi_valid_until")
+    .select("qualiopi_status,qualiopi_valid_from,qualiopi_valid_until,qualiopi_surveillance_audit_date,qualiopi_surveillance_window_start,qualiopi_surveillance_window_end,qualiopi_renewal_reminder_on")
     .eq("id", organisationId)
     .maybeSingle();
   if (error) throw error;
@@ -35,10 +35,34 @@ async function readCanonicalQualiopi(organisationId: string) {
   const status = String(data.qualiopi_status ?? "unknown").toLowerCase();
   return {
     status,
-    required: status === "yes" || status === "certified",
+    required: status === "certified",
     validFrom: data.qualiopi_valid_from ?? null,
     validUntil: data.qualiopi_valid_until ?? null,
+    surveillanceAuditDate: data.qualiopi_surveillance_audit_date ?? null,
+    surveillanceWindowStart: data.qualiopi_surveillance_window_start ?? null,
+    surveillanceWindowEnd: data.qualiopi_surveillance_window_end ?? null,
+    renewalReminderOn: data.qualiopi_renewal_reminder_on ?? null,
   };
+}
+
+function payload(qualiopi: Awaited<ReturnType<typeof readCanonicalQualiopi>>, enabled: boolean) {
+  return {
+    required: qualiopi.required,
+    enabled,
+    qualiopiStatus: qualiopi.status,
+    qualiopiValidFrom: qualiopi.validFrom,
+    qualiopiValidUntil: qualiopi.validUntil,
+    qualiopiSurveillanceAuditDate: qualiopi.surveillanceAuditDate,
+    qualiopiSurveillanceWindowStart: qualiopi.surveillanceWindowStart,
+    qualiopiSurveillanceWindowEnd: qualiopi.surveillanceWindowEnd,
+    qualiopiRenewalReminderOn: qualiopi.renewalReminderOn,
+  };
+}
+
+function validIsoDate(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
 export async function GET() {
@@ -57,13 +81,7 @@ export async function GET() {
       .eq("user_id", billingUserId)
       .maybeSingle();
     if (error) throw error;
-    return NextResponse.json({
-      required: qualiopi.required,
-      enabled: qualiopi.required || data?.quality_tracking_enabled !== false,
-      qualiopiStatus: qualiopi.status,
-      qualiopiValidFrom: qualiopi.validFrom,
-      qualiopiValidUntil: qualiopi.validUntil,
-    });
+    return NextResponse.json(payload(qualiopi, qualiopi.required || data?.quality_tracking_enabled !== false));
   } catch (cause) {
     return NextResponse.json({ error: cause instanceof Error ? cause.message : "Réglage indisponible." }, { status: 500 });
   }
@@ -83,6 +101,61 @@ export async function PATCH(req: Request) {
     ]);
     if (!billingUserId) return NextResponse.json({ error: "Abonnement Daily introuvable." }, { status: 404 });
     const body = await req.json().catch(() => ({})) as Record<string, unknown>;
+
+    if (Object.prototype.hasOwnProperty.call(body, "auditDate")) {
+      if (!qualiopi.required) return NextResponse.json({ error: "Cet organisme n’est pas actuellement certifié Qualiopi." }, { status: 400 });
+      const auditDate = String(body.auditDate ?? "").trim();
+      if (!validIsoDate(auditDate)) return NextResponse.json({ error: "Date d’audit invalide." }, { status: 400 });
+      if (qualiopi.surveillanceWindowStart && auditDate < qualiopi.surveillanceWindowStart) {
+        return NextResponse.json({ error: "La date d’audit est antérieure à la fenêtre de surveillance Qualiopi." }, { status: 400 });
+      }
+      if (qualiopi.surveillanceWindowEnd && auditDate > qualiopi.surveillanceWindowEnd) {
+        return NextResponse.json({ error: "La date d’audit dépasse la fenêtre de surveillance Qualiopi." }, { status: 400 });
+      }
+
+      const admin = getAdminSupabase();
+      const { error: organisationError } = await admin
+        .from("organisations")
+        .update({ qualiopi_surveillance_audit_date: auditDate })
+        .eq("id", organisationId);
+      if (organisationError) throw organisationError;
+
+      const { data: activeTask, error: taskReadError } = await admin
+        .from("daily_quality_actions")
+        .select("id,status,created_at")
+        .eq("organisation_id", organisationId)
+        .eq("source_type", "qualiopi_preaudit")
+        .eq("source_id", organisationId)
+        .in("status", ["open", "planned"])
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (taskReadError) throw taskReadError;
+
+      const taskValues = {
+        title: "Pré-audit Qualiopi à préparer",
+        observation: `Audit de surveillance prévu le ${auditDate}. Préparer le pré-audit Selen avant cette échéance.`,
+        proposed_solution: "Réaliser le pré-audit et consigner les points à sécuriser avant l’audit de surveillance.",
+      };
+      if (activeTask) {
+        const { error: updateError } = await admin.from("daily_quality_actions").update(taskValues).eq("id", activeTask.id).eq("organisation_id", organisationId);
+        if (updateError) throw updateError;
+      } else {
+        const { error: insertError } = await admin.from("daily_quality_actions").insert({
+          organisation_id: organisationId,
+          category: "corrective_action",
+          source_type: "qualiopi_preaudit",
+          source_id: organisationId,
+          status: "open",
+          ...taskValues,
+        });
+        if (insertError) throw insertError;
+      }
+
+      const refreshed = await readCanonicalQualiopi(organisationId);
+      return NextResponse.json(payload(refreshed, true));
+    }
+
     if (typeof body.enabled !== "boolean") {
       return NextResponse.json({ error: "Valeur de suivi qualité invalide." }, { status: 400 });
     }
@@ -92,13 +165,7 @@ export async function PATCH(req: Request) {
       .update({ quality_tracking_enabled: enabled })
       .eq("user_id", billingUserId);
     if (error) throw error;
-    return NextResponse.json({
-      required: qualiopi.required,
-      enabled,
-      qualiopiStatus: qualiopi.status,
-      qualiopiValidFrom: qualiopi.validFrom,
-      qualiopiValidUntil: qualiopi.validUntil,
-    });
+    return NextResponse.json(payload(qualiopi, enabled));
   } catch (cause) {
     return NextResponse.json({ error: cause instanceof Error ? cause.message : "Modification impossible." }, { status: 500 });
   }
