@@ -9,6 +9,12 @@ function text(body: Record<string, unknown>, key: string) {
   return String(body[key] ?? "").trim();
 }
 
+function organisationAuthorName(user: { email?: string | null; user_metadata?: Record<string, unknown> | null }) {
+  const metadata = user.user_metadata ?? {};
+  const displayName = String(metadata.full_name ?? metadata.name ?? metadata.display_name ?? "").trim();
+  return displayName || user.email?.trim() || "Organisme de formation";
+}
+
 async function refreshFollowupChecklist(
   admin: ReturnType<typeof import("@/lib/server/clientNdaAccess").getAdminSupabase>,
   organisationId: string,
@@ -76,7 +82,7 @@ export async function GET(request: Request) {
   const [{ data: entries, error: entriesError }, { data: enrolments, error: enrolmentsError }] = await Promise.all([
     context.admin
       .from("daily_session_followup_entries")
-      .select("id,session_id,enrolment_id,entry_type,level,occurred_at,summary,description,action_taken,status,resolved_at,created_at,updated_at")
+      .select("id,session_id,enrolment_id,entry_type,level,occurred_at,summary,description,action_taken,status,resolved_at,author_role,author_name,created_at,updated_at")
       .eq("organisation_id", context.organisationId)
       .eq("session_id", sessionId)
       .order("occurred_at", { ascending: false }),
@@ -143,6 +149,8 @@ export async function POST(request: Request) {
         action_taken: actionTaken,
         status: "open",
         created_by: context.user.id,
+        author_role: "Organisme de formation",
+        author_name: organisationAuthorName(context.user),
       })
       .select("*")
       .single();
