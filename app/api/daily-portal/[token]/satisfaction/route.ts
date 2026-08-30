@@ -3,6 +3,7 @@ import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 
 type Params = { params: Promise<{ token: string }> };
 type SupportedPortalType = "enterprise" | "trainer";
+const PHONE_FOLLOWUP_SOURCE = "satisfaction_phone_followup";
 
 function clean(value: unknown) {
   return String(value ?? "").trim();
@@ -43,8 +44,8 @@ function stakeholderTypeForPortal(portalType: SupportedPortalType) {
   return portalType === "enterprise" ? "company" : "trainer";
 }
 
-function availabilityOffsetForPortal(portalType: SupportedPortalType) {
-  return portalType === "enterprise" ? 10 : 0;
+function availabilityOffsetForPortal(_portalType: SupportedPortalType) {
+  return 0;
 }
 
 function portalLabel(portalType: SupportedPortalType) {
@@ -135,10 +136,10 @@ export async function POST(request: Request, { params }: Params) {
   const portal = await resolveSatisfactionPortal(clean(token));
   if ("error" in portal) return NextResponse.json({ error: portal.error }, { status: portal.status });
   if (!portal.isAvailable) {
-    const message = portal.portalType === "enterprise"
-      ? "Le questionnaire commanditaire sera disponible 10 jours après la fin de la formation."
-      : "Le questionnaire formateur sera disponible le dernier jour de la formation.";
-    return NextResponse.json({ error: message, availableFrom: portal.availableFrom }, { status: 409 });
+    return NextResponse.json({
+      error: "Le questionnaire sera disponible le dernier jour de la formation.",
+      availableFrom: portal.availableFrom,
+    }, { status: 409 });
   }
 
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
@@ -189,5 +190,18 @@ export async function POST(request: Request, { params }: Params) {
     .single();
 
   if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
+
+  await portal.admin
+    .from("daily_quality_actions")
+    .update({
+      status: "closed",
+      implemented_at: inserted.submitted_at,
+      implemented_improvement: "Réponse satisfaction reçue : relance téléphonique devenue sans objet.",
+    })
+    .eq("organisation_id", portal.session.organisation_id)
+    .eq("source_type", PHONE_FOLLOWUP_SOURCE)
+    .eq("source_id", portal.access.id)
+    .in("status", ["open", "planned"]);
+
   return NextResponse.json({ ok: true, response: inserted }, { status: 201 });
 }

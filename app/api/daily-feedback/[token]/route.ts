@@ -3,6 +3,7 @@ import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import { hashDailyFeedbackToken } from "@/lib/server/dailyEndEvaluations";
 
 type Params = { params: Promise<{ token: string }> };
+const PHONE_FOLLOWUP_SOURCE = "satisfaction_phone_followup";
 
 function rating(value: unknown) {
   if (value === null || value === undefined || String(value).trim() === "") return null;
@@ -105,6 +106,15 @@ export async function POST(request: Request, { params }: Params) {
     });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     await admin.from("daily_learner_feedback_tokens").update({ status: "submitted", last_used_at: submittedAt }).eq("id", token.id);
+    await admin.from("daily_quality_actions").update({
+      status: "closed",
+      implemented_at: submittedAt,
+      implemented_improvement: "Réponse satisfaction reçue : relance téléphonique devenue sans objet.",
+    })
+      .eq("organisation_id", token.organisation_id)
+      .eq("source_type", PHONE_FOLLOWUP_SOURCE)
+      .eq("source_id", token.enrolment_id)
+      .in("status", ["open", "planned"]);
 
     const [{ data: active }, { data: assessments }, { data: responses }] = await Promise.all([
       admin.from("daily_session_enrolments").select("id,status").eq("organisation_id", token.organisation_id).eq("session_id", token.session_id).not("status", "in", "(cancelled,declined)"),
