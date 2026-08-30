@@ -37,6 +37,7 @@ async function getTrainerContext() {
     user: workspace.user,
     organisationId: workspace.workspace.membership.organisation_id,
     trainerProfileId: String(trainer.id),
+    trainerName: String(trainer.display_name ?? trainer.professional_email ?? workspace.user.email ?? "Formateur").trim() || "Formateur",
   };
 }
 
@@ -96,7 +97,7 @@ export async function GET(request: Request) {
   if (!session) return NextResponse.json({ error: "Session introuvable ou non affectée à ce formateur." }, { status: 404 });
 
   const [{ data: entries, error: entriesError }, { data: enrolments, error: enrolmentsError }, { data: portalRows, error: portalError }] = await Promise.all([
-    context.admin.from("daily_session_followup_entries").select("id,session_id,enrolment_id,entry_type,level,occurred_at,summary,description,action_taken,status,resolved_at,created_by,created_at,updated_at").eq("organisation_id", context.organisationId).eq("session_id", sessionId).order("occurred_at", { ascending: false }),
+    context.admin.from("daily_session_followup_entries").select("id,session_id,enrolment_id,entry_type,level,occurred_at,summary,description,action_taken,status,resolved_at,created_by,author_role,author_name,created_at,updated_at").eq("organisation_id", context.organisationId).eq("session_id", sessionId).order("occurred_at", { ascending: false }),
     context.admin.from("daily_session_enrolments").select("id,status,daily_learners(id,first_name,last_name,email)").eq("organisation_id", context.organisationId).eq("session_id", sessionId).not("status", "in", "(cancelled,declined)"),
     context.admin.from("daily_portal_access_tokens").select("id,session_id,entity_name,entity_email,token,status,expires_at,last_viewed_at").eq("session_id", sessionId).eq("portal_type", "learner").not("status", "eq", "expired"),
   ]);
@@ -154,7 +155,7 @@ export async function POST(request: Request) {
 
     const isNote = entryType === "note";
     const now = new Date().toISOString();
-    const { data, error } = await context.admin.from("daily_session_followup_entries").insert({ organisation_id: context.organisationId, session_id: sessionId, enrolment_id: enrolmentId, entry_type: entryType, level, occurred_at: occurredAt, summary, description, action_taken: actionTaken, status: isNote ? "resolved" : "open", created_by: context.user.id, resolved_by: isNote ? context.user.id : null, resolved_at: isNote ? now : null }).select("*").single();
+    const { data, error } = await context.admin.from("daily_session_followup_entries").insert({ organisation_id: context.organisationId, session_id: sessionId, enrolment_id: enrolmentId, entry_type: entryType, level, occurred_at: occurredAt, summary, description, action_taken: actionTaken, status: isNote ? "resolved" : "open", created_by: context.user.id, author_role: "Formateur", author_name: context.trainerName, resolved_by: isNote ? context.user.id : null, resolved_at: isNote ? now : null }).select("*").single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     if (!isNote) await refreshFollowupChecklist(context.admin, context.organisationId, sessionId);
     return NextResponse.json({ ok: true, entry: data });
