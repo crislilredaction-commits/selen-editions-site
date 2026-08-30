@@ -155,7 +155,7 @@ export default function TrainerSessionFollowupPage() {
         <p className="gazette-label" style={styles.eyebrow}>Selen Daily · Espace formateur</p>
         <h1 style={styles.title}>Suivi de mes sessions</h1>
         <p style={styles.lead}>
-          Consigne une note utile au suivi ou signale un incident, un cas particulier ou une adaptation mise en place. Les notes restent dans le dossier sans créer de blocage de clôture.
+          Consignez une note utile au suivi ou signalez un incident, un cas particulier ou une adaptation mise en place. Les notes restent dans le dossier sans créer de blocage de clôture.
         </p>
       </header>
 
