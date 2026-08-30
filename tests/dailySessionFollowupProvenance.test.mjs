@@ -46,3 +46,10 @@ test("historique formateur: affiche la même provenance sans masquer les ancienn
   assert.match(trainerFollowupPage, /Auteur non renseigné \(historique antérieur\)/);
   assert.match(trainerFollowupPage, /entry\.author_role/);
 });
+
+test("écrans de suivi Daily: les consignes utilisent le vouvoiement", () => {
+  assert.match(organisationFollowupPage, /Consignez uniquement les événements utiles au dossier/);
+  assert.doesNotMatch(organisationFollowupPage, /\bConsigne uniquement\b/);
+  assert.match(trainerFollowupPage, /Consignez une note utile au suivi ou signalez un incident/);
+  assert.doesNotMatch(trainerFollowupPage, /\bConsigne une note\b/);
+});
