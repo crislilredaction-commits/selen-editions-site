@@ -6,9 +6,8 @@ import {
 } from "@/lib/server/dailyStakeholderSatisfactionEmails";
 
 const COMMUNICATION_TYPE = "stakeholder_satisfaction_request";
-const REMINDER_DAYS = 3;
-const COMPANY_OPEN_OFFSET_DAYS = 10;
-const TRAINER_OPEN_OFFSET_DAYS = 0;
+const PHONE_FOLLOWUP_SOURCE = "satisfaction_phone_followup";
+const REMINDER_OFFSETS_DAYS = [2, 4] as const;
 const RESPONSE_WINDOW_DAYS = 30;
 
 type StakeholderType = "company" | "trainer";
@@ -41,15 +40,15 @@ type CommunicationRow = {
   created_at: string;
   metadata: Record<string, unknown> | null;
 };
+type PhoneActionRow = { id: string; source_id: string | null; status: string };
+type AutomationStage = "initial" | "j2" | "j4";
 
 function one<T>(value: T | T[] | null | undefined): T | null {
   return Array.isArray(value) ? value[0] ?? null : value ?? null;
 }
-
 function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
-
 function dateInParis(now = new Date()) {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Europe/Paris",
@@ -60,7 +59,6 @@ function dateInParis(now = new Date()) {
   const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
   return `${values.year}-${values.month}-${values.day}`;
 }
-
 function shiftDate(dateValue: string, days: number) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateValue);
   if (!match) return "";
@@ -68,13 +66,11 @@ function shiftDate(dateValue: string, days: number) {
   date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
 }
-
 function daysBetween(fromDate: string, toDate: string) {
   const from = new Date(`${fromDate}T12:00:00Z`).getTime();
   const to = new Date(`${toDate}T12:00:00Z`).getTime();
   return Math.floor((to - from) / 86_400_000);
 }
-
 function authorized(req: Request) {
   const expected = process.env.DAILY_AUTOMATION_SECRET?.trim();
   if (!expected) return { ok: false as const, status: 503, error: "DAILY_AUTOMATION_SECRET manquant." };
@@ -82,35 +78,33 @@ function authorized(req: Request) {
   if (!received || received !== expected) return { ok: false as const, status: 401, error: "Accès refusé." };
   return { ok: true as const };
 }
-
 function stakeholderTypeForPortal(portal: PortalRow): StakeholderType {
   return portal.portal_type === "enterprise" ? "company" : "trainer";
 }
-
-function openOffsetForPortal(portal: PortalRow) {
-  return portal.portal_type === "enterprise" ? COMPANY_OPEN_OFFSET_DAYS : TRAINER_OPEN_OFFSET_DAYS;
-}
-
 function entityMatches(row: CommunicationRow, portal: PortalRow) {
-  const stakeholderType = stakeholderTypeForPortal(portal);
   return row.session_id === portal.session_id
     && text(row.recipient_email).toLowerCase() === text(portal.entity_email).toLowerCase()
-    && text(row.metadata?.stakeholder_type) === stakeholderType
+    && text(row.metadata?.stakeholder_type) === stakeholderTypeForPortal(portal)
     && text(row.metadata?.entity_key) === portal.entity_key;
 }
-
-function latestSuccessfulCommunication(rows: CommunicationRow[], portal: PortalRow) {
-  return rows
-    .filter((row) => entityMatches(row, portal) && ["sent", "delivered"].includes(row.status))
-    .sort((a, b) => new Date(b.sent_at ?? b.created_at).getTime() - new Date(a.sent_at ?? a.created_at).getTime())[0] ?? null;
-}
-
-function alreadyQueuedToday(rows: CommunicationRow[], portal: PortalRow, today: string) {
-  return rows.some((row) =>
-    entityMatches(row, portal)
-    && ["queued", "sent", "delivered"].includes(row.status)
-    && text(row.metadata?.automation_day) === today,
+function successfulStages(rows: CommunicationRow[], portal: PortalRow) {
+  return new Set(
+    rows
+      .filter((row) => entityMatches(row, portal) && ["sent", "delivered"].includes(row.status))
+      .map((row) => text(row.metadata?.automation_stage))
+      .filter(Boolean),
   );
+}
+function queuedStage(rows: CommunicationRow[], portal: PortalRow, stage: AutomationStage) {
+  return rows.some((row) => entityMatches(row, portal)
+    && ["queued", "sent", "delivered"].includes(row.status)
+    && text(row.metadata?.automation_stage) === stage);
+}
+function stageDue(ageDays: number, stages: Set<string>): AutomationStage | null {
+  if (!stages.has("initial")) return ageDays >= 0 ? "initial" : null;
+  if (!stages.has("j2")) return ageDays >= REMINDER_OFFSETS_DAYS[0] ? "j2" : null;
+  if (!stages.has("j4")) return ageDays >= REMINDER_OFFSETS_DAYS[1] ? "j4" : null;
+  return null;
 }
 
 export async function GET(req: Request) {
@@ -120,7 +114,7 @@ export async function GET(req: Request) {
   const requestUrl = new URL(req.url);
   const execute = requestUrl.searchParams.get("execute") === "1";
   const today = dateInParis();
-  const earliestEndDate = shiftDate(today, -(COMPANY_OPEN_OFFSET_DAYS + RESPONSE_WINDOW_DAYS));
+  const earliestEndDate = shiftDate(today, -RESPONSE_WINDOW_DAYS);
   const admin = getAdminSupabase();
 
   const { data: sessionData, error: sessionError } = await admin
@@ -138,46 +132,56 @@ export async function GET(req: Request) {
   }
   const sessionIds = sessions.map((session) => session.id);
 
-  const [portalsResult, responsesResult, communicationsResult] = await Promise.all([
-    admin
-      .from("daily_portal_access_tokens")
+  const [portalsResult, responsesResult, communicationsResult, phoneActionsResult] = await Promise.all([
+    admin.from("daily_portal_access_tokens")
       .select("id,session_id,portal_type,entity_key,entity_name,entity_email,token,status,expires_at")
-      .in("session_id", sessionIds)
-      .in("portal_type", ["enterprise", "trainer"])
-      .in("status", ["pending", "viewed"]),
-    admin
-      .from("daily_stakeholder_satisfaction_responses")
+      .in("session_id", sessionIds).in("portal_type", ["enterprise", "trainer"]).in("status", ["pending", "viewed"]),
+    admin.from("daily_stakeholder_satisfaction_responses")
       .select("session_id,stakeholder_type,entity_key")
-      .in("session_id", sessionIds)
-      .in("stakeholder_type", ["company", "trainer"]),
-    admin
-      .from("daily_communications")
+      .in("session_id", sessionIds).in("stakeholder_type", ["company", "trainer"]),
+    admin.from("daily_communications")
       .select("session_id,recipient_email,status,sent_at,created_at,metadata")
-      .in("session_id", sessionIds)
-      .eq("communication_type", COMMUNICATION_TYPE)
+      .in("session_id", sessionIds).eq("communication_type", COMMUNICATION_TYPE)
       .in("status", ["queued", "sent", "delivered", "failed"]),
+    admin.from("daily_quality_actions")
+      .select("id,source_id,status")
+      .eq("source_type", PHONE_FOLLOWUP_SOURCE).in("status", ["open", "planned"]),
   ]);
-
-  const readError = portalsResult.error ?? responsesResult.error ?? communicationsResult.error;
+  const readError = portalsResult.error ?? responsesResult.error ?? communicationsResult.error ?? phoneActionsResult.error;
   if (readError) return NextResponse.json({ error: readError.message }, { status: 500 });
 
   const portals = (portalsResult.data ?? []) as PortalRow[];
   const responses = (responsesResult.data ?? []) as ResponseRow[];
   const communications = (communicationsResult.data ?? []) as CommunicationRow[];
+  const phoneActions = (phoneActionsResult.data ?? []) as PhoneActionRow[];
   const responseKeys = new Set(responses.map((row) => `${row.session_id}:${row.stakeholder_type}:${row.entity_key}`));
+  const phoneActionBySource = new Map(phoneActions.filter((row) => row.source_id).map((row) => [row.source_id as string, row]));
   const sessionMap = new Map(sessions.map((session) => [session.id, session]));
 
   let due = 0;
   let processed = 0;
   let skipped = 0;
   let failed = 0;
-  const details: Array<{ session_id: string; entity_key: string; stakeholder_type: StakeholderType; status: string; reminder?: boolean }> = [];
+  let phoneTasksCreated = 0;
+  let phoneTasksClosed = 0;
+  const details: Array<{ session_id: string; entity_key: string; stakeholder_type: StakeholderType; status: string; stage?: AutomationStage }> = [];
 
   for (const portal of portals) {
     const session = sessionMap.get(portal.session_id);
     const stakeholderType = stakeholderTypeForPortal(portal);
-    if (!session?.end_date) {
+    if (!session?.end_date) { skipped += 1; continue; }
+    const responseKey = `${portal.session_id}:${stakeholderType}:${portal.entity_key}`;
+    const phoneAction = phoneActionBySource.get(portal.id);
+
+    if (responseKeys.has(responseKey)) {
+      if (execute && phoneAction) {
+        const { error } = await admin.from("daily_quality_actions")
+          .update({ status: "closed", implemented_at: new Date().toISOString(), implemented_improvement: "Réponse satisfaction reçue : relance téléphonique devenue sans objet." })
+          .eq("id", phoneAction.id).in("status", ["open", "planned"]);
+        if (!error) phoneTasksClosed += 1;
+      }
       skipped += 1;
+      details.push({ session_id: portal.session_id, entity_key: portal.entity_key, stakeholder_type: stakeholderType, status: "already_submitted" });
       continue;
     }
     if (!text(portal.entity_email)) {
@@ -190,37 +194,39 @@ export async function GET(req: Request) {
       details.push({ session_id: portal.session_id, entity_key: portal.entity_key, stakeholder_type: stakeholderType, status: "portal_expired" });
       continue;
     }
-    if (responseKeys.has(`${portal.session_id}:${stakeholderType}:${portal.entity_key}`)) {
-      skipped += 1;
-      details.push({ session_id: portal.session_id, entity_key: portal.entity_key, stakeholder_type: stakeholderType, status: "already_submitted" });
-      continue;
-    }
-    if (alreadyQueuedToday(communications, portal, today)) {
-      skipped += 1;
-      details.push({ session_id: portal.session_id, entity_key: portal.entity_key, stakeholder_type: stakeholderType, status: "already_queued_today" });
+
+    const ageDays = daysBetween(session.end_date, today);
+    if (ageDays < 0 || ageDays > RESPONSE_WINDOW_DAYS) { skipped += 1; continue; }
+    const stages = successfulStages(communications, portal);
+    const stage = stageDue(ageDays, stages);
+
+    if (!stage && stages.has("j4") && !phoneAction) {
+      due += 1;
+      if (execute) {
+        const label = stakeholderType === "company" ? "entreprise" : "formateur";
+        const { error } = await admin.from("daily_quality_actions").insert({
+          organisation_id: session.organisation_id,
+          session_id: session.id,
+          category: "corrective_action",
+          source_type: PHONE_FOLLOWUP_SOURCE,
+          source_id: portal.id,
+          title: `Relance téléphonique satisfaction — ${label}`,
+          observation: `Aucune réponse après les relances email J+2 et J+4 pour ${text(portal.entity_name) || text(portal.entity_email)}.`,
+          proposed_solution: "Contacter la partie prenante par téléphone et consigner le résultat de la relance.",
+          status: "open",
+          created_by: null,
+        });
+        if (error) failed += 1;
+        else { phoneTasksCreated += 1; processed += 1; }
+      }
+      details.push({ session_id: session.id, entity_key: portal.entity_key, stakeholder_type: stakeholderType, status: execute ? "phone_task_created" : "phone_task_due" });
       continue;
     }
 
-    const openOffsetDays = openOffsetForPortal(portal);
-    const availableFrom = shiftDate(session.end_date, openOffsetDays);
-    const closesOn = shiftDate(availableFrom, RESPONSE_WINDOW_DAYS);
-    if (!availableFrom || today < availableFrom || today > closesOn) {
-      skipped += 1;
-      continue;
-    }
-
-    const latest = latestSuccessfulCommunication(communications, portal);
-    const latestDay = latest ? dateInParis(new Date(latest.sent_at ?? latest.created_at)) : null;
-    if (latestDay && daysBetween(latestDay, today) < REMINDER_DAYS) {
-      skipped += 1;
-      details.push({ session_id: portal.session_id, entity_key: portal.entity_key, stakeholder_type: stakeholderType, status: "reminder_not_due" });
-      continue;
-    }
-
-    const reminder = Boolean(latest);
+    if (!stage || queuedStage(communications, portal, stage)) { skipped += 1; continue; }
     due += 1;
     if (!execute) {
-      details.push({ session_id: portal.session_id, entity_key: portal.entity_key, stakeholder_type: stakeholderType, status: "due", reminder });
+      details.push({ session_id: portal.session_id, entity_key: portal.entity_key, stakeholder_type: stakeholderType, status: "due", stage });
       continue;
     }
 
@@ -229,105 +235,72 @@ export async function GET(req: Request) {
     const sessionReference = text(session.internal_reference) || formationTitle;
     const email = text(portal.entity_email).toLowerCase();
     const satisfactionUrl = new URL(`/daily/portail/${portal.portal_type}/${portal.token}/satisfaction`, requestUrl.origin).toString();
-    const emailInput = {
-      email,
-      recipientName: text(portal.entity_name),
-      formationTitle,
-      sessionReference,
-      satisfactionUrl,
-      reminder,
-      stakeholderType,
-    };
+    const reminder = stage !== "initial";
+    const emailInput = { email, recipientName: text(portal.entity_name), formationTitle, sessionReference, satisfactionUrl, reminder, stakeholderType };
     const prepared = prepareDailyStakeholderSatisfactionEmail(emailInput);
 
-    const { data: communication, error: evidenceError } = await admin
-      .from("daily_communications")
-      .insert({
-        organisation_id: session.organisation_id,
-        session_id: session.id,
-        enrolment_id: null,
-        communication_type: COMMUNICATION_TYPE,
-        channel: "email",
-        recipient_email: email,
-        recipient_name: text(portal.entity_name) || null,
-        subject: prepared.subject,
-        text_body: prepared.text,
-        html_body: prepared.html,
-        provider: "resend",
-        status: "queued",
-        created_by: null,
-        metadata: {
-          automation_day: today,
-          stakeholder_type: stakeholderType,
-          portal_type: portal.portal_type,
-          entity_key: portal.entity_key,
-          portal_access_id: portal.id,
-          reminder,
-          available_from: availableFrom,
-          response_window_days: RESPONSE_WINDOW_DAYS,
-        },
-      })
-      .select("id")
-      .single();
-
-    if (evidenceError || !communication) {
-      failed += 1;
-      details.push({ session_id: session.id, entity_key: portal.entity_key, stakeholder_type: stakeholderType, status: "evidence_failed", reminder });
-      continue;
-    }
+    const { data: communication, error: evidenceError } = await admin.from("daily_communications").insert({
+      organisation_id: session.organisation_id,
+      session_id: session.id,
+      enrolment_id: null,
+      communication_type: COMMUNICATION_TYPE,
+      channel: "email",
+      recipient_email: email,
+      recipient_name: text(portal.entity_name) || null,
+      subject: prepared.subject,
+      text_body: prepared.text,
+      html_body: prepared.html,
+      provider: "resend",
+      status: "queued",
+      created_by: null,
+      metadata: { stakeholder_type: stakeholderType, portal_type: portal.portal_type, entity_key: portal.entity_key, portal_access_id: portal.id, reminder, automation_stage: stage, response_window_days: RESPONSE_WINDOW_DAYS },
+    }).select("id").single();
+    if (evidenceError || !communication) { failed += 1; continue; }
 
     const sent = await sendDailyStakeholderSatisfactionEmail(emailInput);
     if (!sent.sent) {
-      const failedAt = new Date().toISOString();
-      await admin
-        .from("daily_communications")
-        .update({ status: "failed", failed_at: failedAt, failure_reason: sent.reason })
-        .eq("organisation_id", session.organisation_id)
-        .eq("id", communication.id);
+      await admin.from("daily_communications").update({ status: "failed", failed_at: new Date().toISOString(), failure_reason: sent.reason }).eq("id", communication.id);
       failed += 1;
-      details.push({ session_id: session.id, entity_key: portal.entity_key, stakeholder_type: stakeholderType, status: sent.reason, reminder });
+      details.push({ session_id: session.id, entity_key: portal.entity_key, stakeholder_type: stakeholderType, status: sent.reason, stage });
       continue;
     }
-
-    const sentAt = new Date().toISOString();
-    const { error: finalizeError } = await admin
-      .from("daily_communications")
-      .update({
-        provider_message_id: sent.message.providerMessageId,
-        status: "sent",
-        sent_at: sentAt,
-        failed_at: null,
-        failure_reason: null,
-      })
-      .eq("organisation_id", session.organisation_id)
-      .eq("id", communication.id);
-
+    const { error: finalizeError } = await admin.from("daily_communications").update({ provider_message_id: sent.message.providerMessageId, status: "sent", sent_at: new Date().toISOString(), failed_at: null, failure_reason: null }).eq("id", communication.id);
     processed += 1;
-    details.push({
-      session_id: session.id,
-      entity_key: portal.entity_key,
-      stakeholder_type: stakeholderType,
-      status: finalizeError ? "sent_evidence_finalize_failed" : "sent",
-      reminder,
-    });
+
+    if (stage === "j4" && !phoneAction) {
+      const label = stakeholderType === "company" ? "entreprise" : "formateur";
+      const { error: phoneError } = await admin.from("daily_quality_actions").insert({
+        organisation_id: session.organisation_id,
+        session_id: session.id,
+        category: "corrective_action",
+        source_type: PHONE_FOLLOWUP_SOURCE,
+        source_id: portal.id,
+        title: `Relance téléphonique satisfaction — ${label}`,
+        observation: `Aucune réponse après les relances email J+2 et J+4 pour ${text(portal.entity_name) || email}.`,
+        proposed_solution: "Contacter la partie prenante par téléphone et consigner le résultat de la relance.",
+        status: "open",
+        created_by: null,
+      });
+      if (phoneError) failed += 1;
+      else phoneTasksCreated += 1;
+    }
+    details.push({ session_id: session.id, entity_key: portal.entity_key, stakeholder_type: stakeholderType, status: finalizeError ? "sent_evidence_finalize_failed" : "sent", stage });
   }
 
-  return NextResponse.json(
-    {
-      ok: failed === 0,
-      execute,
-      date: today,
-      due,
-      processed,
-      skipped,
-      failed,
-      cadence_days: REMINDER_DAYS,
-      response_window_days: RESPONSE_WINDOW_DAYS,
-      opens_after_days: { trainer: TRAINER_OPEN_OFFSET_DAYS, company: COMPANY_OPEN_OFFSET_DAYS },
-      details,
-    },
-    { status: failed === 0 ? 200 : 207 },
-  );
+  return NextResponse.json({
+    ok: failed === 0,
+    execute,
+    date: today,
+    due,
+    processed,
+    skipped,
+    failed,
+    reminder_offsets_days: REMINDER_OFFSETS_DAYS,
+    response_window_days: RESPONSE_WINDOW_DAYS,
+    phone_tasks_created: phoneTasksCreated,
+    phone_tasks_closed: phoneTasksClosed,
+    details,
+  }, { status: failed === 0 ? 200 : 207 });
 }
 
 export async function POST(req: Request) {
