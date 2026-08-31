@@ -91,6 +91,7 @@ export default function DailyTrainersPage() {
 
       <section style={s.links}>
         <Link href="/client/daily/formateurs/suivi-annuel" style={s.linkCard}><strong>Suivi annuel des formateurs</strong><span>Compétences, veille et développement professionnel →</span></Link>
+        <Link href="/client/daily/formateurs/certifications" style={s.linkCard}><strong>Certifications des formateurs</strong><span>Consulter les certifications et leurs justificatifs →</span></Link>
       </section>
       <section style={s.card}>
         <h2 style={s.h2}>{trainers.length} formateur{trainers.length > 1 ? "s" : ""} référencé{trainers.length > 1 ? "s" : ""}</h2>
