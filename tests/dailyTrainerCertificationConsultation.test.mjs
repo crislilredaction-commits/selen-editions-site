@@ -4,6 +4,7 @@ import test from "node:test";
 
 const route = fs.readFileSync("app/api/client/daily/trainer-certification-register/route.ts", "utf8");
 const page = fs.readFileSync("app/client/daily/formateurs/certifications/page.tsx", "utf8");
+const trainersPage = fs.readFileSync("app/client/daily/formateurs/page.tsx", "utf8");
 const context = fs.readFileSync("lib/server/dailyOrganisationContext.ts", "utf8");
 
 test("le registre de certifications est une lecture organisme compatible assistance agent", () => {
@@ -26,4 +27,9 @@ test("l'interface annonce la consultation seule et permet d'ouvrir le justificat
   assert.match(page, /Mode assistance agent : consultation uniquement/);
   assert.match(page, /Voir le justificatif/);
   assert.match(page, /assistanceToken/);
+});
+
+test("le registre est accessible depuis la page Formateurs", () => {
+  assert.match(trainersPage, /href="\/client\/daily\/formateurs\/certifications"/);
+  assert.match(trainersPage, /Consulter les certifications et leurs justificatifs/);
 });
