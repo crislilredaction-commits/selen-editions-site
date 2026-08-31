@@ -16,8 +16,9 @@ export default function DailyClientLayout({ children }: { children: React.ReactN
     ? [
         { href: "/client/daily/qualiopi", label: "Cycle Qualiopi" },
         { href: "/client/daily/procedures", label: "Procédures internes" },
+        { href: "/client/daily/indicateurs", label: "Indicateurs formation" },
       ]
-    : pathname === "/client/daily/qualiopi" || pathname === "/client/daily/procedures"
+    : pathname === "/client/daily/qualiopi" || pathname === "/client/daily/procedures" || pathname === "/client/daily/indicateurs"
       ? [{ href: "/client/daily/qualite", label: "Suivi Qualité" }]
       : [];
 
