@@ -16,8 +16,8 @@ const workspaceRoute = await readFile(
 );
 
 test("l'onboarding conserve la même adresse canonique et administrative", () => {
-  assert.match(onboardingSyncMigration, /address\s*=\s*nullif\(trim\(w\.address_city\),\s*''\)/);
-  assert.match(onboardingSyncMigration, /administrative_address\s*=\s*nullif\(trim\(w\.address_city\),\s*''\)/);
+  assert.match(onboardingSyncMigration, /address\s*=\s*coalesce\(nullif\(btrim\(new\.address\),\s*''\),\s*o\.address\)/);
+  assert.match(onboardingSyncMigration, /administrative_address\s*=\s*coalesce\(nullif\(btrim\(new\.address\),\s*''\),\s*o\.administrative_address\)/);
 });
 
 test("une modification Daily du profil sûr maintient les deux adresses alignées", () => {
