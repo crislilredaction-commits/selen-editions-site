@@ -28,3 +28,13 @@ test("les actions Qualité terminées ne sont pas demandées par le centre À fa
   assert.doesNotMatch(route, /\.in\(\"status\",\[[^\]]*\"implemented\"/);
   assert.doesNotMatch(route, /\.in\(\"status\",\[[^\]]*\"closed\"/);
 });
+
+test("une revue des actions correctives ou améliorations est rappelée une fois par trimestre", () => {
+  assert.match(route, /function quarterBounds\(\)/);
+  assert.match(route, /\.in\(\"category\",\[\"corrective_action\",\"improvement\"\]\)/);
+  assert.match(route, /quarterlyQualityReviewed=qualityReviewRows\.some/);
+  assert.match(route, /qualityEnabled&&!quarterlyQualityReviewed/);
+  assert.match(route, /quality:quarterly-review:/);
+  assert.match(route, /Faites votre revue trimestrielle des actions qualité/);
+  assert.match(route, /href:\"\/client\/daily\/qualite\/pilotage\"/);
+});
