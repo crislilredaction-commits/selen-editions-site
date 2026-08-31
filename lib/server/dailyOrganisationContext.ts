@@ -2,7 +2,7 @@ import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import { getAssistedClientUser } from "@/lib/server/agentAssistance";
 import { getDailyClientWorkspace } from "@/lib/server/dailyClientWorkspace";
 
-type DailyCapability = "trainings" | "sessions";
+type DailyCapability = "trainings" | "sessions" | "trainers";
 
 async function getAssistedContext(req: Request) {
   const admin = getAdminSupabase();
@@ -38,7 +38,9 @@ export async function getDailyOrganisationContext(
       status: 403,
       error: capability === "trainings"
         ? "Vous n’avez pas la permission de gérer les formations."
-        : "Vous n’avez pas la permission de gérer les sessions.",
+        : capability === "trainers"
+          ? "Vous n’avez pas la permission de gérer les formateurs."
+          : "Vous n’avez pas la permission de gérer les sessions.",
     };
   }
 
