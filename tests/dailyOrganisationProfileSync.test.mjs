@@ -15,16 +15,21 @@ const workspaceRoute = await readFile(
   "utf8",
 );
 
+const normalizedAddress = "nullif\\(btrim\\(coalesce\\(p_administrative_address,\\s*''\\)\\),\\s*''\\)";
+
 test("l'onboarding conserve la même adresse canonique et administrative", () => {
   assert.match(onboardingSyncMigration, /address\s*=\s*coalesce\(nullif\(btrim\(new\.address\),\s*''\),\s*o\.address\)/);
   assert.match(onboardingSyncMigration, /administrative_address\s*=\s*coalesce\(nullif\(btrim\(new\.address\),\s*''\),\s*o\.administrative_address\)/);
 });
 
-test("une modification Daily du profil sûr maintient les deux adresses alignées", () => {
-  assert.match(safeProfileMigration, /set\s+address\s*=\s*p_administrative_address,/);
-  assert.match(safeProfileMigration, /administrative_address\s*=\s*p_administrative_address,/);
-  assert.doesNotMatch(safeProfileMigration, /update\s+public\.organisations[\s\S]*?\bemail\s*=\s*p_administrative_email/);
-  assert.doesNotMatch(safeProfileMigration, /update\s+public\.organisations[\s\S]*?\bphone\s*=\s*p_administrative_phone/);
+test("une modification Daily du profil sûr maintient les deux adresses alignées sans changer le contrat du RPC", () => {
+  assert.match(safeProfileMigration, /returns\s+void/i);
+  assert.match(safeProfileMigration, /has_organisation_role\(p_organisation_id,\s*'manager'\)/);
+  assert.match(safeProfileMigration, /has_organisation_permission_block\(p_organisation_id,\s*'legal_profile'\)/);
+  assert.match(safeProfileMigration, new RegExp(`set\\s+address\\s*=\\s*${normalizedAddress},`));
+  assert.match(safeProfileMigration, new RegExp(`administrative_address\\s*=\\s*${normalizedAddress}`));
+  assert.doesNotMatch(safeProfileMigration, /\bemail\s*=\s*nullif\(btrim\(coalesce\(p_administrative_email/);
+  assert.doesNotMatch(safeProfileMigration, /\bphone\s*=\s*nullif\(btrim\(coalesce\(p_administrative_phone/);
 });
 
 test("l'API Daily passe toujours par le RPC sûr pour ces coordonnées", () => {
