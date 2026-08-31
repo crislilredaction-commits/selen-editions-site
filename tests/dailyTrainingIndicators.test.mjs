@@ -13,6 +13,7 @@ test("indicateurs formation: réutilisent uniquement les sources Daily existante
   }
   assert.match(source, /\.eq\("organisation_id", organisationId\)/);
   assert.match(source, /status !== "archived" && status !== "cancelled"/);
+  assert.match(source, /Boolean\(endDate\).*String\(endDate\) <= today/);
   assert.match(source, /status !== "cancelled" && status !== "declined"/);
   assert.match(source, /completedByFormation/);
   assert.doesNotMatch(source, /\.insert\(|\.update\(|\.upsert\(|\.delete\(/);
