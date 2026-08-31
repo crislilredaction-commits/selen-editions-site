@@ -29,7 +29,7 @@ test("une modification Daily du profil sûr maintient les deux adresses alignée
 
 test("l'API Daily passe toujours par le RPC sûr pour ces coordonnées", () => {
   assert.match(workspaceRoute, /daily_client_update_safe_organisation/);
-  assert.match(workspaceRoute, /p_administrative_address:\s*address/);
-  assert.match(workspaceRoute, /p_administrative_email:\s*email/);
-  assert.match(workspaceRoute, /p_administrative_phone:\s*phone/);
+  assert.match(workspaceRoute, /p_administrative_address:\s*clean\(source\.administrative_address\)\s*\|\|\s*null/);
+  assert.match(workspaceRoute, /p_administrative_email:\s*clean\(source\.administrative_email\)\s*\|\|\s*null/);
+  assert.match(workspaceRoute, /p_administrative_phone:\s*clean\(source\.administrative_phone\)\s*\|\|\s*null/);
 });
