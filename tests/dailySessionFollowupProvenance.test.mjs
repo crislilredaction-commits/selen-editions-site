@@ -8,6 +8,8 @@ const trainerPortal = await readFile(new URL("../app/api/daily-portal/[token]/fo
 const organisationFollowupPage = await readFile(new URL("../app/client/daily/suivi/page.tsx", import.meta.url), "utf8");
 const trainerFollowupPage = await readFile(new URL("../app/client/daily/formateur/suivi-sessions/page.tsx", import.meta.url), "utf8");
 const summaryRoute = await readFile(new URL("../app/api/client/daily/followup-summary/route.ts", import.meta.url), "utf8");
+const summarySource = await readFile(new URL("../lib/server/dailySessionFollowupSummary.ts", import.meta.url), "utf8");
+const summaryPdfRoute = await readFile(new URL("../app/api/client/daily/followup-summary/pdf/route.ts", import.meta.url), "utf8");
 const summaryComponent = await readFile(new URL("../components/daily/DailySessionFollowupSummary.tsx", import.meta.url), "utf8");
 
 test("suivi organisme: l’auteur vient de l’utilisateur authentifié et est relu", () => {
@@ -58,13 +60,14 @@ test("écrans de suivi Daily: les consignes utilisent le vouvoiement", () => {
 
 test("récapitulatif session: agrège uniquement les sources Daily existantes et reste cloisonné par organisme", () => {
   assert.match(summaryRoute, /getDailyOrganisationReadContext\(request, \["sessions"\]\)/);
-  for (const table of ["daily_session_enrolments", "daily_attendance_records", "daily_learning_assessments", "daily_learner_feedback_responses", "daily_session_followup_entries"]) {
-    assert.match(summaryRoute, new RegExp(`from\\(\\"${table}\\"\\)`));
+  assert.match(summaryRoute, /loadDailySessionFollowupSnapshot\(context\.admin, context\.organisationId, sessionId\)/);
+  for (const table of ["daily_sessions", "organisations", "daily_session_enrolments", "daily_attendance_records", "daily_learning_assessments", "daily_learner_feedback_responses", "daily_session_followup_entries"]) {
+    assert.match(summarySource, new RegExp(`from\\(\\"${table}\\"\\)`));
   }
-  assert.match(summaryRoute, /\.eq\("organisation_id", context\.organisationId\)/);
-  assert.match(summaryRoute, /row\.status !== "pending"/);
-  assert.match(summaryRoute, /row\.outcome !== "pending"/);
-  assert.doesNotMatch(summaryRoute, /\.insert\(|\.update\(|\.upsert\(|\.delete\(/);
+  assert.match(summarySource, /\.eq\("organisation_id", organisationId\)/);
+  assert.match(summarySource, /row\.status !== "pending"/);
+  assert.match(summarySource, /row\.outcome !== "pending"/);
+  assert.doesNotMatch(summarySource, /\.insert\(|\.update\(|\.upsert\(|\.delete\(/);
 });
 
 test("récapitulatif session: la page affiche les indicateurs sans créer une nouvelle source de vérité", () => {
@@ -75,5 +78,23 @@ test("récapitulatif session: la page affiche les indicateurs sans créer une no
   assert.match(summaryComponent, /Évaluations finales/);
   assert.match(summaryComponent, /Satisfaction apprenants/);
   assert.match(summaryComponent, /Suivis ouverts/);
-  assert.match(summaryComponent, /Ils ne créent aucune donnée parallèle|Ils ne créent aucune donnée parallèle\./);
+  assert.match(summaryComponent, /Ils ne créent aucune donnée parallèle/);
+});
+
+test("fiche PDF: réutilise le snapshot authentifié, reste en lecture seule et expose un vrai PDF", () => {
+  assert.match(summaryPdfRoute, /getDailyOrganisationReadContext\(request, \["sessions"\]\)/);
+  assert.match(summaryPdfRoute, /loadDailySessionFollowupSnapshot\(context\.admin, context\.organisationId, sessionId\)/);
+  assert.match(summaryPdfRoute, /new jsPDF/);
+  assert.match(summaryPdfRoute, /Content-Type": "application\/pdf"/);
+  assert.match(summaryPdfRoute, /Cache-Control": "private, no-store"/);
+  assert.match(summaryPdfRoute, /author_name/);
+  assert.match(summaryPdfRoute, /learner_name/);
+  assert.doesNotMatch(summaryPdfRoute, /\.insert\(|\.update\(|\.upsert\(|\.delete\(/);
+});
+
+test("fiche PDF: le téléchargement passe par assistanceFetch pour conserver le contexte d’assistance", () => {
+  assert.match(summaryComponent, /followup-summary\/pdf\?session_id=/);
+  assert.match(summaryComponent, /assistanceFetch/);
+  assert.match(summaryComponent, /Télécharger la fiche PDF/);
+  assert.match(summaryComponent, /response\.blob\(\)/);
 });
