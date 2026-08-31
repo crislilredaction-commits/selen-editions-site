@@ -29,6 +29,17 @@ test("les actions Qualité terminées ne sont pas demandées par le centre À fa
   assert.doesNotMatch(route, /\.in\(\"status\",\[[^\]]*\"closed\"/);
 });
 
+test("la veille métier crée une seule action mensuelle tant que le mois n'est pas renseigné", () => {
+  assert.match(route, /function monthBounds\(\)/);
+  assert.match(route, /from\(\"daily_business_watch_entries\"\)/);
+  assert.match(route, /\.eq\(\"organisation_id\",context\.organisationId\)/);
+  assert.match(route, /\.gte\(\"watch_date\",month\.start\)\.lt\(\"watch_date\",month\.end\)\.limit\(1\)/);
+  assert.match(route, /qualityEnabled&&\(businessWatchR\.data\?\?\[\]\)\.length===0/);
+  assert.match(route, /quality:business-watch:\$\{month\.start\}/);
+  assert.match(route, /Complétez votre veille métier/);
+  assert.match(route, /href:\"\/client\/daily\/qualite\"/);
+});
+
 test("une revue des actions correctives ou améliorations est rappelée une fois par trimestre", () => {
   assert.match(route, /function quarterBounds\(\)/);
   assert.match(route, /\.in\(\"category\",\[\"corrective_action\",\"improvement\"\]\)/);
