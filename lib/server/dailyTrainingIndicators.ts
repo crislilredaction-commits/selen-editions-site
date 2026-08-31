@@ -126,12 +126,21 @@ export async function loadDailyTrainingIndicators(admin: AdminClient, organisati
     const current = formationId ? formations.get(formationId) : null;
     if (current) current.learners += 1;
   }
+
+  const completedByFormation = new Map<string, Set<string>>();
   for (const assessment of assessments ?? []) {
     if (!activeEnrolmentIds.has(assessment.enrolment_id) || assessment.outcome === "pending") continue;
     const formationId = sessionToFormation.get(assessment.session_id);
     const current = formationId ? formations.get(formationId) : null;
-    if (current && completedAssessmentIds.has(assessment.enrolment_id)) current.assessments_completed += 1;
+    if (!formationId || !current) continue;
+    const seen = completedByFormation.get(formationId) ?? new Set<string>();
+    if (!seen.has(assessment.enrolment_id)) {
+      seen.add(assessment.enrolment_id);
+      current.assessments_completed += 1;
+      completedByFormation.set(formationId, seen);
+    }
   }
+
   for (const response of feedbackByEnrolment.values()) {
     const formationId = sessionToFormation.get(response.session_id);
     const current = formationId ? formations.get(formationId) : null;
