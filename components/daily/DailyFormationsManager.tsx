@@ -216,7 +216,59 @@ function Field({ label, help, children, full = false }: { label: string; help?: 
 function ChoiceRow({ value, onChange, choices }: { value: string; onChange: (value: string) => void; choices: { value: string; title: string; detail: string }[] }) { return <div style={s.choiceGrid}>{choices.map((choice) => <label key={choice.value} style={{ ...s.choice, ...(value === choice.value ? s.choiceActive : {}) }}><input type="radio" checked={value === choice.value} onChange={() => onChange(choice.value)} /><span><b>{choice.title}</b><small>{choice.detail}</small></span></label>)}</div>; }
 function QuestionBuilder<T>({ questions, add, remove, render }: { questions: T[]; add: () => void; remove: (index: number) => void; render: (question: T, index: number) => React.ReactNode }) { return <div style={s.stack}>{questions.map((question, index) => <article key={index} style={s.questionCard}><div style={s.questionHead}><b>Question {index + 1}</b><button type="button" style={s.smallButton} onClick={() => remove(index)}>Retirer</button></div>{render(question, index)}</article>)}<button type="button" style={s.secondary} onClick={add}>+ Ajouter une question</button></div>; }
 function PositioningEditor({ question, index, update }: { question: PositioningQuestion; index: number; update: (index: number, patch: Partial<PositioningQuestion>) => void }) { const choices = question.type === "single_choice" || question.type === "multiple_choice"; return <div style={s.stack}><input value={question.label} onChange={(e) => update(index, { label: e.target.value })} placeholder="Question" style={s.input} /><select value={question.type} onChange={(e) => update(index, { type: e.target.value as PositioningQuestion["type"], options: ["single_choice", "multiple_choice"].includes(e.target.value) ? question.options : [] })} style={s.input}><option value="free_text">Réponse libre</option><option value="single_choice">Choix unique</option><option value="multiple_choice">Choix multiples</option><option value="scale_1_5">Échelle 1 à 5</option></select>{choices ? <Options options={question.options} onChange={(options) => update(index, { options })} /> : null}</div>; }
-function AssessmentEditor({ question, index, update }: { question: AssessmentQuestion; index: number; update: (index: number, patch: Partial<AssessmentQuestion>) => void }) { const choices = question.type !== "free_text"; return <div style={s.stack}><input value={question.label} onChange={(e) => update(index, { label: e.target.value })} placeholder="Question" style={s.input} /><select value={question.type} onChange={(e) => update(index, { type: e.target.value as AssessmentQuestion["type"], options: e.target.value === "free_text" ? [] : question.options.length ? question.options : ["", ""], correct_answers: e.target.value === "free_text" ? [] : question.correct_answers })} style={s.input}><option value="single_choice">Choix unique</option><option value="multiple_choice">Choix multiples</option><option value="free_text">Réponse libre</option></select>{choices ? <Options options={question.options} onChange={(options) => update(index, { options })} /> : null}</div>; }
+function AssessmentEditor({ question, index, update }: { question: AssessmentQuestion; index: number; update: (index: number, patch: Partial<AssessmentQuestion>) => void }) {
+  const choices = question.type !== "free_text";
+  return <div style={s.stack}>
+    <input value={question.label} onChange={(e) => update(index, { label: e.target.value })} placeholder="Question" style={s.input} />
+    <select value={question.type} onChange={(e) => {
+      const type = e.target.value as AssessmentQuestion["type"];
+      update(index, {
+        type,
+        options: type === "free_text" ? [] : question.options.length ? question.options : ["", ""],
+        correct_answers: type === "free_text" ? [] : type === "single_choice" ? question.correct_answers.slice(0, 1) : question.correct_answers,
+      });
+    }} style={s.input}>
+      <option value="single_choice">Choix unique</option><option value="multiple_choice">Choix multiples</option><option value="free_text">Réponse libre</option>
+    </select>
+    {choices ? <div style={s.stack}>
+      <small style={s.help}>Cochez la bonne réponse, ou les bonnes réponses pour un choix multiple.</small>
+      {question.options.map((option, optionIndex) => <div key={optionIndex} style={s.row}>
+        <input
+          type={question.type === "single_choice" ? "radio" : "checkbox"}
+          name={`assessment-correct-${question.id}`}
+          aria-label={`Bonne réponse ${optionIndex + 1}`}
+          checked={Boolean(option.trim()) && question.correct_answers.includes(option)}
+          disabled={!option.trim()}
+          onChange={(e) => update(index, {
+            correct_answers: question.type === "single_choice"
+              ? (e.target.checked ? [option] : [])
+              : e.target.checked
+                ? [...new Set([...question.correct_answers, option])]
+                : question.correct_answers.filter((answer) => answer !== option),
+          })}
+        />
+        <input
+          value={option}
+          onChange={(e) => {
+            const previous = option;
+            const value = e.target.value;
+            update(index, {
+              options: question.options.map((item, i) => i === optionIndex ? value : item),
+              correct_answers: question.correct_answers.map((answer) => answer === previous ? value : answer).filter(Boolean),
+            });
+          }}
+          style={{ ...s.input, flex: 1 }}
+          placeholder={`Option ${optionIndex + 1}`}
+        />
+        {question.options.length > 1 ? <button type="button" style={s.smallButton} onClick={() => update(index, {
+          options: question.options.filter((_, i) => i !== optionIndex),
+          correct_answers: question.correct_answers.filter((answer) => answer !== option),
+        })}>−</button> : null}
+      </div>)}
+      <button type="button" style={s.smallButton} onClick={() => update(index, { options: [...question.options, ""] })}>+ Option</button>
+    </div> : null}
+  </div>;
+}
 function Options({ options, onChange }: { options: string[]; onChange: (options: string[]) => void }) { return <div style={s.stack}>{options.map((option, index) => <div key={index} style={s.row}><input value={option} onChange={(e) => onChange(options.map((item, i) => i === index ? e.target.value : item))} style={{ ...s.input, flex: 1 }} placeholder={`Option ${index + 1}`} />{options.length > 1 ? <button type="button" style={s.smallButton} onClick={() => onChange(options.filter((_, i) => i !== index))}>−</button> : null}</div>)}<button type="button" style={s.smallButton} onClick={() => onChange([...options, ""])}>+ Option</button></div>; }
 
 const s: Record<string, React.CSSProperties> = {
