@@ -1,40 +1,39 @@
 -- Keep the organisation's canonical address aligned with the Daily administrative profile.
--- Onboarding already writes the same address to both columns; subsequent safe-profile
--- edits must preserve that invariant for Studio and other consumers of organisations.address.
+-- Preserve the deployed RPC contract (void return type, defaults and permission checks)
+-- while extending only the address write already mirrored by onboarding.
 
 create or replace function public.daily_client_update_safe_organisation(
   p_organisation_id uuid,
-  p_administrative_address text,
-  p_administrative_email text,
-  p_administrative_phone text
+  p_administrative_email text default null,
+  p_administrative_phone text default null,
+  p_administrative_address text default null
 )
-returns setof public.organisations
+returns void
 language plpgsql
 security definer
-set search_path = ''
+set search_path to 'public'
 as $function$
-declare
-  v_user_id uuid;
 begin
-  v_user_id := auth.uid();
-  if v_user_id is null then
-    raise exception 'Authentication required';
+  if (select auth.uid()) is null then
+    raise exception 'authenticated user required';
   end if;
 
-  if not public.daily_is_active_member(
-    p_organisation_id,
-    array['owner', 'admin', 'manager']
+  if not (
+    public.has_organisation_role(p_organisation_id, 'manager')
+    or public.has_organisation_permission_block(p_organisation_id, 'legal_profile')
   ) then
-    raise exception 'Insufficient rights';
+    raise exception 'legal profile permission required';
   end if;
 
-  return query
   update public.organisations
-  set address = p_administrative_address,
-      administrative_address = p_administrative_address,
-      administrative_email = p_administrative_email,
-      administrative_phone = p_administrative_phone
-  where id = p_organisation_id
-  returning *;
+  set address = nullif(btrim(coalesce(p_administrative_address, '')), ''),
+      administrative_email = nullif(btrim(coalesce(p_administrative_email, '')), ''),
+      administrative_phone = nullif(btrim(coalesce(p_administrative_phone, '')), ''),
+      administrative_address = nullif(btrim(coalesce(p_administrative_address, '')), '')
+  where id = p_organisation_id;
+
+  if not found then
+    raise exception 'organisation not found';
+  end if;
 end;
 $function$;
