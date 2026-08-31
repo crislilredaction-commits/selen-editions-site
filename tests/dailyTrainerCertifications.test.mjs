@@ -4,6 +4,7 @@ import test from "node:test";
 
 const api = await readFile(new URL("../app/api/client/daily/trainer-certifications/route.ts", import.meta.url), "utf8");
 const proofApi = await readFile(new URL("../app/api/client/daily/trainer-certifications/proof/route.ts", import.meta.url), "utf8");
+const workspaceApi = await readFile(new URL("../app/api/client/daily/workspace/route.ts", import.meta.url), "utf8");
 const page = await readFile(new URL("../app/client/daily/formateur/certifications/page.tsx", import.meta.url), "utf8");
 const migration = await readFile(new URL("../supabase/migrations/20260830041034_allow_trainers_to_add_certification_proofs.sql", import.meta.url), "utf8");
 
@@ -30,6 +31,13 @@ test("l’espace formateur permet modifier et joindre une preuve sans proposer d
   assert.match(page, /Ajouter un justificatif/);
   assert.match(page, /Remplacer le justificatif/);
   assert.doesNotMatch(page, />Supprimer</);
+});
+
+test("l’ancienne API organisme refuse toute écriture sur les certifications", () => {
+  assert.match(workspaceApi, /action === "save_certification" \|\| action === "delete_certification"/);
+  assert.match(workspaceApi, /consultation seule pour l’organisme et les agents/);
+  assert.match(workspaceApi, /\{ status: 403 \}/);
+  assert.doesNotMatch(workspaceApi, /from\("daily_trainer_certifications"\)/);
 });
 
 test("la défense RLS des preuves reste strictement liée au formateur connecté", () => {

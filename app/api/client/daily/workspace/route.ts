@@ -103,29 +103,14 @@ export async function PATCH(req: Request) {
       : supabase.from("daily_trainer_profiles").insert(payload);
     const { error } = await query;
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-  } else if (action === "save_certification") {
-    const certificationId = clean(body.id);
-    const trainerProfileId = clean(body.trainer_profile_id);
-    const validityMode = clean(body.validity_mode) || "unknown";
-    if (!["lifetime", "limited", "unknown"].includes(validityMode)) return NextResponse.json({ error: "Type de validité invalide." }, { status: 400 });
-    const validUntil = clean(body.valid_until);
-    if (validityMode === "limited" && !validUntil) return NextResponse.json({ error: "La date de fin de validité est obligatoire." }, { status: 400 });
-    const payload = {
-      trainer_profile_id: trainerProfileId,
-      title: clean(body.title), issuer: clean(body.issuer) || null, reference: clean(body.reference) || null,
-      obtained_on: clean(body.obtained_on) || null, validity_mode: validityMode,
-      valid_until: validityMode === "limited" ? validUntil : null, note: clean(body.note) || null,
-      updated_by: user.id, ...(certificationId ? {} : { created_by: user.id }),
-    };
-    if (!payload.title || !trainerProfileId) return NextResponse.json({ error: "Certification incomplète." }, { status: 400 });
-    const query = certificationId
-      ? supabase.from("daily_trainer_certifications").update(payload).eq("id", certificationId).eq("trainer_profile_id", trainerProfileId)
-      : supabase.from("daily_trainer_certifications").insert(payload);
-    const { error } = await query;
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-  } else if (action === "delete_certification") {
-    const { error } = await supabase.from("daily_trainer_certifications").delete().eq("id", clean(body.id));
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  } else if (action === "save_certification" || action === "delete_certification") {
+    return NextResponse.json(
+      {
+        error:
+          "Les certifications sont gérées par le formateur depuis son espace. Elles sont disponibles en consultation seule pour l’organisme et les agents.",
+      },
+      { status: 403 },
+    );
   } else {
     return NextResponse.json({ error: "Action inconnue." }, { status: 400 });
   }
