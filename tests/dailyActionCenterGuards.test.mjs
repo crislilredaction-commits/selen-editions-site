@@ -38,3 +38,13 @@ test("une revue des actions correctives ou améliorations est rappelée une fois
   assert.match(route, /Faites votre revue trimestrielle des actions qualité/);
   assert.match(route, /href:\"\/client\/daily\/qualite\/pilotage\"/);
 });
+
+test("les bilans annuels formateur soumis et non complétés remontent au dirigeant", () => {
+  assert.match(route, /!context\.assisted&&context\.capabilities\?\.trainers_all/);
+  assert.match(route, /from\(\"daily_trainer_profiles\"\).*eq\(\"organisation_id\",context\.organisationId\)/s);
+  assert.match(route, /from\(\"daily_trainer_annual_reviews\"\)/);
+  assert.match(route, /\.eq\(\"review_year\",year\)\.eq\(\"status\",\"submitted\"\)\.is\(\"manager_completed_at\",null\)/);
+  assert.match(route, /trainer:annual-review:\$\{review\.id\}/);
+  assert.match(route, /Complétez le bilan annuel de/);
+  assert.match(route, /href:\"\/client\/daily\/formateurs\/suivi-annuel\"/);
+});
