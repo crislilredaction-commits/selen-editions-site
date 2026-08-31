@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const safeProfileMigration = await readFile(
-  new URL("../supabase/migrations/20260831223000_sync_daily_safe_profile_address.sql", import.meta.url),
+  new URL("../supabase/migrations/20260831202752_sync_daily_safe_profile_address.sql", import.meta.url),
   "utf8",
 );
 const onboardingSyncMigration = await readFile(
