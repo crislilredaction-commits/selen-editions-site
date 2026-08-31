@@ -21,9 +21,12 @@ export async function GET(_request: Request, { params }: Params) {
   if (documentError) return NextResponse.json({ error: documentError.message }, { status: 500 });
 
   let allowedEnrolmentIds: string[] = [];
+  let allowedLearnerIds: string[] = [];
   if (access.portal_type === "learner") {
-    const { data: rows } = await admin.from("daily_session_enrolments").select("id,daily_learners(email)").eq("session_id", session.id).eq("organisation_id", session.organisation_id);
-    allowedEnrolmentIds = (rows ?? []).filter((row: Json) => { const learner = Array.isArray(row.daily_learners) ? row.daily_learners[0] : row.daily_learners; return email((learner as Json | undefined)?.email) === email(access.entity_email); }).map((row: Json) => text(row.id)).filter(Boolean);
+    const { data: rows } = await admin.from("daily_session_enrolments").select("id,learner_id,daily_learners(email)").eq("session_id", session.id).eq("organisation_id", session.organisation_id).not("status", "in", "(declined,cancelled)");
+    const matchingRows = (rows ?? []).filter((row: Json) => { const learner = Array.isArray(row.daily_learners) ? row.daily_learners[0] : row.daily_learners; return email((learner as Json | undefined)?.email) === email(access.entity_email); });
+    allowedEnrolmentIds = matchingRows.map((row: Json) => text(row.id)).filter(Boolean);
+    allowedLearnerIds = matchingRows.map((row: Json) => text(row.learner_id)).filter(Boolean);
   } else if (access.portal_type === "enterprise") {
     const company = array(session.companies).find((item) => email(item.email) === email(access.entity_email) || text(item.name).toLowerCase() === text(access.entity_name).toLowerCase());
     const participantEmails = new Set(array(company?.participants).map((item) => email(item.email)).filter(Boolean));
@@ -38,8 +41,9 @@ export async function GET(_request: Request, { params }: Params) {
     if (document.document_type === "completion_certificate") return access.portal_type !== "trainer" && document.linked_object_type === "enrolment" && allowedEnrolmentIds.includes(text(document.linked_object_id));
     const metadata = document.metadata && typeof document.metadata === "object" && !Array.isArray(document.metadata) ? document.metadata as Json : {};
     const scope = text(metadata.distribution_scope);
-    if (scope === "organisation") return access.portal_type === "trainer";
+    if (scope === "organisation") return access.portal_type === "learner" || access.portal_type === "trainer";
     if (scope === "session") return text(metadata.session_id) === session.id;
+    if (scope === "learners") return access.portal_type === "learner" && text(metadata.session_id) === session.id && Array.isArray(metadata.learner_ids) && metadata.learner_ids.map(String).some((learnerId) => allowedLearnerIds.includes(learnerId));
     return false;
   });
   return NextResponse.json({ documents: visible });
