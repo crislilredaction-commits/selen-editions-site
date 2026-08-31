@@ -14,8 +14,8 @@ function relationOne(value: SessionRow["daily_formations"]) {
   return value ?? null;
 }
 
-function isSessionIncluded(status?: string | null) {
-  return status !== "archived" && status !== "cancelled";
+function isSessionIncluded(status: string | null | undefined, endDate: string | null | undefined, today: string) {
+  return status !== "archived" && status !== "cancelled" && Boolean(endDate) && String(endDate) <= today;
 }
 
 function isActiveEnrolment(status?: string | null) {
@@ -35,7 +35,8 @@ export async function loadDailyTrainingIndicators(admin: AdminClient, organisati
     .order("start_date", { ascending: false });
   if (sessionError) throw new Error(sessionError.message);
 
-  const includedSessions = (sessions ?? []).filter((row: SessionRow) => isSessionIncluded(row.status));
+  const today = new Date().toISOString().slice(0, 10);
+  const includedSessions = (sessions ?? []).filter((row: SessionRow) => isSessionIncluded(row.status, row.end_date, today));
   const sessionIds = includedSessions.map((row: SessionRow) => row.id);
   if (sessionIds.length === 0) {
     return {
