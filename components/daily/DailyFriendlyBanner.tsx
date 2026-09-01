@@ -38,10 +38,20 @@ export default function DailyFriendlyBanner() {
   }, [pathname]);
 
   return (
-    <div style={{ maxWidth: 1180, margin: "0 auto", padding: "1rem 1rem 0" }} aria-live="polite">
-      <div style={{ border: "1px solid var(--sepia-mid)", background: "rgba(255,250,239,.86)", color: "#6d523d", padding: ".8rem 1rem", borderRadius: 5, boxShadow: "0 4px 14px rgba(59,45,33,.04)", fontSize: 13, lineHeight: 1.55 }}>
-        {MESSAGES[index]}
-      </div>
+    <div
+      style={{
+        maxWidth: 980,
+        margin: "0 auto",
+        padding: "1.15rem 1.25rem .35rem",
+        color: "#6d523d",
+        fontSize: 16,
+        lineHeight: 1.6,
+        textAlign: "center",
+        fontWeight: 600,
+      }}
+      aria-live="polite"
+    >
+      {MESSAGES[index]}
     </div>
   );
 }
