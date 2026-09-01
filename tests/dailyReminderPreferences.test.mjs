@@ -33,6 +33,6 @@ test("Mon compte expose les deux modes de rappel prévus par la recette", async 
 test("le schéma conserve un mode explicite et le digest à 7 h par défaut", async () => {
   const migration = await read("supabase/migrations/20260828020417_daily_quality_watch_and_reminder_preferences.sql");
   assert.match(migration, /daily_task_reminder_mode text not null default 'daily_digest'/);
-  assert.match(migration, /check \(daily_task_reminder_mode in \('immediate', 'daily_digest'\)\)/);
+  assert.match(migration, /check \(daily_task_reminder_mode in \('immediate',\s*'daily_digest'\)\)/);
   assert.match(migration, /daily_task_digest_hour smallint not null default 7/);
 });
