@@ -12,10 +12,20 @@ const reclamationsPage = await readFile(
   "utf8",
 );
 
-test("Daily expose un accès Réclamations hors des flux autonomes", () => {
-  assert.match(dailyLayout, /href="\/client\/daily\/reclamations"/);
-  assert.match(dailyLayout, />\s*Réclamations\s*</);
-  assert.match(dailyLayout, /showQuickActions = !isStandaloneFlow/);
+test("Daily expose Réclamations en bas hors des flux autonomes", () => {
+  assert.match(dailyLayout, /showClaimLink = !isStandaloneFlow/);
+  assert.match(dailyLayout, /\{children\}[\s\S]*href="\/client\/daily\/reclamations"/);
+  assert.match(dailyLayout, /aria-label="Réclamations Selen Daily"/);
+  assert.match(dailyLayout, /const claimFooterStyle/);
+});
+
+test("Daily ne place plus Réclamations dans la barre de navigation haute", () => {
+  const quickBarStart = dailyLayout.indexOf('aria-label="Navigation Selen Daily"');
+  const childrenStart = dailyLayout.indexOf("{children}");
+  assert.notEqual(quickBarStart, -1);
+  assert.notEqual(childrenStart, -1);
+  const quickBarSource = dailyLayout.slice(quickBarStart, childrenStart);
+  assert.doesNotMatch(quickBarSource, /\/client\/daily\/reclamations/);
 });
 
 test("l'accès Réclamations pointe vers le formulaire déjà existant", () => {
