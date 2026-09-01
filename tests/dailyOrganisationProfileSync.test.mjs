@@ -14,6 +14,10 @@ const workspaceRoute = await readFile(
   new URL("../app/api/client/daily/workspace/route.ts", import.meta.url),
   "utf8",
 );
+const clientWorkspace = await readFile(
+  new URL("../lib/server/dailyClientWorkspace.ts", import.meta.url),
+  "utf8",
+);
 
 const normalizedAddress = "nullif\\(btrim\\(coalesce\\(p_administrative_address,\\s*''\\)\\),\\s*''\\)";
 
@@ -37,4 +41,24 @@ test("l'API Daily passe toujours par le RPC sûr pour ces coordonnées", () => {
   assert.match(workspaceRoute, /p_administrative_address:\s*clean\(source\.administrative_address\)\s*\|\|\s*null/);
   assert.match(workspaceRoute, /p_administrative_email:\s*clean\(source\.administrative_email\)\s*\|\|\s*null/);
   assert.match(workspaceRoute, /p_administrative_phone:\s*clean\(source\.administrative_phone\)\s*\|\|\s*null/);
+});
+
+test("le premier onboarding rattache le client à l'organisme Daily déjà créé au paiement", () => {
+  assert.match(clientWorkspace, /async function linkPurchasedDailyOrganisation/);
+  assert.match(clientWorkspace, /\.ilike\("email", cleanEmail\)/);
+  assert.match(clientWorkspace, /\.eq\("type", "daily"\)/);
+  assert.match(clientWorkspace, /organisation_memberships/);
+  assert.match(clientWorkspace, /primary_role: "manager"/);
+  assert.match(clientWorkspace, /organisation_membership_roles/);
+  assert.match(clientWorkspace, /role: "manager"/);
+  assert.match(clientWorkspace, /if \(!linkedPurchasedOrganisation\) \{[\s\S]*daily_client_bootstrap_organisation/);
+});
+
+test("le rattachement réutilisé synchronise aussi les données légales saisies pendant l'onboarding", () => {
+  assert.match(clientWorkspace, /legal_name: organisationName/);
+  assert.match(clientWorkspace, /siret: siret \|\| null/);
+  assert.match(clientWorkspace, /administrative_address: address \|\| null/);
+  assert.match(clientWorkspace, /contact_name: managerName \|\| null/);
+  assert.match(clientWorkspace, /Plusieurs organismes Daily correspondent à ce compte/);
+  assert.match(clientWorkspace, /n'est pas actif\. Selen doit le vérifier/);
 });
