@@ -12,6 +12,7 @@ export default function DailyClientLayout({ children }: { children: React.ReactN
     pathname === "/client/daily/invitation";
   const showDashboardBack = !isDashboard && !isStandaloneFlow;
   const showFriendlyBanner = !isStandaloneFlow;
+  const showQuickActions = !isStandaloneFlow;
   const contextualLinks = pathname === "/client/daily/qualite"
     ? [
         { href: "/client/daily/qualiopi", label: "Cycle Qualiopi" },
@@ -25,12 +26,21 @@ export default function DailyClientLayout({ children }: { children: React.ReactN
   return (
     <>
       {showFriendlyBanner ? <DailyFriendlyBanner /> : null}
-      {showDashboardBack ? (
-        <div style={backBarStyle}>
-          <Link href="/client/daily" style={backLinkStyle}>
-            ← Retour au tableau de bord
+      {showQuickActions ? (
+        <div style={quickBarStyle} aria-label="Accès rapides Selen Daily">
+          {showDashboardBack ? (
+            <Link href="/client/daily" style={backLinkStyle}>
+              ← Retour au tableau de bord
+            </Link>
+          ) : null}
+          <Link href="/client/daily/reclamations" style={claimLinkStyle}>
+            Réclamations
           </Link>
-          {contextualLinks.map((link) => <Link key={link.href} href={link.href} style={backLinkStyle}>{link.label}</Link>)}
+          {contextualLinks.map((link) => (
+            <Link key={link.href} href={link.href} style={backLinkStyle}>
+              {link.label}
+            </Link>
+          ))}
         </div>
       ) : null}
       {children}
@@ -38,7 +48,7 @@ export default function DailyClientLayout({ children }: { children: React.ReactN
   );
 }
 
-const backBarStyle: React.CSSProperties = {
+const quickBarStyle: React.CSSProperties = {
   maxWidth: 1180,
   margin: "0 auto",
   padding: "1rem 1rem 0",
@@ -57,4 +67,10 @@ const backLinkStyle: React.CSSProperties = {
   fontWeight: 800,
   borderRadius: 3,
   boxShadow: "0 4px 14px rgba(59,45,33,.05)",
+};
+
+const claimLinkStyle: React.CSSProperties = {
+  ...backLinkStyle,
+  border: "1px solid var(--rust)",
+  background: "rgba(138,75,36,.08)",
 };
