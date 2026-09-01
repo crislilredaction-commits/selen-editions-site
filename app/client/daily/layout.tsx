@@ -13,6 +13,7 @@ export default function DailyClientLayout({ children }: { children: React.ReactN
   const showDashboardBack = !isDashboard && !isStandaloneFlow;
   const showFriendlyBanner = !isStandaloneFlow;
   const showQuickActions = !isStandaloneFlow;
+  const showClaimLink = !isStandaloneFlow && pathname !== "/client/daily/reclamations";
   const contextualLinks = pathname === "/client/daily/qualite"
     ? [
         { href: "/client/daily/qualiopi", label: "Cycle Qualiopi" },
@@ -26,16 +27,13 @@ export default function DailyClientLayout({ children }: { children: React.ReactN
   return (
     <>
       {showFriendlyBanner ? <DailyFriendlyBanner /> : null}
-      {showQuickActions ? (
-        <div style={quickBarStyle} aria-label="Accès rapides Selen Daily">
+      {showQuickActions && (showDashboardBack || contextualLinks.length > 0) ? (
+        <div style={quickBarStyle} aria-label="Navigation Selen Daily">
           {showDashboardBack ? (
             <Link href="/client/daily" style={backLinkStyle}>
               ← Retour au tableau de bord
             </Link>
           ) : null}
-          <Link href="/client/daily/reclamations" style={claimLinkStyle}>
-            Réclamations
-          </Link>
           {contextualLinks.map((link) => (
             <Link key={link.href} href={link.href} style={backLinkStyle}>
               {link.label}
@@ -44,6 +42,13 @@ export default function DailyClientLayout({ children }: { children: React.ReactN
         </div>
       ) : null}
       {children}
+      {showClaimLink ? (
+        <div style={claimFooterStyle} aria-label="Réclamations Selen Daily">
+          <Link href="/client/daily/reclamations" style={claimLinkStyle}>
+            Réclamations
+          </Link>
+        </div>
+      ) : null}
     </>
   );
 }
@@ -67,6 +72,14 @@ const backLinkStyle: React.CSSProperties = {
   fontWeight: 800,
   borderRadius: 3,
   boxShadow: "0 4px 14px rgba(59,45,33,.05)",
+};
+
+const claimFooterStyle: React.CSSProperties = {
+  maxWidth: 1180,
+  margin: "1.5rem auto 0",
+  padding: "0 1rem 1.5rem",
+  display: "flex",
+  justifyContent: "flex-start",
 };
 
 const claimLinkStyle: React.CSSProperties = {
