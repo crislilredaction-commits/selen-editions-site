@@ -307,9 +307,9 @@ export default function DailyOnboardingPage() {
             <div style={s.stack}>
               <p className="gazette-label">Étape 1</p>
               <h2 style={s.title}>On commence doucement</h2>
-              <p style={s.muted}>Choisis comment tu préfères paramétrer ton espace. Tu pourras revenir plus tard, chaque champ est sauvegardé automatiquement.</p>
+              <p style={s.muted}>Choisissez comment vous préférez paramétrer votre espace. Vous pourrez revenir plus tard, chaque champ est sauvegardé automatiquement.</p>
               <div style={s.choiceGrid}>
-                <button type="button" style={form.setup_choice === "self" ? s.choiceOn : s.choice} onClick={() => update("setup_choice", "self")}>Je paramètre seul</button>
+                <button type="button" style={form.setup_choice === "self" ? s.choiceOn : s.choice} onClick={() => update("setup_choice", "self")}>Je paramètre moi-même</button>
                 <button type="button" style={form.setup_choice === "video" ? s.choiceOn : s.choice} onClick={() => update("setup_choice", "video")}>Je souhaite être accompagné</button>
               </div>
               {form.setup_choice === "video" ? (
@@ -345,7 +345,7 @@ export default function DailyOnboardingPage() {
                 <option value="no">Non</option>
                 <option value="planned">Prévu par la suite</option>
               </select>
-              {form.qualiopi_status === "planned" ? <p style={s.notice}>{"Aucun souci. Quand le moment viendra, Selen pourra t'aider à préparer le chemin vers Qualiopi."}</p> : null}
+              {form.qualiopi_status === "planned" ? <p style={s.notice}>{"Aucun souci. Quand le moment viendra, Selen pourra vous aider à préparer le chemin vers Qualiopi."}</p> : null}
               <div style={s.stackSmall}>
                 <FileUploadField label="Avis de situation INSEE (PDF)" kind="insee_notice" accept=".pdf" value={form.insee_document_url} onUploaded={(url) => { update("insee_document_url", url); update("insee_document_pending", false); }} />
                 <p style={s.muted}>Le SIRET et l&apos;adresse seront repris depuis cet avis puis vérifiés avant validation.</p>
@@ -376,7 +376,7 @@ export default function DailyOnboardingPage() {
             </div>
           ) : null}
 
-          {form.current_step === 3 ? <TextStep title="Le fil de l'eau" text="Plus tu utilises Selen au fil de l'eau, moins tu cours après les preuves au moment de l'audit." /> : null}
+          {form.current_step === 3 ? <TextStep title="Le fil de l'eau" text="Plus vous utilisez Selen au fil de l'eau, moins vous courez après les preuves au moment de l'audit." /> : null}
 
           {form.current_step === 4 ? (
             <div style={s.stack}>
@@ -422,8 +422,8 @@ export default function DailyOnboardingPage() {
           {form.current_step === 7 ? (
             <div style={s.stack}>
               <p className="gazette-label">Confirmation</p>
-              <h2 style={s.title}>Ton espace Daily est prêt à démarrer</h2>
-              <p style={s.muted}>Tu pourras modifier ces informations plus tard depuis les paramètres Daily. La prochaine étape utile : créer ta première formation.</p>
+              <h2 style={s.title}>Votre espace Daily est prêt à démarrer</h2>
+              <p style={s.muted}>Vous pourrez modifier ces informations plus tard depuis les paramètres Daily. La prochaine étape utile : créer votre première formation.</p>
               <button type="button" className="btn-ink" onClick={() => void finish()}><span>Terminer et créer ma première formation</span></button>
             </div>
           ) : null}
@@ -432,7 +432,7 @@ export default function DailyOnboardingPage() {
             <div style={s.assistanceBox}>
               <div>
                 <strong>Besoin d&apos;être accompagné finalement&nbsp;?</strong>
-                <p style={s.assistanceText}>Tu peux changer d&apos;avis à tout moment. Les informations déjà saisies sont conservées et aideront Selen à préparer le rendez-vous.</p>
+                <p style={s.assistanceText}>Vous pouvez changer d&apos;avis à tout moment. Les informations déjà saisies sont conservées et aideront Selen à préparer le rendez-vous.</p>
               </div>
               <button type="button" className="btn-ghost" onClick={() => void requestAssistance()}><span>Je souhaite être accompagné</span></button>
             </div>
@@ -441,7 +441,7 @@ export default function DailyOnboardingPage() {
           {form.current_step > 1 && form.setup_choice === "video" ? (
             <div style={s.appointmentBox}>
               <strong>Demande d&apos;accompagnement prise en compte</strong>
-              <p style={{ margin: 0 }}>Continue à transmettre les informations et documents disponibles. Le rendez-vous pourra être planifié au minimum 24 h après leur transmission.</p>
+              <p style={{ margin: 0 }}>Continuez à transmettre les informations et documents disponibles. Le rendez-vous pourra être planifié au minimum 24 h après leur transmission.</p>
               <a href="/support" style={s.inlineLink}>Contacter Selen si besoin</a>
             </div>
           ) : null}
