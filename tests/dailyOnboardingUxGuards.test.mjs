@@ -43,3 +43,12 @@ test("le BPF n'est réclamé qu'aux organismes qui ont un NDA et ne sont pas en 
   assert.match(accountPanel, /required:hasNda&&!firstNdaYear/);
   assert.match(accountPanel, /Non requis tant que l'organisme n'a pas de NDA/);
 });
+
+test("l'onboarding Daily vouvoie l'organisme", () => {
+  assert.match(onboardingPage, /Choisissez comment vous préférez paramétrer votre espace/);
+  assert.match(onboardingPage, /Votre espace Daily est prêt à démarrer/);
+  assert.doesNotMatch(onboardingPage, /\b(?:tu|ton|ta)\b/i);
+  assert.doesNotMatch(onboardingPage, /\bChoisis\b/);
+  assert.doesNotMatch(onboardingPage, /\bContinue à\b/);
+  assert.doesNotMatch(onboardingPage, /t'aider/);
+});
