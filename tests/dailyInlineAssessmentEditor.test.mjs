@@ -18,7 +18,9 @@ test("modifier une option conserve la saisie brute et recale la bonne réponse",
   assert.match(manager, /correct_answers: question\.correct_answers\.map\(\(answer\) => answer === previous \? value : answer\)/);
 });
 
-test("la validation serveur continue d’exiger une bonne réponse", () => {
+test("la validation serveur exige des réponses distinctes et une bonne réponse", () => {
+  assert.match(route, /\.\.\.new Set\(row\.options\.map/);
+  assert.match(route, /\.\.\.new Set\(row\.correct_answers\.map/);
   assert.match(route, /question\.correct_answers\.length === 0/);
-  assert.match(route, /Chaque question à choix doit comporter au moins deux réponses et une bonne réponse\./);
+  assert.match(route, /Chaque question à choix doit comporter au moins deux réponses distinctes et une bonne réponse\./);
 });
