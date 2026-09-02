@@ -15,6 +15,12 @@ function normalizedEmail(value: unknown) {
   return String(value ?? "").trim().toLowerCase();
 }
 
+async function belongsToOrganisation(admin: any, table: string, id: string, organisationId: string) {
+  const { data, error } = await admin.from(table).select("id").eq("id", id).eq("organisation_id", organisationId).maybeSingle();
+  if (error) throw new Error(error.message);
+  return Boolean(data);
+}
+
 export async function GET(req: Request) {
   const context = await getDailyOrganisationContext(req, "sessions", { allowAssistanceRead: true });
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
@@ -86,6 +92,15 @@ export async function POST(req: Request) {
     const sessionId = String(body.session_id ?? "");
     const learnerId = String(body.learner_id ?? "");
     if (!sessionId || !learnerId) return NextResponse.json({ error: "Session et apprenant sont obligatoires." }, { status: 400 });
+    try {
+      const [sessionOwned, learnerOwned] = await Promise.all([
+        belongsToOrganisation(context.admin, "daily_sessions", sessionId, context.organisationId),
+        belongsToOrganisation(context.admin, "daily_learners", learnerId, context.organisationId),
+      ]);
+      if (!sessionOwned || !learnerOwned) return NextResponse.json({ error: "Session ou apprenant introuvable dans votre organisme." }, { status: 404 });
+    } catch (cause) {
+      return NextResponse.json({ error: cause instanceof Error ? cause.message : "Vérification impossible." }, { status: 500 });
+    }
     const status = enrolmentStatuses.has(String(body.status)) ? String(body.status) : "pending";
     const fundingType = fundingTypes.has(String(body.funding_type)) ? String(body.funding_type) : "unknown";
     const { data, error } = await context.admin.from("daily_session_enrolments").insert({
@@ -107,6 +122,12 @@ export async function POST(req: Request) {
   if (action === "support") {
     const enrolmentId = String(body.enrolment_id ?? "");
     if (!enrolmentId) return NextResponse.json({ error: "Inscription manquante." }, { status: 400 });
+    try {
+      const enrolmentOwned = await belongsToOrganisation(context.admin, "daily_session_enrolments", enrolmentId, context.organisationId);
+      if (!enrolmentOwned) return NextResponse.json({ error: "Inscription introuvable dans votre organisme." }, { status: 404 });
+    } catch (cause) {
+      return NextResponse.json({ error: cause instanceof Error ? cause.message : "Vérification impossible." }, { status: 500 });
+    }
     const hasSpecificNeeds = Boolean(body.has_specific_needs);
     const payload = {
       enrolment_id: enrolmentId,
