@@ -10,8 +10,8 @@ function cleanQuestions(value: unknown) {
   return value.map((raw, index) => {
     const row = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
     const type = String(row.type ?? "single_choice").trim();
-    const options = Array.isArray(row.options) ? row.options.map((item) => String(item ?? "").trim()).filter(Boolean) : [];
-    const correctAnswers = Array.isArray(row.correct_answers) ? row.correct_answers.map((item) => String(item ?? "").trim()).filter(Boolean) : [];
+    const options = Array.isArray(row.options) ? [...new Set(row.options.map((item) => String(item ?? "").trim()).filter(Boolean))] : [];
+    const correctAnswers = Array.isArray(row.correct_answers) ? [...new Set(row.correct_answers.map((item) => String(item ?? "").trim()).filter(Boolean))] : [];
     return {
       id: String(row.id ?? `assessment_${index + 1}`).trim() || `assessment_${index + 1}`,
       label: String(row.label ?? "").trim(),
@@ -43,7 +43,7 @@ export async function PATCH(request: Request) {
   }
   if (mode === "selen_quiz") {
     const invalid = questions.some((question) => question.type !== "free_text" && (question.options.length < 2 || question.correct_answers.length === 0));
-    if (invalid) return NextResponse.json({ error: "Chaque question à choix doit comporter au moins deux réponses et une bonne réponse." }, { status: 400 });
+    if (invalid) return NextResponse.json({ error: "Chaque question à choix doit comporter au moins deux réponses distinctes et une bonne réponse." }, { status: 400 });
   }
 
   const { data, error } = await context.admin
