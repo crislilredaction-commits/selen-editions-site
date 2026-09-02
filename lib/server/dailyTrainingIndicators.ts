@@ -45,6 +45,8 @@ export async function loadDailyTrainingIndicators(admin: AdminClient, organisati
         learners: 0,
         assessments_completed: 0,
         assessment_completion_rate: 0,
+        successful_assessments: 0,
+        success_rate: 0,
         satisfaction_responses: 0,
         satisfaction_response_rate: 0,
         satisfaction_average: null as number | null,
@@ -77,6 +79,11 @@ export async function loadDailyTrainingIndicators(admin: AdminClient, organisati
       .filter((row: any) => activeEnrolmentIds.has(row.enrolment_id) && row.outcome !== "pending")
       .map((row: any) => row.enrolment_id),
   );
+  const successfulAssessmentIds = new Set(
+    (assessments ?? [])
+      .filter((row: any) => activeEnrolmentIds.has(row.enrolment_id) && row.outcome === "achieved")
+      .map((row: any) => row.enrolment_id),
+  );
   const feedbackByEnrolment = new Map<string, any>();
   for (const row of feedback ?? []) {
     if (activeEnrolmentIds.has(row.enrolment_id)) feedbackByEnrolment.set(row.enrolment_id, row);
@@ -93,6 +100,7 @@ export async function loadDailyTrainingIndicators(admin: AdminClient, organisati
     sessions: number;
     learners: number;
     assessments_completed: number;
+    successful_assessments: number;
     satisfaction_responses: number;
     rating_sum: number;
     rating_count: number;
@@ -112,6 +120,7 @@ export async function loadDailyTrainingIndicators(admin: AdminClient, organisati
       sessions: 0,
       learners: 0,
       assessments_completed: 0,
+      successful_assessments: 0,
       satisfaction_responses: 0,
       rating_sum: 0,
       rating_count: 0,
@@ -129,6 +138,7 @@ export async function loadDailyTrainingIndicators(admin: AdminClient, organisati
   }
 
   const completedByFormation = new Map<string, Set<string>>();
+  const successfulByFormation = new Map<string, Set<string>>();
   for (const assessment of assessments ?? []) {
     if (!activeEnrolmentIds.has(assessment.enrolment_id) || assessment.outcome === "pending") continue;
     const formationId = sessionToFormation.get(assessment.session_id);
@@ -139,6 +149,14 @@ export async function loadDailyTrainingIndicators(admin: AdminClient, organisati
       seen.add(assessment.enrolment_id);
       current.assessments_completed += 1;
       completedByFormation.set(formationId, seen);
+    }
+    if (assessment.outcome === "achieved") {
+      const successful = successfulByFormation.get(formationId) ?? new Set<string>();
+      if (!successful.has(assessment.enrolment_id)) {
+        successful.add(assessment.enrolment_id);
+        current.successful_assessments += 1;
+        successfulByFormation.set(formationId, successful);
+      }
     }
   }
 
@@ -167,6 +185,8 @@ export async function loadDailyTrainingIndicators(admin: AdminClient, organisati
       learners: activeEnrolments.length,
       assessments_completed: completedAssessmentIds.size,
       assessment_completion_rate: percent(completedAssessmentIds.size, activeEnrolments.length),
+      successful_assessments: successfulAssessmentIds.size,
+      success_rate: percent(successfulAssessmentIds.size, completedAssessmentIds.size),
       satisfaction_responses: feedbackByEnrolment.size,
       satisfaction_response_rate: percent(feedbackByEnrolment.size, activeEnrolments.length),
       satisfaction_average: ratings.length > 0 ? Math.round((ratings.reduce((sum: number, value: number) => sum + value, 0) / ratings.length) * 100) / 100 : null,
@@ -181,6 +201,8 @@ export async function loadDailyTrainingIndicators(admin: AdminClient, organisati
         learners: item.learners,
         assessments_completed: item.assessments_completed,
         assessment_completion_rate: percent(item.assessments_completed, item.learners),
+        successful_assessments: item.successful_assessments,
+        success_rate: percent(item.successful_assessments, item.assessments_completed),
         satisfaction_responses: item.satisfaction_responses,
         satisfaction_response_rate: percent(item.satisfaction_responses, item.learners),
         satisfaction_average: item.rating_count > 0 ? Math.round((item.rating_sum / item.rating_count) * 100) / 100 : null,
