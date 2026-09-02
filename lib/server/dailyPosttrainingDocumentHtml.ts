@@ -7,6 +7,13 @@ function page(title: string, organisationName: string, body: string) {
 }
 
 export type AttendanceLine = { learnerName: string; date: string; start: string; end: string; status: string; proofHash?: string | null };
+export type CompletionLearningOutcome = "achieved" | "partially_achieved" | "not_achieved" | "pending" | "not_applicable" | null | undefined;
+
+export function completionCertificateLearningResult(outcome: CompletionLearningOutcome) {
+  if (outcome === "achieved") return "Acquis";
+  if (outcome === "partially_achieved" || outcome === "not_achieved") return "Non acquis";
+  return null;
+}
 
 export function buildAttendanceSummaryHtml(args: { organisationName:string; formationTitle:string; sessionReference:string; startDate:string; endDate:string; lines:AttendanceLine[]; generatedAt:Date }) {
   const labels:Record<string,string>={present:"Présent",absent:"Absent",excused:"Absence justifiée",pending:"À confirmer"};
@@ -14,7 +21,9 @@ export function buildAttendanceSummaryHtml(args: { organisationName:string; form
   return page("Relevé des présences",args.organisationName,`<div class="box"><strong>Formation :</strong> ${esc(args.formationTitle)}<br><strong>Session :</strong> ${esc(args.sessionReference||"Sans référence")}<br><strong>Période :</strong> ${esc(args.startDate)} au ${esc(args.endDate)}</div><table><thead><tr><th>Apprenant</th><th>Date</th><th>Horaire</th><th>Statut</th><th>Empreinte de preuve</th></tr></thead><tbody>${rows}</tbody></table><p class="muted">Document généré le ${esc(args.generatedAt.toLocaleString("fr-FR"))}. Les empreintes SHA-256 permettent de rapprocher ce relevé des preuves d’émargement conservées dans Selen Daily.</p>`);
 }
 
-export function buildCompletionCertificateHtml(args:{ organisationName:string; organisationSiret:string; organisationNda:string; formationTitle:string; learnerName:string; startDate:string; endDate:string; plannedHours:number; attendedHours:number; generatedAt:Date }) {
+export function buildCompletionCertificateHtml(args:{ organisationName:string; organisationSiret:string; organisationNda:string; formationTitle:string; learnerName:string; startDate:string; endDate:string; plannedHours:number; attendedHours:number; learningOutcome?:CompletionLearningOutcome; generatedAt:Date }) {
   const participation = args.plannedHours > 0 ? Math.min(100, Math.round((args.attendedHours / args.plannedHours) * 100)) : null;
-  return page("Certificat de réalisation",args.organisationName,`<p>Je soussigné(e), représentant l’organisme de formation <strong>${esc(args.organisationName)}</strong>, certifie que :</p><div class="box"><strong>${esc(args.learnerName)}</strong><br>a participé à la formation <strong>${esc(args.formationTitle)}</strong><br>du ${esc(args.startDate)} au ${esc(args.endDate)}.</div><p><strong>Durée programmée :</strong> ${esc(args.plannedHours.toFixed(2))} h<br><strong>Présence constatée :</strong> ${esc(args.attendedHours.toFixed(2))} h${participation===null?"":` (${participation} %)`}</p><p>Le présent certificat atteste de la réalisation constatée à partir des émargements et preuves de présence enregistrés dans le dossier de session. Il ne vaut pas attestation de réussite ni validation automatique des acquis.</p><p class="muted">SIRET : ${esc(args.organisationSiret||"Non renseigné")} · NDA : ${esc(args.organisationNda||"Non renseigné")}<br>Établi le ${esc(args.generatedAt.toLocaleDateString("fr-FR"))}.</p>`);
+  const learningResult = completionCertificateLearningResult(args.learningOutcome);
+  const learningResultHtml = learningResult ? `<p><strong>Résultat de l’évaluation des acquis :</strong> ${esc(learningResult)}</p>` : "";
+  return page("Certificat de réalisation",args.organisationName,`<p>Je soussigné(e), représentant l’organisme de formation <strong>${esc(args.organisationName)}</strong>, certifie que :</p><div class="box"><strong>${esc(args.learnerName)}</strong><br>a participé à la formation <strong>${esc(args.formationTitle)}</strong><br>du ${esc(args.startDate)} au ${esc(args.endDate)}.</div><p><strong>Durée programmée :</strong> ${esc(args.plannedHours.toFixed(2))} h<br><strong>Présence constatée :</strong> ${esc(args.attendedHours.toFixed(2))} h${participation===null?"":` (${participation} %)`}</p>${learningResultHtml}<p>Le présent certificat atteste de la réalisation constatée à partir des émargements et preuves de présence enregistrés dans le dossier de session. Le résultat pédagogique, lorsqu’il est indiqué, reprend l’évaluation finale enregistrée dans Selen Daily ; le certificat ne constitue pas à lui seul une certification ou un diplôme.</p><p class="muted">SIRET : ${esc(args.organisationSiret||"Non renseigné")} · NDA : ${esc(args.organisationNda||"Non renseigné")}<br>Établi le ${esc(args.generatedAt.toLocaleDateString("fr-FR"))}.</p>`);
 }
