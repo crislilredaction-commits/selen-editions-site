@@ -19,7 +19,11 @@ function isSessionIncluded(status: string | null | undefined, endDate: string | 
 }
 
 function isActiveEnrolment(status?: string | null) {
-  return status !== "cancelled" && status !== "declined";
+  return status !== "cancelled" && status !== "declined" && status !== "abandoned";
+}
+
+function isAbandonedEnrolment(status?: string | null) {
+  return status === "abandoned";
 }
 
 function percent(value: number, total: number) {
@@ -43,6 +47,7 @@ export async function loadDailyTrainingIndicators(admin: AdminClient, organisati
       totals: {
         sessions: 0,
         learners: 0,
+        abandonments: 0,
         assessments_completed: 0,
         assessment_completion_rate: 0,
         successful_assessments: 0,
@@ -73,6 +78,7 @@ export async function loadDailyTrainingIndicators(admin: AdminClient, organisati
   if (readError) throw new Error(readError.message);
 
   const activeEnrolments = (enrolments ?? []).filter((row: any) => isActiveEnrolment(row.status));
+  const abandonedEnrolments = (enrolments ?? []).filter((row: any) => isAbandonedEnrolment(row.status));
   const activeEnrolmentIds = new Set(activeEnrolments.map((row: any) => row.id));
   const completedAssessmentIds = new Set(
     (assessments ?? [])
@@ -99,6 +105,7 @@ export async function loadDailyTrainingIndicators(admin: AdminClient, organisati
     title: string;
     sessions: number;
     learners: number;
+    abandonments: number;
     assessments_completed: number;
     successful_assessments: number;
     satisfaction_responses: number;
@@ -119,6 +126,7 @@ export async function loadDailyTrainingIndicators(admin: AdminClient, organisati
       title,
       sessions: 0,
       learners: 0,
+      abandonments: 0,
       assessments_completed: 0,
       successful_assessments: 0,
       satisfaction_responses: 0,
@@ -135,6 +143,12 @@ export async function loadDailyTrainingIndicators(admin: AdminClient, organisati
     const formationId = sessionToFormation.get(enrolment.session_id);
     const current = formationId ? formations.get(formationId) : null;
     if (current) current.learners += 1;
+  }
+
+  for (const enrolment of abandonedEnrolments) {
+    const formationId = sessionToFormation.get(enrolment.session_id);
+    const current = formationId ? formations.get(formationId) : null;
+    if (current) current.abandonments += 1;
   }
 
   const completedByFormation = new Map<string, Set<string>>();
@@ -183,6 +197,7 @@ export async function loadDailyTrainingIndicators(admin: AdminClient, organisati
     totals: {
       sessions: includedSessions.length,
       learners: activeEnrolments.length,
+      abandonments: abandonedEnrolments.length,
       assessments_completed: completedAssessmentIds.size,
       assessment_completion_rate: percent(completedAssessmentIds.size, activeEnrolments.length),
       successful_assessments: successfulAssessmentIds.size,
@@ -199,6 +214,7 @@ export async function loadDailyTrainingIndicators(admin: AdminClient, organisati
         title: item.title,
         sessions: item.sessions,
         learners: item.learners,
+        abandonments: item.abandonments,
         assessments_completed: item.assessments_completed,
         assessment_completion_rate: percent(item.assessments_completed, item.learners),
         successful_assessments: item.successful_assessments,
