@@ -17,3 +17,8 @@ test("résultats pédagogiques: le code historique reste compatible sans migrati
   assert.match(evaluationRoute, /"partially_achieved"/);
   assert.match(evaluationsPage, /value="partially_achieved"/);
 });
+
+test("résultats pédagogiques: le libellé métier remplace Partiellement acquis", () => {
+  assert.match(evaluationsPage, /value="partially_achieved">En cours d’acquisition<\/option>/);
+  assert.doesNotMatch(evaluationsPage, />Partiellement acquis<\/option>/);
+});
