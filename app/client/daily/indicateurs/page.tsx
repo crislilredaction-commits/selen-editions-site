@@ -7,28 +7,22 @@ import LoadingMascot from "@/components/ui/LoadingMascot";
 type FormationIndicator = {
   formation_id: string;
   title: string;
-  sessions: number;
   learners: number;
-  assessments_completed: number;
-  assessment_completion_rate: number;
+  abandonments: number;
+  successful_assessments: number;
+  success_rate: number;
   satisfaction_responses: number;
-  satisfaction_response_rate: number;
   satisfaction_average: number | null;
-  incidents: number;
-  adaptations: number;
 };
 
 type Indicators = {
   totals: {
-    sessions: number;
     learners: number;
-    assessments_completed: number;
-    assessment_completion_rate: number;
+    abandonments: number;
+    successful_assessments: number;
+    success_rate: number;
     satisfaction_responses: number;
-    satisfaction_response_rate: number;
     satisfaction_average: number | null;
-    incidents: number;
-    adaptations: number;
   };
   formations: FormationIndicator[];
 };
@@ -79,15 +73,14 @@ export default function DailyIndicatorsPage() {
       <header style={styles.header}>
         <p style={styles.kicker}>Selen Daily · pilotage</p>
         <h1 style={styles.h1}>Vos indicateurs de formation</h1>
-        <p style={styles.lead}>Ces indicateurs sont calculés à partir de vos sessions, inscriptions, évaluations, réponses de satisfaction et suivis déjà enregistrés dans Daily. Aucune donnée parallèle n’est créée.</p>
+        <p style={styles.lead}>Daily présente uniquement les quatre indicateurs métier retenus : satisfaction, nombre d’apprenants, réussite à l’évaluation finale et abandons. Une annulation n’est jamais comptée comme un abandon.</p>
       </header>
 
       <section style={styles.cards}>
-        <Metric label="Sessions suivies" value={String(totals.sessions)} detail={`${totals.learners} apprenant${totals.learners > 1 ? "s" : ""} actif${totals.learners > 1 ? "s" : ""}`} />
-        <Metric label="Évaluations finales" value={rate(totals.assessment_completion_rate)} detail={`${totals.assessments_completed} évaluation${totals.assessments_completed > 1 ? "s" : ""} réalisée${totals.assessments_completed > 1 ? "s" : ""}`} />
-        <Metric label="Réponses satisfaction" value={rate(totals.satisfaction_response_rate)} detail={`${totals.satisfaction_responses} réponse${totals.satisfaction_responses > 1 ? "s" : ""}`} />
-        <Metric label="Satisfaction moyenne" value={rating(totals.satisfaction_average)} detail="Moyenne des réponses apprenants" />
-        <Metric label="Incidents consignés" value={String(totals.incidents)} detail={`${totals.adaptations} adaptation${totals.adaptations > 1 ? "s" : ""} consignée${totals.adaptations > 1 ? "s" : ""}`} />
+        <Metric label="Satisfaction" value={rating(totals.satisfaction_average)} detail={`${totals.satisfaction_responses} réponse${totals.satisfaction_responses > 1 ? "s" : ""} exploitée${totals.satisfaction_responses > 1 ? "s" : ""}`} />
+        <Metric label="Apprenants" value={String(totals.learners)} detail="Apprenants actifs sur les sessions terminées" />
+        <Metric label="Réussite finale" value={rate(totals.success_rate)} detail={`${totals.successful_assessments} résultat${totals.successful_assessments > 1 ? "s" : ""} Acquis`} />
+        <Metric label="Abandons" value={String(totals.abandonments)} detail="Uniquement les inscriptions explicitement marquées Abandon" />
       </section>
 
       <section style={{ ...styles.card, marginTop: 20 }}>
@@ -107,24 +100,20 @@ export default function DailyIndicatorsPage() {
               <thead>
                 <tr>
                   <th style={styles.th}>Formation</th>
-                  <th style={styles.th}>Sessions</th>
                   <th style={styles.th}>Apprenants</th>
-                  <th style={styles.th}>Évaluations</th>
                   <th style={styles.th}>Satisfaction</th>
-                  <th style={styles.th}>Note</th>
-                  <th style={styles.th}>Incidents</th>
+                  <th style={styles.th}>Réussite</th>
+                  <th style={styles.th}>Abandons</th>
                 </tr>
               </thead>
               <tbody>
                 {indicators.formations.map((item) => (
                   <tr key={item.formation_id}>
-                    <td style={styles.td}><strong>{item.title}</strong><div style={styles.small}>{item.adaptations} adaptation{item.adaptations > 1 ? "s" : ""}</div></td>
-                    <td style={styles.td}>{item.sessions}</td>
+                    <td style={styles.td}><strong>{item.title}</strong></td>
                     <td style={styles.td}>{item.learners}</td>
-                    <td style={styles.td}>{rate(item.assessment_completion_rate)}</td>
-                    <td style={styles.td}>{rate(item.satisfaction_response_rate)}</td>
                     <td style={styles.td}>{rating(item.satisfaction_average)}</td>
-                    <td style={styles.td}>{item.incidents}</td>
+                    <td style={styles.td}>{rate(item.success_rate)}</td>
+                    <td style={styles.td}>{item.abandonments}</td>
                   </tr>
                 ))}
               </tbody>
@@ -147,15 +136,14 @@ const styles: Record<string, React.CSSProperties> = {
   h1: { margin: ".45rem 0", fontSize: "clamp(2rem,4vw,3rem)" },
   h2: { margin: ".35rem 0 0", fontSize: 24 },
   lead: { maxWidth: 820, lineHeight: 1.65, color: "#756149" },
-  cards: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 14 },
+  cards: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 14 },
   card: { background: "#f8f0dc", border: "1px solid #d9c391", boxShadow: "0 8px 20px rgba(57,42,25,.08)", padding: 20 },
   metric: { display: "block", fontSize: 30, marginTop: 8, color: "#7a2e22" },
   muted: { color: "#756149", lineHeight: 1.55 },
-  small: { marginTop: 4, color: "#806c52", fontSize: 12 },
   sectionTitle: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 16 },
   badge: { padding: ".4rem .65rem", border: "1px solid #d0b57d", background: "#fff8e8", fontWeight: 800, fontSize: 12 },
   tableWrap: { overflowX: "auto" },
-  table: { width: "100%", borderCollapse: "collapse", minWidth: 760 },
+  table: { width: "100%", borderCollapse: "collapse", minWidth: 700 },
   th: { textAlign: "left", padding: "10px 9px", borderBottom: "1px solid #cdb47f", color: "#76502b", fontSize: 12, textTransform: "uppercase", letterSpacing: ".05em" },
   td: { padding: "12px 9px", borderBottom: "1px solid rgba(205,180,127,.55)", verticalAlign: "top" },
   error: { padding: 16, border: "1px solid #9a412f", background: "rgba(154,65,47,.07)", color: "#7a2e22" },

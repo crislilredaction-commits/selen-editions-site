@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDailyOrganisationContext } from "@/lib/server/dailyOrganisationContext";
 
-const enrolmentStatuses = new Set(["invited", "pending", "confirmed", "declined", "cancelled", "completed"]);
+const enrolmentStatuses = new Set(["invited", "pending", "confirmed", "declined", "cancelled", "abandoned", "completed"]);
 const fundingTypes = new Set(["employer", "self_funded", "opco", "public_funder", "other", "unknown"]);
 const positioningStatuses = new Set(["not_started", "sent", "submitted", "reviewed"]);
 const prerequisiteStatuses = new Set(["not_reviewed", "met", "not_met", "to_clarify"]);

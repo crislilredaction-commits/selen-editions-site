@@ -3,6 +3,10 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const indicators = await readFile(new URL("../lib/server/dailyTrainingIndicators.ts", import.meta.url), "utf8");
+const indicatorsPage = await readFile(new URL("../app/client/daily/indicateurs/page.tsx", import.meta.url), "utf8");
+const learnersPage = await readFile(new URL("../app/client/daily/apprenants/page.tsx", import.meta.url), "utf8");
+const learnersRoute = await readFile(new URL("../app/api/client/daily/learners/route.ts", import.meta.url), "utf8");
+const abandonmentMigration = await readFile(new URL("../supabase/migrations/20260902161000_add_daily_enrolment_abandoned_status.sql", import.meta.url), "utf8");
 const evaluationsPage = await readFile(new URL("../app/client/daily/evaluations/page.tsx", import.meta.url), "utf8");
 const evaluationRoute = await readFile(new URL("../app/api/client/daily/end-evaluations/route.ts", import.meta.url), "utf8");
 const posttrainingRoute = await readFile(new URL("../app/api/client/daily/posttraining-documents/route.ts", import.meta.url), "utf8");
@@ -38,4 +42,25 @@ test("certificat de réalisation: Acquis et Non acquis suivent la sémantique m�
   assert.match(posttrainingHtml, /Résultat de l’évaluation des acquis/);
   assert.match(posttrainingHtml, /if \(outcome === "achieved"\)/);
   assert.match(posttrainingHtml, /return null/);
+});
+
+test("abandons: un état explicite existe de la base à l’interface", () => {
+  assert.match(abandonmentMigration, /'abandoned'::text/);
+  assert.match(learnersRoute, /"abandoned"/);
+  assert.match(learnersPage, /value="abandoned">Abandon<\/option>/);
+});
+
+test("abandons: une annulation ne compte jamais comme abandon", () => {
+  assert.match(indicators, /return status === "abandoned"/);
+  assert.doesNotMatch(indicators, /isAbandonedEnrolment[\s\S]{0,160}cancelled/);
+  assert.match(indicators, /abandonments: abandonedEnrolments\.length/);
+});
+
+test("indicateurs: l’interface reste limitée aux quatre indicateurs métier", () => {
+  assert.match(indicatorsPage, /label="Satisfaction"/);
+  assert.match(indicatorsPage, /label="Apprenants"/);
+  assert.match(indicatorsPage, /label="Réussite finale"/);
+  assert.match(indicatorsPage, /label="Abandons"/);
+  assert.doesNotMatch(indicatorsPage, /label="Incidents consignés"/);
+  assert.doesNotMatch(indicatorsPage, /label="Évaluations finales"/);
 });
