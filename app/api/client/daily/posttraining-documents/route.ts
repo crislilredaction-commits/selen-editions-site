@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getDailyOrganisationContext } from "@/lib/server/dailyOrganisationContext";
-import { buildAttendanceSummaryHtml, buildCompletionCertificateHtml } from "@/lib/server/dailyPosttrainingDocumentHtml";
+import { buildAttendanceSummaryHtml, buildCompletionCertificateHtml, completionCertificateLearningResult } from "@/lib/server/dailyPosttrainingDocumentHtml";
 
 const documentTypes = ["attendance_summary","completion_certificate"] as const;
 type DocumentType = typeof documentTypes[number];
@@ -25,14 +25,15 @@ async function generate(args:{admin:any;organisationId:string;userId:string;docu
 }
 
 async function load(admin:any,organisationId:string,sessionId:string){
-  const [{data:session,error:sessionError},{data:enrolments,error:enrolmentError},{data:slots,error:slotError},{data:records,error:recordError},{data:org,error:orgError}]=await Promise.all([
+  const [{data:session,error:sessionError},{data:enrolments,error:enrolmentError},{data:slots,error:slotError},{data:records,error:recordError},{data:assessments,error:assessmentError},{data:org,error:orgError}]=await Promise.all([
     admin.from("daily_sessions").select("id,organisation_id,internal_reference,start_date,end_date,status,daily_formations(id,title)").eq("id",sessionId).eq("organisation_id",organisationId).maybeSingle(),
     admin.from("daily_session_enrolments").select("id,status,learner_id,daily_learners(id,first_name,last_name,email)").eq("session_id",sessionId).eq("organisation_id",organisationId).not("status","in",'(declined,cancelled)'),
     admin.from("daily_attendance_slots").select("id,slot_date,starts_at,ends_at,status").eq("session_id",sessionId).eq("organisation_id",organisationId).neq("status","cancelled").order("slot_date").order("starts_at"),
     admin.from("daily_attendance_records").select("id,slot_id,enrolment_id,status,proof_sha256,signed_at").eq("session_id",sessionId).eq("organisation_id",organisationId),
+    admin.from("daily_learning_assessments").select("enrolment_id,outcome,assessed_at").eq("session_id",sessionId).eq("organisation_id",organisationId),
     admin.from("organisations").select("id,name,legal_name,siret,nda_number").eq("id",organisationId).maybeSingle(),
   ]);
-  const error=sessionError??enrolmentError??slotError??recordError??orgError;if(error)throw new Error(error.message);if(!session)throw new Error("Session introuvable.");return{session,enrolments:enrolments??[],slots:slots??[],records:records??[],org};
+  const error=sessionError??enrolmentError??slotError??recordError??assessmentError??orgError;if(error)throw new Error(error.message);if(!session)throw new Error("Session introuvable.");return{session,enrolments:enrolments??[],slots:slots??[],records:records??[],assessments:assessments??[],org};
 }
 
 async function syncChecklist(admin:any,organisationId:string,sessionId:string,expected:number){
@@ -49,7 +50,7 @@ export async function GET(req:Request){
 export async function POST(req:Request){
   const context=await getDailyOrganisationContext(req,"sessions");if(!context.ok)return NextResponse.json({error:context.error},{status:context.status});if(context.assisted)return NextResponse.json({error:"L’assistance agent est en lecture seule."},{status:403});const body=await req.json().catch(()=>({}));const sessionId=text(body.session_id);if(!sessionId)return NextResponse.json({error:"Session manquante."},{status:400});
   try{
-    const {session,enrolments,slots,records,org}=await load(context.admin,context.organisationId,sessionId);
+    const {session,enrolments,slots,records,assessments,org}=await load(context.admin,context.organisationId,sessionId);
     if(slots.length===0)return NextResponse.json({error:"Aucun créneau de présence n’est disponible pour établir les documents de fin."},{status:400});
     if(enrolments.length===0)return NextResponse.json({error:"Aucun apprenant actif n’est inscrit à cette session."},{status:400});
 
@@ -57,6 +58,7 @@ export async function POST(req:Request){
     const title=text(formation?.title)||"Formation";
     const orgName=text(org?.legal_name||org?.name)||"Organisme de formation";
     const recordMap=new Map(records.map((r:any)=>[`${r.slot_id}:${r.enrolment_id}`,r]));
+    const assessmentMap=new Map(assessments.map((assessment:any)=>[assessment.enrolment_id,assessment]));
     const expectedAttendance=enrolments.length*slots.length;
     let settledAttendance=0;
     for(const enrolment of enrolments){
@@ -86,8 +88,11 @@ export async function POST(req:Request){
       const learnerRecords:AttendanceEntry[]=slots.map((slot:any)=>({slot,record:recordMap.get(`${slot.id}:${enrolment.id}`)}));
       const attendedHours=learnerRecords.reduce((sum:number,entry:AttendanceEntry)=>entry.record?.status==="present"?sum+durationHours(entry.slot.starts_at,entry.slot.ends_at):sum,0);
       if(attendedHours<=0)continue;
+      const assessment:any=assessmentMap.get(enrolment.id);
+      const learningOutcome=text(assessment?.outcome)||null;
+      const learningResult=completionCertificateLearningResult(learningOutcome as any);
       eligible++;
-      created.push(await generate({admin:context.admin,organisationId:context.organisationId,userId:context.user.id,documentType:"completion_certificate",linkedObjectType:"enrolment",linkedObjectId:enrolment.id,logicalName:"certificat-realisation",filenameBase:`certificat-realisation-${learnerName(enrolment)}`,metadata:{session_id:sessionId,enrolment_id:enrolment.id,learner_id:enrolment.learner_id,learner_name:learnerName(enrolment),planned_hours:plannedHours,attended_hours:attendedHours},html:buildCompletionCertificateHtml({organisationName:orgName,organisationSiret:text(org?.siret),organisationNda:text(org?.nda_number),formationTitle:title,learnerName:learnerName(enrolment),startDate:text(session.start_date),endDate:text(session.end_date),plannedHours,attendedHours,generatedAt:new Date()})}));
+      created.push(await generate({admin:context.admin,organisationId:context.organisationId,userId:context.user.id,documentType:"completion_certificate",linkedObjectType:"enrolment",linkedObjectId:enrolment.id,logicalName:"certificat-realisation",filenameBase:`certificat-realisation-${learnerName(enrolment)}`,metadata:{session_id:sessionId,enrolment_id:enrolment.id,learner_id:enrolment.learner_id,learner_name:learnerName(enrolment),planned_hours:plannedHours,attended_hours:attendedHours,learning_outcome:learningOutcome,learning_result:learningResult,learning_assessed_at:assessment?.assessed_at??null},html:buildCompletionCertificateHtml({organisationName:orgName,organisationSiret:text(org?.siret),organisationNda:text(org?.nda_number),formationTitle:title,learnerName:learnerName(enrolment),startDate:text(session.start_date),endDate:text(session.end_date),plannedHours,attendedHours,learningOutcome:learningOutcome as any,generatedAt:new Date()})}));
     }
     await syncChecklist(context.admin,context.organisationId,sessionId,1+eligible);
     return NextResponse.json({documents:created,count:created.length,eligibleCertificates:eligible});
