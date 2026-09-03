@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "npm run test:nda-guards && npm run test:daily-ux-guards && npm run test:daily-tone-guards && npm run test:daily-collapsed-guards && npm run test:daily-action-center-guards && npm run test:daily-qualiopi-guards && npm run test:daily-procedures-guards && npm run test:daily-satisfaction-guards && npm run test:daily-session-followup-guards && npm run test:daily-training-indicators && npm run test:daily-learning-results-semantics && npm run test:daily-trainer-certifications && npm run test:daily-trainer-certification-consultation && npm run test:daily-inline-assessment && npm run test:daily-learner-shared-documents && npm run test:daily-abandoned-document-sends && npm run test:daily-organisation-profile-sync && npm run test:daily-reminder-preferences && next build",
+    "build": "npm run test:nda-guards && npm run test:daily-ux-guards && npm run test:daily-tone-guards && npm run test:daily-collapsed-guards && npm run test:daily-action-center-guards && npm run test:daily-qualiopi-guards && npm run test:daily-procedures-guards && npm run test:daily-satisfaction-guards && npm run test:daily-session-followup-guards && npm run test:daily-training-indicators && npm run test:daily-learning-results-semantics && npm run test:daily-trainer-certifications && npm run test:daily-trainer-certification-consultation && npm run test:daily-trainer-annual-review && npm run test:daily-inline-assessment && npm run test:daily-learner-shared-documents && npm run test:daily-abandoned-document-sends && npm run test:daily-organisation-profile-sync && npm run test:daily-reminder-preferences && next build",
     "start": "next start",
     "lint": "eslint",
     "test:nda-guards": "node --test tests/ndaRouteGuards.test.mjs",
@@ -20,6 +20,7 @@
     "test:daily-learning-results-semantics": "node --test tests/dailyLearningResultsSemantics.test.mjs",
     "test:daily-trainer-certifications": "node --test tests/dailyTrainerCertifications.test.mjs",
     "test:daily-trainer-certification-consultation": "node --test tests/dailyTrainerCertificationConsultation.test.mjs",
+    "test:daily-trainer-annual-review": "node --test tests/dailyTrainerAnnualReview.test.mjs",
     "test:daily-inline-assessment": "node --test tests/dailyInlineAssessmentEditor.test.mjs",
     "test:daily-learner-shared-documents": "node --test tests/dailyLearnerSharedDocumentsVisibility.test.mjs",
     "test:daily-abandoned-document-sends": "node --test tests/dailyAbandonedDocumentSends.test.mjs",
