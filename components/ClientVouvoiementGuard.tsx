@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect } from "react";
+import { usePathname } from "next/navigation";
+
+const DAILY_PATH_PREFIX = "/client/daily";
 
 const replacements: Array<[string, string]> = [
   ["Choisis comment tu préfères paramétrer ton espace. Tu pourras revenir plus tard, chaque champ est sauvegardé automatiquement.", "Choisissez comment vous préférez paramétrer votre espace. Vous pourrez revenir plus tard, chaque champ est sauvegardé automatiquement."],
@@ -25,7 +28,7 @@ function normalize(root: ParentNode) {
   const nodes: Text[] = [];
   while (walker.nextNode()) nodes.push(walker.currentNode as Text);
   for (const node of nodes) {
-    let value = node.nodeValue ?? "";
+    const value = node.nodeValue ?? "";
     let next = value;
     for (const [from, to] of replacements) next = next.replaceAll(from, to);
     if (next !== value) node.nodeValue = next;
@@ -43,7 +46,11 @@ function normalize(root: ParentNode) {
 }
 
 export default function ClientVouvoiementGuard() {
+  const pathname = usePathname();
+
   useEffect(() => {
+    if (!pathname.startsWith(DAILY_PATH_PREFIX)) return;
+
     normalize(document.body);
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
@@ -55,6 +62,7 @@ export default function ClientVouvoiementGuard() {
     });
     observer.observe(document.body, { childList: true, subtree: true });
     return () => observer.disconnect();
-  }, []);
+  }, [pathname]);
+
   return null;
 }
