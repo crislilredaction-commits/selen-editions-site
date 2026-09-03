@@ -56,7 +56,7 @@ export async function POST(request: Request) {
     .eq("organisation_id", context.organisationId)
     .maybeSingle();
   if (enrolmentError) return NextResponse.json({ error: enrolmentError.message }, { status: 500 });
-  if (!enrolment || ["declined", "cancelled"].includes(enrolment.status)) {
+  if (!enrolment || ["declined", "cancelled", "abandoned"].includes(enrolment.status)) {
     return NextResponse.json({ error: "L’inscription liée à ce certificat n’est plus active." }, { status: 409 });
   }
 
