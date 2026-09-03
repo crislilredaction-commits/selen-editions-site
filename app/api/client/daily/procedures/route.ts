@@ -50,6 +50,10 @@ export async function PATCH(req: Request) {
     }
     const status = String(body.status ?? "draft");
     if (!["draft", "active"].includes(status)) return NextResponse.json({ error: "Statut invalide." }, { status: 400 });
+    const steps = String(body.steps ?? "").trim();
+    if (!steps) {
+      return NextResponse.json({ error: "Le déroulement de la procédure est requis." }, { status: 400 });
+    }
     const definition = definitions.find((item) => item.procedure_type === procedureType)!;
     const now = new Date().toISOString();
     const values = {
@@ -57,7 +61,7 @@ export async function PATCH(req: Request) {
       procedure_type: procedureType,
       title: definition.title,
       purpose: String(body.purpose ?? "").trim() || null,
-      steps: String(body.steps ?? "").trim(),
+      steps,
       responsibilities: String(body.responsibilities ?? "").trim() || null,
       evidence: String(body.evidence ?? "").trim() || null,
       status,
