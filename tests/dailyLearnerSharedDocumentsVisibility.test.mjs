@@ -45,3 +45,8 @@ test("le back-office conserve les portées organisme, session et apprenants", ()
   assert.match(publisher, /learner_ids/);
   assert.match(publisher, /organisation_shared/);
 });
+
+test("le back-office ne propose ni n'accepte un apprenant ayant abandonné", () => {
+  const abandonedFilters = publisher.match(/\.not\("status","in","\(cancelled,declined,abandoned\)"\)/g) ?? [];
+  assert.equal(abandonedFilters.length, 2);
+});
