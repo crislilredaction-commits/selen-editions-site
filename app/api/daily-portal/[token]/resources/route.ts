@@ -23,7 +23,7 @@ export async function GET(_request: Request, { params }: Params) {
   let allowedEnrolmentIds: string[] = [];
   let allowedLearnerIds: string[] = [];
   if (access.portal_type === "learner") {
-    const { data: rows } = await admin.from("daily_session_enrolments").select("id,learner_id,daily_learners(email)").eq("session_id", session.id).eq("organisation_id", session.organisation_id).not("status", "in", "(declined,cancelled)");
+    const { data: rows } = await admin.from("daily_session_enrolments").select("id,learner_id,daily_learners(email)").eq("session_id", session.id).eq("organisation_id", session.organisation_id).not("status", "in", "(declined,cancelled,abandoned)");
     const matchingRows = (rows ?? []).filter((row: Json) => { const learner = Array.isArray(row.daily_learners) ? row.daily_learners[0] : row.daily_learners; return email((learner as Json | undefined)?.email) === email(access.entity_email); });
     allowedEnrolmentIds = matchingRows.map((row: Json) => text(row.id)).filter(Boolean);
     allowedLearnerIds = matchingRows.map((row: Json) => text(row.learner_id)).filter(Boolean);
@@ -31,7 +31,7 @@ export async function GET(_request: Request, { params }: Params) {
     const company = array(session.companies).find((item) => email(item.email) === email(access.entity_email) || text(item.name).toLowerCase() === text(access.entity_name).toLowerCase());
     const participantEmails = new Set(array(company?.participants).map((item) => email(item.email)).filter(Boolean));
     if (participantEmails.size) {
-      const { data: rows } = await admin.from("daily_session_enrolments").select("id,daily_learners(email)").eq("session_id", session.id).eq("organisation_id", session.organisation_id);
+      const { data: rows } = await admin.from("daily_session_enrolments").select("id,daily_learners(email)").eq("session_id", session.id).eq("organisation_id", session.organisation_id).not("status", "in", "(declined,cancelled,abandoned)");
       allowedEnrolmentIds = (rows ?? []).filter((row: Json) => { const learner = Array.isArray(row.daily_learners) ? row.daily_learners[0] : row.daily_learners; return participantEmails.has(email((learner as Json | undefined)?.email)); }).map((row: Json) => text(row.id)).filter(Boolean);
     }
   }
