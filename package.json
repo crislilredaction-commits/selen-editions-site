@@ -4,11 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "npm run test:nda-guards && npm run test:daily-ux-guards && npm run test:daily-collapsed-guards && npm run test:daily-action-center-guards && npm run test:daily-qualiopi-guards && npm run test:daily-procedures-guards && npm run test:daily-satisfaction-guards && npm run test:daily-session-followup-guards && npm run test:daily-training-indicators && npm run test:daily-learning-results-semantics && npm run test:daily-trainer-certifications && npm run test:daily-trainer-certification-consultation && npm run test:daily-inline-assessment && npm run test:daily-learner-shared-documents && npm run test:daily-organisation-profile-sync && npm run test:daily-reminder-preferences && next build",
+    "build": "npm run test:nda-guards && npm run test:daily-ux-guards && npm run test:daily-tone-guards && npm run test:daily-collapsed-guards && npm run test:daily-action-center-guards && npm run test:daily-qualiopi-guards && npm run test:daily-procedures-guards && npm run test:daily-satisfaction-guards && npm run test:daily-session-followup-guards && npm run test:daily-training-indicators && npm run test:daily-learning-results-semantics && npm run test:daily-trainer-certifications && npm run test:daily-trainer-certification-consultation && npm run test:daily-inline-assessment && npm run test:daily-learner-shared-documents && npm run test:daily-organisation-profile-sync && npm run test:daily-reminder-preferences && next build",
     "start": "next start",
     "lint": "eslint",
     "test:nda-guards": "node --test tests/ndaRouteGuards.test.mjs",
     "test:daily-ux-guards": "node --test tests/dailyOnboardingUxGuards.test.mjs tests/dailyDashboardUxGuards.test.mjs tests/dailyReclamationsNavigation.test.mjs",
+    "test:daily-tone-guards": "node --test tests/dailyToneScope.test.mjs",
     "test:daily-collapsed-guards": "node --test tests/dailyCollapsedFlows.test.mjs",
     "test:daily-action-center-guards": "node --test tests/dailyActionCenterGuards.test.mjs",
     "test:daily-qualiopi-guards": "node --test tests/dailyQualiopiSettingsGuards.test.mjs tests/dailyQualiopiSurveillance.test.mjs",
