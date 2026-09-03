@@ -27,6 +27,14 @@ test("les écritures passent par l'espace organisme et ne sont pas ouvertes dire
   assert.doesNotMatch(privileges, /grant delete/);
 });
 
+test("le serveur refuse une procédure sans déroulement même si l'interface est contournée", () => {
+  assert.match(page, /name="steps"[\s\S]*required/);
+  assert.match(route, /const steps = String\(body\.steps \?\? ""\)\.trim\(\)/);
+  assert.match(route, /if \(!steps\)/);
+  assert.match(route, /Le déroulement de la procédure est requis\./);
+  assert.match(route, /steps,\n\s*responsibilities:/);
+});
+
 test("le client formalise ses propres procédures sans exposer la cuisine interne Selen", () => {
   assert.match(page, /parcours administratif/i);
   assert.match(page, /parties prenantes/i);
