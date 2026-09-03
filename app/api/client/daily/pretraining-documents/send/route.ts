@@ -59,7 +59,7 @@ export async function POST(req: Request) {
     .maybeSingle();
 
   if (enrolmentError) return NextResponse.json({ error: enrolmentError.message }, { status: 500 });
-  if (!enrolment || ["declined", "cancelled"].includes(enrolment.status)) {
+  if (!enrolment || ["declined", "cancelled", "abandoned"].includes(enrolment.status)) {
     return NextResponse.json({ error: "L’inscription liée à cette convocation n’est plus active." }, { status: 409 });
   }
 
