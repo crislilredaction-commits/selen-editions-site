@@ -31,9 +31,13 @@ test("une diffusion ciblée vérifie le learner_id de l'apprenant courant", () =
   assert.match(portal, /m\.learner_ids as unknown\[\]\)\.map\(String\)\.includes\(String\(learnerId\)\)/);
 });
 
-test("les inscriptions apprenant annulées ou refusées ne donnent pas accès", () => {
-  assert.match(resources, /\.not\("status", "in", "\(declined,cancelled\)"\)/);
-  assert.match(portal, /\.not\("status","in","\(declined,cancelled\)"\)/);
+test("les inscriptions apprenant refusées, annulées ou abandonnées ne donnent pas accès", () => {
+  assert.match(resources, /\.not\("status", "in", "\(declined,cancelled,abandoned\)"\)/);
+  assert.match(portal, /\.not\("status","in","\(declined,cancelled,abandoned\)"\)/);
+});
+
+test("les ressources entreprise excluent aussi les inscriptions abandonnées", () => {
+  assert.match(resources, /participantEmails\.size[\s\S]*\.not\("status", "in", "\(declined,cancelled,abandoned\)"\)/);
 });
 
 test("le back-office conserve les portées organisme, session et apprenants", () => {
