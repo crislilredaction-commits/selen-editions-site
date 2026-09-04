@@ -10,6 +10,10 @@ const onboardingSyncMigration = await readFile(
   new URL("../supabase/migrations/20260830022303_sync_daily_onboarding_to_organisations.sql", import.meta.url),
   "utf8",
 );
+const onboardingLegalNameSyncMigration = await readFile(
+  new URL("../supabase/migrations/20260905002000_sync_daily_onboarding_legal_name.sql", import.meta.url),
+  "utf8",
+);
 const workspaceRoute = await readFile(
   new URL("../app/api/client/daily/workspace/route.ts", import.meta.url),
   "utf8",
@@ -24,6 +28,15 @@ const normalizedAddress = "nullif\\(btrim\\(coalesce\\(p_administrative_address,
 test("l'onboarding conserve la même adresse canonique et administrative", () => {
   assert.match(onboardingSyncMigration, /address\s*=\s*coalesce\(nullif\(btrim\(new\.address\),\s*''\),\s*o\.address\)/);
   assert.match(onboardingSyncMigration, /administrative_address\s*=\s*coalesce\(nullif\(btrim\(new\.address\),\s*''\),\s*o\.administrative_address\)/);
+});
+
+test("l'onboarding maintient aussi la raison sociale légale canonique", () => {
+  assert.match(onboardingLegalNameSyncMigration, /name\s*=\s*coalesce\(nullif\(btrim\(new\.organisation_name\),\s*''\),\s*o\.name\)/);
+  assert.match(onboardingLegalNameSyncMigration, /company_name\s*=\s*coalesce\(nullif\(btrim\(new\.organisation_name\),\s*''\),\s*o\.company_name\)/);
+  assert.match(onboardingLegalNameSyncMigration, /legal_name\s*=\s*coalesce\(nullif\(btrim\(new\.organisation_name\),\s*''\),\s*o\.legal_name\)/);
+  assert.match(onboardingLegalNameSyncMigration, /siret\s*=\s*coalesce\(nullif\(btrim\(new\.siret\),\s*''\),\s*o\.siret\)/);
+  assert.match(onboardingLegalNameSyncMigration, /nda_number\s*=\s*coalesce\(nullif\(btrim\(new\.nda_number\),\s*''\),\s*o\.nda_number\)/);
+  assert.match(onboardingLegalNameSyncMigration, /administrative_email\s*=\s*coalesce\([\s\S]*new\.platform_contact_email[\s\S]*o\.administrative_email/);
 });
 
 test("une modification Daily du profil sûr maintient les deux adresses alignées sans changer le contrat du RPC", () => {
