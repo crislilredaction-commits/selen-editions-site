@@ -59,3 +59,8 @@ test("les bilans annuels formateur soumis et non complétés remontent au dirige
   assert.match(route, /Complétez le bilan annuel de/);
   assert.match(route, /href:\"\/client\/daily\/formateurs\/suivi-annuel\"/);
 });
+
+test("une inscription abandonnée ne remonte plus dans les actions apprenant", () => {
+  assert.match(route, /\.not\(\"status\",\"in\",\"\(cancelled,declined,completed,abandoned\)\"\)/);
+  assert.match(route, /\[\"cancelled\",\"declined\",\"completed\",\"abandoned\"\]\.includes\(enrolment\.status\?\?\"\"\)/);
+});
