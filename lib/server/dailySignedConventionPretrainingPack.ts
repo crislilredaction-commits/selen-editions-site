@@ -5,6 +5,7 @@ type AdminSupabase = ReturnType<typeof getAdminSupabase>;
 
 type DispatchResult =
   | { status: "waiting_for_signatures" }
+  | { status: "inactive_enrolment" }
   | { status: "missing_convocation" }
   | { status: "missing_recipient_email" }
   | { status: "already_sent"; convocationId: string }
@@ -19,8 +20,14 @@ type SessionRelation = {
   daily_formations?: FormationRelation | FormationRelation[] | null;
 };
 
+const inactiveEnrolmentStatuses = new Set(["declined", "cancelled", "abandoned"]);
+
 function clean(value: unknown) {
   return String(value ?? "").trim();
+}
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
 function firstRelation<T>(value: T | T[] | null | undefined): T | null {
@@ -58,6 +65,24 @@ export async function dispatchPretrainingPackAfterConventionSigned(
 
   if (conventionError) throw new Error(conventionError.message);
   if (!convention) throw new Error("Convention Daily introuvable après signature.");
+
+  // Les conventions bénéficiaires utilisent leur inscription comme recipient_key.
+  // On vérifie ce lien avant tout envoi automatique afin qu'une signature rejouée
+  // ne puisse pas contourner les gardes des routes d'envoi manuel.
+  const recipientKey = clean(convention.recipient_key);
+  if (isUuid(recipientKey)) {
+    const { data: enrolment, error: enrolmentError } = await supabase
+      .from("daily_session_enrolments")
+      .select("id,status")
+      .eq("id", recipientKey)
+      .eq("session_id", convention.session_id)
+      .maybeSingle();
+
+    if (enrolmentError) throw new Error(enrolmentError.message);
+    if (enrolment && inactiveEnrolmentStatuses.has(clean(enrolment.status))) {
+      return { status: "inactive_enrolment" };
+    }
+  }
 
   const { data: convocation, error: convocationError } = await supabase
     .from("daily_convocations")
