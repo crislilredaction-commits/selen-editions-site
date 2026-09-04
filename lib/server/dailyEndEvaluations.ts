@@ -14,5 +14,5 @@ export function dailyFeedbackPath(token: string) {
 }
 
 export function activeDailyEnrolment(status?: string | null) {
-  return status !== "cancelled" && status !== "declined";
+  return status !== "cancelled" && status !== "declined" && status !== "abandoned";
 }
