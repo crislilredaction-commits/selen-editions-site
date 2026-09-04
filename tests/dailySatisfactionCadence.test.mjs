@@ -4,6 +4,7 @@ import test from "node:test";
 
 const learner = await readFile(new URL("../app/api/internal/daily/satisfaction-automation/route.ts", import.meta.url), "utf8");
 const stakeholder = await readFile(new URL("../app/api/internal/daily/stakeholder-satisfaction-automation/route.ts", import.meta.url), "utf8");
+const endEvaluations = await readFile(new URL("../lib/server/dailyEndEvaluations.ts", import.meta.url), "utf8");
 
 for (const [label, source] of [["apprenants", learner], ["parties prenantes", stakeholder]]) {
   test(`${label}: deux relances seulement à J+2 et J+4`, () => {
@@ -24,3 +25,8 @@ for (const [label, source] of [["apprenants", learner], ["parties prenantes", st
     assert.match(source, /status: "open"/);
   });
 }
+
+test("les inscriptions abandonnées sont exclues des relances de satisfaction", () => {
+  assert.match(endEvaluations, /status !== "cancelled" && status !== "declined" && status !== "abandoned"/);
+  assert.match(learner, /activeDailyEnrolment\(row\.status\)/);
+});
