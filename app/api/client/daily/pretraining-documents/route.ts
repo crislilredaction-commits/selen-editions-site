@@ -51,7 +51,7 @@ async function loadSession(admin:any, organisationId:string, sessionId:string) {
   const { data: session, error } = await admin.from("daily_sessions").select("*,daily_formations(*)").eq("id",sessionId).eq("organisation_id",organisationId).single();
   if (error || !session) throw new Error("Session introuvable.");
   const [{ data: enrolments, error: enrolmentError }, { data: needs, error: needsError }, { data: org, error: orgError }, { data: trainers, error: trainerError }] = await Promise.all([
-    admin.from("daily_session_enrolments").select("*,daily_learners(*)").eq("session_id",sessionId).eq("organisation_id",organisationId).not("status","in",'(declined,cancelled)'),
+    admin.from("daily_session_enrolments").select("*,daily_learners(*)").eq("session_id",sessionId).eq("organisation_id",organisationId).not("status","in",'(declined,cancelled,abandoned)'),
     admin.from("daily_enrolment_support_needs").select("*").eq("organisation_id",organisationId),
     admin.from("organisations").select("*").eq("id",organisationId).single(),
     admin.from("daily_trainer_profiles").select("id,display_name").eq("organisation_id",organisationId),
