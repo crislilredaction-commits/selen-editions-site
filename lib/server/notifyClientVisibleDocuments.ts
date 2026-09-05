@@ -15,6 +15,15 @@ type NotifyClientVisibleDocumentsInput = {
   text?: string;
 };
 
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
 export async function notifyClientVisibleDocuments({
   supabase,
   dossierId,
@@ -69,16 +78,13 @@ export async function notifyClientVisibleDocuments({
     .filter(Boolean)
     .join("\n");
 
+  const htmlBody = escapeHtml(body).replaceAll("\n", "<br />");
   const html = `
     <div style="font-family: Arial, sans-serif; color: #3e2a1f; line-height: 1.6; max-width: 640px;">
-      <p>Bonjour,</p>
-      <p>
-        Vos documents à signer sont maintenant disponibles dans votre espace client Selen.
-        Vous pouvez les télécharger, les signer, puis déposer les documents signés et les pièces finales directement dans votre dossier.
-      </p>
+      <p>${htmlBody}</p>
       ${
         dossierUrl
-          ? `<p style="margin:24px 0;"><a href="${dossierUrl}" style="background:#3e2a1f; color:#f7ead6; padding:12px 18px; text-decoration:none; border-radius:999px; display:inline-block;">Ouvrir mon dossier</a></p>`
+          ? `<p style="margin:24px 0;"><a href="${escapeHtml(dossierUrl)}" style="background:#3e2a1f; color:#f7ead6; padding:12px 18px; text-decoration:none; border-radius:999px; display:inline-block;">Ouvrir mon dossier</a></p>`
           : ""
       }
       <p>L'équipe Selen Editions</p>
