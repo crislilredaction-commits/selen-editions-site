@@ -12,12 +12,13 @@ function cleanQuestions(value: unknown) {
     const type = String(row.type ?? "single_choice").trim();
     const options = Array.isArray(row.options) ? [...new Set(row.options.map((item) => String(item ?? "").trim()).filter(Boolean))] : [];
     const correctAnswers = Array.isArray(row.correct_answers) ? [...new Set(row.correct_answers.map((item) => String(item ?? "").trim()).filter(Boolean))] : [];
+    const validCorrectAnswers = correctAnswers.filter((answer) => options.includes(answer));
     return {
       id: String(row.id ?? `assessment_${index + 1}`).trim() || `assessment_${index + 1}`,
       label: String(row.label ?? "").trim(),
       type: QUESTION_TYPES.has(type) ? type : "single_choice",
       options: type === "free_text" ? [] : options,
-      correct_answers: type === "free_text" ? [] : correctAnswers.filter((answer) => options.includes(answer)),
+      correct_answers: type === "free_text" ? [] : type === "single_choice" ? validCorrectAnswers.slice(0, 1) : validCorrectAnswers,
       points: Math.max(0.5, Number(row.points) || 1),
       required: row.required !== false,
       order: index + 1,
