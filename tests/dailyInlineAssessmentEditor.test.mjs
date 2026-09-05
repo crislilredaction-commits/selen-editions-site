@@ -24,3 +24,8 @@ test("la validation serveur exige des réponses distinctes et une bonne réponse
   assert.match(route, /question\.correct_answers\.length === 0/);
   assert.match(route, /Chaque question à choix doit comporter au moins deux réponses distinctes et une bonne réponse\./);
 });
+
+test("l’API normalise aussi un choix unique forgé avec plusieurs bonnes réponses", () => {
+  assert.match(route, /const validCorrectAnswers = correctAnswers\.filter\(\(answer\) => options\.includes\(answer\)\);/);
+  assert.match(route, /type === "single_choice" \? validCorrectAnswers\.slice\(0, 1\) : validCorrectAnswers/);
+});
