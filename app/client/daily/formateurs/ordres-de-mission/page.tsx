@@ -8,6 +8,8 @@ type Signature = { mission_order_id: string; signatory_type: "ordering_party" | 
 type MissionOrder = {
   id: string;
   trainer_profile_id: string;
+  ordering_party_user_id: string;
+  trainer_user_id: string | null;
   trainer_name: string;
   trainer_email: string | null;
   trainer_address: string | null;
@@ -48,6 +50,7 @@ export default function DailyMissionOrdersPage() {
   const [signatures, setSignatures] = useState<Signature[]>([]);
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [canManage, setCanManage] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
@@ -67,6 +70,7 @@ export default function DailyMissionOrdersPage() {
       setOrders(orderBody.orders ?? []);
       setSignatures(orderBody.signatures ?? []);
       setCanManage(Boolean(orderBody.canManage));
+      setCurrentUserId(orderBody.currentUserId ?? null);
       if (workspaceResponse.ok) setTrainers(workspaceBody.workspace?.trainers ?? []);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Chargement impossible.");
@@ -157,12 +161,12 @@ export default function DailyMissionOrdersPage() {
       </button>
       {showCreate ? <form onSubmit={createOrder} style={s.form}>
         <div style={s.grid}>
-          <label style={s.label}>Formateur *<select name="trainer_profile_id" required style={s.input}><option value="">Sélectionner…</option>{trainers.map((trainer) => <option key={trainer.id} value={trainer.id}>{trainer.display_name || trainer.professional_email || "Formateur"}</option>)}</select></label>
-          <label style={s.label}>Adresse du formateur<input name="trainer_address" style={s.input} /></label>
-          <label style={s.label}>SIRET du formateur<input name="trainer_siret" inputMode="numeric" style={s.input} /></label>
+          <label style={s.label}>Formateur *<select name="trainer_profile_id" required style={s.input}><option value="">Sélectionner…</option>{trainers.map((trainer) => <option key={trainer.id} value={trainer.id} disabled={!trainer.user_id}>{trainer.display_name || trainer.professional_email || "Formateur"}{!trainer.user_id ? " · accès Daily requis pour signer" : ""}</option>)}</select></label>
+          <label style={s.label}>Adresse du formateur *<input name="trainer_address" required style={s.input} /></label>
+          <label style={s.label}>SIRET du formateur *<input name="trainer_siret" inputMode="numeric" required style={s.input} /></label>
           <label style={s.label}>Type de mission<select name="order_type" defaultValue="one_off" style={s.input}><option value="one_off">Mission ponctuelle</option><option value="collaboration">Collaboration moyenne / longue durée</option></select></label>
-          <label style={s.label}>Début<input name="start_date" type="date" style={s.input} /></label>
-          <label style={s.label}>Fin<input name="end_date" type="date" style={s.input} /></label>
+          <label style={s.label}>Début *<input name="start_date" type="date" required style={s.input} /></label>
+          <label style={s.label}>Fin *<input name="end_date" type="date" required style={s.input} /></label>
           <label style={s.label}>Tarification *<select name="rate_type" defaultValue="hourly" style={s.input}><option value="hourly">Taux horaire</option><option value="daily">Taux journalier</option></select></label>
           <label style={s.label}>Montant HT *<input name="rate_amount" type="number" min="0" step="0.01" required style={s.input} /></label>
           <label style={{...s.label,gridColumn:"1 / -1"}}>Conditions de paiement *<textarea name="payment_terms" required placeholder="Ex. facture en fin de mois, paiement à 30 jours" style={s.textarea} /></label>
@@ -170,19 +174,22 @@ export default function DailyMissionOrdersPage() {
         <fieldset style={s.fieldset}><legend style={s.legend}>Missions confiées</legend><div style={s.checkGrid}>{Object.entries(missionLabels).map(([value,label]) => <label key={value} style={s.check}><input type="checkbox" name="missions" value={value} /> {label}</label>)}</div><label style={s.label}>Autre mission ou précision<textarea name="mission_details" style={s.textarea} /></label></fieldset>
         <fieldset style={s.fieldset}><legend style={s.legend}>Déplacements</legend><label style={s.check}><input name="travel_costs_covered" type="checkbox" /> Les frais de déplacement sont pris en charge</label><label style={s.label}>Montant / conditions<textarea name="travel_costs_terms" style={s.textarea} /></label></fieldset>
         <label style={s.check}><input name="qualiopi_process_commitment" type="checkbox" defaultChecked /> Le formateur s’engage à respecter les processus Qualiopi applicables de l’organisme donneur d’ordre lorsqu’il est certifié.</label>
-        <div style={s.grid}><label style={s.label}>Établi à *<input name="issue_place" required style={s.input} /></label><label style={s.label}>Le<input name="issue_date" type="date" defaultValue={new Date().toISOString().slice(0,10)} style={s.input} /></label></div>
-        <button type="submit" disabled={saving} style={s.primary}>{saving ? "Enregistrement…" : "Créer et envoyer à la signature"}</button>
+        <div style={s.grid}><label style={s.label}>Établi à *<input name="issue_place" required style={s.input} /></label><label style={s.label}>Le *<input name="issue_date" type="date" required defaultValue={new Date().toISOString().slice(0,10)} style={s.input} /></label></div>
+        <button type="submit" disabled={saving} style={s.primary}>{saving ? "Enregistrement…" : "Créer l’ordre de mission"}</button>
       </form> : <p style={s.muted}>Le formulaire reste fermé tant que vous n’avez pas d’ordre à préparer.</p>}
     </section> : null}
 
     <section style={s.card}><h2 style={s.h2}>Ordres de mission</h2>
       {orders.length === 0 ? <p style={s.muted}>Aucun ordre de mission pour le moment.</p> : <div style={s.list}>{orders.map((order) => {
         const orderSignatures = signaturesByOrder.get(order.id) ?? [];
+        const alreadySignedByCurrentUser = Boolean(currentUserId && orderSignatures.some((signature) => signature.user_id === currentUserId));
+        const canCurrentUserSign = Boolean(currentUserId && (order.ordering_party_user_id === currentUserId || order.trainer_user_id === currentUserId));
         return <article key={order.id} style={s.order}>
           <div style={s.orderHead}><div><strong>{order.trainer_name}</strong><p style={s.muted}>{order.order_type === "one_off" ? "Mission ponctuelle" : "Collaboration"}{order.start_date ? ` · du ${order.start_date}` : ""}{order.end_date ? ` au ${order.end_date}` : ""}</p></div><span style={s.badge}>{statusLabels[order.status]}</span></div>
           <div style={s.summary}><span>{order.rate_amount} € HT / {order.rate_type === "hourly" ? "heure" : "jour"}</span><span>{order.missions.map((mission) => missionLabels[mission] ?? mission).join(" · ") || order.mission_details}</span></div>
           <p style={s.muted}>Signatures : {orderSignatures.length}/2{orderSignatures.length ? ` · ${orderSignatures.map((sig) => `${sig.signatory_type === "ordering_party" ? "donneur d’ordre" : "formateur"} signé le ${new Date(sig.signed_at).toLocaleDateString("fr-FR")}`).join(" · ")}` : ""}</p>
-          {order.status !== "signed" && order.status !== "cancelled" ? <button type="button" disabled={saving} onClick={() => void signOrder(order.id)} style={s.secondary}>Signer cet ordre de mission</button> : null}
+          {alreadySignedByCurrentUser && order.status !== "signed" ? <p style={s.muted}>Votre signature est enregistrée. L’autre partie doit encore signer.</p> : null}
+          {canCurrentUserSign && !alreadySignedByCurrentUser && order.status !== "signed" && order.status !== "cancelled" ? <button type="button" disabled={saving} onClick={() => void signOrder(order.id)} style={s.secondary}>Signer cet ordre de mission</button> : null}
         </article>;
       })}</div>}
     </section>
@@ -190,5 +197,5 @@ export default function DailyMissionOrdersPage() {
 }
 
 const s: Record<string, React.CSSProperties> = {
-  page:{minHeight:"100vh",padding:"2rem 1rem 5rem",background:"linear-gradient(180deg,#eadfbf,#e0cf9f)",color:"#392a19"},wrap:{maxWidth:1000,margin:"0 auto",display:"grid",gap:"1rem"},hero:{background:"#f8f0dc",border:"1px solid #d9c391",padding:"1.5rem"},kicker:{textTransform:"uppercase",letterSpacing:".14em",fontSize:11,fontWeight:800,color:"#9b682d"},h1:{fontFamily:"Georgia,serif",fontSize:"clamp(2rem,5vw,3rem)",margin:".4rem 0"},h2:{fontFamily:"Georgia,serif",marginTop:0},lead:{color:"#725e46",lineHeight:1.6},card:{background:"#f8f0dc",border:"1px solid #d9c391",padding:"1.4rem"},toggle:{width:"100%",display:"flex",justifyContent:"space-between",border:0,background:"transparent",fontSize:"1.05rem",fontWeight:800,color:"#392a19",cursor:"pointer",padding:0},form:{display:"grid",gap:"1rem",marginTop:"1rem",paddingTop:"1rem",borderTop:"1px solid #d9c391"},grid:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:".75rem"},label:{display:"grid",gap:".35rem",fontSize:13,fontWeight:700,color:"#5c4933"},input:{minHeight:42,padding:".65rem .7rem",border:"1px solid #c9ae78",background:"white",color:"#392a19"},textarea:{minHeight:80,padding:".65rem .7rem",border:"1px solid #c9ae78",background:"white",color:"#392a19",resize:"vertical"},fieldset:{border:"1px solid #d9c391",padding:"1rem",display:"grid",gap:".75rem"},legend:{fontWeight:800,padding:"0 .35rem"},checkGrid:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:".5rem"},check:{fontSize:13,lineHeight:1.5},primary:{width:"fit-content",padding:".75rem 1rem",border:"1px solid #7a2e22",borderRadius:6,background:"#7a2e22",color:"#f8f0dc",fontWeight:800,cursor:"pointer"},secondary:{width:"fit-content",padding:".6rem .85rem",border:"1px solid #7a2e22",background:"transparent",color:"#7a2e22",fontWeight:800,cursor:"pointer"},list:{display:"grid",gap:".75rem"},order:{border:"1px solid rgba(160,106,44,.3)",padding:"1rem",display:"grid",gap:".7rem",background:"rgba(255,255,255,.28)"},orderHead:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:"1rem",flexWrap:"wrap"},summary:{display:"flex",gap:"1rem",flexWrap:"wrap",fontSize:13,fontWeight:700},badge:{fontSize:11,textTransform:"uppercase",background:"#7a2e22",color:"#f8f0dc",padding:".35rem .5rem"},muted:{color:"#806c52",margin:".25rem 0 0",lineHeight:1.5},error:{border:"1px solid #a64b3b",background:"#fff2ee",padding:".8rem",color:"#7d2e22"},success:{border:"1px solid #748c54",background:"#f2f6e8",padding:".8rem",color:"#4f6338"},
+  page:{minHeight:"100vh",padding:"2rem 1rem 5rem",background:"linear-gradient(180deg,#eadfbf,#e0cf9f)",color:"#392a19"},wrap:{maxWidth:1000,margin:"0 auto",display:"grid",gap:"1rem"},hero:{background:"#f8f0dc",border:"1px solid #d9c391",padding:"1.5rem"},kicker:{textTransform:"uppercase",letterSpacing:".14em",fontSize:11,fontWeight:800,color:"#9b682d"},h1:{fontFamily:"Georgia,serif",fontSize:"clamp(2rem,5vw,3rem)",margin:".4rem 0"},h2:{fontFamily:"Georgia,serif",marginTop:0},lead:{color:"#725e46",lineHeight:1.6},card:{background:"#f8f0dc",border:"1px solid #d9c391",padding:"1.4rem"},toggle:{width:"100%",display:"flex",justifyContent:"space-between",border:0,background:"transparent",fontSize:"1.05rem",fontWeight:800,color:"#392a19",cursor:"pointer",padding:0},form:{display:"grid",gap:"1rem",marginTop:"1rem",paddingTop:"1rem",borderTop:"1px solid #d9c391"},grid:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:".75rem"},label:{display:"grid",gap:".35rem",fontSize:13,fontWeight:700,color:"#5c4933"},input:{width:"100%",boxSizing:"border-box",minHeight:42,padding:".65rem .7rem",border:"1px solid #c9ae78",background:"white",color:"#392a19"},textarea:{width:"100%",boxSizing:"border-box",minHeight:80,padding:".65rem .7rem",border:"1px solid #c9ae78",background:"white",color:"#392a19",resize:"vertical"},fieldset:{border:"1px solid #d9c391",padding:"1rem",display:"grid",gap:".75rem"},legend:{fontWeight:800,padding:"0 .35rem"},checkGrid:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:".5rem"},check:{fontSize:13,lineHeight:1.5},primary:{width:"fit-content",padding:".75rem 1rem",border:"1px solid #7a2e22",borderRadius:6,background:"#7a2e22",color:"#f8f0dc",fontWeight:800,cursor:"pointer"},secondary:{width:"fit-content",padding:".6rem .85rem",border:"1px solid #7a2e22",background:"transparent",color:"#7a2e22",fontWeight:800,cursor:"pointer"},list:{display:"grid",gap:".75rem"},order:{border:"1px solid rgba(160,106,44,.3)",padding:"1rem",display:"grid",gap:".7rem",background:"rgba(255,255,255,.28)"},orderHead:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:"1rem",flexWrap:"wrap"},summary:{display:"flex",gap:"1rem",flexWrap:"wrap",fontSize:13,fontWeight:700},badge:{fontSize:11,textTransform:"uppercase",background:"#7a2e22",color:"#f8f0dc",padding:".35rem .5rem"},muted:{color:"#806c52",margin:".25rem 0 0",lineHeight:1.5},error:{border:"1px solid #a64b3b",background:"#fff2ee",padding:".8rem",color:"#7d2e22"},success:{border:"1px solid #748c54",background:"#f2f6e8",padding:".8rem",color:"#4f6338"},
 };

@@ -108,6 +108,7 @@ $$;
 
 revoke all on function public.daily_lock_mission_order_after_signature() from public, anon, authenticated;
 
+drop trigger if exists daily_mission_orders_lock_after_signature on public.daily_mission_orders;
 create trigger daily_mission_orders_lock_after_signature
 before update on public.daily_mission_orders
 for each row execute function public.daily_lock_mission_order_after_signature();
