@@ -70,7 +70,12 @@ export async function GET() {
   try {
     const visible = await loadVisibleOrders();
     if (!visible.ok) return NextResponse.json({ error: visible.error }, { status: visible.status });
-    return NextResponse.json({ orders: visible.orders, signatures: visible.signatures, canManage: visible.canManage });
+    return NextResponse.json({
+      orders: visible.orders,
+      signatures: visible.signatures,
+      canManage: visible.canManage,
+      currentUserId: visible.context.user.id,
+    });
   } catch (cause) {
     return NextResponse.json({ error: cause instanceof Error ? cause.message : "Chargement des ordres de mission impossible." }, { status: 500 });
   }
@@ -96,11 +101,14 @@ export async function POST(req: Request) {
   const missionDetails = cleanText(body.mission_details);
   const travelCovered = Boolean(body.travel_costs_covered);
   const travelTerms = cleanText(body.travel_costs_terms);
+  const startDate = cleanText(body.start_date);
+  const endDate = cleanText(body.end_date);
 
-  if (!trainerProfileId || !rateType || !allowedRateTypes.has(rateType) || !Number.isFinite(rateAmount) || rateAmount < 0 || !paymentTerms || !issuePlace) {
-    return NextResponse.json({ error: "Formateur, tarif, conditions de paiement et lieu d’établissement sont requis." }, { status: 400 });
+  if (!trainerProfileId || !trainerAddress || !trainerSiret || !startDate || !endDate || !rateType || !allowedRateTypes.has(rateType) || !Number.isFinite(rateAmount) || rateAmount < 0 || !paymentTerms || !issuePlace) {
+    return NextResponse.json({ error: "Formateur, adresse, SIRET, dates, tarif, conditions de paiement et lieu d’établissement sont requis." }, { status: 400 });
   }
   if (!allowedOrderTypes.has(orderType)) return NextResponse.json({ error: "Type d’ordre de mission invalide." }, { status: 400 });
+  if (endDate < startDate) return NextResponse.json({ error: "La date de fin ne peut pas précéder la date de début." }, { status: 400 });
   if (missions.length === 0 && !missionDetails) return NextResponse.json({ error: "Précisez au moins une mission." }, { status: 400 });
   if (travelCovered && !travelTerms) return NextResponse.json({ error: "Précisez les conditions de prise en charge des déplacements." }, { status: 400 });
 
@@ -115,10 +123,9 @@ export async function POST(req: Request) {
     .maybeSingle();
   if (trainerError) return NextResponse.json({ error: trainerError.message }, { status: 500 });
   if (!trainer) return NextResponse.json({ error: "Formateur introuvable dans votre organisme." }, { status: 404 });
-
-  const startDate = cleanText(body.start_date);
-  const endDate = cleanText(body.end_date);
-  if (startDate && endDate && endDate < startDate) return NextResponse.json({ error: "La date de fin ne peut pas précéder la date de début." }, { status: 400 });
+  if (!trainer.user_id) {
+    return NextResponse.json({ error: "Ce formateur doit disposer d’un accès Daily lié à son profil avant de pouvoir recevoir et signer un ordre de mission." }, { status: 409 });
+  }
 
   const { data: order, error } = await admin
     .from("daily_mission_orders")
@@ -136,7 +143,7 @@ export async function POST(req: Request) {
       order_type: orderType,
       start_date: startDate,
       end_date: endDate,
-      session_ids: cleanStringArray(body.session_ids),
+      session_ids: [],
       rate_type: rateType,
       rate_amount: rateAmount,
       payment_terms: paymentTerms,
@@ -177,6 +184,7 @@ export async function PATCH(req: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!order) return NextResponse.json({ error: "Ordre de mission introuvable." }, { status: 404 });
   if (order.status === "cancelled") return NextResponse.json({ error: "Cet ordre de mission est annulé." }, { status: 409 });
+  if (order.status === "signed") return NextResponse.json({ error: "Cet ordre de mission est déjà entièrement signé." }, { status: 409 });
 
   let signatoryType: "ordering_party" | "trainer" | null = null;
   let signatoryName = context.user.email ?? "Signataire";
@@ -204,6 +212,7 @@ export async function PATCH(req: Request) {
     organisation_id: order.organisation_id,
     trainer_profile_id: order.trainer_profile_id,
     trainer_name: order.trainer_name,
+    trainer_address: order.trainer_address,
     trainer_siret: order.trainer_siret,
     order_type: order.order_type,
     start_date: order.start_date,
