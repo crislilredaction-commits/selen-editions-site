@@ -70,7 +70,7 @@ export async function POST(req: Request) {
       client_id: client.id,
       booking_group_id: crypto.randomUUID(),
       slot_index: 1,
-      metadata: { appointment_label: "Paramétrage Selen Daily - 1 h", booking_kind: "daily_setup", google_meet_link: event.meetUrl ?? null, google_event_link: event.eventUrl ?? null, source_flow: "daily_onboarding_accompanied" },
+      metadata: { appointment_label: "Démonstration et premier paramétrage Selen Daily - 1 h", booking_kind: "daily_setup", google_meet_link: event.meetUrl ?? null, google_event_link: event.eventUrl ?? null, source_flow: "daily_onboarding_accompanied" },
     }).select("id").single();
     if (error || !data) {
       await deleteDailySetupEvent(event.eventId);
