@@ -5,7 +5,7 @@ import LoadingMascot from "@/components/ui/LoadingMascot";
 
 type Procedure = {
   id: string;
-  procedure_type: "learner_administration" | "stakeholder_satisfaction" | "absence_dropout";
+  procedure_type: "learner_administration" | "stakeholder_satisfaction" | "absence_dropout" | "difficulties_hazards";
   title: string;
   purpose: string | null;
   steps: string;
@@ -34,6 +34,12 @@ const prompts: Record<Procedure["procedure_type"], { purpose: string; steps: str
     steps: "Décrivez la détection, la prise de contact, la recherche de solution, les adaptations possibles et la clôture du suivi.",
     responsibilities: "Précisez qui alerte, qui contacte l’apprenant et qui décide des mesures à mettre en place.",
     evidence: "Indiquez les traces conservées : feuilles de présence, échanges, incidents, décisions et actions menées.",
+  },
+  difficulties_hazards: {
+    purpose: "Adaptez le périmètre aux difficultés et aléas réellement susceptibles d’affecter vos formations.",
+    steps: "Selen vous propose une base de situations récurrentes avec prévention et solution correspondante. Modifiez-la, supprimez les cas inutiles et ajoutez ceux propres à votre activité.",
+    responsibilities: "Précisez qui détecte, traite et arbitre chaque situation : suivi de session, formateur, référent handicap, responsable de l’organisme…",
+    evidence: "Indiquez les traces pertinentes selon l’événement : échanges, suivi de session, adaptation, incident, réclamation, replanification ou action corrective.",
   },
 };
 
