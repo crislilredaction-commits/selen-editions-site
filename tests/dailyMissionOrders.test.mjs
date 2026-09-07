@@ -4,7 +4,7 @@ import test from "node:test";
 
 const api = await readFile(new URL("../app/api/client/daily/mission-orders/route.ts", import.meta.url), "utf8");
 const page = await readFile(new URL("../app/client/daily/formateurs/ordres-de-mission/page.tsx", import.meta.url), "utf8");
-const migration = await readFile(new URL("../supabase/migrations/20260907193000_daily_mission_orders.sql", import.meta.url), "utf8");
+const migration = await readFile(new URL("../supabase/migrations/20260907171818_daily_mission_orders.sql", import.meta.url), "utf8");
 
 test("les ordres de mission reposent sur deux signatures uniques et deviennent immuables dès la première", () => {
   assert.match(migration, /create table if not exists public\.daily_mission_orders/);
