@@ -6,6 +6,7 @@ const route = await readFile(new URL("../app/api/client/daily/procedures/route.t
 const page = await readFile(new URL("../app/client/daily/procedures/page.tsx", import.meta.url), "utf8");
 const migration = await readFile(new URL("../supabase/migrations/20260830123100_create_daily_internal_procedures.sql", import.meta.url), "utf8");
 const extensionMigration = await readFile(new URL("../supabase/migrations/20260907103500_extend_daily_internal_procedures_difficulties_hazards.sql", import.meta.url), "utf8");
+const backfillMigration = await readFile(new URL("../supabase/migrations/20260907190000_backfill_daily_difficulties_hazards.sql", import.meta.url), "utf8");
 const privileges = await readFile(new URL("../supabase/migrations/20260830123132_restrict_daily_internal_procedure_privileges.sql", import.meta.url), "utf8");
 const layout = await readFile(new URL("../app/client/daily/layout.tsx", import.meta.url), "utf8");
 
@@ -40,6 +41,15 @@ test("la procédure difficultés et aléas fournit une base utile sans écraser 
   assert.match(route, /Solution :/);
   assert.match(route, /ignoreDuplicates: true/);
   assert.match(page, /Modifiez-la, supprimez les cas inutiles et ajoutez ceux propres à votre activité/);
+});
+
+test("les organismes déjà initialisés reçoivent aussi la quatrième procédure", () => {
+  assert.match(backfillMigration, /insert into public\.daily_internal_procedures/);
+  assert.match(backfillMigration, /select distinct\s+existing\.organisation_id/);
+  assert.match(backfillMigration, /procedure_type = 'difficulties_hazards'/);
+  assert.match(backfillMigration, /on conflict \(organisation_id, procedure_type\) do nothing/);
+  assert.doesNotMatch(backfillMigration, /delete\s+from/i);
+  assert.doesNotMatch(backfillMigration, /update\s+public\.daily_internal_procedures/i);
 });
 
 test("les écritures passent par l'espace organisme et ne sont pas ouvertes directement aux utilisateurs", () => {
