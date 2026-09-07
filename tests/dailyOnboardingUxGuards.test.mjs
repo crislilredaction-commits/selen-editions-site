@@ -14,6 +14,18 @@ const accountPanel = await readFile(
   new URL("../components/daily/DailyAccountPanel.tsx", import.meta.url),
   "utf8",
 );
+const setupAppointmentPage = await readFile(
+  new URL("../app/client/daily/rendez-vous-parametrage/page.tsx", import.meta.url),
+  "utf8",
+);
+const setupAppointmentRoute = await readFile(
+  new URL("../app/api/client/daily/setup-appointment/route.ts", import.meta.url),
+  "utf8",
+);
+const setupCalendar = await readFile(
+  new URL("../lib/server/dailySetupCalendar.ts", import.meta.url),
+  "utf8",
+);
 
 test("le NDA n'est pas présenté comme facultatif lorsqu'il existe", () => {
   assert.match(onboardingPage, /<Input label="Numéro NDA"/);
@@ -51,4 +63,13 @@ test("l'onboarding Daily vouvoie l'organisme", () => {
   assert.doesNotMatch(onboardingPage, /\bChoisis\b/);
   assert.doesNotMatch(onboardingPage, /\bContinue à\b/);
   assert.doesNotMatch(onboardingPage, /t'aider/);
+});
+
+test("le rendez-vous accompagné inclut explicitement la démonstration et le premier paramétrage", () => {
+  assert.match(setupAppointmentPage, /Démonstration et paramétrage accompagnés/);
+  assert.match(setupAppointmentPage, /Réserver votre démo et premier paramétrage/);
+  assert.match(setupAppointmentPage, /nous vous présentons Selen Daily puis nous vous aidons à réaliser les premiers réglages/);
+  assert.match(setupAppointmentRoute, /Démonstration et premier paramétrage Selen Daily - 1 h/);
+  assert.match(setupCalendar, /Démo et paramétrage Selen Daily/);
+  assert.match(setupCalendar, /démonstration de Selen Daily puis accompagnement au premier paramétrage/);
 });
