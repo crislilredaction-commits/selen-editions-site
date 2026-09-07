@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const api = await readFile(new URL("../app/api/client/daily/mission-orders/route.ts", import.meta.url), "utf8");
+const pdf = await readFile(new URL("../app/api/client/daily/mission-orders/[missionOrderId]/pdf/route.ts", import.meta.url), "utf8");
 const page = await readFile(new URL("../app/client/daily/formateurs/ordres-de-mission/page.tsx", import.meta.url), "utf8");
 const migration = await readFile(new URL("../supabase/migrations/20260907171818_daily_mission_orders.sql", import.meta.url), "utf8");
 
@@ -47,4 +48,17 @@ test("l’interface annonce explicitement la double signature et ne propose pas 
   assert.match(page, /Signatures : \{orderSignatures\.length\}\/2/);
   assert.match(page, /Signer cet ordre de mission/);
   assert.doesNotMatch(page, />Supprimer</);
+});
+
+test("le PDF final exige la double signature et rassemble le contenu figé et les preuves", () => {
+  assert.match(pdf, /order\.status !== "signed"/);
+  assert.match(pdf, /daily_mission_order_signatures/);
+  assert.match(pdf, /signature_data,proof_hash,signed_at/);
+  assert.match(pdf, /orderingPartySignature/);
+  assert.match(pdf, /trainerSignature/);
+  assert.match(pdf, /Preuve SHA-256/);
+  assert.match(pdf, /application\/pdf/);
+  assert.match(pdf, /Le contenu de cet ordre est figé depuis la première signature/);
+  assert.match(page, /Télécharger le PDF signé/);
+  assert.match(page, /mission-orders\/\$\{order\.id\}\/pdf/);
 });
