@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/app/lib/supabase/client";
 import { assistanceFetch } from "@/components/AgentAssistanceBanner";
 import DailyDashboardOverviewV2 from "@/components/daily/DailyDashboardOverviewV2";
+import RecentPublishedDocumentsCard from "@/components/daily/RecentPublishedDocumentsCard";
 import LoadingMascot from "@/components/ui/LoadingMascot";
 
 export default function ClientDailyPage() {
@@ -65,5 +66,10 @@ export default function ClientDailyPage() {
     );
   }
 
-  return <DailyDashboardOverviewV2 />;
+  return (
+    <>
+      <RecentPublishedDocumentsCard />
+      <DailyDashboardOverviewV2 />
+    </>
+  );
 }
