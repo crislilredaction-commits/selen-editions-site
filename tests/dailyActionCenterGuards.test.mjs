@@ -4,6 +4,7 @@ import test from "node:test";
 
 const page = await readFile(new URL("../app/client/daily/a-faire/page.tsx", import.meta.url), "utf8");
 const route = await readFile(new URL("../app/api/client/daily/action-center/route.ts", import.meta.url), "utf8");
+const workspaceRoute = await readFile(new URL("../app/api/client/daily/workspace/route.ts", import.meta.url), "utf8");
 
 test("le centre À faire conserve les actions Qualité exposées par l'API", () => {
   assert.match(route, /kind:\"quality\"/);
@@ -63,4 +64,10 @@ test("les bilans annuels formateur soumis et non complétés remontent au dirige
 test("une inscription abandonnée ne remonte plus dans les actions apprenant", () => {
   assert.match(route, /\.not\(\"status\",\"in\",\"\(cancelled,declined,completed,abandoned\)\"\)/);
   assert.match(route, /\[\"cancelled\",\"declined\",\"completed\",\"abandoned\"\]\.includes\(enrolment\.status\?\?\"\"\)/);
+});
+
+test("les mutations workspace sensibles vérifient les capacités avant le RPC ou l'écriture", () => {
+  assert.match(workspaceRoute, /action === \"set_user_access\"[\s\S]*?!context\.workspace\.capabilities\.users[\s\S]*?daily_client_set_membership_access/);
+  assert.match(workspaceRoute, /action === \"set_user_status\"[\s\S]*?!context\.workspace\.capabilities\.users[\s\S]*?daily_client_set_membership_status/);
+  assert.match(workspaceRoute, /action === \"save_trainer\"[\s\S]*?!context\.workspace\.capabilities\.trainers[\s\S]*?daily_trainer_profiles/);
 });
