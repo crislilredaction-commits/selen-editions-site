@@ -1,0 +1,11 @@
+.daily-formations-compact main > section:last-child button,
+.daily-formations-compact main > section:last-child a {
+  padding: .45rem .65rem !important;
+  min-height: auto !important;
+  font-size: .82rem !important;
+  line-height: 1.2 !important;
+}
+
+.daily-formations-compact main > section:last-child div[style*="display: flex"] {
+  align-items: center;
+}

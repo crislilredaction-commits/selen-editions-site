@@ -6,7 +6,6 @@ const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
 test("le suivi annuel formateur reste rattaché au profil du formateur connecté", async () => {
   const route = await read("app/api/client/daily/trainer-annual-review/route.ts");
-
   assert.match(route, /getDailyClientWorkspace\(\)/);
   assert.match(route, /roles\.includes\("trainer"\)/);
   assert.match(route, /\.eq\("organisation_id", organisationId\)/);
@@ -16,7 +15,6 @@ test("le suivi annuel formateur reste rattaché au profil du formateur connecté
 
 test("la transmission du bilan verrouille les modifications et notifie le responsable", async () => {
   const route = await read("app/api/client/daily/trainer-annual-review/route.ts");
-
   assert.match(route, /status === "submitted"/);
   assert.match(route, /status: "submitted"/);
   assert.match(route, /submitted_at: submittedAt/);
@@ -26,19 +24,18 @@ test("la transmission du bilan verrouille les modifications et notifie le respon
 
 test("une formation suivie exige son attestation avant transmission", async () => {
   const route = await read("app/api/client/daily/trainer-annual-review/route.ts");
-
   assert.match(route, /training_kind === "completed" && !training\.attestation_document_id/);
   assert.match(route, /Ajoutez l’attestation de chaque formation suivie/);
 });
 
-test("les relances annuelles sont bornées, espacées et cessent après transmission", async () => {
+test("les relances annuelles sont bornées, espacées, cessent après transmission et excluent le dirigeant-formateur", async () => {
   const route = await read("app/api/internal/daily/trainer-annual-reminders/route.ts");
-
   assert.match(route, /MAX_EMAILS_PER_RUN = 20/);
   assert.match(route, /REMINDER_INTERVAL_DAYS = 7/);
   assert.match(route, /review\?\.status === "submitted"/);
-  assert.match(route, /next_reminder_at: nextReminder\(now\)/);
-  assert.match(route, /\.neq\("status", "submitted"\)/);
+  assert.match(route, /next_reminder_at\s*:\s*nextReminder\(now\)/);
+  assert.match(route, /\.neq\("status"\s*,\s*"submitted"\)/);
+  assert.match(route, /\.neq\("engagement_type", "owner"\)/);
 });
 
 test("l’interface du formateur et celle du responsable restent présentes", async () => {
@@ -46,7 +43,6 @@ test("l’interface du formateur et celle du responsable restent présentes", as
     read("app/client/daily/formateur/suivi-annuel/page.tsx"),
     read("app/client/daily/formateurs/suivi-annuel/page.tsx"),
   ]);
-
   assert.match(trainerPage, /trainer-annual-review/);
   assert.match(managerPage, /trainer-annual-reviews/);
 });
