@@ -100,7 +100,18 @@ export async function PATCH(req: Request) {
     if (!steps) return NextResponse.json({ error: "Le déroulement de la procédure est requis." }, { status: 400 });
     const definition = definitions.find((item) => item.procedure_type === procedureType)!;
     const now = new Date().toISOString();
-    const values = { organisation_id: context.workspace.membership.organisation_id, procedure_type: procedureType, title: definition.title, purpose: String(body.purpose ?? "").trim() || null, steps, responsibilities: String(body.responsibilities ?? "").trim() || null, evidence: String(body.evidence ?? "").trim() || null, status, reviewed_at: status === "active" ? now : null, updated_at: now };
+    const values = {
+      organisation_id: context.workspace.membership.organisation_id,
+      procedure_type: procedureType,
+      title: definition.title,
+      purpose: String(body.purpose ?? "").trim() || null,
+      steps,
+      responsibilities: String(body.responsibilities ?? "").trim() || null,
+      evidence: String(body.evidence ?? "").trim() || null,
+      status,
+      reviewed_at: status === "active" ? now : null,
+      updated_at: now,
+    };
     const { data, error } = await getAdminSupabase().from("daily_internal_procedures").upsert(values, { onConflict: "organisation_id,procedure_type" }).select("id,procedure_type,title,purpose,steps,responsibilities,evidence,status,reviewed_at,updated_at").single();
     if (error) throw error;
     return NextResponse.json({ procedure: data });
