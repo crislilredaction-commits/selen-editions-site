@@ -13,11 +13,11 @@ export async function GET(req:Request){
  const context=await managerContext();if(!context.ok)return NextResponse.json({error:context.error},{status:context.status});const trainerId=new URL(req.url).searchParams.get("trainer_id")?.trim()||"";if(!trainerId)return NextResponse.json({error:"Formateur requis."},{status:400});
  const trainer=await trainerOwned(context.admin,context.organisationId,trainerId).catch(()=>null);if(!trainer)return NextResponse.json({error:"Formateur introuvable."},{status:404});
  const[{data:sessionRows,error:sessionError},{data:orders,error:orderError},{data:documents,error:documentError}]=await Promise.all([
-  context.admin.from("daily_sessions").select("id,internal_reference,start_date,end_date,status,trainer_id,trainer_ids,daily_formations(title)").eq("organisation_id",context.organisationId).neq("status","archived").order("start_date",{ascending:false}),
+  context.admin.from("daily_sessions").select("id,internal_reference,start_date,end_date,status,trainer_ids,daily_formations(title)").eq("organisation_id",context.organisationId).neq("status","archived").order("start_date",{ascending:false}),
   context.admin.from("daily_mission_orders").select("id,trainer_profile_id,order_type,start_date,end_date,status,missions,mission_details,created_at").eq("organisation_id",context.organisationId).eq("trainer_profile_id",trainerId).order("created_at",{ascending:false}),
   context.admin.from("daily_documents").select("id,document_type,logical_name,status,bucket,storage_path,mime_type,created_at,updated_at,metadata,is_current").eq("organisation_id",context.organisationId).eq("linked_object_type","trainer_profile").eq("linked_object_id",trainerId).eq("is_current",true).in("document_type",["trainer_cv","trainer_contract"]).order("created_at",{ascending:false}),
  ]);const error=sessionError??orderError??documentError;if(error)return NextResponse.json({error:error.message},{status:500});
- const sessions=(sessionRows??[]).filter(s=>s.trainer_id===trainerId||(Array.isArray(s.trainer_ids)&&s.trainer_ids.map(String).includes(trainerId)));
+ const sessions=(sessionRows??[]).filter(s=>Array.isArray(s.trainer_ids)&&s.trainer_ids.map(String).includes(trainerId));
  const files=[] as Array<Record<string,unknown>>;for(const doc of documents??[]){let url:string|null=null;if(doc.bucket&&doc.storage_path){const{data}=await context.admin.storage.from(doc.bucket).createSignedUrl(doc.storage_path,900);url=data?.signedUrl??null}files.push({...doc,url})}
  return NextResponse.json({trainer,sessions,orders:orders??[],documents:files});
 }
