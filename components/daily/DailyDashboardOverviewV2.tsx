@@ -10,63 +10,165 @@ type Formation = { id:string; title:string; status:string; spontaneous_registrat
 type Session = { id:string; formation_id:string; start_date?:string|null; status:string; modality?:string|null; distance_mode?:string|null; daily_formations?:{title?:string|null}|null };
 type ActionItem = { id:string; priority:"high"|"medium"|"normal"; title:string; detail:string; href:string; sessionLabel?:string|null };
 type Onboarding = {
- organisation_name?:string|null;
- manager_first_name?:string|null;
- manager_last_name?:string|null;
- nda_number?:string|null;
- qualiopi_status?:string|null;
- quality_tracking_enabled?:boolean|null;
- first_nda_year?:boolean|null;
- insee_document_url?:string|null;
- qualiopi_certificate_url?:string|null;
- nda_or_bpf_document_url?:string|null;
+  organisation_name?:string|null;
+  manager_first_name?:string|null;
+  manager_last_name?:string|null;
+  nda_number?:string|null;
+  qualiopi_status?:string|null;
+  quality_tracking_enabled?:boolean|null;
+  first_nda_year?:boolean|null;
+  insee_document_url?:string|null;
+  qualiopi_certificate_url?:string|null;
+  nda_or_bpf_document_url?:string|null;
 };
 type Workspace = { organisation?:Record<string,unknown>|null; trainers?:Array<Record<string,unknown>> };
+
 const rank:Record<ActionItem["priority"],number>={high:0,medium:1,normal:2};
 
-function formatDate(value?:string|null){if(!value)return"Date à définir";const d=new Date(`${value}T12:00:00`);return Number.isNaN(d.getTime())?value:new Intl.DateTimeFormat("fr-FR",{day:"numeric",month:"long",year:"numeric"}).format(d)}
-function formatModality(s:Session){if(s.modality==="distanciel"&&s.distance_mode==="asynchrone")return"Distanciel à votre rythme";if(s.modality==="distanciel")return"Distanciel en direct";if(s.modality==="presentiel")return"Présentiel";if(s.modality==="mixte")return"Mixte";return"Modalité à préciser"}
+function formatDate(value?:string|null){
+  if(!value)return"Date à définir";
+  const d=new Date(`${value}T12:00:00`);
+  return Number.isNaN(d.getTime())?value:new Intl.DateTimeFormat("fr-FR",{day:"numeric",month:"long",year:"numeric"}).format(d);
+}
+
+function formatModality(s:Session){
+  if(s.modality==="distanciel"&&s.distance_mode==="asynchrone")return"Distanciel à votre rythme";
+  if(s.modality==="distanciel")return"Distanciel en direct";
+  if(s.modality==="presentiel")return"Présentiel";
+  if(s.modality==="mixte")return"Mixte";
+  return"Modalité à préciser";
+}
+
 function missingDocumentActions(onboarding:Onboarding|null):ActionItem[]{
- if(!onboarding)return[];
- const items:ActionItem[]=[];
- const add=(id:string,title:string)=>items.push({id:`missing-doc:${id}`,priority:"medium",title,detail:"Cette pièce administrative manque encore dans le profil de votre organisme.",href:"/client/daily/mon-compte#documents-organisme",sessionLabel:"Profil organisme"});
- if(!onboarding.insee_document_url)add("insee","Avis INSEE à fournir");
- if(onboarding.qualiopi_status==="yes"&&!onboarding.qualiopi_certificate_url)add("qualiopi","Certificat Qualiopi à fournir");
- if(Boolean(onboarding.nda_number?.trim())&&!onboarding.first_nda_year&&!onboarding.nda_or_bpf_document_url)add("bpf","Dernier BPF à fournir");
- return items;
+  if(!onboarding)return[];
+  const items:ActionItem[]=[];
+  const add=(id:string,title:string)=>items.push({id:`missing-doc:${id}`,priority:"medium",title,detail:"Cette pièce administrative manque encore dans le profil de votre organisme.",href:"/client/daily/mon-compte#documents-organisme",sessionLabel:"Profil organisme"});
+  if(!onboarding.insee_document_url)add("insee","Avis INSEE à fournir");
+  if(onboarding.qualiopi_status==="yes"&&!onboarding.qualiopi_certificate_url)add("qualiopi","Certificat Qualiopi à fournir");
+  if(Boolean(onboarding.nda_number?.trim())&&!onboarding.first_nda_year&&!onboarding.nda_or_bpf_document_url)add("bpf","Dernier BPF à fournir");
+  return items;
 }
 
 export default function DailyDashboardOverviewV2(){
- const supabase=useMemo(()=>createSupabaseBrowserClient(),[]);
- const[formations,setFormations]=useState<Formation[]>([]);const[sessions,setSessions]=useState<Session[]>([]);const[actions,setActions]=useState<ActionItem[]>([]);const[onboarding,setOnboarding]=useState<Onboarding|null>(null);const[workspace,setWorkspace]=useState<Workspace|null>(null);const[loading,setLoading]=useState(true);const[error,setError]=useState("");const[signingOut,setSigningOut]=useState(false);
- useEffect(()=>{let cancelled=false;(async()=>{try{const responses=await Promise.all([
-  assistanceFetch("/api/client/daily/formations",{cache:"no-store"}),assistanceFetch("/api/client/daily/sessions",{cache:"no-store"}),assistanceFetch("/api/client/daily/action-center",{cache:"no-store"}),assistanceFetch("/api/client/daily/onboarding",{cache:"no-store"}),assistanceFetch("/api/client/daily/workspace",{cache:"no-store"})]);
-  const[f,s,a,o,w]=await Promise.all(responses.map(r=>r.json().catch(()=>({}))));if(!responses[0].ok||!responses[1].ok)throw new Error("Impossible de charger l'activité Daily.");if(cancelled)return;setFormations((f.formations??[]).filter((x:Formation)=>x.status!=="archived"));setSessions((s.sessions??[]).filter((x:Session)=>x.status!=="archived"));if(responses[2].ok)setActions(a.actions??[]);if(responses[3].ok)setOnboarding(o.onboarding??null);if(responses[4].ok)setWorkspace(w.workspace??null)}catch(e){if(!cancelled)setError(e instanceof Error?e.message:"Chargement impossible.")}finally{if(!cancelled)setLoading(false)}})();return()=>{cancelled=true}},[]);
- const today=new Date().toISOString().slice(0,10);const future=useMemo(()=>sessions.filter(s=>!s.start_date||s.start_date>=today).sort((a,b)=>String(a.start_date??"9999").localeCompare(String(b.start_date??"9999"))),[sessions,today]);
- const sorted=useMemo(()=>{const merged=actions.filter(item=>!item.title.toLowerCase().includes("livret d'accueil"));const existing=new Set(merged.map(item=>item.title));for(const item of missingDocumentActions(onboarding)){if(!existing.has(item.title))merged.push(item)}return merged.sort((a,b)=>rank[a.priority]-rank[b.priority])},[actions,onboarding]);
- const requests=formations.filter(f=>f.spontaneous_registration_task_status==="to_attach"&&!future.some(s=>s.formation_id===f.id));const next=future[0]??null;const orgName=String(workspace?.organisation?.name??onboarding?.organisation_name??"Mon organisme");const manager=[onboarding?.manager_first_name,onboarding?.manager_last_name].filter(Boolean).join(" ")||"Mon compte";const firstName=onboarding?.manager_first_name?.trim()||"";const isQualiopi=onboarding?.qualiopi_status==="yes";const qualityEnabled=isQualiopi||onboarding?.quality_tracking_enabled!==false;const trainerCount=workspace?.trainers?.length??0;
- async function signOut(){setSigningOut(true);await supabase.auth.signOut();window.location.assign("/client/login")}
- if(loading)return <LoadingMascot message="Sélion rassemble votre activité…"/>;
- return <main className="dv3-shell"><style>{css}</style><div className="dv3-wrap">
-  <header className="dv3-topbar"><Link href="/client" className="dv3-brand"><span className="dv3-brandmark">S</span><span><b>Selen</b><small>Daily</small></span></Link><div className="dv3-topactions"><Link href="/client" className="dv3-services">Mes autres services</Link><button type="button" className="dv3-logout" disabled={signingOut} onClick={()=>void signOut()}>{signingOut?"Déconnexion…":"Se déconnecter"}</button></div></header>
-  {error?<div className="dv3-error">{error}</div>:null}
-  <section className="dv3-hero"><div className="dv3-hero-copy"><span className="dv3-kicker">Votre espace de gestion formation</span><h1>{firstName?`Bonjour ${firstName},`:"Bonjour,"}<br/><em>votre activité est ici.</em></h1><p>{sorted.length?"Les éléments qui nécessitent votre attention sont regroupés en priorité, pour que vous sachiez immédiatement par où commencer.":"Tout est à jour. Votre prochaine session et vos raccourcis restent accessibles en un coup d’œil."}</p></div><div className={`dv3-status ${sorted.length?"attention":"ok"}`}><span>{sorted.length?sorted.length:"✓"}</span><div><b>{sorted.length?`action${sorted.length>1?"s":""} à traiter`:"Tout est à jour"}</b><small>{sorted.length?"Votre priorité du moment":"Aucune action en attente"}</small></div></div></section>
+  const supabase=useMemo(()=>createSupabaseBrowserClient(),[]);
+  const[formations,setFormations]=useState<Formation[]>([]);
+  const[sessions,setSessions]=useState<Session[]>([]);
+  const[actions,setActions]=useState<ActionItem[]>([]);
+  const[onboarding,setOnboarding]=useState<Onboarding|null>(null);
+  const[workspace,setWorkspace]=useState<Workspace|null>(null);
+  const[loading,setLoading]=useState(true);
+  const[error,setError]=useState("");
+  const[signingOut,setSigningOut]=useState(false);
 
-  <section className="dv3-metrics" aria-label="Vue d'ensemble"><Metric value={formations.length} label="Formation" plural={formations.length>1}/><Metric value={future.length} label="Session à venir" plural={future.length>1}/><Metric value={trainerCount} label="Formateur" plural={trainerCount>1}/><Metric value={requests.length} label="Demande sans date" plural={requests.length>1} alert={requests.length>0}/></section>
+  useEffect(()=>{let cancelled=false;(async()=>{try{
+    const responses=await Promise.all([
+      assistanceFetch("/api/client/daily/formations",{cache:"no-store"}),
+      assistanceFetch("/api/client/daily/sessions",{cache:"no-store"}),
+      assistanceFetch("/api/client/daily/action-center",{cache:"no-store"}),
+      assistanceFetch("/api/client/daily/onboarding",{cache:"no-store"}),
+      assistanceFetch("/api/client/daily/workspace",{cache:"no-store"})
+    ]);
+    const[f,s,a,o,w]=await Promise.all(responses.map(r=>r.json().catch(()=>({}))));
+    if(!responses[0].ok||!responses[1].ok)throw new Error("Impossible de charger l'activité Daily.");
+    if(cancelled)return;
+    setFormations((f.formations??[]).filter((x:Formation)=>x.status!=="archived"));
+    setSessions((s.sessions??[]).filter((x:Session)=>x.status!=="archived"));
+    if(responses[2].ok)setActions(a.actions??[]);
+    if(responses[3].ok)setOnboarding(o.onboarding??null);
+    if(responses[4].ok)setWorkspace(w.workspace??null);
+  }catch(e){if(!cancelled)setError(e instanceof Error?e.message:"Chargement impossible.")}
+  finally{if(!cancelled)setLoading(false)}})();return()=>{cancelled=true}},[]);
 
-  <div className="dv3-grid"><section className="dv3-main">
-   <section className="dv3-card dv3-tasks"><div className="dv3-titleline"><div><span className="dv3-kicker">À faire maintenant</span><h2>{sorted.length?"Vos prochaines actions":"Vous êtes à jour"}</h2></div>{sorted.length?<span className="dv3-pill">{sorted.length} en attente</span>:<span className="dv3-pill ok">À jour</span>}</div>{sorted.length===0?<div className="dv3-empty"><span>✓</span><div><b>Aucune action n’attend votre intervention.</b><p>Daily continuera de faire remonter ici uniquement ce qui mérite réellement votre attention.</p></div></div>:<div className="dv3-tasklist">{sorted.map((item,index)=><Link key={item.id} href={item.href} className={`dv3-task ${item.priority}`}><span className="dv3-tasknum">{String(index+1).padStart(2,"0")}</span><span className="dv3-taskcopy"><strong>{item.title}</strong><small>{item.sessionLabel?`${item.sessionLabel} · `:""}{item.detail}</small></span><span className="dv3-arrow">→</span></Link>)}</div>}</section>
+  const today=new Date().toISOString().slice(0,10);
+  const future=useMemo(()=>sessions.filter(s=>!s.start_date||s.start_date>=today).sort((a,b)=>String(a.start_date??"9999").localeCompare(String(b.start_date??"9999"))),[sessions,today]);
+  const sorted=useMemo(()=>{
+    const merged=actions.filter(item=>!item.title.toLowerCase().includes("livret d'accueil"));
+    const existing=new Set(merged.map(item=>item.title));
+    for(const item of missingDocumentActions(onboarding)){if(!existing.has(item.title))merged.push(item)}
+    return merged.sort((a,b)=>rank[a.priority]-rank[b.priority]);
+  },[actions,onboarding]);
 
-   <div className="dv3-split"><article className="dv3-card dv3-next"><div className="dv3-iconbox">◷</div><span className="dv3-kicker">Prochaine session</span><h2>{next?.daily_formations?.title??"Aucune session planifiée"}</h2>{next?<><p className="dv3-date">{formatDate(next.start_date)}</p><p className="dv3-muted">{formatModality(next)}</p><Link href={`/client/daily/sessions?session=${next.id}`} className="dv3-textlink">Ouvrir la session <span>→</span></Link></>:<p className="dv3-muted">Votre planning est libre pour le moment.</p>}</article><article className="dv3-card dv3-watchcard"><div className="dv3-iconbox amber">◎</div><span className="dv3-kicker">À surveiller</span><h2>Demandes sans date</h2>{requests.length===0?<div className="dv3-miniok">Aucune demande n’attend de date.</div>:<div className="dv3-watchlist">{requests.slice(0,3).map(f=><Link key={f.id} href={`/client/daily/sessions?formation=${f.id}`} className="dv3-watch"><strong>{f.title}</strong><small>Planifier une session →</small></Link>)}</div>}</article></div>
-  </section>
+  const requests=formations.filter(f=>f.spontaneous_registration_task_status==="to_attach"&&!future.some(s=>s.formation_id===f.id));
+  const next=future[0]??null;
+  const orgName=String(workspace?.organisation?.name??onboarding?.organisation_name??"Mon organisme");
+  const manager=[onboarding?.manager_first_name,onboarding?.manager_last_name].filter(Boolean).join(" ")||"Mon compte";
+  const firstName=onboarding?.manager_first_name?.trim()||"";
+  const isQualiopi=onboarding?.qualiopi_status==="yes";
+  const qualityEnabled=isQualiopi||onboarding?.quality_tracking_enabled!==false;
+  const trainerCount=workspace?.trainers?.length??0;
 
-  <aside className="dv3-side"><article className="dv3-card dv3-profile"><div className="dv3-profiletop"><div className="dv3-avatar">{manager.slice(0,1).toUpperCase()}</div><div><span className="dv3-kicker">Votre organisme</span><h2>{orgName}</h2><p>{manager}</p></div></div><Link href="/client/daily/mon-compte" className="dv3-profilelink">Profil et informations organisme <span>→</span></Link></article>
-   <section className="dv3-nav"><div className="dv3-navtitle"><span className="dv3-kicker">Accès rapide</span><h2>Gérer votre activité</h2></div><Side href="/client/daily/formations" icon="F" title="Formations" detail={`${formations.length} active${formations.length>1?"s":""}`}/><Side href="/client/daily/sessions" icon="S" title="Sessions" detail={`${future.length} à venir`}/><Side href="/client/daily/apprenants" icon="A" title="Apprenants" detail="Dossiers et suivi"/><Side href="/client/daily/generateur-documents" icon="D" title="Dossiers apprenants" detail="Générer les documents"/><Side href="/client/daily/formateurs" icon="Fo" title="Formateurs" detail={`${trainerCount} référencé${trainerCount>1?"s":""}`}/><Side href="/client/daily/qualite" icon="Q" title="Suivi Qualité" detail={isQualiopi?"Qualiopi · suivi actif":qualityEnabled?"Suivi actif":"Désactivé"} muted={!qualityEnabled}/></section>
-  </aside></div>
- </div></main>
+  async function signOut(){setSigningOut(true);await supabase.auth.signOut();window.location.assign("/client/login")}
+
+  if(loading)return <LoadingMascot message="Sélion rassemble votre activité…"/>;
+
+  return (
+    <main className="mx-auto max-w-6xl px-4 pb-12 pt-6 md:px-6 md:pt-8">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-[#b28a62]/35 pb-4">
+        <Link href="/client" className="font-['Cinzel'] text-[0.62rem] font-bold uppercase tracking-[0.14em] text-[#8a4b24] no-underline">← Mes autres services</Link>
+        <button type="button" className="btn-ghost" disabled={signingOut} onClick={()=>void signOut()}>{signingOut?"Déconnexion…":"Se déconnecter"}</button>
+      </div>
+
+      {error?<div className="mb-5 border border-[#8a4b24] bg-[#f8efdf] p-4 text-[#8a4b24]">{error}</div>:null}
+
+      <section className="gazette-card p-6 md:p-9">
+        <div className="gazette-band" />
+        <div className="grid gap-7 pt-3 md:grid-cols-[1fr_auto] md:items-end">
+          <div>
+            <span className="gazette-label">Votre espace de gestion formation</span>
+            <h1 className="mt-5 font-['Playfair_Display'] text-4xl font-bold leading-[1.02] text-[#3e2a1f] md:text-6xl">
+              {firstName?`Bonjour ${firstName},`:"Bonjour,"}<br/>
+              <em className="font-normal text-[#8a4b24]">votre activité est ici.</em>
+            </h1>
+            <p className="mt-5 max-w-2xl text-base leading-7 text-[#5a4031] md:text-lg">
+              {sorted.length?"Les éléments qui nécessitent votre attention sont regroupés en priorité, pour que vous sachiez immédiatement par où commencer.":"Tout est à jour. Votre prochaine session et vos raccourcis restent accessibles en un coup d’œil."}
+            </p>
+          </div>
+          <div className="border border-[#b28a62]/45 bg-[#efe3cf]/70 px-5 py-4 text-center md:min-w-52">
+            <strong className="block font-['Playfair_Display'] text-4xl text-[#8a4b24]">{sorted.length||"✓"}</strong>
+            <span className="mt-1 block font-['Cinzel'] text-[0.62rem] font-bold uppercase tracking-[0.14em] text-[#8a6243]">{sorted.length?`action${sorted.length>1?"s":""} à traiter`:"Tout est à jour"}</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Vue d'ensemble">
+        <Metric value={formations.length} label="Formation" plural={formations.length>1}/>
+        <Metric value={future.length} label="Session à venir" plural={future.length>1}/>
+        <Metric value={trainerCount} label="Formateur" plural={trainerCount>1}/>
+        <Metric value={requests.length} label="Demande sans date" plural={requests.length>1} alert={requests.length>0}/>
+      </section>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="grid gap-6">
+          <section className="gazette-card p-5 md:p-7">
+            <div className="gazette-band" />
+            <div className="flex flex-wrap items-start justify-between gap-3 pt-2">
+              <div><span className="gazette-label">À faire maintenant</span><h2 className="mt-4 text-3xl font-bold">{sorted.length?"Vos prochaines actions":"Vous êtes à jour"}</h2></div>
+              <span className="border border-[#b28a62]/40 bg-[#efe3cf]/65 px-3 py-2 font-['Cinzel'] text-[0.6rem] font-bold uppercase tracking-[0.12em] text-[#8a6243]">{sorted.length?`${sorted.length} en attente`:"À jour"}</span>
+            </div>
+            {sorted.length===0?
+              <div className="mt-5 border-y border-[#b28a62]/30 py-5 text-[#5a4031]"><strong className="text-[#3e2a1f]">Aucune action n’attend votre intervention.</strong><p className="mt-2">Daily continuera de faire remonter ici uniquement ce qui mérite réellement votre attention.</p></div>
+              :<div className="mt-5 divide-y divide-[#b28a62]/25 border-y border-[#b28a62]/30">{sorted.map((item,index)=><Link key={item.id} href={item.href} className="grid grid-cols-[34px_1fr_auto] items-center gap-3 py-4 text-[#3e2a1f] no-underline hover:bg-[#efe3cf]/35"><span className="font-['Cinzel'] text-[0.62rem] font-bold text-[#8a6243]">{String(index+1).padStart(2,"0")}</span><span><strong className="block text-base">{item.title}</strong><small className="mt-1 block leading-5 text-[#6e4a32]">{item.sessionLabel?`${item.sessionLabel} · `:""}{item.detail}</small></span><span className="text-xl text-[#8a4b24]">→</span></Link>)}</div>}
+          </section>
+
+          <div className="grid gap-6 md:grid-cols-2">
+            <article className="gazette-card p-5 md:p-6"><div className="gazette-band"/><span className="gazette-label">Prochaine session</span><h2 className="mt-4 text-2xl font-bold">{next?.daily_formations?.title??"Aucune session planifiée"}</h2>{next?<><p className="mt-4 text-lg italic text-[#8a4b24]">{formatDate(next.start_date)}</p><p className="mt-1 text-[#5a4031]">{formatModality(next)}</p><Link href={`/client/daily/sessions?session=${next.id}`} className="mt-5 inline-block font-['Cinzel'] text-[0.66rem] font-bold uppercase tracking-[0.12em] text-[#8a4b24]">Ouvrir la session →</Link></>:<p className="mt-4 text-[#5a4031]">Votre planning est libre pour le moment.</p>}</article>
+            <article className="gazette-card p-5 md:p-6"><div className="gazette-band"/><span className="gazette-label">À surveiller</span><h2 className="mt-4 text-2xl font-bold">Demandes sans date</h2>{requests.length===0?<p className="mt-4 text-[#5a4031]">Aucune demande n’attend de date.</p>:<div className="mt-4 divide-y divide-[#b28a62]/25">{requests.slice(0,3).map(f=><Link key={f.id} href={`/client/daily/sessions?formation=${f.id}`} className="block py-3 text-[#3e2a1f] no-underline"><strong>{f.title}</strong><small className="mt-1 block text-[#8a4b24]">Planifier une session →</small></Link>)}</div>}</article>
+          </div>
+        </div>
+
+        <aside className="grid content-start gap-5">
+          <article className="gazette-card p-5"><div className="gazette-band"/><span className="gazette-label">Votre organisme</span><div className="mt-4 flex items-center gap-3"><div className="grid h-12 w-12 place-items-center border border-[#b28a62]/50 bg-[#efe3cf] font-['Playfair_Display'] text-xl font-bold text-[#8a4b24]">{manager.slice(0,1).toUpperCase()}</div><div><h2 className="text-xl font-bold">{orgName}</h2><p className="text-sm text-[#6e4a32]">{manager}</p></div></div><Link href="/client/daily/mon-compte" className="mt-5 block border-t border-[#b28a62]/30 pt-4 font-['Cinzel'] text-[0.62rem] font-bold uppercase tracking-[0.1em] text-[#8a4b24]">Profil et organisme →</Link></article>
+          <section className="grid gap-2"><div className="mb-1"><span className="gazette-label">Accès rapide</span><h2 className="mt-3 text-2xl font-bold">Gérer votre activité</h2></div><Side href="/client/daily/formations" title="Formations" detail={`${formations.length} active${formations.length>1?"s":""}`}/><Side href="/client/daily/sessions" title="Sessions" detail={`${future.length} à venir`}/><Side href="/client/daily/apprenants" title="Apprenants" detail="Dossiers et suivi"/><Side href="/client/daily/generateur-documents" title="Dossiers apprenants" detail="Générer les documents"/><Side href="/client/daily/formateurs" title="Formateurs" detail={`${trainerCount} référencé${trainerCount>1?"s":""}`}/><Side href="/client/daily/qualite" title="Suivi Qualité" detail={isQualiopi?"Qualiopi · suivi actif":qualityEnabled?"Suivi actif":"Désactivé"} muted={!qualityEnabled}/></section>
+        </aside>
+      </div>
+    </main>
+  );
 }
-function Metric({value,label,plural,alert=false}:{value:number;label:string;plural:boolean;alert?:boolean}){return <div className={`dv3-metric${alert?" alert":""}`}><strong>{value}</strong><span>{label}{plural?"s":""}</span></div>}
-function Side({href,icon,title,detail,muted=false}:{href:string;icon:string;title:string;detail:string;muted?:boolean}){return <Link href={href} className={`dv3-sidecard${muted?" muted":""}`}><span className="dv3-sideicon">{icon}</span><span className="dv3-sidecopy"><strong>{title}</strong><small>{detail}</small></span><span className="dv3-arrow">→</span></Link>}
-const css=`
-.dv3-shell{--ink:#332d2a;--muted:#7a7069;--wine:#7d342d;--wine-dark:#642821;--gold:#b9863f;--cream:#fbf8f1;--paper:#fffdf9;--line:#e7ded0;--sage:#64745e;min-height:100vh;padding:0 20px 72px;background:radial-gradient(circle at 12% 8%,rgba(185,134,63,.11),transparent 30%),linear-gradient(180deg,#f8f4ec 0%,#f3eee5 100%);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.dv3-wrap{max-width:1180px;margin:0 auto}.dv3-topbar{height:82px;display:flex;align-items:center;justify-content:space-between;gap:24px}.dv3-brand{display:flex;align-items:center;gap:11px;color:var(--ink);text-decoration:none}.dv3-brandmark{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:var(--wine);color:#fff8ed;font:700 18px Georgia,serif;box-shadow:0 7px 18px rgba(125,52,45,.18)}.dv3-brand>span:last-child{display:grid;line-height:1.05}.dv3-brand b{font:600 18px Georgia,serif}.dv3-brand small{text-transform:uppercase;letter-spacing:.15em;font-size:8px;color:var(--gold);font-weight:800;margin-top:4px}.dv3-topactions{display:flex;align-items:center;gap:10px}.dv3-services,.dv3-logout{font:700 12px inherit;text-decoration:none;border-radius:10px;padding:10px 13px}.dv3-services{color:var(--wine);background:rgba(255,255,255,.58);border:1px solid var(--line)}.dv3-logout{color:var(--muted);background:transparent;border:0;cursor:pointer}.dv3-logout:disabled{opacity:.55}.dv3-error{margin-bottom:18px;padding:13px 15px;border:1px solid #d7a79d;border-radius:12px;background:#fff4f1;color:#842f26}.dv3-hero{position:relative;overflow:hidden;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:30px;align-items:end;padding:42px 44px;border-radius:28px;background:linear-gradient(135deg,#fffdf9 0%,#fbf4e8 68%,#f2e4cf 100%);border:1px solid rgba(185,134,63,.2);box-shadow:0 22px 60px rgba(68,49,35,.09)}.dv3-hero:after{content:"";position:absolute;width:260px;height:260px;border-radius:50%;right:-80px;top:-145px;background:rgba(125,52,45,.07)}.dv3-kicker{display:block;text-transform:uppercase;letter-spacing:.15em;color:var(--gold);font-size:9px;font-weight:900}.dv3-hero-copy{position:relative;z-index:1;max-width:720px}.dv3-hero h1{margin:12px 0 15px;font:500 clamp(2.25rem,5vw,4.1rem)/.98 Georgia,"Times New Roman",serif;letter-spacing:-.035em}.dv3-hero h1 em{font-weight:400;color:var(--wine);font-style:italic}.dv3-hero p{max-width:650px;margin:0;color:var(--muted);line-height:1.68;font-size:14px}.dv3-status{position:relative;z-index:1;min-width:210px;display:flex;gap:14px;align-items:center;padding:17px 19px;border-radius:18px;background:rgba(255,255,255,.72);border:1px solid rgba(125,52,45,.14);backdrop-filter:blur(10px)}.dv3-status>span{width:48px;height:48px;display:grid;place-items:center;border-radius:15px;background:var(--wine);color:white;font:700 20px Georgia,serif}.dv3-status.ok>span{background:var(--sage)}.dv3-status div{display:grid;gap:3px}.dv3-status b{font-size:13px}.dv3-status small{color:var(--muted);font-size:10px}.dv3-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0 24px}.dv3-metric{display:flex;align-items:baseline;gap:9px;padding:16px 19px;border-radius:16px;background:rgba(255,255,255,.62);border:1px solid var(--line)}.dv3-metric strong{font:600 24px Georgia,serif;color:var(--wine)}.dv3-metric span{color:var(--muted);font-size:11px;font-weight:700}.dv3-metric.alert strong{color:#a45e20}.dv3-grid{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:22px;align-items:start}.dv3-main{display:grid;gap:20px}.dv3-side{display:grid;gap:16px;position:sticky;top:18px}.dv3-card{background:rgba(255,253,249,.88);border:1px solid var(--line);border-radius:22px;box-shadow:0 13px 34px rgba(68,49,35,.055)}.dv3-tasks{padding:26px}.dv3-titleline{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.dv3-titleline h2,.dv3-next h2,.dv3-watchcard h2,.dv3-navtitle h2{margin:6px 0 0;font:600 23px Georgia,serif}.dv3-pill{padding:7px 10px;border-radius:999px;background:#f6e7e4;color:var(--wine);font-size:10px;font-weight:800;white-space:nowrap}.dv3-pill.ok{background:#eaf0e7;color:var(--sage)}.dv3-tasklist{display:grid;gap:9px;margin-top:20px}.dv3-task{display:grid;grid-template-columns:36px minmax(0,1fr) 24px;gap:12px;align-items:center;padding:13px 14px;border-radius:14px;border:1px solid #ece4d8;background:#fffdf9;color:inherit;text-decoration:none;transition:.16s ease}.dv3-task:hover{transform:translateY(-1px);border-color:#d5bd99;box-shadow:0 8px 20px rgba(68,49,35,.06)}.dv3-task.high{border-left:3px solid var(--wine)}.dv3-task.medium{border-left:3px solid var(--gold)}.dv3-tasknum{width:32px;height:32px;display:grid;place-items:center;border-radius:10px;background:#f5efe5;color:#9b7a50;font-size:9px;font-weight:900}.dv3-taskcopy{display:grid;gap:4px}.dv3-taskcopy strong{font-size:13px}.dv3-taskcopy small{color:var(--muted);font-size:10.5px;line-height:1.45}.dv3-arrow{color:var(--wine);font-weight:900}.dv3-empty{display:flex;gap:13px;align-items:flex-start;margin-top:18px;padding:16px;border-radius:15px;background:#f1f5ef;color:#51614c}.dv3-empty>span{width:30px;height:30px;display:grid;place-items:center;border-radius:9px;background:#dde8d9;font-weight:900}.dv3-empty b{font-size:12px}.dv3-empty p{margin:5px 0 0;color:#6d7968;font-size:10.5px;line-height:1.5}.dv3-split{display:grid;grid-template-columns:1fr 1fr;gap:20px}.dv3-next,.dv3-watchcard{padding:24px;min-height:210px}.dv3-iconbox{width:38px;height:38px;display:grid;place-items:center;margin-bottom:20px;border-radius:12px;background:#f5e9e6;color:var(--wine);font-weight:900}.dv3-iconbox.amber{background:#f7eddc;color:#a26925}.dv3-date{margin:16px 0 5px;font:italic 17px Georgia,serif;color:var(--wine)}.dv3-muted{color:var(--muted);font-size:11px;line-height:1.55}.dv3-textlink{display:inline-flex;gap:8px;margin-top:8px;color:var(--wine);text-decoration:none;font-size:11px;font-weight:900}.dv3-miniok{margin-top:17px;color:var(--sage);font-size:11px}.dv3-watchlist{display:grid;gap:8px;margin-top:14px}.dv3-watch{display:grid;gap:3px;padding:9px 0;border-bottom:1px solid var(--line);color:inherit;text-decoration:none}.dv3-watch strong{font-size:11px}.dv3-watch small{color:var(--wine);font-size:9px}.dv3-profile{padding:20px}.dv3-profiletop{display:flex;gap:13px;align-items:center}.dv3-avatar{width:48px;height:48px;flex:0 0 48px;display:grid;place-items:center;border-radius:15px;background:linear-gradient(135deg,var(--wine),#995047);color:#fff;font:700 19px Georgia,serif}.dv3-profile h2{margin:5px 0 2px;font:600 17px Georgia,serif}.dv3-profile p{margin:0;color:var(--muted);font-size:10px}.dv3-profilelink{display:flex;justify-content:space-between;gap:10px;margin-top:17px;padding-top:14px;border-top:1px solid var(--line);color:var(--wine);text-decoration:none;font-size:10px;font-weight:800}.dv3-nav{display:grid;gap:8px}.dv3-navtitle{padding:7px 4px 5px}.dv3-navtitle h2{font-size:19px}.dv3-sidecard{min-height:66px;display:grid;grid-template-columns:38px minmax(0,1fr) 18px;gap:11px;align-items:center;padding:12px 13px;border-radius:16px;background:rgba(255,253,249,.82);border:1px solid var(--line);color:inherit;text-decoration:none;transition:.16s ease}.dv3-sidecard:hover{background:#fffdf9;border-color:#d7c19e;transform:translateX(2px)}.dv3-sidecard.muted{opacity:.58}.dv3-sideicon{width:36px;height:36px;display:grid;place-items:center;border-radius:11px;background:#f4e9e3;color:var(--wine);font-size:10px;font-weight:900}.dv3-sidecopy{display:grid;gap:3px}.dv3-sidecopy strong{font-size:11.5px}.dv3-sidecopy small{color:var(--muted);font-size:9.5px}.dv3-error{margin-top:6px}@media(max-width:940px){.dv3-grid{grid-template-columns:1fr}.dv3-side{position:static}.dv3-nav{grid-template-columns:repeat(2,1fr)}.dv3-navtitle{grid-column:1/-1}}@media(max-width:720px){.dv3-shell{padding:0 14px 56px}.dv3-topbar{height:auto;padding:18px 0}.dv3-hero{grid-template-columns:1fr;padding:28px 24px}.dv3-status{min-width:0}.dv3-metrics{grid-template-columns:repeat(2,1fr)}.dv3-split{grid-template-columns:1fr}.dv3-topactions{gap:4px}.dv3-services,.dv3-logout{font-size:10px;padding:9px}.dv3-nav{grid-template-columns:1fr}.dv3-navtitle{grid-column:auto}.dv3-task{grid-template-columns:32px minmax(0,1fr) 18px;padding:11px}.dv3-tasknum{width:28px;height:28px}.dv3-titleline{align-items:center}}@media(max-width:430px){.dv3-hero h1{font-size:2.35rem}.dv3-metrics{gap:8px}.dv3-metric{padding:13px}.dv3-metric strong{font-size:20px}.dv3-metric span{font-size:9.5px}.dv3-tasks,.dv3-next,.dv3-watchcard{padding:19px}.dv3-brand>span:last-child{display:none}}
-`;
+
+function Metric({value,label,plural,alert=false}:{value:number;label:string;plural:boolean;alert?:boolean}){
+  return <div className={`border px-4 py-4 ${alert?"border-[#8a4b24] bg-[#8a4b24]/5":"border-[#b28a62]/40 bg-[#fffaf0]/60"}`}><strong className="font-['Playfair_Display'] text-3xl text-[#8a4b24]">{value}</strong><span className="ml-2 text-sm text-[#5a4031]">{label}{plural?"s":""}</span></div>;
+}
+
+function Side({href,title,detail,muted=false}:{href:string;title:string;detail:string;muted?:boolean}){
+  return <Link href={href} className={`grid grid-cols-[1fr_auto] items-center gap-3 border border-[#b28a62]/35 bg-[#fffaf0]/55 px-4 py-3 text-[#3e2a1f] no-underline hover:bg-[#efe3cf]/65 ${muted?"opacity-55":""}`}><span><strong className="block">{title}</strong><small className="text-[#6e4a32]">{detail}</small></span><span className="text-[#8a4b24]">→</span></Link>;
+}

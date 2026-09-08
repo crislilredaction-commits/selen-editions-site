@@ -47,26 +47,37 @@ export default function RecentPublishedDocumentsCard() {
   if (documents.length === 0) return null;
 
   return (
-    <section style={{ maxWidth: 1180, margin: "1rem auto 0", padding: "0 1.25rem" }} aria-label="Documents récemment publiés">
-      <div style={{ border: "1px solid var(--selen-border)", borderRadius: 16, padding: "1rem 1.1rem", background: "var(--selen-bg2)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
-          <div>
-            <strong>📄 Nouveaux documents disponibles</strong>
-            <p style={{ margin: ".35rem 0 0", color: "var(--selen-text2)", fontSize: 14 }}>
-              Retrouvez ici les documents publiés pour votre organisme au cours des 30 derniers jours.
-            </p>
-          </div>
-          <Link href="/client/daily/documents">Voir les documents</Link>
-        </div>
-        <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
-          {documents.slice(0, 3).map((document) => (
-            <div key={document.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 14, flexWrap: "wrap" }}>
-              <span>{document.logical_name?.trim() || typeLabels[document.document_type] || "Document"}</span>
-              <span style={{ color: "var(--selen-text2)" }}>{formatDate(document.published_at)}</span>
+    <section className="mx-auto max-w-6xl px-4 pt-5 md:px-6" aria-label="Documents récemment publiés">
+      <article className="gazette-card p-5 md:p-6">
+        <div className="gazette-band" />
+        <div className="pt-2">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <span className="gazette-label">Nouveaux documents disponibles</span>
+              <h2 className="mt-4 font-['Playfair_Display'] text-2xl font-bold text-[#3e2a1f] md:text-3xl">Vos nouveautés documentaires</h2>
+              <p className="mt-2 max-w-2xl text-[0.95rem] leading-6 text-[#5a4031]">
+                Les documents publiés pour votre organisme au cours des 30 derniers jours sont regroupés ici.
+              </p>
             </div>
-          ))}
+            <Link href="/client/daily/documents" className="btn-ink inline-flex items-center text-center no-underline">
+              <span>Voir les documents</span>
+            </Link>
+          </div>
+
+          <div className="mt-5 divide-y divide-[#b28a62]/25 border-y border-[#b28a62]/30">
+            {documents.slice(0, 3).map((document) => (
+              <div key={document.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                <span className="font-semibold text-[#3e2a1f]">
+                  {document.logical_name?.trim() || typeLabels[document.document_type] || "Document"}
+                </span>
+                <span className="font-['Cinzel'] text-[0.62rem] uppercase tracking-[0.12em] text-[#8a6243]">
+                  {formatDate(document.published_at)}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      </article>
     </section>
   );
 }
