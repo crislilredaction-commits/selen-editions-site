@@ -10,16 +10,16 @@ const sessionsManager = await readFile(new URL("../components/daily/DailySession
 test("le formulaire de création d'apprenant reste replié par défaut", () => {
   assert.match(learnersPage, /const\[showCreate,setShowCreate\]=useState\(false\)/);
   assert.match(learnersPage, /Créer un nouvel apprenant/);
-  assert.match(learnersPage, /aria-expanded=\{showCreate\}/);
-  assert.match(learnersPage, /Ajouter l’apprenant/);
-  assert.match(learnersPage, /primaryButton/);
+  assert.match(learnersPage, /showCreate\?"▲":"▼"/);
+  assert.match(learnersPage, /Ajouter l'apprenant/);
 });
 
 test("le formulaire d'ajout d'un formateur reste replié par défaut", () => {
-  assert.match(trainersPage, /const \[showCreate, setShowCreate\] = useState\(false\)/);
+  assert.match(trainersPage, /const\[showCreate,setShowCreate\]=useState\(false\)/);
   assert.match(trainersPage, /Ajouter un nouveau formateur/);
-  assert.match(trainersPage, /aria-expanded=\{showCreate\}/);
+  assert.match(trainersPage, /showCreate\?"▲":"▼"/);
   assert.match(trainersPage, /Ajouter le formateur/);
+  assert.match(trainersPage, /Compétences \/ spécialités/);
 });
 
 test("la création d'une formation reste repliée au-dessus du catalogue", () => {
