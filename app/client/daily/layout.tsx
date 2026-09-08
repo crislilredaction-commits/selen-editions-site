@@ -23,8 +23,9 @@ export default function DailyClientLayout({ children }: { children: React.ReactN
 
   return (
     <div className="gazette-paper min-h-screen text-[#3e2a1f]">
+      <style jsx global>{dailyGazetteCss}</style>
       {!isStandaloneFlow ? (
-        <header className="border-b-2 border-[#b28a62]/40 bg-gradient-to-b from-[#ebe0ca] to-[#efe3cf]">
+        <header className="daily-gazette-header border-b-2 border-[#b28a62]/40 bg-gradient-to-b from-[#ebe0ca] to-[#efe3cf]">
           <div className="gazette-masthead-rule mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 md:px-6">
             <Link href="/client/daily" className="font-['Playfair_Display'] text-2xl font-bold tracking-tight text-[#3e2a1f] no-underline md:text-3xl">
               Selen <em className="not-italic text-[#8a4b24]">Daily</em>
@@ -41,12 +42,12 @@ export default function DailyClientLayout({ children }: { children: React.ReactN
       {!isStandaloneFlow && (showDashboardBack || contextualLinks.length > 0) ? (
         <nav className="mx-auto flex max-w-6xl flex-wrap gap-2 px-4 pt-4 md:px-6" aria-label="Navigation Selen Daily">
           {showDashboardBack ? (
-            <Link href="/client/daily" className="font-['Cinzel'] text-[0.65rem] font-bold uppercase tracking-[0.12em] text-[#8a4b24] no-underline border border-[#b28a62]/40 bg-[#fffaf0]/70 px-4 py-2 hover:bg-[#efe3cf]">
+            <Link href="/client/daily" className="daily-gazette-navlink">
               ← Tableau de bord
             </Link>
           ) : null}
           {contextualLinks.map((link) => (
-            <Link key={link.href} href={link.href} className="font-['Cinzel'] text-[0.65rem] font-bold uppercase tracking-[0.12em] text-[#8a4b24] no-underline border border-[#b28a62]/40 bg-[#fffaf0]/70 px-4 py-2 hover:bg-[#efe3cf]">
+            <Link key={link.href} href={link.href} className="daily-gazette-navlink">
               {link.label}
             </Link>
           ))}
@@ -68,3 +69,95 @@ export default function DailyClientLayout({ children }: { children: React.ReactN
     </div>
   );
 }
+
+const dailyGazetteCss = `
+.daily-client-gazette {
+  color: #3e2a1f;
+  font-family: "EB Garamond", Georgia, serif;
+}
+.daily-client-gazette > main,
+.daily-client-gazette main {
+  background: transparent !important;
+  color: #3e2a1f !important;
+}
+.daily-client-gazette h1,
+.daily-client-gazette h2,
+.daily-client-gazette h3,
+.daily-client-gazette h4 {
+  color: #3e2a1f !important;
+  font-family: "Playfair Display", Georgia, serif !important;
+  letter-spacing: -0.01em;
+}
+.daily-client-gazette p,
+.daily-client-gazette label,
+.daily-client-gazette li,
+.daily-client-gazette td,
+.daily-client-gazette th,
+.daily-client-gazette small,
+.daily-client-gazette span {
+  font-family: "EB Garamond", Georgia, serif;
+}
+.daily-client-gazette section,
+.daily-client-gazette article,
+.daily-client-gazette aside {
+  border-color: rgba(178,138,98,.42) !important;
+}
+.daily-client-gazette input,
+.daily-client-gazette select,
+.daily-client-gazette textarea {
+  border: 1px solid #c8a87a !important;
+  border-radius: 0 !important;
+  background: rgba(255,250,239,.84) !important;
+  color: #3e2a1f !important;
+  font-family: "EB Garamond", Georgia, serif !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.7) !important;
+}
+.daily-client-gazette input:focus,
+.daily-client-gazette select:focus,
+.daily-client-gazette textarea:focus {
+  outline: 2px solid rgba(138,75,36,.18) !important;
+  border-color: #8a4b24 !important;
+}
+.daily-client-gazette button,
+.daily-client-gazette a[role="button"] {
+  border-radius: 0 !important;
+  font-family: "Cinzel", serif !important;
+  letter-spacing: .05em;
+}
+.daily-client-gazette table {
+  border-color: #c8a87a !important;
+  background: rgba(248,239,223,.62) !important;
+}
+.daily-client-gazette thead,
+.daily-client-gazette th {
+  background: rgba(224,208,184,.72) !important;
+  color: #3e2a1f !important;
+  font-family: "Cinzel", serif !important;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+.daily-client-gazette [class*="card"],
+.daily-client-gazette [class*="panel"],
+.daily-client-gazette [class*="surface"],
+.daily-client-gazette [class*="box"] {
+  border-color: rgba(178,138,98,.42) !important;
+}
+.daily-gazette-navlink {
+  border: 1px solid rgba(178,138,98,.55);
+  background: rgba(255,250,239,.72);
+  color: #8a4b24;
+  padding: .55rem .85rem;
+  text-decoration: none;
+  font-family: "Cinzel", serif;
+  font-size: .64rem;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.daily-gazette-navlink:hover { background: #efe3cf; color: #3e2a1f; }
+@media (max-width: 640px) {
+  .daily-gazette-header .gazette-masthead-rule::before,
+  .daily-gazette-header .gazette-masthead-rule::after { display: none; }
+  .daily-client-gazette { font-size: 16px; }
+}
+`;
