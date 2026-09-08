@@ -54,6 +54,7 @@ export default function DailyClientLayout({ children }: { children: React.ReactN
       {!isStandaloneFlow && (showDashboardBack || contextualLinks.length > 0) ? (
         <div className={`daily-context-bar ${isQualitySection ? "quality" : ""}`} aria-label="Navigation Selen Daily">
           {showDashboardBack ? <Link href="/client/daily" className="daily-gazette-navlink">← Tableau de bord</Link> : null}
+          {isDocumentSection ? <span className="daily-document-title">Gestion documentaire</span> : null}
           {contextualLinks.map((link) => (
             <Link key={link.href} href={link.href} className={`daily-gazette-navlink ${pathname === link.href ? "active" : ""}`}>{link.label}</Link>
           ))}
@@ -90,9 +91,10 @@ const dailyGazetteCss = `
 .daily-client-gazette thead,.daily-client-gazette th{background:rgba(224,208,184,.72)!important;color:#3e2a1f!important;font-family:"Cinzel",serif!important;text-transform:uppercase;letter-spacing:.05em}
 .daily-client-gazette [class*="card"],.daily-client-gazette [class*="panel"],.daily-client-gazette [class*="surface"],.daily-client-gazette [class*="box"]{border-color:rgba(178,138,98,.42)!important}
 .daily-route-sessions article button{padding:.42rem .58rem!important;font-size:.76rem!important;line-height:1.2!important}
-.daily-context-bar{max-width:1180px;margin:14px auto 0;padding:0 16px;display:flex;flex-wrap:wrap;gap:8px;box-sizing:border-box}
+.daily-context-bar{max-width:1180px;margin:14px auto 0;padding:0 16px;display:flex;flex-wrap:wrap;gap:8px;box-sizing:border-box;align-items:center}
 .daily-context-bar.quality{justify-content:flex-end}
+.daily-document-title{margin-right:auto;font-family:"Cinzel",serif!important;font-size:.68rem;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:#6f4a2b}
 .daily-gazette-navlink{border:1px solid rgba(178,138,98,.55);background:rgba(255,250,239,.72);color:#8a4b24;padding:.55rem .85rem;text-decoration:none;font-family:"Cinzel",serif;font-size:.64rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
 .daily-gazette-navlink:hover,.daily-gazette-navlink.active{background:#8a4b24;color:#fff8e8;border-color:#8a4b24}
-@media(max-width:640px){.daily-gazette-header .gazette-masthead-rule::before,.daily-gazette-header .gazette-masthead-rule::after{display:none}.daily-client-gazette{font-size:16px}.daily-context-bar.quality{justify-content:flex-start}.daily-context-bar{overflow-x:auto;flex-wrap:nowrap;padding-bottom:4px}.daily-gazette-navlink{white-space:nowrap}}
+@media(max-width:640px){.daily-gazette-header .gazette-masthead-rule::before,.daily-gazette-header .gazette-masthead-rule::after{display:none}.daily-client-gazette{font-size:16px}.daily-context-bar.quality{justify-content:flex-start}.daily-context-bar{overflow-x:auto;flex-wrap:nowrap;padding-bottom:4px}.daily-document-title{white-space:nowrap;margin-right:4px}.daily-gazette-navlink{white-space:nowrap}}
 `;
