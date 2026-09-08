@@ -40,7 +40,7 @@ export default function DailyClientLayout({ children }: { children: React.ReactN
       {showFriendlyBanner ? <DailyFriendlyBanner /> : null}
 
       {!isStandaloneFlow && (showDashboardBack || contextualLinks.length > 0) ? (
-        <nav className="mx-auto flex max-w-6xl flex-wrap gap-2 px-4 pt-4 md:px-6" aria-label="Navigation Selen Daily">
+        <div className="mx-auto flex max-w-6xl flex-wrap gap-2 px-4 pt-4 md:px-6" aria-label="Navigation Selen Daily">
           {showDashboardBack ? (
             <Link href="/client/daily" className="daily-gazette-navlink">
               ← Tableau de bord
@@ -51,7 +51,7 @@ export default function DailyClientLayout({ children }: { children: React.ReactN
               {link.label}
             </Link>
           ))}
-        </nav>
+        </div>
       ) : null}
 
       <div className={!isStandaloneFlow ? "daily-client-gazette" : undefined}>{children}</div>
