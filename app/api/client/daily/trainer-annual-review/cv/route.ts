@@ -30,6 +30,7 @@ async function resolveTrainerProfile(organisationId: string, userId: string, ema
     .select("id")
     .eq("organisation_id", organisationId)
     .eq("user_id", userId)
+    .eq("active", true)
     .limit(2);
   if (byUserError) throw new Error(byUserError.message);
   if ((byUser ?? []).length === 1) return byUser![0].id as string;
@@ -42,6 +43,7 @@ async function resolveTrainerProfile(organisationId: string, userId: string, ema
     .select("id")
     .eq("organisation_id", organisationId)
     .ilike("professional_email", normalizedEmail)
+    .eq("active", true)
     .limit(2);
   if (byEmailError) throw new Error(byEmailError.message);
   if ((byEmail ?? []).length === 1) return byEmail![0].id as string;

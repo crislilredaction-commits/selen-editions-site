@@ -25,6 +25,7 @@ async function resolveTrainerProfile(
     .select("id,organisation_id,user_id,professional_email,display_name,cv_updated_at,cv_review_due_at")
     .eq("organisation_id", organisationId)
     .eq("user_id", userId)
+    .eq("active", true)
     .limit(2);
   if (byUserError) throw new Error(byUserError.message);
   if ((byUser ?? []).length === 1) return byUser![0];
@@ -38,6 +39,7 @@ async function resolveTrainerProfile(
     .select("id,organisation_id,user_id,professional_email,display_name,cv_updated_at,cv_review_due_at")
     .eq("organisation_id", organisationId)
     .ilike("professional_email", normalizedEmail)
+    .eq("active", true)
     .limit(2);
   if (byEmailError) throw new Error(byEmailError.message);
   if ((byEmail ?? []).length === 1) return byEmail![0];
