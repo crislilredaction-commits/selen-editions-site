@@ -7,14 +7,18 @@ const portalPath = new URL("../app/api/daily-portal/[token]/route.ts", import.me
 const documentPath = new URL("../app/api/daily-portal/[token]/document/route.ts", import.meta.url);
 const assessmentPath = new URL("../app/api/daily-portal/[token]/assessment/route.ts", import.meta.url);
 const satisfactionPath = new URL("../app/api/daily-portal/[token]/satisfaction/route.ts", import.meta.url);
+const conventionPath = new URL("../app/api/daily-portal/[token]/convention/route.ts", import.meta.url);
+const convocationPath = new URL("../app/api/daily-portal/[token]/convocation/route.ts", import.meta.url);
 const publisherPath = new URL("../app/api/client/daily/learner-shared-documents/route.ts", import.meta.url);
 
-const [resources, portal, document, assessment, satisfaction, publisher] = await Promise.all([
+const [resources, portal, document, assessment, satisfaction, convention, convocation, publisher] = await Promise.all([
   readFile(resourcesPath, "utf8"),
   readFile(portalPath, "utf8"),
   readFile(documentPath, "utf8"),
   readFile(assessmentPath, "utf8"),
   readFile(satisfactionPath, "utf8"),
+  readFile(conventionPath, "utf8"),
+  readFile(convocationPath, "utf8"),
   readFile(publisherPath, "utf8"),
 ]);
 
@@ -50,6 +54,8 @@ test("un token de portail révoqué ou expiré est refusé avant de charger les 
   assert.match(document, /\["revoked","expired"\]\.includes\(String\(access\.status\?\?""\)\)/);
   assert.match(assessment, /\["revoked", "expired"\]\.includes\(String\(access\.status \?\? ""\)\)/);
   assert.match(satisfaction, /\["revoked", "expired"\]\.includes\(String\(access\.status \?\? ""\)\)/);
+  assert.match(convention, /\["revoked", "expired"\]\.includes\(String\(access\.status \?\? ""\)\)/);
+  assert.match(convocation, /\["revoked", "expired"\]\.includes\(String\(access\.status \?\? ""\)\)/);
 });
 
 test("les ressources entreprise excluent aussi les inscriptions abandonnées", () => {

@@ -31,6 +31,9 @@ export async function GET(request: Request, { params }: Params) {
   if (!access || isExpired(access.expires_at)) {
     return NextResponse.json({ error: "Portail introuvable ou expire." }, { status: 404 });
   }
+  if (["revoked", "expired"].includes(String(access.status ?? ""))) {
+    return NextResponse.json({ error: "Cet accès n’est plus actif." }, { status: 403 });
+  }
 
   const { data: convocation, error } = await supabase
     .from("daily_convocations")
