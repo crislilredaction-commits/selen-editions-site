@@ -14,7 +14,7 @@ function text(body: Record<string, unknown>, key: string) {
 }
 
 function activeEnrolment(status?: string | null) {
-  return status !== "declined" && status !== "cancelled";
+  return status !== "declined" && status !== "cancelled" && status !== "abandoned";
 }
 
 function modeForBlock(
