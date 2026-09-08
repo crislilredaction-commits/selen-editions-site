@@ -57,7 +57,7 @@ export default function DailyClientLayout({ children }: { children: React.ReactN
       <div className={!isStandaloneFlow ? "daily-client-gazette" : undefined}>{children}</div>
 
       {showClaimLink ? (
-        <footer className="mx-auto mt-8 max-w-6xl border-t border-[#b28a62]/35 px-4 py-6 md:px-6">
+        <footer aria-label="Réclamations Selen Daily" className="mx-auto mt-8 max-w-6xl border-t border-[#b28a62]/35 px-4 py-6 md:px-6">
           <div className="flex items-center justify-between gap-4">
             <span className="font-['Cinzel'] text-[0.55rem] uppercase tracking-[0.25em] text-[#8a6243]">Selen Daily · votre administratif, plus clair</span>
             <Link href="/client/daily/reclamations" className="font-['Cinzel'] text-[0.62rem] font-bold uppercase tracking-[0.12em] text-[#8a4b24] underline decoration-[#b28a62]/50 underline-offset-4">
