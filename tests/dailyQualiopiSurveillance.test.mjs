@@ -29,7 +29,7 @@ test("la saisie déclenche une tâche pré-audit idempotente sans réinitialiser
 });
 
 test("le suivi Qualiopi reste un raccourci contextuel et ne recrée pas la barre d'onglets", () => {
-  assert.match(layout, /pathname === "\/client\/daily\/qualite"/);
+  assert.match(layout, /const isQualitySection = \[[^\]]*"\/client\/daily\/qualite"[^\]]*\]\.includes\(pathname\)/);
   assert.match(layout, /href: "\/client\/daily\/qualiopi"/);
   assert.doesNotMatch(layout, /<nav/);
 });
