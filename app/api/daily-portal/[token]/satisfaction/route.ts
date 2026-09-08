@@ -65,6 +65,9 @@ async function resolveSatisfactionPortal(token: string) {
   if (access.portal_type !== "enterprise" && access.portal_type !== "trainer") {
     return { error: "Ce questionnaire n’est pas disponible depuis ce portail.", status: 403 as const };
   }
+  if (["revoked", "expired"].includes(String(access.status ?? ""))) {
+    return { error: "Cet accès n’est plus actif.", status: 403 as const };
+  }
   if (access.expires_at && new Date(access.expires_at).getTime() < Date.now()) {
     return { error: "Ce lien de portail a expiré.", status: 410 as const };
   }
