@@ -70,6 +70,9 @@ export async function PATCH(req: Request) {
     });
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   } else if (action === "set_user_access") {
+    if (!context.workspace.capabilities.users) {
+      return NextResponse.json({ error: "Vous n’avez pas la permission de gérer les accès utilisateurs." }, { status: 403 });
+    }
     const { error } = await supabase.rpc("daily_client_set_membership_access", {
       p_organisation_id: organisationId,
       p_membership_id: clean(body.membership_id),
@@ -78,6 +81,9 @@ export async function PATCH(req: Request) {
     });
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   } else if (action === "set_user_status") {
+    if (!context.workspace.capabilities.users) {
+      return NextResponse.json({ error: "Vous n’avez pas la permission de gérer les accès utilisateurs." }, { status: 403 });
+    }
     const { error } = await supabase.rpc("daily_client_set_membership_status", {
       p_organisation_id: organisationId,
       p_membership_id: clean(body.membership_id),
@@ -85,6 +91,9 @@ export async function PATCH(req: Request) {
     });
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   } else if (action === "save_trainer") {
+    if (!context.workspace.capabilities.trainers) {
+      return NextResponse.json({ error: "Vous n’avez pas la permission de gérer les formateurs." }, { status: 403 });
+    }
     const trainerId = clean(body.id);
     const payload = {
       organisation_id: organisationId,
