@@ -33,6 +33,8 @@ export default function DailyClientLayout({ children }: { children: React.ReactN
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, [pathname]);
 
+  const routeClass = pathname === "/client/daily/sessions" ? " daily-route-sessions" : "";
+
   return (
     <div className="gazette-paper min-h-screen text-[#3e2a1f]">
       <style jsx global>{dailyGazetteCss}</style>
@@ -58,7 +60,7 @@ export default function DailyClientLayout({ children }: { children: React.ReactN
         </div>
       ) : null}
 
-      <div className={!isStandaloneFlow ? "daily-client-gazette" : undefined}>{children}</div>
+      <div className={!isStandaloneFlow ? `daily-client-gazette${routeClass}` : undefined}>{children}</div>
 
       {showClaimLink ? (
         <footer aria-label="Réclamations Selen Daily" style={claimFooterStyle} className="border-t border-[#b28a62]/35">
@@ -87,6 +89,7 @@ const dailyGazetteCss = `
 .daily-client-gazette table{border-color:#c8a87a!important;background:rgba(248,239,223,.62)!important}
 .daily-client-gazette thead,.daily-client-gazette th{background:rgba(224,208,184,.72)!important;color:#3e2a1f!important;font-family:"Cinzel",serif!important;text-transform:uppercase;letter-spacing:.05em}
 .daily-client-gazette [class*="card"],.daily-client-gazette [class*="panel"],.daily-client-gazette [class*="surface"],.daily-client-gazette [class*="box"]{border-color:rgba(178,138,98,.42)!important}
+.daily-route-sessions article button{padding:.42rem .58rem!important;font-size:.76rem!important;line-height:1.2!important}
 .daily-context-bar{max-width:1180px;margin:14px auto 0;padding:0 16px;display:flex;flex-wrap:wrap;gap:8px;box-sizing:border-box}
 .daily-context-bar.quality{justify-content:flex-end}
 .daily-gazette-navlink{border:1px solid rgba(178,138,98,.55);background:rgba(255,250,239,.72);color:#8a4b24;padding:.55rem .85rem;text-decoration:none;font-family:"Cinzel",serif;font-size:.64rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
