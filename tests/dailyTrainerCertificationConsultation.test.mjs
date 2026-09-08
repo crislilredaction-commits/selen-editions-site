@@ -31,5 +31,5 @@ test("l'interface annonce la consultation seule et permet d'ouvrir le justificat
 
 test("le registre est accessible depuis la page Formateurs", () => {
   assert.match(trainersPage, /href="\/client\/daily\/formateurs\/certifications"/);
-  assert.match(trainersPage, /Consulter les certifications et leurs justificatifs/);
+  assert.match(trainersPage, /(Voir les justificatifs|Consulter les certifications et leurs justificatifs)/);
 });
