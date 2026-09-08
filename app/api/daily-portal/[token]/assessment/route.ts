@@ -83,6 +83,9 @@ async function resolveLearner(token: string) {
   if (accessError) throw accessError;
   if (!access) return { error: "Portail introuvable.", status: 404 } as const;
   if (access.portal_type !== "learner") return { error: "Évaluation réservée à l’apprenant.", status: 403 } as const;
+  if (["revoked", "expired"].includes(String(access.status ?? ""))) {
+    return { error: "Cet accès n’est plus actif.", status: 403 } as const;
+  }
   if (access.expires_at && new Date(access.expires_at).getTime() < Date.now()) {
     return { error: "Ce lien de portail a expiré.", status: 410 } as const;
   }
@@ -102,7 +105,7 @@ async function resolveLearner(token: string) {
     .select("id,status,daily_learners(id,email,first_name,last_name)")
     .eq("session_id", session.id)
     .eq("organisation_id", session.organisation_id)
-    .not("status", "in", "(declined,cancelled)");
+    .not("status", "in", "(declined,cancelled,abandoned)");
   if (enrolmentError) throw enrolmentError;
 
   const enrolment = (enrolments ?? []).find((row) => {
