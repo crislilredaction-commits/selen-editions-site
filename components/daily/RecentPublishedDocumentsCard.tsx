@@ -53,7 +53,7 @@ export default function RecentPublishedDocumentsCard() {
         <div className="pt-2">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <span className="gazette-label">Documents publiés</span>
+              <span className="gazette-label">Nouveaux documents disponibles</span>
               <h2 className="mt-4 font-['Playfair_Display'] text-2xl font-bold text-[#3e2a1f] md:text-3xl">Vos nouveautés documentaires</h2>
               <p className="mt-2 max-w-2xl text-[0.95rem] leading-6 text-[#5a4031]">
                 Les documents publiés pour votre organisme au cours des 30 derniers jours sont regroupés ici.
