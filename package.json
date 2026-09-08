@@ -12,7 +12,7 @@
     "test:daily-tone-guards": "node --test tests/dailyToneScope.test.mjs",
     "test:daily-collapsed-guards": "node --test tests/dailyCollapsedFlows.test.mjs",
     "test:daily-action-center-guards": "node --test tests/dailyActionCenterGuards.test.mjs",
-    "test:daily-qualiopi-guards": "node --test tests/dailyQualiopiSettingsGuards.test.mjs tests/dailyQualiopiSurveillance.test.mjs",
+    "test:daily-qualiopi-guards": "node --test tests/dailyQualiopiSettingsGuards.test.mjs tests/dailyQualiopiSurveillance.test.mjs tests/dailyQualiopiNovember2026.test.mjs",
     "test:daily-procedures-guards": "node --test tests/dailyInternalProcedures.test.mjs",
     "test:daily-satisfaction-guards": "node --test tests/dailySatisfactionCadence.test.mjs tests/dailySatisfactionResponseFinalization.test.mjs",
     "test:daily-session-followup-guards": "node --test tests/dailySessionFollowupProvenance.test.mjs",
