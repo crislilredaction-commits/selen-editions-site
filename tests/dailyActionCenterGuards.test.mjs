@@ -5,6 +5,8 @@ import test from "node:test";
 const page = await readFile(new URL("../app/client/daily/a-faire/page.tsx", import.meta.url), "utf8");
 const route = await readFile(new URL("../app/api/client/daily/action-center/route.ts", import.meta.url), "utf8");
 const workspaceRoute = await readFile(new URL("../app/api/client/daily/workspace/route.ts", import.meta.url), "utf8");
+const assignmentRls = await readFile(new URL("../supabase/migrations/20260830065500_harden_daily_organisation_assignment_rls.sql", import.meta.url), "utf8");
+const checklistAssignmentRls = await readFile(new URL("../supabase/migrations/20260830064500_enforce_daily_checklist_assignment_rls.sql", import.meta.url), "utf8");
 
 test("le centre À faire conserve les actions Qualité exposées par l'API", () => {
   assert.match(route, /kind:\"quality\"/);
@@ -70,4 +72,21 @@ test("les mutations workspace sensibles vérifient les capacités avant le RPC o
   assert.match(workspaceRoute, /action === \"set_user_access\"[\s\S]*?!context\.workspace\.capabilities\.users[\s\S]*?daily_client_set_membership_access/);
   assert.match(workspaceRoute, /action === \"set_user_status\"[\s\S]*?!context\.workspace\.capabilities\.users[\s\S]*?daily_client_set_membership_status/);
   assert.match(workspaceRoute, /action === \"save_trainer\"[\s\S]*?!context\.workspace\.capabilities\.trainers[\s\S]*?daily_trainer_profiles/);
+});
+
+test("l'assignation organisme conserve la règle admin libre / agent auto-assignation uniquement", () => {
+  assert.match(assignmentRls, /create policy daily_organisation_assignments_staff_insert/);
+  assert.match(assignmentRls, /target\.role in \('agent', 'admin'\)/);
+  assert.match(assignmentRls, /not exists \([\s\S]*?from public\.daily_organisation_assignments existing[\s\S]*?existing\.organisation_id = daily_organisation_assignments\.organisation_id[\s\S]*?\)/);
+  assert.match(assignmentRls, /own\.id = daily_organisation_assignments\.agent_profile_id[\s\S]*?own\.role = 'agent'[\s\S]*?own\.user_id = \(select auth\.uid\(\)\)/);
+  assert.match(assignmentRls, /create policy daily_organisation_assignments_admin_update[\s\S]*?for update[\s\S]*?ap\.role = 'admin'/);
+  assert.doesNotMatch(assignmentRls, /daily_organisation_assignments_agent_update/);
+});
+
+test("l'ouverture après 72 h reste limitée aux tâches sans modifier l'assignation organisme", () => {
+  assert.match(checklistAssignmentRls, /daily_organisation_checklist_items\.signaled_at <= now\(\) - interval '72 hours'/);
+  assert.match(checklistAssignmentRls, /daily_session_checklist_items\.signaled_at <= now\(\) - interval '72 hours'/);
+  assert.match(checklistAssignmentRls, /from public\.daily_organisation_assignments doa/);
+  assert.doesNotMatch(checklistAssignmentRls, /update\s+public\.daily_organisation_assignments/i);
+  assert.doesNotMatch(checklistAssignmentRls, /delete\s+from\s+public\.daily_organisation_assignments/i);
 });
