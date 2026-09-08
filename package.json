@@ -20,7 +20,7 @@
     "test:daily-learning-results-semantics": "node --test tests/dailyLearningResultsSemantics.test.mjs",
     "test:daily-trainer-certifications": "node --test tests/dailyTrainerCertifications.test.mjs",
     "test:daily-trainer-certification-consultation": "node --test tests/dailyTrainerCertificationConsultation.test.mjs",
-    "test:daily-trainer-annual-review": "node --test tests/dailyTrainerAnnualReview.test.mjs",
+    "test:daily-trainer-annual-review": "node --test tests/dailyTrainerAnnualReview.test.mjs tests/dailyTrainerActiveProfileGuards.test.mjs",
     "test:daily-inline-assessment": "node --test tests/dailyInlineAssessmentEditor.test.mjs",
     "test:daily-learner-shared-documents": "node --test tests/dailyLearnerSharedDocumentsVisibility.test.mjs",
     "test:daily-abandoned-document-sends": "node --test tests/dailyAbandonedDocumentSends.test.mjs",
