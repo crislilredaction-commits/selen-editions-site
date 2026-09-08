@@ -53,10 +53,14 @@ test("l’interface annonce explicitement la double signature et ne propose pas 
 test("le PDF final exige la double signature et rassemble le contenu figé et les preuves", () => {
   assert.match(pdf, /order\.status !== "signed"/);
   assert.match(pdf, /daily_mission_order_signatures/);
-  assert.match(pdf, /signature_data,proof_hash,signed_at/);
+  assert.match(pdf, /consent_text,signature_data,proof_hash,signed_at,ip_address,user_agent/);
   assert.match(pdf, /orderingPartySignature/);
   assert.match(pdf, /trainerSignature/);
+  assert.match(pdf, /Consentement/);
+  assert.match(pdf, /Adresse IP/);
+  assert.match(pdf, /Navigateur/);
   assert.match(pdf, /Preuve SHA-256/);
+  assert.match(pdf, /éléments techniques de preuve/);
   assert.match(pdf, /application\/pdf/);
   assert.match(pdf, /Le contenu de cet ordre est figé depuis la première signature/);
   assert.match(page, /Télécharger le PDF signé/);

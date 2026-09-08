@@ -77,7 +77,7 @@ export async function GET(_request: Request, { params }: Params) {
   const [{ data: signatures, error: signatureError }, { data: organisation, error: organisationError }] = await Promise.all([
     admin
       .from("daily_mission_order_signatures")
-      .select("signatory_type,signatory_name,signatory_email,signature_data,proof_hash,signed_at")
+      .select("signatory_type,signatory_name,signatory_email,consent_text,signature_data,proof_hash,signed_at,ip_address,user_agent")
       .eq("mission_order_id", order.id)
       .order("signed_at", { ascending: true }),
     admin
@@ -168,11 +168,14 @@ export async function GET(_request: Request, { params }: Params) {
   paragraph("Signatures électroniques et preuves", { bold: true, size: 12, gap: 4 });
 
   const signatureBlock = (label: string, signature: any) => {
-    ensureSpace(36);
+    ensureSpace(48);
     paragraph(label, { bold: true, size: 10, gap: 1 });
     line("Compte", `${text(signature.signatory_name)}${text(signature.signatory_email) ? ` · ${text(signature.signatory_email)}` : ""}`);
+    line("Consentement", text(signature.consent_text));
     line("Signature saisie", text(signature.signature_data));
     line("Signé le", frDateTime(signature.signed_at));
+    line("Adresse IP", text(signature.ip_address) || "Non disponible");
+    line("Navigateur", text(signature.user_agent) || "Non disponible");
     line("Preuve SHA-256", text(signature.proof_hash));
     y += 2;
   };
@@ -185,6 +188,7 @@ export async function GET(_request: Request, { params }: Params) {
   doc.line(left, y, right, y);
   y += 6;
   paragraph("Le contenu de cet ordre est figé depuis la première signature. Ce PDF est généré à partir de l’ordre final et des deux preuves de signature enregistrées dans Selen Daily.", { size: 8, gap: 2 });
+  paragraph("Les éléments techniques de preuve (horodatage, consentement, adresse IP lorsqu’elle est disponible, navigateur et empreinte SHA-256) sont repris depuis les enregistrements de signature conservés par Daily.", { size: 8, gap: 2 });
   paragraph(`Document généré le ${new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeStyle: "short", timeZone: "Europe/Paris" }).format(new Date())}.`, { size: 8 });
 
   const bytes = doc.output("arraybuffer");
