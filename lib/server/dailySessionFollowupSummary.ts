@@ -16,31 +16,59 @@ function learnerName(enrolment: any) {
   return name || String(learner.email ?? "").trim() || "Apprenant";
 }
 
-function signatureRows(conventions: any[]) {
+function signatureRows(conventions: any[], communications: any[]) {
+  const evidenceBySignature = new Map<string, any>();
+  for (const communication of communications) {
+    const signatureId = String(communication?.metadata?.signature_id ?? "");
+    if (!signatureId) continue;
+    const previous = evidenceBySignature.get(signatureId);
+    if (!previous || new Date(communication.created_at).getTime() > new Date(previous.created_at).getTime()) {
+      evidenceBySignature.set(signatureId, communication);
+    }
+  }
+
   return conventions.flatMap((convention: any) => {
     const rows = Array.isArray(convention.daily_convention_signatures)
       ? convention.daily_convention_signatures
       : convention.daily_convention_signatures
         ? [convention.daily_convention_signatures]
         : [];
-    return rows.map((signature: any) => ({
-      id: signature.id,
-      convention_id: convention.id,
-      document_name: convention.document_name,
-      recipient_type: convention.recipient_type,
-      recipient_name: convention.recipient_name,
-      recipient_email: convention.recipient_email,
-      company_name: convention.company_name,
-      signatory_type: signature.signatory_type,
-      signatory_name: signature.signatory_name,
-      signatory_email: signature.signatory_email,
-      status: signature.status,
-      created_at: signature.created_at,
-      viewed_at: signature.viewed_at,
-      signed_at: signature.signed_at,
-      expires_at: signature.expires_at,
-      last_error: signature.last_error,
-    }));
+    return rows.map((signature: any) => {
+      const evidence = evidenceBySignature.get(String(signature.id)) ?? null;
+      const sentAt = evidence?.sent_at ?? null;
+      const followupDueAt = sentAt ? new Date(new Date(sentAt).getTime() + 72 * 60 * 60 * 1000).toISOString() : null;
+      const needsFollowup = Boolean(
+        followupDueAt
+        && new Date(followupDueAt).getTime() <= Date.now()
+        && !["signed", "cancelled", "revoked", "expired"].includes(String(signature.status)),
+      );
+      return {
+        id: signature.id,
+        convention_id: convention.id,
+        document_name: convention.document_name,
+        recipient_type: convention.recipient_type,
+        recipient_name: convention.recipient_name,
+        recipient_email: convention.recipient_email,
+        company_name: convention.company_name,
+        signatory_type: signature.signatory_type,
+        signatory_name: signature.signatory_name,
+        signatory_email: signature.signatory_email,
+        status: signature.status,
+        created_at: signature.created_at,
+        viewed_at: signature.viewed_at,
+        signed_at: signature.signed_at,
+        expires_at: signature.expires_at,
+        last_error: signature.last_error,
+        communication_id: evidence?.id ?? null,
+        email_status: evidence?.status ?? null,
+        sent_at: sentAt,
+        delivered_at: evidence?.delivered_at ?? null,
+        failed_at: evidence?.failed_at ?? null,
+        failure_reason: evidence?.failure_reason ?? null,
+        followup_due_at: followupDueAt,
+        needs_followup: needsFollowup,
+      };
+    });
   });
 }
 
@@ -54,53 +82,20 @@ export async function loadDailySessionFollowupSnapshot(admin: AdminClient, organ
     { data: feedback, error: feedbackError },
     { data: followupEntries, error: followupError },
     { data: conventions, error: conventionsError },
+    { data: signatureCommunications, error: communicationsError },
   ] = await Promise.all([
-    admin
-      .from("daily_sessions")
-      .select("id,internal_reference,start_date,end_date,status,daily_formations(id,title)")
-      .eq("organisation_id", organisationId)
-      .eq("id", sessionId)
-      .maybeSingle(),
-    admin
-      .from("organisations")
-      .select("id,name,legal_name,siret,nda_number")
-      .eq("id", organisationId)
-      .maybeSingle(),
-    admin
-      .from("daily_session_enrolments")
-      .select("id,status,daily_learners(id,first_name,last_name,email)")
-      .eq("organisation_id", organisationId)
-      .eq("session_id", sessionId),
-    admin
-      .from("daily_attendance_records")
-      .select("id,enrolment_id,status")
-      .eq("organisation_id", organisationId)
-      .eq("session_id", sessionId),
-    admin
-      .from("daily_learning_assessments")
-      .select("id,enrolment_id,outcome")
-      .eq("organisation_id", organisationId)
-      .eq("session_id", sessionId),
-    admin
-      .from("daily_learner_feedback_responses")
-      .select("id,enrolment_id,overall_rating")
-      .eq("organisation_id", organisationId)
-      .eq("session_id", sessionId),
-    admin
-      .from("daily_session_followup_entries")
-      .select("id,enrolment_id,entry_type,level,occurred_at,summary,description,action_taken,status,resolved_at,author_role,author_name")
-      .eq("organisation_id", organisationId)
-      .eq("session_id", sessionId)
-      .order("occurred_at", { ascending: true }),
-    admin
-      .from("daily_conventions")
-      .select("id,document_name,recipient_type,recipient_name,recipient_email,company_name,version,generated_at,daily_convention_signatures(id,signatory_type,signatory_name,signatory_email,status,created_at,viewed_at,signed_at,expires_at,last_error)")
-      .eq("organisation_id", organisationId)
-      .eq("session_id", sessionId)
-      .order("generated_at", { ascending: true }),
+    admin.from("daily_sessions").select("id,internal_reference,start_date,end_date,status,daily_formations(id,title)").eq("organisation_id", organisationId).eq("id", sessionId).maybeSingle(),
+    admin.from("organisations").select("id,name,legal_name,siret,nda_number").eq("id", organisationId).maybeSingle(),
+    admin.from("daily_session_enrolments").select("id,status,daily_learners(id,first_name,last_name,email)").eq("organisation_id", organisationId).eq("session_id", sessionId),
+    admin.from("daily_attendance_records").select("id,enrolment_id,status").eq("organisation_id", organisationId).eq("session_id", sessionId),
+    admin.from("daily_learning_assessments").select("id,enrolment_id,outcome").eq("organisation_id", organisationId).eq("session_id", sessionId),
+    admin.from("daily_learner_feedback_responses").select("id,enrolment_id,overall_rating").eq("organisation_id", organisationId).eq("session_id", sessionId),
+    admin.from("daily_session_followup_entries").select("id,enrolment_id,entry_type,level,occurred_at,summary,description,action_taken,status,resolved_at,author_role,author_name").eq("organisation_id", organisationId).eq("session_id", sessionId).order("occurred_at", { ascending: true }),
+    admin.from("daily_conventions").select("id,document_name,recipient_type,recipient_name,recipient_email,company_name,version,generated_at,daily_convention_signatures(id,signatory_type,signatory_name,signatory_email,status,created_at,viewed_at,signed_at,expires_at,last_error)").eq("organisation_id", organisationId).eq("session_id", sessionId).order("generated_at", { ascending: true }),
+    admin.from("daily_communications").select("id,status,sent_at,delivered_at,failed_at,failure_reason,created_at,metadata").eq("organisation_id", organisationId).eq("session_id", sessionId).eq("communication_type", "convention_signature").order("created_at", { ascending: true }),
   ]);
 
-  const readError = sessionError ?? organisationError ?? enrolmentsError ?? attendanceError ?? assessmentsError ?? feedbackError ?? followupError ?? conventionsError;
+  const readError = sessionError ?? organisationError ?? enrolmentsError ?? attendanceError ?? assessmentsError ?? feedbackError ?? followupError ?? conventionsError ?? communicationsError;
   if (readError) throw new Error(readError.message);
   if (!session) throw new Error("Session introuvable.");
 
@@ -111,7 +106,7 @@ export async function loadDailySessionFollowupSnapshot(admin: AdminClient, organ
   const completedAssessments = (assessments ?? []).filter((row: any) => activeIds.has(row.enrolment_id) && row.outcome !== "pending");
   const learnerFeedback = (feedback ?? []).filter((row: any) => activeIds.has(row.enrolment_id));
   const entries = followupEntries ?? [];
-  const signatures = signatureRows(conventions ?? []);
+  const signatures = signatureRows(conventions ?? [], signatureCommunications ?? []);
   const ratings = learnerFeedback.map((row: any) => Number(row.overall_rating)).filter((value: number) => Number.isFinite(value));
   const enrolmentNames = new Map(activeEnrolments.map((row: any) => [row.id, learnerName(row)]));
 
@@ -126,18 +121,15 @@ export async function loadDailySessionFollowupSnapshot(admin: AdminClient, organ
       learners: { active: activeEnrolments.length },
       attendance: { decided: decidedAttendance.length, total: attendance.length },
       assessments: { completed: completedAssessments.length, expected: activeEnrolments.length },
-      satisfaction: {
-        responses: learnerFeedback.length,
-        expected: activeEnrolments.length,
-        average_rating: ratings.length > 0 ? ratings.reduce((sum: number, value: number) => sum + value, 0) / ratings.length : null,
-      },
+      satisfaction: { responses: learnerFeedback.length, expected: activeEnrolments.length, average_rating: ratings.length > 0 ? ratings.reduce((sum: number, value: number) => sum + value, 0) / ratings.length : null },
       signatures: {
         total: signatures.length,
         pending: signatures.filter((row: any) => ["pending", "viewed", "sent"].includes(String(row.status))).length,
         viewed: signatures.filter((row: any) => row.status === "viewed").length,
         signed: signatures.filter((row: any) => row.status === "signed").length,
         expired: signatures.filter((row: any) => row.status === "expired").length,
-        failed: signatures.filter((row: any) => ["failed", "error"].includes(String(row.status))).length,
+        failed: signatures.filter((row: any) => ["failed", "error"].includes(String(row.status)) || row.email_status === "failed" || row.email_status === "bounced").length,
+        followup_due: signatures.filter((row: any) => row.needs_followup).length,
         items: signatures,
       },
       followup: {

@@ -5,9 +5,10 @@ import test from "node:test";
 const summarySource = await readFile(new URL("../lib/server/dailySessionFollowupSummary.ts", import.meta.url), "utf8");
 const summaryComponent = await readFile(new URL("../components/daily/DailySessionFollowupSummary.tsx", import.meta.url), "utf8");
 
-test("le suivi de session relit les signatures depuis la source Daily sans écriture", () => {
+test("le suivi de session relit les signatures et preuves d'envoi depuis les sources Daily sans écriture", () => {
   assert.match(summarySource, /from\("daily_conventions"\)/);
   assert.match(summarySource, /daily_convention_signatures/);
+  assert.match(summarySource, /from\("daily_communications"\)/);
   assert.match(summarySource, /\.eq\("organisation_id", organisationId\)/);
   assert.match(summarySource, /\.eq\("session_id", sessionId\)/);
   assert.doesNotMatch(summarySource, /\.insert\(|\.update\(|\.upsert\(|\.delete\(/);
@@ -15,15 +16,16 @@ test("le suivi de session relit les signatures depuis la source Daily sans écri
 
 test("une ouverture de lien ne devient jamais une signature", () => {
   assert.match(summaryComponent, /Consulté · signature attendue/);
-  assert.match(summaryComponent, /Le statut « signé » provient uniquement de la signature enregistrée/);
+  assert.match(summaryComponent, /« Signé » vient uniquement de la preuve de signature/);
   assert.match(summaryComponent, /Consultation :/);
   assert.match(summaryComponent, /Signature :/);
 });
 
-test("la date d'envoi n'est pas inventée depuis la création de la signature", () => {
-  assert.doesNotMatch(summarySource, /sent_at/);
-  assert.match(summaryComponent, /Envoi : Non tracé/);
-  assert.match(summaryComponent, /elle reste non tracée tant qu’aucune preuve d’email n’est reliée/);
+test("la date d'envoi vient du journal d'emails et n'est pas inventée depuis created_at", () => {
+  assert.match(summarySource, /const sentAt = evidence\?\.sent_at \?\? null/);
+  assert.match(summarySource, /communication_type", "convention_signature"/);
+  assert.doesNotMatch(summarySource, /const sentAt = .*created_at/);
+  assert.match(summaryComponent, /Envoi : \{frDateTime\(item\.sent_at\)\}/);
 });
 
 test("les inscriptions abandonnées sont exclues du récapitulatif actif", () => {
