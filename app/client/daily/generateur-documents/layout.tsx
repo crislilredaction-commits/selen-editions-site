@@ -5,12 +5,11 @@ export default function DailyDocumentGeneratorLayout({children}:{children:React.
     <div style={{maxWidth:900,margin:"1rem auto 0",padding:"0 1rem",display:"grid",gap:10}}>
       <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
         <Link href="/client/daily/generateur-documents" style={link}>Générer un dossier</Link>
-        <Link href="/client/daily/generateur-documents/contrat-formation" style={contractLink}>Contrat de formation professionnelle</Link>
         <Link href="/client/daily/generateur-documents/versions" style={link}>Importer / remplacer un PDF</Link>
       </div>
       <div style={info}>
         <strong>Contrat ou convention ?</strong>
-        <p style={{margin:".35rem 0 0"}}>La convention concerne l’acheteur de formation. Le contrat de formation professionnelle est réservé à la personne physique qui entreprend la formation à titre individuel et à ses frais. Les deux documents restent distincts dans Daily.</p>
+        <p style={{margin:".35rem 0 0"}}>Daily choisit automatiquement le document contractuel à générer à partir du SIRET renseigné pour le client : avec SIRET, convention ; sans SIRET, contrat de formation professionnelle.</p>
       </div>
       <div style={info}>
         <strong>À quoi sert la génération de dossier ?</strong>
@@ -21,5 +20,4 @@ export default function DailyDocumentGeneratorLayout({children}:{children:React.
   </>;
 }
 const link:React.CSSProperties={minHeight:44,display:"inline-flex",alignItems:"center",padding:".65rem .85rem",border:"1px solid var(--sepia-mid)",background:"var(--paper)",color:"var(--rust)",fontWeight:800,textDecoration:"none",boxSizing:"border-box"};
-const contractLink:React.CSSProperties={...link,border:"1px solid var(--rust)",background:"var(--rust)",color:"var(--paper)"};
 const info:React.CSSProperties={border:"1px solid var(--sepia-mid)",background:"var(--paper)",padding:"1rem 1.1rem",color:"var(--ink-soft)",lineHeight:1.55};
