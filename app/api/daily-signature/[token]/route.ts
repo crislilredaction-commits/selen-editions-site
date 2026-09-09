@@ -7,6 +7,7 @@ import {
   verifyAgentAssistance,
 } from "@/lib/server/agentAssistance";
 import { dispatchPretrainingPackAfterConventionSigned } from "@/lib/server/dailySignedConventionPretrainingPack";
+import { resolveDailySignatureReminder } from "@/lib/server/dailySignatureClientReminder";
 
 type Params = { params: Promise<{ token: string }> };
 
@@ -61,6 +62,20 @@ async function dispatchPackWithoutBreakingSignature(
   } catch (error) {
     console.error("Daily : déclenchement du pack pré-formation impossible après signature", error);
     return { status: "dispatch_error" as const };
+  }
+}
+
+async function resolveReminderWithoutBreakingSignature(
+  supabase: ReturnType<typeof getAdminSupabase>,
+  signatureId: string,
+  signedAt: string,
+) {
+  try {
+    await resolveDailySignatureReminder(supabase, signatureId, signedAt);
+    return true;
+  } catch (error) {
+    console.error("Daily : fermeture de la relance signature impossible", error);
+    return false;
   }
 }
 
@@ -126,12 +141,17 @@ export async function POST(request: Request, { params }: Params) {
   const signature = await findSignature(clean);
   if (!signature) return NextResponse.json({ error: "Lien de signature introuvable." }, { status: 404 });
   if (signature.status === "signed") {
-    const pack = await dispatchPackWithoutBreakingSignature(supabase, signature.convention_id);
+    const signedAt = signature.signed_at ?? new Date().toISOString();
+    const [pack, reminderResolved] = await Promise.all([
+      dispatchPackWithoutBreakingSignature(supabase, signature.convention_id),
+      resolveReminderWithoutBreakingSignature(supabase, signature.id, signedAt),
+    ]);
     return NextResponse.json({
       ok: true,
       alreadySigned: true,
       signedAt: signature.signed_at,
       pretrainingPack: pack,
+      reminderResolved,
     });
   }
   if (isExpired(signature.expires_at)) {
@@ -178,6 +198,9 @@ export async function POST(request: Request, { params }: Params) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const pack = await dispatchPackWithoutBreakingSignature(supabase, signature.convention_id);
-  return NextResponse.json({ ok: true, signature: data, pretrainingPack: pack });
+  const [pack, reminderResolved] = await Promise.all([
+    dispatchPackWithoutBreakingSignature(supabase, signature.convention_id),
+    resolveReminderWithoutBreakingSignature(supabase, signature.id, signedAt),
+  ]);
+  return NextResponse.json({ ok: true, signature: data, pretrainingPack: pack, reminderResolved });
 }
