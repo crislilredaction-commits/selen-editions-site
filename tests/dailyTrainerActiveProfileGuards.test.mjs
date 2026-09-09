@@ -16,3 +16,11 @@ test("le suivi annuel et ses téléversements refusent une fiche formateur désa
     assert.match(source, /\.ilike\("professional_email", normalizedEmail\)[\s\S]*?\.eq\("active", true\)[\s\S]*?\.limit\(2\)/);
   }
 });
+
+test("le suivi de session exige la fiche formateur liée au compte connecté", async () => {
+  const source = await read("app/api/client/daily/trainer-followup/route.ts");
+
+  assert.match(source, /workspace\.workspace\.trainers\.find\(\(item\) => String\(item\.user_id \?\? ""\) === workspace\.user\.id\)/);
+  assert.doesNotMatch(source, /workspace\.workspace\.trainers\[0\]/);
+  assert.match(source, /if \(!trainer\?\.id\) \{[\s\S]*?status: 404[\s\S]*?Fiche formateur introuvable\./);
+});
