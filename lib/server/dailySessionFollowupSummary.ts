@@ -36,7 +36,6 @@ function signatureRows(conventions: any[]) {
       signatory_email: signature.signatory_email,
       status: signature.status,
       created_at: signature.created_at,
-      sent_at: signature.sent_at,
       viewed_at: signature.viewed_at,
       signed_at: signature.signed_at,
       expires_at: signature.expires_at,
@@ -95,7 +94,7 @@ export async function loadDailySessionFollowupSnapshot(admin: AdminClient, organ
       .order("occurred_at", { ascending: true }),
     admin
       .from("daily_conventions")
-      .select("id,document_name,recipient_type,recipient_name,recipient_email,company_name,version,generated_at,daily_convention_signatures(id,signatory_type,signatory_name,signatory_email,status,created_at,sent_at,viewed_at,signed_at,expires_at,last_error)")
+      .select("id,document_name,recipient_type,recipient_name,recipient_email,company_name,version,generated_at,daily_convention_signatures(id,signatory_type,signatory_name,signatory_email,status,created_at,viewed_at,signed_at,expires_at,last_error)")
       .eq("organisation_id", organisationId)
       .eq("session_id", sessionId)
       .order("generated_at", { ascending: true }),
