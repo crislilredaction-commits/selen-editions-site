@@ -25,8 +25,7 @@ async function getTrainerContext() {
     return { ok: false as const, status: 403, error: "Cet espace est réservé au formateur concerné." };
   }
 
-  const trainer = workspace.workspace.trainers.find((item) => String(item.user_id ?? "") === workspace.user.id)
-    ?? workspace.workspace.trainers[0];
+  const trainer = workspace.workspace.trainers.find((item) => String(item.user_id ?? "") === workspace.user.id);
   if (!trainer?.id) {
     return { ok: false as const, status: 404, error: "Fiche formateur introuvable." };
   }
