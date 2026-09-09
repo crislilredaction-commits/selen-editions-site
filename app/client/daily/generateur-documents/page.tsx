@@ -20,7 +20,7 @@ function learnerName(e?:Enrolment|null){const l=one(e?.daily_learners);return l?
 function schedule(s?:Session|null){if(!s?.schedule_blocks?.length)return period(s);return s.schedule_blocks.map(b=>[frDate(b.date),b.start&&b.end?`${b.start} - ${b.end}`:"",b.note].filter(Boolean).join(" · ")).join("\n")}
 function recordName(row:Record<string,unknown>,fallback:string){return clean(row.legal_name||row.company_name||row.organisation_name||row.name||[row.first_name,row.last_name].filter(Boolean).join(" "))||fallback}
 
-const crcTable=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=(c&1)?0xedb88320^(c>>>8):c>>>1;t[n]=c>>>0}return t})();
+const crcTable=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=(c&1)?0xedb88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
 function crc32(data:Uint8Array){let c=0xffffffff;for(const b of data)c=crcTable[(c^b)&255]^(c>>>8);return(c^0xffffffff)>>>0}
 function u16(v:number){return new Uint8Array([v&255,(v>>>8)&255])}function u32(v:number){return new Uint8Array([v&255,(v>>>8)&255,(v>>>16)&255,(v>>>24)&255])}
 function join(parts:Uint8Array[]){const total=parts.reduce((n,p)=>n+p.length,0),out=new Uint8Array(total);let o=0;for(const p of parts){out.set(p,o);o+=p.length}return out}
