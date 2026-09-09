@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDailyOrganisationContext } from "@/lib/server/dailyOrganisationContext";
 import { prepareDailySignatureInvitationEmail, sendDailySignatureInvitation } from "@/lib/server/dailySignatureInvitationEmails";
+import { prepareDailySignatureReminder } from "@/lib/server/dailySignatureClientReminder";
 
 function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
@@ -142,11 +143,32 @@ export async function POST(req: Request) {
 
   if (finalizeError) console.error("Daily : invitation envoyée mais preuve non finalisée", finalizeError);
 
+  let reminder: { id: string; dueAt: string; alreadyPrepared: boolean } | null = null;
+  if (!finalizeError) {
+    try {
+      reminder = await prepareDailySignatureReminder(context.admin, {
+        organisationId: context.organisationId,
+        sessionId: convention.session_id,
+        signatureId: signature.id,
+        conventionId: convention.id,
+        documentName: emailInput.documentName,
+        signatoryType: signature.signatory_type,
+        signatoryName,
+        signatoryEmail: email,
+        sentAt,
+      });
+    } catch (error) {
+      console.error("Daily : préparation de la relance signature H+72 impossible", error);
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     sentTo: email,
     sentAt,
     evidenceRecorded: !finalizeError,
     communicationId: communication.id,
+    reminderPrepared: Boolean(reminder),
+    reminderDueAt: reminder?.dueAt ?? null,
   });
 }
