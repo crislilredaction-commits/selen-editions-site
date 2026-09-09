@@ -7,7 +7,9 @@ const SLA_MS = 72 * 60 * 60 * 1000;
 function clean(value: unknown) {
   return String(value ?? "").trim();
 }
-
+function escapeHtml(value: string) {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+}
 function dedupeKey(signatureId: string) {
   return `daily:signature:${signatureId}:pending-72h`;
 }
@@ -24,13 +26,7 @@ export async function ensureDailySignatureFollowupReminder(admin: AdminClient, i
   sentAt: string;
 }) {
   const key = dedupeKey(input.signatureId);
-  const { data: existing, error: existingError } = await admin
-    .from("client_reminders")
-    .select("id,status,due_at")
-    .eq("dedupe_key", key)
-    .in("status", ACTIVE_STATUSES)
-    .limit(1)
-    .maybeSingle();
+  const { data: existing, error: existingError } = await admin.from("client_reminders").select("id,status,due_at").eq("dedupe_key", key).in("status", ACTIVE_STATUSES).limit(1).maybeSingle();
   if (existingError) throw new Error(existingError.message);
   if (existing) return { created: false, reminder: existing };
 
@@ -47,38 +43,34 @@ export async function ensureDailySignatureFollowupReminder(admin: AdminClient, i
   const subject = `Signature attendue — ${document}`;
   const bodyText = `${actor} doit encore signer ${document}. Relance à effectuer si la signature n’est pas reçue.`;
 
-  const { data: reminder, error } = await admin
-    .from("client_reminders")
-    .insert({
-      client_email: clean(input.signatoryEmail).toLowerCase(),
-      dossier_id: dossier?.id ?? null,
-      reminder_type: REMINDER_TYPE,
-      status: "ready",
-      subject,
-      body_html: `<p>${bodyText}</p>`,
-      body_text: bodyText,
-      due_at: dueAt,
-      dedupe_key: key,
-      prestation_type: "daily_signature",
-      prestation_id: input.signatureId,
-      stage_label: "Signature attendue",
-      expected_action: "Obtenir la signature du document envoyé",
-      metadata: {
-        source: "daily",
-        organisation_id: input.organisationId,
-        session_id: input.sessionId,
-        convention_id: input.conventionId,
-        signature_id: input.signatureId,
-        signatory_type: clean(input.signatoryType) || null,
-        signatory_name: clean(input.signatoryName) || null,
-        assigned_agent_profile_id: assignment?.agent_profile_id ?? null,
-        queued_at: input.sentAt,
-        sent_at: input.sentAt,
-        reason: `Signature attendue pour ${document}`,
-      },
-    })
-    .select("id,status,due_at")
-    .single();
+  const { data: reminder, error } = await admin.from("client_reminders").insert({
+    client_email: clean(input.signatoryEmail).toLowerCase(),
+    dossier_id: dossier?.id ?? null,
+    reminder_type: REMINDER_TYPE,
+    status: "ready",
+    subject,
+    body_html: `<p>${escapeHtml(bodyText)}</p>`,
+    body_text: bodyText,
+    due_at: dueAt,
+    dedupe_key: key,
+    prestation_type: "daily_signature",
+    prestation_id: input.signatureId,
+    stage_label: "Signature attendue",
+    expected_action: "Obtenir la signature du document envoyé",
+    metadata: {
+      source: "daily",
+      organisation_id: input.organisationId,
+      session_id: input.sessionId,
+      convention_id: input.conventionId,
+      signature_id: input.signatureId,
+      signatory_type: clean(input.signatoryType) || null,
+      signatory_name: clean(input.signatoryName) || null,
+      assigned_agent_profile_id: assignment?.agent_profile_id ?? null,
+      queued_at: input.sentAt,
+      sent_at: input.sentAt,
+      reason: `Signature attendue pour ${document}`,
+    },
+  }).select("id,status,due_at").single();
 
   if (error) {
     if (error.code === "23505") {
@@ -91,10 +83,6 @@ export async function ensureDailySignatureFollowupReminder(admin: AdminClient, i
 }
 
 export async function resolveDailySignatureFollowupReminder(admin: AdminClient, signatureId: string, resolvedAt = new Date().toISOString()) {
-  const { error } = await admin
-    .from("client_reminders")
-    .update({ status: "resolved", updated_at: resolvedAt })
-    .eq("dedupe_key", dedupeKey(signatureId))
-    .in("status", ACTIVE_STATUSES);
+  const { error } = await admin.from("client_reminders").update({ status: "resolved", updated_at: resolvedAt }).eq("dedupe_key", dedupeKey(signatureId)).in("status", ACTIVE_STATUSES);
   if (error) throw new Error(error.message);
 }
