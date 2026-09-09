@@ -2,23 +2,23 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const dailyPage = await readFile(new URL("../app/client/daily/page.tsx", import.meta.url), "utf8");
-const formationsPage = await readFile(new URL("../app/client/daily/formations/page.tsx", import.meta.url), "utf8");
+const formationsManager = await readFile(new URL("../components/daily/DailyFormationsManager.tsx", import.meta.url), "utf8");
 const formationsRoute = await readFile(new URL("../app/api/client/daily/formations/route.ts", import.meta.url), "utf8");
 const onboardingPage = await readFile(new URL("../app/client/daily/onboarding/page.tsx", import.meta.url), "utf8");
 const uploadRoute = await readFile(new URL("../app/api/client/daily/uploads/route.ts", import.meta.url), "utf8");
 const dailyLayout = await readFile(new URL("../app/client/daily/layout.tsx", import.meta.url), "utf8");
+const dailyPage = await readFile(new URL("../app/client/daily/page.tsx", import.meta.url), "utf8");
 
 test("la création de formation envoie au moins un objectif pédagogique éditable", () => {
-  assert.match(dailyPage, /learning_objectives: \[""\]/);
-  assert.match(dailyPage, /Objectifs pédagogiques/);
+  assert.match(formationsManager, /learning_objectives: \[""\]/);
+  assert.match(formationsManager, /Objectifs pédagogiques/);
   assert.match(formationsRoute, /cleanTextArray\(body\.learning_objectives\)/);
 });
 
-test("la saisie des options de positionnement conserve espaces et retours à la ligne pendant la frappe", () => {
-  assert.match(dailyPage, /options: value\.split\("\\n"\)/);
-  assert.match(formationsPage, /options: e\.target\.value\.split\("\\n"\)/);
-  assert.doesNotMatch(dailyPage, /value\.split\("\\n"\)\.map\(\(option\) => option\.trim\(\)\)\.filter\(Boolean\)/);
+test("la saisie des options de positionnement conserve la valeur saisie pendant la frappe", () => {
+  assert.match(formationsManager, /onChange=\{\(e\) => onChange\(options\.map\(\(item, i\) => i === index \? e\.target\.value : item\)\)\}/);
+  assert.doesNotMatch(formationsManager, /e\.target\.value\.trim\(\)/);
+  assert.doesNotMatch(formationsManager, /e\.target\.value\.split\("\\n"\)\.map\(\(option\) => option\.trim\(\)\)\.filter\(Boolean\)/);
 });
 
 test("les documents de recette utilisent un import de fichier contrôlé", () => {
@@ -54,9 +54,9 @@ test("la navigation à onglets est masquée pendant les parcours initiaux, sans 
   assert.match(dailyPage, /<ClientSupportBar/);
 });
 
-test("la création d'une session est orientée vers sa page dédiée", () => {
-  assert.match(dailyPage, /router\.push\("\/client\/daily\/sessions"\)/);
-  assert.doesNotMatch(dailyPage, /showSessionForm/);
+test("la création d'une formation est suivie par la création de sa session dédiée", () => {
+  assert.match(formationsManager, /router\.push\(`\/client\/daily\/sessions\/new\?formation=\$\{encodeURIComponent\(formationId\)\}`\)/);
+  assert.doesNotMatch(formationsManager, /showSessionForm/);
 });
 
 test("une formation non validée est modifiée en place sans recréer son token public", () => {
