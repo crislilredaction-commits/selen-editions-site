@@ -93,11 +93,7 @@ export async function ensureDailySignatureFollowupReminder(admin: AdminClient, i
 export async function resolveDailySignatureFollowupReminder(admin: AdminClient, signatureId: string, resolvedAt = new Date().toISOString()) {
   const { error } = await admin
     .from("client_reminders")
-    .update({
-      status: "resolved",
-      updated_at: resolvedAt,
-      metadata: { resolution: "signature_received", resolved_at: resolvedAt, signature_id: signatureId, source: "daily" },
-    })
+    .update({ status: "resolved", updated_at: resolvedAt })
     .eq("dedupe_key", dedupeKey(signatureId))
     .in("status", ACTIVE_STATUSES);
   if (error) throw new Error(error.message);
