@@ -6,6 +6,7 @@ const helper = await readFile(new URL("../lib/server/dailySignatureFollowupRemin
 const sendRoute = await readFile(new URL("../app/api/client/daily/signature-invitations/send/route.ts", import.meta.url), "utf8");
 const signatureRoute = await readFile(new URL("../app/api/daily-signature/[token]/route.ts", import.meta.url), "utf8");
 
+// Cette garde est volontairement branchée au build pour valider le lot complet avant fusion.
 test("la relance signature est unique et échue 72 h après le véritable envoi", () => {
   assert.match(helper, /daily:signature:\$\{signatureId\}:pending-72h/);
   assert.match(helper, /72 \* 60 \* 60 \* 1000/);
