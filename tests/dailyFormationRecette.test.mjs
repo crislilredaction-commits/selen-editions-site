@@ -7,7 +7,6 @@ const formationsRoute = await readFile(new URL("../app/api/client/daily/formatio
 const onboardingPage = await readFile(new URL("../app/client/daily/onboarding/page.tsx", import.meta.url), "utf8");
 const uploadRoute = await readFile(new URL("../app/api/client/daily/uploads/route.ts", import.meta.url), "utf8");
 const dailyLayout = await readFile(new URL("../app/client/daily/layout.tsx", import.meta.url), "utf8");
-const dailyPage = await readFile(new URL("../app/client/daily/page.tsx", import.meta.url), "utf8");
 
 test("la création de formation envoie au moins un objectif pédagogique éditable", () => {
   assert.match(formationsManager, /learning_objectives: \[""\]/);
@@ -46,12 +45,11 @@ test("le client peut demander un accompagnement pendant tout le paramétrage aut
   assert.match(onboardingPage, /setup_choice: "video" as const/);
 });
 
-test("la navigation à onglets est masquée pendant les parcours initiaux, sans retirer l'assistance", () => {
-  assert.match(dailyLayout, /pathname === "\/client\/daily"/);
-  assert.match(dailyLayout, /pathname === "\/client\/daily\/onboarding"/);
-  assert.match(dailyLayout, /hideNavigation \? null : <nav/);
+test("les parcours initiaux restent isolés de la navigation courante sans retirer l'assistance", () => {
+  assert.match(dailyLayout, /pathname === "\/client\/daily\/onboarding" \|\| pathname === "\/client\/daily\/invitation"/);
+  assert.match(dailyLayout, /!isStandaloneFlow/);
+  assert.match(dailyLayout, /DailyFriendlyBanner/);
   assert.match(onboardingPage, /<ClientSupportBar/);
-  assert.match(dailyPage, /<ClientSupportBar/);
 });
 
 test("la création d'une formation est suivie par la création de sa session dédiée", () => {
