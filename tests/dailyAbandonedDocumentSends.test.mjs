@@ -7,13 +7,15 @@ const pretrainingGenerationPath = new URL("../app/api/client/daily/pretraining-d
 const posttrainingPath = new URL("../app/api/client/daily/posttraining-documents/send/route.ts", import.meta.url);
 const signedConventionDispatchPath = new URL("../lib/server/dailySignedConventionPretrainingPack.ts", import.meta.url);
 const attendancePath = new URL("../app/api/client/daily/attendance/route.ts", import.meta.url);
+const attendanceAutomationPath = new URL("../app/api/internal/daily/attendance-automation/route.ts", import.meta.url);
 
-const [pretraining, pretrainingGeneration, posttraining, signedConventionDispatch, attendance] = await Promise.all([
+const [pretraining, pretrainingGeneration, posttraining, signedConventionDispatch, attendance, attendanceAutomation] = await Promise.all([
   readFile(pretrainingPath, "utf8"),
   readFile(pretrainingGenerationPath, "utf8"),
   readFile(posttrainingPath, "utf8"),
   readFile(signedConventionDispatchPath, "utf8"),
   readFile(attendancePath, "utf8"),
+  readFile(attendanceAutomationPath, "utf8"),
 ]);
 
 test("une inscription abandonnée ne peut plus recevoir de convocation", () => {
@@ -56,4 +58,17 @@ test("une inscription abandonnée est exclue de l'émargement et des liens indiv
   );
   assert.match(attendance, /filter\(\(enrolment\) => activeEnrolment\(enrolment\.status\)\)/);
   assert.match(attendance, /if \(!enrolment \|\| !activeEnrolment\(enrolment\.status\)\)/);
+});
+
+test("l'automatisation d'émargement exclut aussi les inscriptions abandonnées", () => {
+  assert.match(
+    attendanceAutomation,
+    /\["declined", "cancelled", "abandoned", "completed"\]\.includes\(status \?\? ""\)/,
+  );
+});
+
+test("un échec de finalisation de la preuve email rend l'automatisation non OK sans provoquer de réenvoi", () => {
+  assert.match(attendanceAutomation, /if \(finalizeError\) failed \+= 1;/);
+  assert.match(attendanceAutomation, /status: finalizeError \? "sent_evidence_finalize_failed" : "sent"/);
+  assert.match(attendanceAutomation, /\.in\("status", \["queued", "sent"\]\)/);
 });

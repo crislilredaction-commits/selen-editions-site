@@ -76,7 +76,7 @@ function timeMinutes(value: string) {
 }
 
 function activeEnrolment(status?: string | null) {
-  return !["declined", "cancelled", "completed"].includes(status ?? "");
+  return !["declined", "cancelled", "abandoned", "completed"].includes(status ?? "");
 }
 
 function linkExpiry(slotDate: string) {
@@ -333,6 +333,7 @@ export async function GET(req: Request) {
       }
 
       processed += 1;
+      if (finalizeError) failed += 1;
       details.push({ slot_id: slot.id, enrolment_id: enrolment.id, phase, status: finalizeError ? "sent_evidence_finalize_failed" : "sent" });
     }
   }
