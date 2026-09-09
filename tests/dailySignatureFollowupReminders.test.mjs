@@ -20,6 +20,7 @@ test("l'envoi réussi programme la relance sans casser la preuve email", () => {
   assert.match(sendRoute, /reminderInput\(sentAt\)/);
   assert.match(sendRoute, /followupReminderRecorded/);
   assert.match(sendRoute, /status: "sent"/);
+  assert.match(helper, /escapeHtml\(bodyText\)/);
 });
 
 test("une signature réelle clôt la relance sans transformer une consultation en signature", () => {
