@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDailyOrganisationContext } from "@/lib/server/dailyOrganisationContext";
 import { prepareDailySignatureInvitationEmail, sendDailySignatureInvitation } from "@/lib/server/dailySignatureInvitationEmails";
+import { ensureDailySignatureFollowupReminder } from "@/lib/server/dailySignatureFollowupReminders";
 
 function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
@@ -9,6 +10,15 @@ function text(value: unknown) {
 function one<T>(value: T | T[] | null | undefined): T | null {
   if (Array.isArray(value)) return value[0] ?? null;
   return value ?? null;
+}
+
+async function ensureReminderWithoutBreakingSend(admin: any, input: Parameters<typeof ensureDailySignatureFollowupReminder>[1]) {
+  try {
+    return await ensureDailySignatureFollowupReminder(admin, input);
+  } catch (error) {
+    console.error("Daily : invitation envoyée mais relance H+72 non enregistrée", error);
+    return null;
+  }
 }
 
 export async function POST(req: Request) {
@@ -50,6 +60,18 @@ export async function POST(req: Request) {
   const signatoryName = text(signature.signatory_name || convention.recipient_name || convention.company_name);
   if (!email) return NextResponse.json({ error: "Aucune adresse e-mail n’est enregistrée pour ce signataire." }, { status: 400 });
 
+  const reminderInput = (sentAt: string) => ({
+    organisationId: context.organisationId,
+    sessionId: convention.session_id,
+    conventionId: convention.id,
+    signatureId: signature.id,
+    signatoryType: signature.signatory_type,
+    signatoryName,
+    signatoryEmail: email,
+    documentName: convention.document_name,
+    sentAt,
+  });
+
   const { data: previous } = await context.admin
     .from("daily_communications")
     .select("id,status,sent_at,delivered_at,provider_message_id")
@@ -64,6 +86,7 @@ export async function POST(req: Request) {
     .maybeSingle();
 
   if (previous) {
+    const reminder = previous.sent_at ? await ensureReminderWithoutBreakingSend(context.admin, reminderInput(previous.sent_at)) : null;
     return NextResponse.json({
       ok: true,
       alreadyRecorded: true,
@@ -71,6 +94,7 @@ export async function POST(req: Request) {
       status: previous.status,
       sentAt: previous.sent_at,
       deliveredAt: previous.delivered_at,
+      followupReminderRecorded: Boolean(reminder),
     });
   }
 
@@ -141,6 +165,7 @@ export async function POST(req: Request) {
     .eq("id", communication.id);
 
   if (finalizeError) console.error("Daily : invitation envoyée mais preuve non finalisée", finalizeError);
+  const reminder = await ensureReminderWithoutBreakingSend(context.admin, reminderInput(sentAt));
 
   return NextResponse.json({
     ok: true,
@@ -148,5 +173,6 @@ export async function POST(req: Request) {
     sentAt,
     evidenceRecorded: !finalizeError,
     communicationId: communication.id,
+    followupReminderRecorded: Boolean(reminder),
   });
 }
