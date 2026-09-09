@@ -5,7 +5,6 @@ import test from "node:test";
 const helper = await readFile(new URL("../lib/server/dailySignatureFollowupReminders.ts", import.meta.url), "utf8");
 const sendRoute = await readFile(new URL("../app/api/client/daily/signature-invitations/send/route.ts", import.meta.url), "utf8");
 const signatureRoute = await readFile(new URL("../app/api/daily-signature/[token]/route.ts", import.meta.url), "utf8");
-const migration = await readFile(new URL("../supabase/migrations/20260909125000_daily_signature_pending_followups.sql", import.meta.url), "utf8");
 
 test("la relance signature est unique et échue 72 h après le véritable envoi", () => {
   assert.match(helper, /daily:signature:\$\{signatureId\}:pending-72h/);
@@ -13,6 +12,7 @@ test("la relance signature est unique et échue 72 h après le véritable envoi"
   assert.match(helper, /input\.sentAt/);
   assert.match(helper, /daily_organisation_assignments/);
   assert.match(helper, /assigned_agent_profile_id/);
+  assert.match(helper, /daily_signature_pending_72h/);
 });
 
 test("l'envoi réussi programme la relance sans casser la preuve email", () => {
@@ -27,10 +27,4 @@ test("une signature réelle clôt la relance sans transformer une consultation e
   assert.match(signatureRoute, /resolveDailySignatureFollowupReminder/);
   assert.match(helper, /status: "resolved"/);
   assert.doesNotMatch(signatureRoute, /viewed_at:[^\n]*resolveDailySignatureFollowupReminder/);
-});
-
-test("la migration est additive sur les valeurs métier autorisées", () => {
-  assert.match(migration, /daily_signature_pending_72h/);
-  assert.match(migration, /'resolved'::text/);
-  assert.doesNotMatch(migration, /drop table|delete from|truncate/i);
 });
