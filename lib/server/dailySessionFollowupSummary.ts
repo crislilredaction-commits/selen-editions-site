@@ -1,7 +1,7 @@
 type AdminClient = any;
 
 function isActiveEnrolment(status?: string | null) {
-  return status !== "cancelled" && status !== "declined";
+  return status !== "cancelled" && status !== "declined" && status !== "abandoned";
 }
 
 function learnerFrom(value: unknown) {
@@ -16,6 +16,34 @@ function learnerName(enrolment: any) {
   return name || String(learner.email ?? "").trim() || "Apprenant";
 }
 
+function signatureRows(conventions: any[]) {
+  return conventions.flatMap((convention: any) => {
+    const rows = Array.isArray(convention.daily_convention_signatures)
+      ? convention.daily_convention_signatures
+      : convention.daily_convention_signatures
+        ? [convention.daily_convention_signatures]
+        : [];
+    return rows.map((signature: any) => ({
+      id: signature.id,
+      convention_id: convention.id,
+      document_name: convention.document_name,
+      recipient_type: convention.recipient_type,
+      recipient_name: convention.recipient_name,
+      recipient_email: convention.recipient_email,
+      company_name: convention.company_name,
+      signatory_type: signature.signatory_type,
+      signatory_name: signature.signatory_name,
+      signatory_email: signature.signatory_email,
+      status: signature.status,
+      created_at: signature.created_at,
+      viewed_at: signature.viewed_at,
+      signed_at: signature.signed_at,
+      expires_at: signature.expires_at,
+      last_error: signature.last_error,
+    }));
+  });
+}
+
 export async function loadDailySessionFollowupSnapshot(admin: AdminClient, organisationId: string, sessionId: string) {
   const [
     { data: session, error: sessionError },
@@ -25,6 +53,7 @@ export async function loadDailySessionFollowupSnapshot(admin: AdminClient, organ
     { data: assessments, error: assessmentsError },
     { data: feedback, error: feedbackError },
     { data: followupEntries, error: followupError },
+    { data: conventions, error: conventionsError },
   ] = await Promise.all([
     admin
       .from("daily_sessions")
@@ -63,9 +92,15 @@ export async function loadDailySessionFollowupSnapshot(admin: AdminClient, organ
       .eq("organisation_id", organisationId)
       .eq("session_id", sessionId)
       .order("occurred_at", { ascending: true }),
+    admin
+      .from("daily_conventions")
+      .select("id,document_name,recipient_type,recipient_name,recipient_email,company_name,version,generated_at,daily_convention_signatures(id,signatory_type,signatory_name,signatory_email,status,created_at,viewed_at,signed_at,expires_at,last_error)")
+      .eq("organisation_id", organisationId)
+      .eq("session_id", sessionId)
+      .order("generated_at", { ascending: true }),
   ]);
 
-  const readError = sessionError ?? organisationError ?? enrolmentsError ?? attendanceError ?? assessmentsError ?? feedbackError ?? followupError;
+  const readError = sessionError ?? organisationError ?? enrolmentsError ?? attendanceError ?? assessmentsError ?? feedbackError ?? followupError ?? conventionsError;
   if (readError) throw new Error(readError.message);
   if (!session) throw new Error("Session introuvable.");
 
@@ -76,6 +111,7 @@ export async function loadDailySessionFollowupSnapshot(admin: AdminClient, organ
   const completedAssessments = (assessments ?? []).filter((row: any) => activeIds.has(row.enrolment_id) && row.outcome !== "pending");
   const learnerFeedback = (feedback ?? []).filter((row: any) => activeIds.has(row.enrolment_id));
   const entries = followupEntries ?? [];
+  const signatures = signatureRows(conventions ?? []);
   const ratings = learnerFeedback.map((row: any) => Number(row.overall_rating)).filter((value: number) => Number.isFinite(value));
   const enrolmentNames = new Map(activeEnrolments.map((row: any) => [row.id, learnerName(row)]));
 
@@ -84,6 +120,7 @@ export async function loadDailySessionFollowupSnapshot(admin: AdminClient, organ
     organisation,
     enrolments: activeEnrolments.map((row: any) => ({ id: row.id, name: learnerName(row), status: row.status })),
     entries: entries.map((row: any) => ({ ...row, learner_name: row.enrolment_id ? enrolmentNames.get(row.enrolment_id) ?? null : null })),
+    signatures,
     summary: {
       session,
       learners: { active: activeEnrolments.length },
@@ -93,6 +130,15 @@ export async function loadDailySessionFollowupSnapshot(admin: AdminClient, organ
         responses: learnerFeedback.length,
         expected: activeEnrolments.length,
         average_rating: ratings.length > 0 ? ratings.reduce((sum: number, value: number) => sum + value, 0) / ratings.length : null,
+      },
+      signatures: {
+        total: signatures.length,
+        pending: signatures.filter((row: any) => ["pending", "viewed", "sent"].includes(String(row.status))).length,
+        viewed: signatures.filter((row: any) => row.status === "viewed").length,
+        signed: signatures.filter((row: any) => row.status === "signed").length,
+        expired: signatures.filter((row: any) => row.status === "expired").length,
+        failed: signatures.filter((row: any) => ["failed", "error"].includes(String(row.status))).length,
+        items: signatures,
       },
       followup: {
         open: entries.filter((row: any) => row.status === "open").length,
