@@ -7,6 +7,7 @@ import {
   verifyAgentAssistance,
 } from "@/lib/server/agentAssistance";
 import { dispatchPretrainingPackAfterConventionSigned } from "@/lib/server/dailySignedConventionPretrainingPack";
+import { resolveDailySignatureFollowupReminder } from "@/lib/server/dailySignatureFollowupReminders";
 
 type Params = { params: Promise<{ token: string }> };
 
@@ -64,6 +65,20 @@ async function dispatchPackWithoutBreakingSignature(
   }
 }
 
+async function resolveReminderWithoutBreakingSignature(
+  supabase: ReturnType<typeof getAdminSupabase>,
+  signatureId: string,
+  resolvedAt?: string,
+) {
+  try {
+    await resolveDailySignatureFollowupReminder(supabase, signatureId, resolvedAt);
+    return true;
+  } catch (error) {
+    console.error("Daily : signature enregistrée mais relance H+72 non clôturée", error);
+    return false;
+  }
+}
+
 export async function GET(_request: Request, { params }: Params) {
   const { token } = await params;
   const clean = cleanToken(token);
@@ -75,9 +90,7 @@ export async function GET(_request: Request, { params }: Params) {
     getAssistanceTokenFromRequest(_request),
   );
 
-  if (assistance) {
-    return blockedAgentAssistanceResponse();
-  }
+  if (assistance) return blockedAgentAssistanceResponse();
 
   const signature = await findSignature(clean);
   if (!signature) return NextResponse.json({ error: "Lien de signature introuvable." }, { status: 404 });
@@ -115,9 +128,7 @@ export async function POST(request: Request, { params }: Params) {
   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
   const consentAccepted = body.consent === true;
   const signatureData = text(body, "signature_data");
-  if (!consentAccepted) {
-    return NextResponse.json({ error: "Le consentement est obligatoire." }, { status: 400 });
-  }
+  if (!consentAccepted) return NextResponse.json({ error: "Le consentement est obligatoire." }, { status: 400 });
   if (!signatureData.startsWith("data:image/png;base64,")) {
     return NextResponse.json({ error: "La signature dessinee est obligatoire." }, { status: 400 });
   }
@@ -126,12 +137,16 @@ export async function POST(request: Request, { params }: Params) {
   const signature = await findSignature(clean);
   if (!signature) return NextResponse.json({ error: "Lien de signature introuvable." }, { status: 404 });
   if (signature.status === "signed") {
-    const pack = await dispatchPackWithoutBreakingSignature(supabase, signature.convention_id);
+    const [pack, reminderResolved] = await Promise.all([
+      dispatchPackWithoutBreakingSignature(supabase, signature.convention_id),
+      resolveReminderWithoutBreakingSignature(supabase, signature.id, signature.signed_at ?? undefined),
+    ]);
     return NextResponse.json({
       ok: true,
       alreadySigned: true,
       signedAt: signature.signed_at,
       pretrainingPack: pack,
+      followupReminderResolved: reminderResolved,
     });
   }
   if (isExpired(signature.expires_at)) {
@@ -178,6 +193,9 @@ export async function POST(request: Request, { params }: Params) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const pack = await dispatchPackWithoutBreakingSignature(supabase, signature.convention_id);
-  return NextResponse.json({ ok: true, signature: data, pretrainingPack: pack });
+  const [pack, reminderResolved] = await Promise.all([
+    dispatchPackWithoutBreakingSignature(supabase, signature.convention_id),
+    resolveReminderWithoutBreakingSignature(supabase, signature.id, signedAt),
+  ]);
+  return NextResponse.json({ ok: true, signature: data, pretrainingPack: pack, followupReminderResolved: reminderResolved });
 }

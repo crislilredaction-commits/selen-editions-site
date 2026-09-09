@@ -75,6 +75,7 @@ export default function DailySessionFollowupSummary({ sessionId }: { sessionId: 
   const [notice, setNotice] = useState("");
   const [pdfBusy, setPdfBusy] = useState(false);
   const [sendBusy, setSendBusy] = useState<string | null>(null);
+  const [followupBusy, setFollowupBusy] = useState<string | null>(null);
 
   async function loadSummary() {
     if (!sessionId) { setSummary(null); setError(""); return; }
@@ -104,6 +105,26 @@ export default function DailySessionFollowupSummary({ sessionId }: { sessionId: 
       await loadSummary();
     } finally {
       setSendBusy(null);
+    }
+  }
+
+  async function sendSignatureFollowup(signatureId: string) {
+    if (followupBusy) return;
+    setFollowupBusy(signatureId);
+    setError("");
+    setNotice("");
+    try {
+      const response = await assistanceFetch("/api/client/daily/signature-invitations/followup", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ signature_id: signatureId }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) { setError(data.error ?? "Relance de signature impossible."); return; }
+      setNotice(data.alreadyRecorded ? "Une relance vient déjà d’être enregistrée : aucun doublon n’a été envoyé." : "Relance de signature envoyée et journalisée.");
+      await loadSummary();
+    } finally {
+      setFollowupBusy(null);
     }
   }
 
@@ -184,8 +205,11 @@ export default function DailySessionFollowupSummary({ sessionId }: { sessionId: 
             </div>
             {item.needs_followup ? <p style={{ margin: ".55rem 0 0", fontWeight: 800, color: "#7b2f21" }}>Client à relancer : délai de 72 h dépassé sans signature.</p> : null}
             {item.failure_reason || item.last_error ? <p style={{ marginBottom: 0, color: "#7b2f21" }}>Erreur : {item.failure_reason || item.last_error}</p> : null}
-            {!item.sent_at && !terminal ? <button type="button" disabled={sendBusy !== null} onClick={() => void sendSignatureInvitation(item.id)} style={{ minHeight: 44, marginTop: ".7rem", padding: ".6rem .8rem", fontWeight: 800 }}>
+            {!item.sent_at && !terminal ? <button type="button" disabled={sendBusy !== null || followupBusy !== null} onClick={() => void sendSignatureInvitation(item.id)} style={{ minHeight: 44, marginTop: ".7rem", padding: ".6rem .8rem", fontWeight: 800 }}>
               {sendBusy === item.id ? "Envoi…" : "Envoyer l’invitation de signature"}
+            </button> : null}
+            {item.sent_at && item.needs_followup && !terminal ? <button type="button" disabled={followupBusy !== null || sendBusy !== null} onClick={() => void sendSignatureFollowup(item.id)} style={{ minHeight: 44, marginTop: ".7rem", padding: ".6rem .8rem", fontWeight: 800 }}>
+              {followupBusy === item.id ? "Relance…" : "Relancer la signature"}
             </button> : null}
           </article>;
         })}

@@ -37,19 +37,35 @@ export function prepareDailySignatureInvitationEmail(input: SignatureInvitationI
   return { subject, text, html };
 }
 
+export function prepareDailySignatureFollowupEmail(input: SignatureInvitationInput) {
+  const base = prepareDailySignatureInvitationEmail(input);
+  return {
+    subject: `Relance · ${base.subject}`,
+    text: base.text.replace("Votre signature est attendue", "Nous vous rappelons que votre signature est toujours attendue"),
+    html: base.html.replace("Votre signature est attendue", "Nous vous rappelons que votre signature est toujours attendue"),
+  };
+}
+
 export async function sendDailySignatureInvitation(input: SignatureInvitationInput) {
+  return sendPrepared(input.email, prepareDailySignatureInvitationEmail(input), "invitation de signature");
+}
+
+export async function sendDailySignatureFollowup(input: SignatureInvitationInput) {
+  return sendPrepared(input.email, prepareDailySignatureFollowupEmail(input), "relance de signature");
+}
+
+async function sendPrepared(email: string, message: { subject: string; text: string; html: string }, label: string) {
   if (!resend) return { sent: false as const, reason: "missing_resend_api_key" as const };
-  const message = prepareDailySignatureInvitationEmail(input);
   const { data, error } = await resend.emails.send({
     from: resendFromEmail,
-    to: input.email,
+    to: email,
     subject: message.subject,
     text: message.text,
     html: message.html,
     replyTo: "hello@selen-editions.fr",
   });
   if (error) {
-    console.error("Daily : invitation de signature impossible", error);
+    console.error(`Daily : ${label} impossible`, error);
     return { sent: false as const, reason: "send_failed" as const };
   }
   return { sent: true as const, message: { ...message, providerMessageId: data?.id ?? null } };
