@@ -16,7 +16,7 @@
     "test:daily-qualiopi-guards": "node --test tests/dailyQualiopiSettingsGuards.test.mjs tests/dailyQualiopiSurveillance.test.mjs tests/dailyQualiopiNovember2026.test.mjs",
     "test:daily-procedures-guards": "node --test tests/dailyInternalProcedures.test.mjs",
     "test:daily-satisfaction-guards": "node --test tests/dailySatisfactionCadence.test.mjs tests/dailySatisfactionResponseFinalization.test.mjs",
-    "test:daily-session-followup-guards": "node --test tests/dailySessionFollowupProvenance.test.mjs",
+    "test:daily-session-followup-guards": "node --test tests/dailySessionFollowupProvenance.test.mjs tests/dailySignatureFollowupVisibility.test.mjs",
     "test:daily-training-indicators": "node --test tests/dailyTrainingIndicators.test.mjs",
     "test:daily-learning-results-semantics": "node --test tests/dailyLearningResultsSemantics.test.mjs",
     "test:daily-trainer-certifications": "node --test tests/dailyTrainerCertifications.test.mjs",
