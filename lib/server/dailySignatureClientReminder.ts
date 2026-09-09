@@ -80,12 +80,18 @@ export async function prepareDailySignatureReminder(admin: AdminClient, input: {
 }
 
 export async function resolveDailySignatureReminder(admin: AdminClient, signatureId: string, resolvedAt: string) {
-  const { error } = await admin.from("client_reminders")
-    .update({
-      status: "resolved",
-      metadata: { resolved_by: "signature_recorded", resolved_at: resolvedAt },
-    })
+  const { data: reminders, error: readError } = await admin.from("client_reminders")
+    .select("id,metadata")
     .eq("dedupe_key", dedupeKey(signatureId))
     .in("status", OPEN_STATUSES);
-  if (error) throw new Error(error.message);
+  if (readError) throw new Error(readError.message);
+
+  for (const reminder of reminders ?? []) {
+    const metadata = reminder.metadata && typeof reminder.metadata === "object" ? reminder.metadata : {};
+    const { error } = await admin.from("client_reminders").update({
+      status: "resolved",
+      metadata: { ...metadata, resolved_by: "signature_recorded", resolved_at: resolvedAt },
+    }).eq("id", reminder.id);
+    if (error) throw new Error(error.message);
+  }
 }
