@@ -1,0 +1,14 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+const routePath=new URL("../app/api/daily-portal/[token]/attendance/route.ts",import.meta.url);
+const pagePath=new URL("../components/daily/DailyAttendanceWorkspace.tsx",import.meta.url);
+const portalPath=new URL("../app/daily/portail/[role]/[token]/page.tsx",import.meta.url);
+const attendanceApiPath=new URL("../app/api/daily-attendance/[token]/route.ts",import.meta.url);
+const[route,page,portal,attendanceApi]=await Promise.all([readFile(routePath,"utf8"),readFile(pagePath,"utf8"),readFile(portalPath,"utf8"),readFile(attendanceApiPath,"utf8")]);
+test("le suivi relit les tables canoniques d'émargement",()=>{assert.match(route,/daily_attendance_slots/);assert.match(route,/daily_attendance_records/);assert.doesNotMatch(route,/insert\(/)});
+test("le formateur voit toutes les inscriptions actives et l'apprenant seulement la sienne",()=>{assert.match(route,/portal_type==="trainer"/);assert.match(route,/entity_email/);assert.match(route,/declined/);assert.match(route,/cancelled/);assert.match(route,/abandoned/)});
+test("une absence n'est affichée qu'après la fin du créneau",()=>{assert.match(page,/phase==="closed"\?"Absent ou non signé"/);assert.match(page,/À émarger/);assert.match(page,/Présent/)});
+test("la preuve détaillée reste côté serveur",()=>{assert.doesNotMatch(route,/signature_storage_path/);assert.doesNotMatch(route,/ip_address/);assert.doesNotMatch(route,/user_agent/)});
+test("les espaces formateur et apprenant donnent accès au suivi",()=>{assert.match(portal,/Présences & émargement/);assert.match(portal,/trainer/);assert.match(portal,/learner/)});
+test("la signature apprenant continue d'écrire dans la source canonique",()=>{assert.match(attendanceApi,/daily_attendance_records/);assert.match(attendanceApi,/status:\s*"present"/);assert.match(attendanceApi,/signed_at/)});
