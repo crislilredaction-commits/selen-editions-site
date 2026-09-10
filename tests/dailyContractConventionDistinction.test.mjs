@@ -31,6 +31,14 @@ test("le générateur choisit contrat ou convention depuis le SIRET client final
   assert.match(generator, /Convention de formation/);
 });
 
+test("le programme généré reprend les indicateurs de performance de la formation", () => {
+  assert.match(generator, /result_beneficiary_count/);
+  assert.match(generator, /result_satisfaction_rate/);
+  assert.match(generator, /result_success_rate/);
+  assert.match(generator, /results_pending/);
+  assert.match(generator, /Indicateurs de performance/);
+});
+
 test("le contrat généré conserve les protections essentielles du stagiaire individuel", () => {
   assert.match(generator, /délai légal de rétractation/);
   assert.match(generator, /Aucun paiement ne peut être exigé avant son expiration/);
