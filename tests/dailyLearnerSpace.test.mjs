@@ -35,7 +35,7 @@ test("les actions apprenant suivent la phase réelle de la session", async () =>
   assert.match(workspace, /Avant la formation/);
   assert.match(workspace, /Formation en cours/);
   assert.match(workspace, /Après la formation/);
-  assert.match(workspace, /currentPhase === "after"/);
+  assert.match(workspace, /currentPhase\s*===\s*"after"/);
   assert.match(workspace, /Mon évaluation/);
 });
 
