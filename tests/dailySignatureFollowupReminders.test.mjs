@@ -28,7 +28,7 @@ test("l'envoi réussi programme la séquence sans casser la preuve email", () =>
 
 test("l'exécuteur J+3 est protégé, idempotent et trace l'email", () => {
   assert.match(automationRoute, /DAILY_AUTOMATION_SECRET/);
-  assert.match(automationRoute, /execute === "1"/);
+  assert.match(automationRoute, /url\.searchParams\.get\("execute"\) === "1"/);
   assert.match(automationRoute, /DAILY_SIGNATURE_J3_STAGE/);
   assert.match(automationRoute, /convention_signature_followup/);
   assert.match(automationRoute, /prepareDailySignatureFollowupEmail/);
