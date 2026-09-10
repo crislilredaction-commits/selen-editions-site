@@ -196,7 +196,7 @@ export async function sendLearnerPortalAccessForRegistrationRequest(admin: Admin
     .select("enrolment_id")
     .eq("registration_request_id", input.registrationRequestId);
   if (error) throw error;
-  const enrolmentIds = [...new Set((links ?? []).map((row: { enrolment_id: string }) => row.enrolment_id).filter(Boolean))];
+  const enrolmentIds: string[] = [...new Set<string>((links ?? []).map((row: { enrolment_id?: unknown }) => String(row.enrolment_id ?? "").trim()).filter(Boolean))];
   const results: LearnerPortalAccessResult[] = [];
   for (const enrolmentId of enrolmentIds) {
     results.push(await ensureAndSendLearnerPortalAccess(admin, { enrolmentId, registrationRequestId: input.registrationRequestId, origin: input.origin, createdBy: input.createdBy }));
