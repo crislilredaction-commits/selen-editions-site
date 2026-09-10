@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import LoadingMascot from "@/components/ui/LoadingMascot";
 
@@ -75,6 +76,7 @@ export default function RegistrationSharePage() {
           <p style={s.kicker}>Selen Daily · Inscriptions</p>
           <h1 style={s.h1}>Diffusez vos dossiers d'inscription</h1>
           <p style={s.lead}>Une fois votre programme validé par Selen, vous pouvez intégrer son lien court ou son QR code à votre site internet, vos emails, vos réseaux sociaux ou vos supports imprimés.</p>
+          <div style={s.topActions}><Link href="/client/daily/candidatures" style={s.candidateLink}>Voir les candidatures à valider →</Link></div>
         </div>
         <div style={s.metric}><strong>{pendingCount}</strong><span>lien{pendingCount > 1 ? "s" : ""} à diffuser</span></div>
       </header>
@@ -142,6 +144,7 @@ const s: Record<string, React.CSSProperties> = {
   kicker: { margin: 0, fontSize: 11, fontWeight: 800, color: "#8a4b24", textTransform: "uppercase", letterSpacing: ".12em" },
   h1: { margin: ".3rem 0 .5rem", fontSize: 32 }, h2: { margin: ".35rem 0", fontSize: 22 },
   lead: { margin: 0, maxWidth: 760, color: "#705744", lineHeight: 1.6 }, muted: { margin: ".25rem 0", color: "#806a58", lineHeight: 1.5 },
+  topActions:{marginTop:12},candidateLink:{display:"inline-flex",alignItems:"center",border:"1px solid #8a4b24",padding:".58rem .8rem",color:"#8a4b24",fontWeight:800,textDecoration:"none"},
   metric: { minWidth: 130, textAlign: "center", padding: "1rem", borderRadius: 15, background: "#f2e3c4", display: "grid", gap: 2 },
   list: { display: "grid", gap: 14 }, card: { display: "grid", gridTemplateColumns: "minmax(0,1fr) 230px", gap: 20, padding: "1.25rem", border: "1px solid #d8b989", background: "#fffaf0", borderRadius: 16 }, doneCard: { borderColor: "#94a979", background: "#f9fff3" }, cardMain: { display: "grid", gap: 14 }, cardHead: { display: "flex", justifyContent: "space-between", gap: 12 },
   badge: { display: "inline-block", padding: ".28rem .55rem", borderRadius: 999, background: "#f1dfb8", color: "#76461e", fontSize: 11, fontWeight: 800 }, doneBadge: { display: "inline-block", padding: ".28rem .55rem", borderRadius: 999, background: "#deebcf", color: "#4e693b", fontSize: 11, fontWeight: 800 },
