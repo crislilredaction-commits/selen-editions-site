@@ -94,6 +94,7 @@ export async function moveDailySignatureReminderToPhoneCall(admin: AdminClient, 
   initialSentAt: string;
   documentName?: string | null;
   automaticEmailSentAt: string;
+  metadata?: Record<string, unknown> | null;
 }) {
   const initial = new Date(input.initialSentAt);
   const dueAt = new Date(initial.getTime() + J6_MS).toISOString();
@@ -108,13 +109,13 @@ export async function moveDailySignatureReminderToPhoneCall(admin: AdminClient, 
     stage_label: "Appel téléphonique agent J+6",
     expected_action: "Appeler le client si la signature est toujours absente",
     metadata: {
-      // Le JSON complet est reconstruit par l'exécuteur à partir des métadonnées existantes.
+      ...(input.metadata ?? {}),
       followup_stage: DAILY_SIGNATURE_J6_STAGE,
       initial_sent_at: input.initialSentAt,
       automatic_email_sent_at: input.automaticEmailSentAt,
       reason: `Appel téléphonique à effectuer si ${document} reste non signé`,
     },
-  }).eq("id", input.reminderId).in("status", ["ready", "postponed"]);
+  }).eq("id", input.reminderId).eq("status", "postponed");
   if (error) throw new Error(error.message);
   return { dueAt };
 }
