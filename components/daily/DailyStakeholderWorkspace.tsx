@@ -55,7 +55,7 @@ export default function DailyStakeholderWorkspace({ role, token }: Props) {
     if (currentPhase !== "after") {
       actions.push(positioning === "completed" || positioning === "validated"
         ? { label:"Positionnement", detail:"Votre positionnement est enregistré.", status:"done" }
-        : { label:"Positionnement", detail:"Le positionnement est à réaliser avant ou au démarrage de la formation. Le formulaire interactif sera raccordé au prochain lot.", status:"todo" });
+        : { label:"Positionnement", detail:"Répondez au questionnaire avant la formation ou, si nécessaire, au tout début de la session.", href:`/daily/portail/${role}/${token}/positionnement`, status:"todo" });
     }
     const convocation = resources.find((doc) => doc.document_type === "convocation");
     if (currentPhase === "before") actions.push(convocation
