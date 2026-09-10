@@ -119,6 +119,7 @@ export default function DailySessionsManager() {
   const [evidenceContext, setEvidenceContext] = useState<EvidenceContext | null>(null);
   const [evidenceLoading, setEvidenceLoading] = useState(false);
   const [uploadingKey, setUploadingKey] = useState("");
+  const [abandoningKey, setAbandoningKey] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -295,6 +296,29 @@ export default function DailySessionsManager() {
     }
   }
 
+  async function confirmAbandonment(sessionId: string, enrolmentId: string, occurredAt: string, reason: string) {
+    const key = `${enrolmentId}:abandonment`;
+    setAbandoningKey(key);
+    setError("");
+    setMessage("");
+    try {
+      const response = await assistanceFetch("/api/client/daily/enrolments/abandon", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId, enrolment_id: enrolmentId, occurred_at: occurredAt, reason }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error ?? "Confirmation de l’abandon impossible.");
+      setMessage("Abandon confirmé. Les accès et actions futures de cet apprenant sont arrêtés, son historique reste conservé.");
+      await openEvidenceRefresh(sessionId);
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Confirmation de l’abandon impossible.");
+    } finally {
+      setAbandoningKey("");
+    }
+  }
+
   async function openEvidenceRefresh(sessionId: string) {
     const response = await assistanceFetch(`/api/client/daily/sessions/${encodeURIComponent(sessionId)}/evidence-context`, { cache: "no-store" });
     const data = await response.json().catch(() => ({}));
@@ -337,8 +361,8 @@ export default function DailySessionsManager() {
     </section>
 
     <section style={styles.columns}>
-      <SessionColumn title="Sessions planifiées" subtitle="En cours de préparation ou de réalisation" sessions={plannedSessions} empty="Aucune session planifiée." completion={completion} edit={editSession} duplicate={duplicate} archive={archive} openEvidence={openEvidence} evidenceSessionId={evidenceSessionId} evidenceLoading={evidenceLoading} evidenceContext={evidenceContext} uploadEvidence={uploadEvidence} uploadingKey={uploadingKey} />
-      <SessionColumn title="Sessions clôturées" subtitle="Dossier de session terminé" sessions={closedSessions} empty="Aucune session clôturée." completion={completion} edit={editSession} duplicate={duplicate} archive={archive} openEvidence={openEvidence} evidenceSessionId={evidenceSessionId} evidenceLoading={evidenceLoading} evidenceContext={evidenceContext} uploadEvidence={uploadEvidence} uploadingKey={uploadingKey} />
+      <SessionColumn title="Sessions planifiées" subtitle="En cours de préparation ou de réalisation" sessions={plannedSessions} empty="Aucune session planifiée." completion={completion} edit={editSession} duplicate={duplicate} archive={archive} openEvidence={openEvidence} evidenceSessionId={evidenceSessionId} evidenceLoading={evidenceLoading} evidenceContext={evidenceContext} uploadEvidence={uploadEvidence} confirmAbandonment={confirmAbandonment} uploadingKey={uploadingKey} abandoningKey={abandoningKey} />
+      <SessionColumn title="Sessions clôturées" subtitle="Dossier de session terminé" sessions={closedSessions} empty="Aucune session clôturée." completion={completion} edit={editSession} duplicate={duplicate} archive={archive} openEvidence={openEvidence} evidenceSessionId={evidenceSessionId} evidenceLoading={evidenceLoading} evidenceContext={evidenceContext} uploadEvidence={uploadEvidence} confirmAbandonment={confirmAbandonment} uploadingKey={uploadingKey} abandoningKey={abandoningKey} />
     </section>
   </main>;
 }
@@ -353,7 +377,9 @@ function SessionColumn(props: {
   title: string; subtitle: string; sessions: Session[]; empty: string; completion: Record<string, Completion>;
   edit: (session: Session) => void; duplicate: (id: string) => Promise<void>; archive: (id: string) => Promise<void>;
   openEvidence: (id: string) => Promise<void>; evidenceSessionId: string | null; evidenceLoading: boolean; evidenceContext: EvidenceContext | null;
-  uploadEvidence: (sessionId: string, enrolmentId: string, kind: "positioning" | "learning_assessment", file: File | null) => Promise<void>; uploadingKey: string;
+  uploadEvidence: (sessionId: string, enrolmentId: string, kind: "positioning" | "learning_assessment", file: File | null) => Promise<void>;
+  confirmAbandonment: (sessionId: string, enrolmentId: string, occurredAt: string, reason: string) => Promise<void>;
+  uploadingKey: string; abandoningKey: string;
 }) {
   return <div style={styles.column}><div><h2 style={styles.h2}>{props.title}</h2><p style={styles.muted}>{props.subtitle}</p></div>{props.sessions.length === 0 ? <div style={styles.empty}>{props.empty}</div> : props.sessions.map((session) => {
     const formation = formationOf(session);
@@ -362,24 +388,45 @@ function SessionColumn(props: {
       <div style={styles.cardHead}><div><span style={styles.badge}>{modalityLabel(session)}</span><h3 style={styles.h3}>{formation?.title ?? "Formation"}</h3><p style={styles.muted}>{formatDate(session.start_date)}{session.end_date && session.end_date !== session.start_date ? ` → ${formatDate(session.end_date)}` : ""}{session.internal_reference ? ` · ${session.internal_reference}` : ""}</p></div><strong style={styles.percent}>{stats.percentage}%</strong></div>
       <div style={styles.progressTrack}><div style={{ ...styles.progressBar, width: `${stats.percentage}%` }} /></div><p style={styles.progressText}>{stats.expected > 0 ? `${stats.completed} éléments conformes ou recueillis sur ${stats.expected}` : "Les preuves apparaîtront ici au fur et à mesure du dossier."}</p>
       <div style={styles.actions}><button type="button" style={styles.secondary} onClick={() => props.edit(session)}>Modifier</button><button type="button" style={styles.secondary} onClick={() => void props.openEvidence(session.id)}>Preuves apprenants</button><button type="button" style={styles.secondary} onClick={() => void props.duplicate(session.id)}>Dupliquer</button><button type="button" style={styles.danger} onClick={() => void props.archive(session.id)}>Archiver</button></div>
-      {props.evidenceSessionId === session.id ? <EvidencePanel session={session} loading={props.evidenceLoading} context={props.evidenceContext} upload={props.uploadEvidence} uploadingKey={props.uploadingKey} /> : null}
+      {props.evidenceSessionId === session.id ? <EvidencePanel session={session} loading={props.evidenceLoading} context={props.evidenceContext} upload={props.uploadEvidence} confirmAbandonment={props.confirmAbandonment} uploadingKey={props.uploadingKey} abandoningKey={props.abandoningKey} /> : null}
     </article>;
   })}</div>;
 }
 
-function EvidencePanel({ session, loading, context, upload, uploadingKey }: { session: Session; loading: boolean; context: EvidenceContext | null; upload: (sessionId: string, enrolmentId: string, kind: "positioning" | "learning_assessment", file: File | null) => Promise<void>; uploadingKey: string }) {
+function EvidencePanel({ session, loading, context, upload, confirmAbandonment, uploadingKey, abandoningKey }: { session: Session; loading: boolean; context: EvidenceContext | null; upload: (sessionId: string, enrolmentId: string, kind: "positioning" | "learning_assessment", file: File | null) => Promise<void>; confirmAbandonment: (sessionId: string, enrolmentId: string, occurredAt: string, reason: string) => Promise<void>; uploadingKey: string; abandoningKey: string }) {
   if (loading) return <div style={styles.evidencePanel}><LoadingMascot fullScreen={false} message="Sélion classe les dossiers apprenants…" /></div>;
   if (!context || context.enrolments.length === 0) return <div style={styles.evidencePanel}><p style={styles.muted}>Aucun apprenant rattaché à cette session pour le moment.</p></div>;
-  return <div style={styles.evidencePanel}><div><b>Documents et preuves par apprenant</b><p style={styles.muted}>PDF, JPG ou PNG. Chaque import est classé automatiquement sous formation + session + apprenant pour Audit Live.</p></div>{context.enrolments.map((enrolment) => {
+  return <div style={styles.evidencePanel}><div><b>Documents et preuves par apprenant</b><p style={styles.muted}>Les preuves déjà acquises restent conservées même si une inscription est abandonnée.</p></div>{context.enrolments.map((enrolment) => {
     const positioningDocs = context.documents.filter((doc) => doc.enrolment_id === enrolment.id && doc.document_type === "positioning_evidence");
     const assessmentDocs = context.documents.filter((doc) => doc.enrolment_id === enrolment.id && doc.document_type === "learning_assessment_evidence");
     const hasAssessmentForm = context.assessmentResponses.some((response) => response.enrolment_id === enrolment.id);
-    return <div key={enrolment.id} style={styles.learnerRow}><div><b>{learnerName(enrolment)}</b><small>{learnerOf(enrolment)?.email ?? ""}</small></div><UploadCell label="Test de positionnement" done={positioningDocs.length > 0 || ["completed", "validated", "done"].includes(String(enrolment.positioning_status ?? ""))} busy={uploadingKey === `${enrolment.id}:positioning`} onFile={(file) => void upload(session.id, enrolment.id, "positioning", file)} /><UploadCell label="Évaluation finale" done={assessmentDocs.length > 0 || hasAssessmentForm} busy={uploadingKey === `${enrolment.id}:learning_assessment`} onFile={(file) => void upload(session.id, enrolment.id, "learning_assessment", file)} /></div>;
+    const abandoned = enrolment.status === "abandoned";
+    return <div key={enrolment.id} style={{ ...styles.learnerRow, ...(abandoned ? styles.learnerAbandoned : {}) }}>
+      <div><b>{learnerName(enrolment)}</b><small>{learnerOf(enrolment)?.email ?? ""}</small>{abandoned ? <span style={styles.abandonedBadge}>Abandon confirmé</span> : null}</div>
+      <UploadCell label="Test de positionnement" done={positioningDocs.length > 0 || ["completed", "validated", "done"].includes(String(enrolment.positioning_status ?? ""))} busy={uploadingKey === `${enrolment.id}:positioning`} disabled={abandoned} onFile={(file) => void upload(session.id, enrolment.id, "positioning", file)} />
+      <UploadCell label="Évaluation finale" done={assessmentDocs.length > 0 || hasAssessmentForm} busy={uploadingKey === `${enrolment.id}:learning_assessment`} disabled={abandoned} onFile={(file) => void upload(session.id, enrolment.id, "learning_assessment", file)} />
+      <AbandonmentControl enrolment={enrolment} sessionId={session.id} busy={abandoningKey === `${enrolment.id}:abandonment`} onConfirm={confirmAbandonment} />
+    </div>;
   })}</div>;
 }
 
-function UploadCell({ label, done, busy, onFile }: { label: string; done: boolean; busy: boolean; onFile: (file: File | null) => void }) {
-  return <label style={{ ...styles.uploadCell, ...(done ? styles.uploadDone : {}) }}><span><b>{done ? "✓ " : ""}{label}</b><small>{done ? "Preuve déjà présente. Vous pouvez ajouter une nouvelle copie si nécessaire." : "Importer si le formulaire Selen n’a pas été utilisé."}</small></span><input type="file" accept="application/pdf,image/jpeg,image/png" disabled={busy} onChange={(e) => { onFile(e.target.files?.[0] ?? null); e.currentTarget.value = ""; }} /><em>{busy ? "Import…" : "Choisir un fichier"}</em></label>;
+function UploadCell({ label, done, busy, disabled = false, onFile }: { label: string; done: boolean; busy: boolean; disabled?: boolean; onFile: (file: File | null) => void }) {
+  return <label style={{ ...styles.uploadCell, ...(done ? styles.uploadDone : {}), ...(disabled ? styles.uploadDisabled : {}) }}><span><b>{done ? "✓ " : ""}{label}</b><small>{disabled ? "Historique conservé. Aucun nouvel ajout n’est attendu après l’abandon." : done ? "Preuve déjà présente. Vous pouvez ajouter une nouvelle copie si nécessaire." : "Importer si le formulaire Selen n’a pas été utilisé."}</small></span><input type="file" accept="application/pdf,image/jpeg,image/png" disabled={busy || disabled} onChange={(e) => { onFile(e.target.files?.[0] ?? null); e.currentTarget.value = ""; }} /><em>{disabled ? "Clôturé" : busy ? "Import…" : "Choisir un fichier"}</em></label>;
+}
+
+function AbandonmentControl({ enrolment, sessionId, busy, onConfirm }: { enrolment: Enrolment; sessionId: string; busy: boolean; onConfirm: (sessionId: string, enrolmentId: string, occurredAt: string, reason: string) => Promise<void> }) {
+  const [open, setOpen] = useState(false);
+  const [occurredAt, setOccurredAt] = useState(() => new Date().toISOString().slice(0, 10));
+  const [reason, setReason] = useState("");
+  if (enrolment.status === "abandoned") return <div style={styles.abandonmentClosed}><b>Inscription abandonnée</b><small>Accès et actions futures arrêtés. Les preuves antérieures restent consultables.</small></div>;
+  if (!open) return <div style={styles.abandonmentCell}><button type="button" style={styles.danger} onClick={() => setOpen(true)}>Confirmer un abandon</button><small>À utiliser uniquement lorsque l’abandon est réellement confirmé.</small></div>;
+  return <form style={styles.abandonmentForm} onSubmit={(event) => { event.preventDefault(); if (!occurredAt || !reason.trim() || busy) return; void onConfirm(sessionId, enrolment.id, occurredAt, reason.trim()); }}>
+    <b>Confirmer l’abandon</b>
+    <label style={styles.field}><span style={styles.label}>Date de l’abandon *</span><input type="date" required value={occurredAt} onChange={(event) => setOccurredAt(event.target.value)} style={styles.input} /></label>
+    <label style={styles.field}><span style={styles.label}>Motif *</span><textarea required value={reason} onChange={(event) => setReason(event.target.value)} style={styles.abandonmentTextarea} placeholder="Ex. arrêt à la demande de l’apprenant, raisons personnelles…" /></label>
+    <p style={styles.warningText}>Cette confirmation arrête les accès et actions futures, sans supprimer les documents ni les preuves déjà acquis.</p>
+    <div style={styles.actions}><button type="submit" disabled={busy || !occurredAt || !reason.trim()} style={styles.danger}>{busy ? "Confirmation…" : "Confirmer définitivement"}</button><button type="button" disabled={busy} style={styles.secondary} onClick={() => { setOpen(false); setReason(""); }}>Annuler</button></div>
+  </form>;
 }
 
 function Field({ label, children, full = false }: { label: string; children: React.ReactNode; full?: boolean }) {
@@ -390,5 +437,5 @@ const styles: Record<string, React.CSSProperties> = {
   main: { maxWidth: 1180, margin: "0 auto", padding: "2rem 1rem 5rem", color: "#3f2b1d" }, hero: { display: "flex", justifyContent: "space-between", gap: 24, alignItems: "center", padding: "1.6rem", border: "1px solid #d8b989", background: "#fffaf0", borderRadius: 18, marginBottom: 18 }, eyebrow: { margin: 0, fontSize: 11, fontWeight: 800, color: "#8a4b24", letterSpacing: ".11em", textTransform: "uppercase" }, h1: { margin: ".3rem 0 .45rem", fontSize: 34 }, h2: { margin: ".2rem 0", fontSize: 22 }, h3: { margin: ".25rem 0", fontSize: 18 }, lead: { margin: 0, maxWidth: 760, lineHeight: 1.6, color: "#705744" }, muted: { margin: ".2rem 0", color: "#806a58", lineHeight: 1.5 }, stat: { minWidth: 120, textAlign: "center", padding: "1rem", borderRadius: 16, background: "#f2e3c4", display: "grid" }, error: { padding: "1rem", border: "1px solid #b96c59", background: "#fff2ed", borderRadius: 12, marginBottom: 14 }, success: { padding: "1rem", border: "1px solid #8aa36c", background: "#f6fff0", borderRadius: 12, marginBottom: 14 },
   accordion: { border: "1px solid #d8b989", background: "#fffaf0", borderRadius: 18, overflow: "hidden", marginBottom: 26 }, accordionButton: { width: "100%", border: 0, background: "transparent", padding: "1.2rem 1.35rem", display: "flex", justifyContent: "space-between", textAlign: "left", color: "#4a321f", cursor: "pointer" }, chevron: { fontSize: 28, color: "#8a4b24" }, formPanel: { padding: "0 1.35rem 1.4rem", display: "grid", gap: 20 }, formGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 14 }, field: { display: "grid", gap: 6 }, full: { gridColumn: "1 / -1" }, label: { fontSize: 13, fontWeight: 800 }, input: { width: "100%", boxSizing: "border-box", padding: ".72rem", border: "1px solid #d8b989", borderRadius: 10, background: "white" }, textarea: { width: "100%", boxSizing: "border-box", minHeight: 90, padding: ".72rem", border: "1px solid #d8b989", borderRadius: 10, resize: "vertical" }, section: { display: "grid", gap: 10, borderTop: "1px solid #ead8b7", paddingTop: 15 }, scheduleRow: { display: "grid", gridTemplateColumns: "1.5fr 1fr 1fr auto", gap: 8, alignItems: "center" }, checkboxGrid: { display: "flex", gap: 8, flexWrap: "wrap" }, check: { padding: ".55rem .7rem", border: "1px solid #dec79e", borderRadius: 10, display: "flex", gap: 6 },
   columns: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(360px,1fr))", gap: 18, alignItems: "start" }, column: { display: "grid", gap: 12 }, sessionCard: { padding: "1.1rem", border: "1px solid #d8b989", background: "#fffaf0", borderRadius: 16, boxShadow: "0 8px 20px rgba(80,55,30,.06)" }, cardHead: { display: "flex", justifyContent: "space-between", gap: 12 }, badge: { display: "inline-block", padding: ".28rem .5rem", borderRadius: 999, background: "#f0dfbd", color: "#6d421f", fontSize: 11, fontWeight: 800 }, percent: { fontSize: 26, color: "#74401f" }, progressTrack: { height: 10, background: "#eadfc9", borderRadius: 999, overflow: "hidden", marginTop: 12 }, progressBar: { height: "100%", background: "linear-gradient(90deg,#a66b38,#6f8b56)", borderRadius: 999 }, progressText: { fontSize: 12, color: "#806a58", margin: ".4rem 0 .8rem" }, actions: { display: "flex", gap: 7, flexWrap: "wrap" }, primary: { border: 0, borderRadius: 10, background: "#74401f", color: "white", padding: ".72rem 1rem", fontWeight: 800, cursor: "pointer" }, secondary: { border: "1px solid #c9ad7d", borderRadius: 10, background: "#fffaf0", color: "#5d3b22", padding: ".6rem .8rem", fontWeight: 700, cursor: "pointer" }, smallButton: { border: "1px solid #d8b989", borderRadius: 8, background: "white", color: "#6a4528", padding: ".45rem .65rem" }, danger: { border: "1px solid #c79688", borderRadius: 10, background: "#fff6f2", color: "#934d3a", padding: ".6rem .8rem", fontWeight: 700, cursor: "pointer" }, empty: { padding: "1.5rem", border: "1px dashed #d8b989", borderRadius: 14, textAlign: "center", color: "#806a58" },
-  evidencePanel: { display: "grid", gap: 10, marginTop: 12, padding: "1rem", borderRadius: 12, background: "#f7ecd8", border: "1px solid #dfc69a" }, learnerRow: { display: "grid", gridTemplateColumns: "minmax(140px,.8fr) 1fr 1fr", gap: 8, alignItems: "stretch", paddingTop: 9, borderTop: "1px solid #e1cfad" }, uploadCell: { display: "grid", gap: 6, padding: ".7rem", border: "1px dashed #b99566", borderRadius: 10, background: "#fffaf0", cursor: "pointer" }, uploadDone: { borderStyle: "solid", borderColor: "#8ca36e", background: "#f7fff1" },
+  evidencePanel: { display: "grid", gap: 10, marginTop: 12, padding: "1rem", borderRadius: 12, background: "#f7ecd8", border: "1px solid #dfc69a" }, learnerRow: { display: "grid", gridTemplateColumns: "minmax(150px,.8fr) minmax(180px,1fr) minmax(180px,1fr) minmax(220px,1.1fr)", gap: 8, alignItems: "stretch", paddingTop: 9, borderTop: "1px solid #e1cfad" }, learnerAbandoned: { opacity: .82, background: "rgba(255,255,255,.45)", borderRadius: 10, padding: 9 }, uploadCell: { display: "grid", gap: 6, padding: ".7rem", border: "1px dashed #b99566", borderRadius: 10, background: "#fffaf0", cursor: "pointer" }, uploadDone: { borderStyle: "solid", borderColor: "#8ca36e", background: "#f7fff1" }, uploadDisabled: { cursor: "default", background: "#f3eee6", borderStyle: "solid" }, abandonedBadge: { display: "inline-block", marginTop: 7, padding: ".25rem .45rem", borderRadius: 999, background: "#f4ded6", color: "#8d4a38", fontSize: 11, fontWeight: 800 }, abandonmentCell: { display: "grid", gap: 7, alignContent: "start", padding: ".7rem", border: "1px solid #ddc4b6", borderRadius: 10, background: "#fff9f6" }, abandonmentForm: { display: "grid", gap: 8, padding: ".75rem", border: "1px solid #c79688", borderRadius: 10, background: "#fff7f3" }, abandonmentTextarea: { width: "100%", boxSizing: "border-box", minHeight: 72, padding: ".65rem", border: "1px solid #d6b3a7", borderRadius: 8, resize: "vertical" }, abandonmentClosed: { display: "grid", gap: 6, alignContent: "start", padding: ".75rem", border: "1px solid #c9a99d", borderRadius: 10, background: "#f6ebe7" }, warningText: { margin: 0, fontSize: 12, color: "#81584a", lineHeight: 1.45 },
 };
