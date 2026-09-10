@@ -45,8 +45,9 @@ test("la convocation ouvre directement le document concerné", async () => {
   assert.match(workspace, /document\?id=/);
 });
 
-test("le lot n’invente pas un stockage de réponses de positionnement", async () => {
+test("le positionnement interactif ouvre la route dédiée sans stockage parallèle dans le workspace", async () => {
   const workspace = await read("components/daily/DailyStakeholderWorkspace.tsx");
-  assert.match(workspace, /Le formulaire interactif sera raccordé au prochain lot/);
+  assert.match(workspace, /\/positionnement/);
+  assert.match(workspace, /positioning_status/);
   assert.doesNotMatch(workspace, /positioning_answers\s*:/);
 });
