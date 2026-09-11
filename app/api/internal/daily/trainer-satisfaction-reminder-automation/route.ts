@@ -16,11 +16,13 @@ function one<T>(value: T | T[] | null | undefined): T | null { return Array.isAr
 function ids(value: unknown) { return Array.isArray(value) ? [...new Set(value.map(text).filter(Boolean))] : []; }
 function active(status: string | null) { return !["declined", "cancelled", "abandoned"].includes(text(status).toLowerCase()); }
 function authorized(req: Request) {
-  const expected = process.env.DAILY_AUTOMATION_SECRET?.trim();
-  if (!expected) return { ok: false as const, status: 503, error: "DAILY_AUTOMATION_SECRET manquant." };
+  const cronSecret = process.env.CRON_SECRET?.trim();
+  const automationSecret = process.env.DAILY_AUTOMATION_SECRET?.trim();
+  if (!cronSecret && !automationSecret) return { ok: false as const, status: 503, error: "Secret d’automatisation manquant." };
   const received = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim();
-  if (!received || received !== expected) return { ok: false as const, status: 401, error: "Accès refusé." };
-  return { ok: true as const };
+  if (cronSecret && received === cronSecret) return { ok: true as const, cron: true as const };
+  if (automationSecret && received === automationSecret) return { ok: true as const, cron: false as const };
+  return { ok: false as const, status: 401, error: "Accès refusé." };
 }
 function finalSlot(rows: Slot[]) {
   return [...rows].sort((a, b) => `${b.slot_date}T${b.ends_at}`.localeCompare(`${a.slot_date}T${a.ends_at}`))[0] ?? null;
@@ -30,7 +32,7 @@ export async function GET(req: Request) {
   const access = authorized(req);
   if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
   const url = new URL(req.url);
-  const execute = url.searchParams.get("execute") === "1";
+  const execute = access.cron || url.searchParams.get("execute") === "1";
   const now = new Date();
   const admin = getAdminSupabase();
 
@@ -67,13 +69,7 @@ export async function GET(req: Request) {
     if (!last || !session.end_date) { skipped++; continue; }
     const finalSlotEnd = parisLocalDateTimeToInstant(last.slot_date, last.ends_at);
     if (!finalSlotEnd) { skipped++; continue; }
-    const availability = getLearnerSatisfactionAvailability({
-      mode: "external",
-      assessmentSubmitted: false,
-      endDate: session.end_date,
-      finalSlot: last,
-      now,
-    });
+    const availability = getLearnerSatisfactionAvailability({ mode: "external", assessmentSubmitted: false, endDate: session.end_date, finalSlot: last, now });
     if (!availability.available) continue;
     if (finalSlotEnd.getTime() < now.getTime()) continue;
     const learnerCount = enrolments.filter((row) => row.session_id === session.id && active(row.status)).length;
