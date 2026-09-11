@@ -73,10 +73,30 @@ test("les signaux email ne sont jamais présentés comme preuve de signature", (
   assert.match(page, /signature\.signed_at/);
 });
 
+test("D3 consolide les états canoniques accès positionnement émargement évaluations et satisfactions", () => {
+  assert.match(route, /from\("daily_session_enrolments"\)[\s\S]*positioning_status/);
+  assert.match(route, /from\("daily_portal_access_tokens"\)[\s\S]*\.in\("session_id", sessionIds\)/);
+  assert.match(route, /from\("daily_attendance_slots"\)/);
+  assert.match(route, /from\("daily_attendance_records"\)/);
+  assert.match(route, /from\("daily_learning_assessments"\)/);
+  assert.match(route, /from\("daily_learner_feedback_responses"\)/);
+  assert.match(route, /from\("daily_stakeholder_satisfaction_responses"\)/);
+  assert.match(route, /canonicalStates:/);
+});
+
+test("les états D3 restent bornés à l'organisation ou aux sessions déjà autorisées", () => {
+  assert.match(route, /daily_session_enrolments[\s\S]*\.eq\("organisation_id", context\.organisationId\)[\s\S]*\.in\("session_id", sessionIds\)/);
+  assert.match(route, /daily_portal_access_tokens[\s\S]*\.in\("session_id", sessionIds\)/);
+  assert.match(route, /daily_attendance_slots[\s\S]*\.eq\("organisation_id", context\.organisationId\)[\s\S]*\.in\("session_id", sessionIds\)/);
+  assert.match(route, /daily_attendance_records[\s\S]*\.eq\("organisation_id", context\.organisationId\)[\s\S]*\.in\("session_id", sessionIds\)/);
+  assert.match(route, /daily_learning_assessments[\s\S]*\.eq\("organisation_id", context\.organisationId\)[\s\S]*\.in\("session_id", sessionIds\)/);
+});
+
 test("le lot reste une agrégation en lecture sans nouvelle source métier", () => {
   assert.doesNotMatch(route, /\.insert\(/);
   assert.doesNotMatch(route, /\.upsert\(/);
   assert.doesNotMatch(route, /daily_session_program/);
   assert.doesNotMatch(route, /daily_session_signature_timeline/);
   assert.doesNotMatch(route, /daily_mission_order_signature_timeline/);
+  assert.doesNotMatch(route, /daily_session_canonical_states/);
 });

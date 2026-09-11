@@ -27,6 +27,13 @@ export async function GET(req: Request) {
     { data: formations, error: formationError },
     { data: signatures, error: signaturesError },
     { data: missionOrders, error: missionOrdersError },
+    { data: enrolments, error: enrolmentsError },
+    { data: portalAccess, error: portalAccessError },
+    { data: attendanceSlots, error: attendanceSlotsError },
+    { data: attendanceRecords, error: attendanceRecordsError },
+    { data: assessments, error: assessmentsError },
+    { data: learnerFeedback, error: learnerFeedbackError },
+    { data: stakeholderFeedback, error: stakeholderFeedbackError },
   ] = await Promise.all([
     formationIds.length
       ? context.admin.from("daily_formations").select("id,title,global_objective,learning_objectives,target_audience,prerequisites,duration_hours,duration_days,modality,modality_details,access_delays,registration_methods,detailed_program,detailed_program_document_url,pedagogical_methods,pedagogical_resources,evaluation_methods").in("id", formationIds)
@@ -37,8 +44,30 @@ export async function GET(req: Request) {
     sessionIds.length
       ? context.admin.from("daily_mission_orders").select("id,trainer_profile_id,trainer_user_id,trainer_name,trainer_email,order_type,start_date,end_date,session_ids,status,locked_at,created_at,updated_at").eq("organisation_id", context.organisationId).overlaps("session_ids", sessionIds).order("created_at", { ascending: false }).limit(500)
       : Promise.resolve({ data: [], error: null }),
+    sessionIds.length
+      ? context.admin.from("daily_session_enrolments").select("id,session_id,learner_id,status,positioning_status,prerequisites_status,created_at").eq("organisation_id", context.organisationId).in("session_id", sessionIds)
+      : Promise.resolve({ data: [], error: null }),
+    sessionIds.length
+      ? context.admin.from("daily_portal_access_tokens").select("id,session_id,portal_type,entity_key,entity_name,entity_email,status,viewed_at,expires_at,updated_at").in("session_id", sessionIds)
+      : Promise.resolve({ data: [], error: null }),
+    sessionIds.length
+      ? context.admin.from("daily_attendance_slots").select("id,session_id,slot_key,slot_date,starts_at,ends_at,mode,label,status").eq("organisation_id", context.organisationId).in("session_id", sessionIds)
+      : Promise.resolve({ data: [], error: null }),
+    sessionIds.length
+      ? context.admin.from("daily_attendance_records").select("id,session_id,enrolment_id,status,signed_at,validated_at").eq("organisation_id", context.organisationId).in("session_id", sessionIds)
+      : Promise.resolve({ data: [], error: null }),
+    sessionIds.length
+      ? context.admin.from("daily_learning_assessments").select("id,session_id,enrolment_id,outcome,score,score_max,method,assessed_at,updated_at").eq("organisation_id", context.organisationId).in("session_id", sessionIds)
+      : Promise.resolve({ data: [], error: null }),
+    sessionIds.length
+      ? context.admin.from("daily_learner_feedback_responses").select("id,session_id,enrolment_id,overall_rating,objectives_rating,submitted_at").eq("organisation_id", context.organisationId).in("session_id", sessionIds)
+      : Promise.resolve({ data: [], error: null }),
+    sessionIds.length
+      ? context.admin.from("daily_stakeholder_satisfaction_responses").select("id,session_id,stakeholder_type,entity_key,overall_rating,submitted_at").eq("organisation_id", context.organisationId).in("session_id", sessionIds)
+      : Promise.resolve({ data: [], error: null }),
   ]);
-  if (formationError || signaturesError || missionOrdersError) return NextResponse.json({ error: formationError?.message || signaturesError?.message || missionOrdersError?.message }, { status: 500 });
+  const canonicalStateError = formationError ?? signaturesError ?? missionOrdersError ?? enrolmentsError ?? portalAccessError ?? attendanceSlotsError ?? attendanceRecordsError ?? assessmentsError ?? learnerFeedbackError ?? stakeholderFeedbackError;
+  if (canonicalStateError) return NextResponse.json({ error: canonicalStateError.message }, { status: 500 });
 
   const missionOrderIds = (missionOrders ?? []).map((order) => order.id);
   const [
@@ -65,6 +94,15 @@ export async function GET(req: Request) {
     signatures: signatures ?? [],
     missionOrders: missionOrders ?? [],
     missionOrderSignatures: missionOrderSignatures ?? [],
+    canonicalStates: {
+      enrolments: enrolments ?? [],
+      portalAccess: portalAccess ?? [],
+      attendanceSlots: attendanceSlots ?? [],
+      attendanceRecords: attendanceRecords ?? [],
+      assessments: assessments ?? [],
+      learnerFeedback: learnerFeedback ?? [],
+      stakeholderFeedback: stakeholderFeedback ?? [],
+    },
   });
 }
 
