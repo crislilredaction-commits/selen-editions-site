@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
-import { getLearnerSatisfactionAvailability, parisLocalDateTimeToUtc } from "@/lib/daily/endOfTraining";
+import { getLearnerSatisfactionAvailability, parisLocalDateTimeToInstant } from "@/lib/daily/endOfTraining";
 import { prepareDailyTrainerSatisfactionReminder, sendDailyTrainerSatisfactionReminder } from "@/lib/server/dailyTrainerSatisfactionReminderEmails";
 
 const COMMUNICATION_TYPE = "trainer_satisfaction_reminder";
@@ -65,8 +65,15 @@ export async function GET(req: Request) {
     const formation = one(session.daily_formations);
     const last = finalSlot(slots.filter((slot) => slot.session_id === session.id));
     if (!last || !session.end_date) { skipped++; continue; }
-    const finalSlotEnd = parisLocalDateTimeToUtc(last.slot_date, last.ends_at);
-    const availability = getLearnerSatisfactionAvailability({ mode: "external", now, sessionEndDate: session.end_date, finalSlotEnd });
+    const finalSlotEnd = parisLocalDateTimeToInstant(last.slot_date, last.ends_at);
+    if (!finalSlotEnd) { skipped++; continue; }
+    const availability = getLearnerSatisfactionAvailability({
+      mode: "external",
+      assessmentSubmitted: false,
+      endDate: session.end_date,
+      finalSlot: last,
+      now,
+    });
     if (!availability.available) continue;
     if (finalSlotEnd.getTime() < now.getTime()) continue;
     const learnerCount = enrolments.filter((row) => row.session_id === session.id && active(row.status)).length;
