@@ -22,6 +22,8 @@ type Communication = {
 type CommunicationDocument = { communication_id:string; document_id:string; document_type:string; logical_name:string; document_version:number; created_at:string };
 type SessionDocument = { id:string; session_id:string; enrolment_id?:string|null; document_type:string; status:string; logical_name:string; version:number; published_at?:string|null; validated_at?:string|null; signed_at?:string|null; created_at:string; metadata?:Record<string,unknown>|null };
 type Signature = { id:string; convention_id:string; session_id:string; signatory_type:string; signatory_name?:string|null; signatory_email?:string|null; status:string; viewed_at?:string|null; signed_at?:string|null; expires_at?:string|null; last_error?:string|null; created_at:string; updated_at:string };
+type MissionOrder = { id:string; trainer_profile_id?:string|null; trainer_user_id?:string|null; trainer_name?:string|null; trainer_email?:string|null; order_type?:string|null; start_date?:string|null; end_date?:string|null; session_ids:string[]; status?:string|null; locked_at?:string|null; created_at:string; updated_at:string };
+type MissionOrderSignature = { id:string; mission_order_id:string; signatory_type?:string|null; user_id?:string|null; signatory_name?:string|null; signatory_email?:string|null; signed_at?:string|null; created_at:string };
 
 const phaseLabels: Record<Phase,string> = { before:"Avant la formation", during:"Pendant la formation", after:"Après la formation" };
 const phaseOrder: Record<Phase,number> = { before:0, during:1, after:2 };
@@ -51,6 +53,12 @@ function displayDate(value?: string | null) {
   return new Intl.DateTimeFormat("fr-FR", { dateStyle:"short", timeStyle:"short" }).format(new Date(value));
 }
 
+function displayDay(value?: string | null) {
+  if (!value) return "";
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T12:00:00`) : new Date(value);
+  return new Intl.DateTimeFormat("fr-FR", { dateStyle:"short" }).format(date);
+}
+
 function communicationStatusLabel(communication: Communication) {
   const status=String(communication.status ?? "").toLowerCase();
   if (communication.failed_at || ["failed","bounced","complained"].includes(status)) return "Échec d’envoi";
@@ -71,6 +79,15 @@ function signatureStatusLabel(signature: Signature) {
   return "Signature attendue";
 }
 
+function missionOrderStatusLabel(order: MissionOrder, signatures: MissionOrderSignature[]) {
+  if (signatures.some((signature)=>Boolean(signature.signed_at))) return "Signé";
+  const status=String(order.status ?? "").toLowerCase();
+  if (["cancelled","canceled","rejected","declined"].includes(status)) return "Annulé / refusé";
+  if (["failed","error"].includes(status)) return "Échec";
+  if (order.locked_at) return "Émis · signature attendue";
+  return order.status || "En préparation";
+}
+
 function actorLabel(value?: string | null) {
   const labels: Record<string,string>={ learner:"Apprenant", trainer:"Formateur", enterprise:"Entreprise", company:"Entreprise", organisation:"OF", organization:"OF", client:"Client" };
   return labels[String(value ?? "").toLowerCase()] || value || "Partie prenante";
@@ -86,6 +103,8 @@ export default function DailyDossiersPage() {
   const [communicationDocuments,setCommunicationDocuments]=useState<CommunicationDocument[]>([]);
   const [documents,setDocuments]=useState<SessionDocument[]>([]);
   const [signatures,setSignatures]=useState<Signature[]>([]);
+  const [missionOrders,setMissionOrders]=useState<MissionOrder[]>([]);
+  const [missionOrderSignatures,setMissionOrderSignatures]=useState<MissionOrderSignature[]>([]);
   const [selected,setSelected]=useState("");
   const [error,setError]=useState("");
   const [saving,setSaving]=useState("");
@@ -105,6 +124,8 @@ export default function DailyDossiersPage() {
     setCommunicationDocuments(body.communicationDocuments||[]);
     setDocuments(body.documents||[]);
     setSignatures(body.signatures||[]);
+    setMissionOrders(body.missionOrders||[]);
+    setMissionOrderSignatures(body.missionOrderSignatures||[]);
     setSelected((current) => {
       if (current && loadedSessions.some((session) => session.id === current)) return current;
       const requested = searchParams.get("session");
@@ -122,6 +143,9 @@ export default function DailyDossiersPage() {
   const sessionCommunications=communications.filter((item)=>item.session_id===selected);
   const sessionDocuments=documents.filter((item)=>item.session_id===selected);
   const sessionSignatures=signatures.filter((item)=>item.session_id===selected);
+  const sessionMissionOrders=missionOrders.filter((order)=>Array.isArray(order.session_ids) && order.session_ids.includes(selected));
+  const sessionMissionOrderIds=new Set(sessionMissionOrders.map((order)=>order.id));
+  const sessionMissionOrderSignatures=missionOrderSignatures.filter((signature)=>sessionMissionOrderIds.has(signature.mission_order_id));
   const currentPhase=session ? sessionPhase(session) : "before";
   const activeItems=sessionItems.filter((item)=>!isCompleted(item) && phaseOrder[item.phase] <= phaseOrder[currentPhase]);
   const completedItems=sessionItems.filter(isCompleted);
@@ -195,7 +219,7 @@ export default function DailyDossiersPage() {
       })}</section>
 
       <ProgramPanel formation={formation} />
-      <CommunicationProofPanel sessionId={selected} communications={sessionCommunications} communicationDocuments={communicationDocuments} documents={sessionDocuments} signatures={sessionSignatures} />
+      <CommunicationProofPanel sessionId={selected} communications={sessionCommunications} communicationDocuments={communicationDocuments} documents={sessionDocuments} signatures={sessionSignatures} missionOrders={sessionMissionOrders} missionOrderSignatures={sessionMissionOrderSignatures} />
 
       {completedItems.length>0?<details style={{...card,marginTop:24}}><summary style={{cursor:"pointer",fontWeight:800}}>Historique des actions terminées · {completedItems.length}</summary><div style={{display:"grid",gap:8,marginTop:12}}>{completedItems.map((item)=><article key={item.id} style={{padding:".75rem",border:"1px solid var(--sepia-mid)",background:"white"}}><div style={{display:"flex",justifyContent:"space-between",gap:8,flexWrap:"wrap"}}><strong>{item.label}</strong><span>{statusLabels[item.status]||item.status}</span></div>{item.note?<p style={{marginBottom:0}}>Note : {item.note}</p>:null}</article>)}</div></details>:null}
     </>}
@@ -225,7 +249,7 @@ function ProgramPanel({ formation }: { formation?: Formation }) {
   </section>;
 }
 
-function CommunicationProofPanel({ sessionId, communications, communicationDocuments, documents, signatures }: { sessionId:string; communications:Communication[]; communicationDocuments:CommunicationDocument[]; documents:SessionDocument[]; signatures:Signature[] }) {
+function CommunicationProofPanel({ sessionId, communications, communicationDocuments, documents, signatures, missionOrders, missionOrderSignatures }: { sessionId:string; communications:Communication[]; communicationDocuments:CommunicationDocument[]; documents:SessionDocument[]; signatures:Signature[]; missionOrders:MissionOrder[]; missionOrderSignatures:MissionOrderSignature[] }) {
   const linkedByCommunication=useMemo(()=>{
     const map=new Map<string,CommunicationDocument[]>();
     for(const document of communicationDocuments){
@@ -234,11 +258,20 @@ function CommunicationProofPanel({ sessionId, communications, communicationDocum
     }
     return map;
   },[communicationDocuments]);
+  const signaturesByMissionOrder=useMemo(()=>{
+    const map=new Map<string,MissionOrderSignature[]>();
+    for(const signature of missionOrderSignatures){
+      const current=map.get(signature.mission_order_id)||[];
+      current.push(signature);map.set(signature.mission_order_id,current);
+    }
+    return map;
+  },[missionOrderSignatures]);
   const failed=communications.filter((item)=>item.failed_at || ["failed","bounced","complained"].includes(String(item.status??"").toLowerCase())).length;
   const signed=signatures.filter((item)=>Boolean(item.signed_at) || String(item.status??"").toLowerCase()==="signed").length;
+  const signedMissionOrders=missionOrders.filter((order)=>(signaturesByMissionOrder.get(order.id)||[]).some((signature)=>Boolean(signature.signed_at))).length;
   return <section id="communications-preuves" style={{...card,marginTop:24}}>
     <div style={{display:"flex",justifyContent:"space-between",gap:12,flexWrap:"wrap",alignItems:"flex-start"}}><div><p style={{margin:"0 0 4px",fontWeight:800,color:"var(--rust)"}}>Communications & preuves</p><h2 style={{margin:0,fontSize:"1.25rem"}}>Journal de la session</h2><p style={{margin:"8px 0 0",color:"#70503b"}}>Emails, documents et signatures sont relus depuis leurs sources métier existantes. Une ouverture ou un clic d’email reste un signal technique, jamais une preuve de signature.</p></div><a href={`/client/daily/communications?session_id=${encodeURIComponent(sessionId)}`} style={linkButton}>Ouvrir le journal complet</a></div>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:8,marginTop:16}}><Stat label="Communications" value={communications.length}/><Stat label="Documents" value={documents.length}/><Stat label="Signatures" value={`${signed}/${signatures.length}`}/><Stat label="Envois en échec" value={failed}/></div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:8,marginTop:16}}><Stat label="Communications" value={communications.length}/><Stat label="Documents" value={documents.length}/><Stat label="Signatures contrat / convention" value={`${signed}/${signatures.length}`}/><Stat label="Ordres de mission signés" value={`${signedMissionOrders}/${missionOrders.length}`}/><Stat label="Envois en échec" value={failed}/></div>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:14,marginTop:16}}>
       <div style={proofColumn}><h3 style={proofTitle}>Dernières communications</h3>{communications.length===0?<p style={muted}>Aucune communication tracée pour cette session.</p>:communications.slice(0,8).map((communication)=>{
         const linked=linkedByCommunication.get(communication.id)||[];
@@ -246,6 +279,11 @@ function CommunicationProofPanel({ sessionId, communications, communicationDocum
       })}</div>
       <div style={proofColumn}><h3 style={proofTitle}>Documents de session</h3>{documents.length===0?<p style={muted}>Aucun document courant rattaché à cette session.</p>:documents.slice(0,8).map((document)=><article key={document.id} style={proofItem}><div style={proofHead}><strong>{document.logical_name || document.document_type}</strong><span style={smallBadge}>{document.signed_at?"Signé":document.status || "Document"}</span></div><p style={proofMeta}>Version {document.version} · {displayDate(document.published_at || document.validated_at || document.created_at)}</p>{document.signed_at?<p style={proofMeta}>Signature enregistrée le {displayDate(document.signed_at)}</p>:null}</article>)}</div>
       <div style={proofColumn}><h3 style={proofTitle}>Signatures convention / contrat</h3>{signatures.length===0?<p style={muted}>Aucune demande de signature canonique rattachée à cette session.</p>:signatures.map((signature)=><article key={signature.id} style={proofItem}><div style={proofHead}><strong>{actorLabel(signature.signatory_type)}</strong><span style={smallBadge}>{signatureStatusLabel(signature)}</span></div><p style={proofMeta}>{signature.signatory_name || signature.signatory_email || "Signataire"}{signature.signatory_name && signature.signatory_email?` · ${signature.signatory_email}`:""}</p>{signature.viewed_at?<p style={proofMeta}>Consulté le {displayDate(signature.viewed_at)}</p>:null}{signature.signed_at?<p style={proofMeta}>Signé le {displayDate(signature.signed_at)}</p>:null}{signature.expires_at && !signature.signed_at?<p style={proofMeta}>Échéance : {displayDate(signature.expires_at)}</p>:null}{signature.last_error?<p style={{...proofMeta,color:"#9b2c2c"}}>Erreur : {signature.last_error}</p>:null}</article>)}</div>
+      <div style={proofColumn}><div><h3 style={proofTitle}>Ordres de mission formateur</h3><p style={{...muted,marginTop:4}}>Signature professionnelle · distincte du contrat / convention.</p></div>{missionOrders.length===0?<p style={muted}>Aucun ordre de mission rattaché à cette session.</p>:missionOrders.map((order)=>{
+        const orderSignatures=signaturesByMissionOrder.get(order.id)||[];
+        const signedSignature=orderSignatures.find((signature)=>Boolean(signature.signed_at));
+        return <article key={order.id} style={proofItem}><div style={proofHead}><strong>{order.trainer_name || order.trainer_email || "Formateur"}</strong><span style={professionalBadge}>{missionOrderStatusLabel(order,orderSignatures)}</span></div><p style={proofMeta}>{order.order_type || "Ordre de mission"}{order.start_date?` · ${displayDay(order.start_date)}${order.end_date && order.end_date!==order.start_date?` → ${displayDay(order.end_date)}`:""}`:""}</p>{order.trainer_name && order.trainer_email?<p style={proofMeta}>{order.trainer_email}</p>:null}{signedSignature?<p style={proofMeta}>Signé le {displayDate(signedSignature.signed_at)}{signedSignature.signatory_name?` par ${signedSignature.signatory_name}`:""}</p>:order.locked_at?<p style={proofMeta}>Émis le {displayDate(order.locked_at)}</p>:null}</article>;
+      })}</div>
     </div>
   </section>;
 }
@@ -283,6 +321,7 @@ const proofItem: React.CSSProperties={padding:".75rem",border:"1px solid var(--s
 const proofHead: React.CSSProperties={display:"flex",justifyContent:"space-between",gap:8,alignItems:"flex-start",flexWrap:"wrap"};
 const proofMeta: React.CSSProperties={margin:"5px 0 0",fontSize:13,color:"#70503b",overflowWrap:"anywhere"};
 const smallBadge: React.CSSProperties={padding:".2rem .4rem",border:"1px solid var(--sepia-mid)",borderRadius:999,fontSize:11,fontWeight:800,color:"#80502f"};
+const professionalBadge: React.CSSProperties={...smallBadge,borderColor:"#9a8057",background:"#fff8e8",color:"#654525"};
 const muted: React.CSSProperties={margin:0,color:"#70503b",fontSize:14};
 const empty: React.CSSProperties={padding:"1rem",border:"1px dashed var(--sepia-mid)",borderRadius:12,color:"#70503b"};
 const notice: React.CSSProperties={padding:".85rem 1rem",border:"1px solid #c8aa78",background:"#fff8e8",borderRadius:10,color:"#654525",margin:"0 0 1rem"};

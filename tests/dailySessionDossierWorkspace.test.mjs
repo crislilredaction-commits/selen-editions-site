@@ -57,6 +57,15 @@ test("les signatures d'ordre de mission sont relues uniquement depuis les ordres
   assert.match(route, /missionOrderSignatures: missionOrderSignatures \?\? \[\]/);
 });
 
+test("le dossier affiche les ordres de mission formateur séparément des contrats conventions", () => {
+  assert.match(page, /type MissionOrder =/);
+  assert.match(page, /setMissionOrders\(body\.missionOrders\|\|\[\]\)/);
+  assert.match(page, /setMissionOrderSignatures\(body\.missionOrderSignatures\|\|\[\]\)/);
+  assert.match(page, /Ordres de mission formateur/);
+  assert.match(page, /Signature professionnelle · distincte du contrat \/ convention/);
+  assert.match(page, /missionOrderStatusLabel/);
+});
+
 test("les signaux email ne sont jamais présentés comme preuve de signature", () => {
   assert.match(page, /Cliqué · signal technique/);
   assert.match(page, /Ouvert · signal technique/);
