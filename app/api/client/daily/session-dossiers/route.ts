@@ -24,7 +24,7 @@ export async function PATCH(req: Request) {
   const itemId = String(body.item_id ?? "");
   const status = String(body.status ?? "");
   const note = String(body.note ?? "").trim();
-  const allowed = new Set(["todo", "in_progress", "to_review", "validated", "blocked", "not_applicable"]);
+  const allowed = new Set(["todo", "in_progress", "to_review", "validated", "blocked"]);
   if (!itemId || !allowed.has(status)) return NextResponse.json({ error: "Mise à jour invalide." }, { status: 400 });
   const { data: item } = await context.admin.from("daily_session_checklist_items").select("id,responsibility").eq("id", itemId).eq("organisation_id", context.organisationId).maybeSingle();
   if (!item || !["client", "shared"].includes(item.responsibility)) return NextResponse.json({ error: "Ce point n’est pas modifiable depuis l’espace client." }, { status: 403 });
