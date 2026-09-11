@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import { getDailyClientWorkspace } from "@/lib/server/dailyClientWorkspace";
+import { sendLearnerPortalAccessForRegistrationRequest } from "@/lib/server/dailyLearnerPortalAccess";
 
 type DecisionStatus = "pending" | "agent_review" | "accepted";
 type ActorType = "organisation" | "trainer";
@@ -51,6 +52,20 @@ async function getAccess() {
     .maybeSingle();
   if (trainerError) throw new Error(trainerError.message);
   return { ok: true as const, user: context.user, organisationId, isManager, trainerProfileId: trainerProfile?.id ?? null, admin };
+}
+
+async function provisionLearnerAccess(access: Awaited<ReturnType<typeof getAccess>>, requestId: string, req: Request) {
+  if (!access.ok) return [];
+  try {
+    return await sendLearnerPortalAccessForRegistrationRequest(access.admin, {
+      registrationRequestId: requestId,
+      origin: new URL(req.url).origin,
+      createdBy: access.user.id,
+    });
+  } catch (cause) {
+    console.error("Daily : inscription créée mais accès apprenant non finalisé", cause);
+    return [];
+  }
 }
 
 export async function GET() {
@@ -139,7 +154,14 @@ export async function POST(req: Request) {
       if (requestRow.decision_status !== "accepted") return NextResponse.json({ error: "La candidature doit d'abord être acceptée." }, { status: 409 });
       const { data, error } = await access.admin.rpc("daily_materialize_registration_request", { p_request_id: requestId, p_session_id: sessionId });
       if (error) return NextResponse.json({ error: error.message }, { status: 409 });
-      return NextResponse.json({ ok: true, materialized: true, result: data });
+      const learnerAccess = await provisionLearnerAccess(access, requestId, req);
+      return NextResponse.json({ ok: true, materialized: true, result: data, learner_access: learnerAccess });
+    }
+
+    if (body.action === "send_learner_access") {
+      if (!access.isManager) return NextResponse.json({ error: "Seul le responsable de l'organisme peut relancer les accès apprenants." }, { status: 403 });
+      const learnerAccess = await provisionLearnerAccess(access, requestId, req);
+      return NextResponse.json({ ok: true, learner_access: learnerAccess });
     }
 
     const decision: Decision | null = body.decision === "accepted" || body.decision === "refused" ? body.decision : null;
@@ -166,7 +188,10 @@ export async function POST(req: Request) {
       if (acceptedRequestError) throw new Error(acceptedRequestError.message);
       if (acceptedRequest?.attached_session_id) {
         const { data: materialized, error: materializedError } = await access.admin.rpc("daily_materialize_registration_request", { p_request_id: requestId, p_session_id: acceptedRequest.attached_session_id });
-        if (!materializedError) return NextResponse.json({ ok: true, result: data, materialized: true, materialization: materialized });
+        if (!materializedError) {
+          const learnerAccess = await provisionLearnerAccess(access, requestId, req);
+          return NextResponse.json({ ok: true, result: data, materialized: true, materialization: materialized, learner_access: learnerAccess });
+        }
         return NextResponse.json({ ok: true, result: data, materialized: false, materialization_error: materializedError.message });
       }
     }
