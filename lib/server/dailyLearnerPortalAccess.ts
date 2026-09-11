@@ -34,12 +34,14 @@ function portalEmail(input: { learnerName: string; formationTitle: string; porta
 }
 
 type AdminClient = any;
+type LearnerAccessSource = "accepted_registration_request" | "manual_enrolment";
 
 type EnsureAccessInput = {
   enrolmentId: string;
   registrationRequestId?: string | null;
   origin: string;
   createdBy?: string | null;
+  source?: LearnerAccessSource;
 };
 
 export type LearnerPortalAccessResult = {
@@ -53,6 +55,7 @@ export type LearnerPortalAccessResult = {
 };
 
 export async function ensureAndSendLearnerPortalAccess(admin: AdminClient, input: EnsureAccessInput): Promise<LearnerPortalAccessResult> {
+  const source = input.source ?? "accepted_registration_request";
   const { data: enrolment, error: enrolmentError } = await admin
     .from("daily_session_enrolments")
     .select("id,organisation_id,session_id,learner_id,status,daily_learners(id,first_name,last_name,email),daily_sessions(id,user_id,organisation_id,formation_id,daily_formations(id,title))")
@@ -102,7 +105,7 @@ export async function ensureAndSendLearnerPortalAccess(admin: AdminClient, input
           learner_id: learner.id,
           enrolment_id: enrolment.id,
           registration_request_id: input.registrationRequestId ?? null,
-          source: "accepted_registration_request",
+          source,
         },
       })
       .select("id,token,status,expires_at")
@@ -160,6 +163,7 @@ export async function ensureAndSendLearnerPortalAccess(admin: AdminClient, input
         learner_id: learner.id,
         enrolment_id: enrolment.id,
         registration_request_id: input.registrationRequestId ?? null,
+        source,
       },
     })
     .select("id")
@@ -199,7 +203,7 @@ export async function sendLearnerPortalAccessForRegistrationRequest(admin: Admin
   const enrolmentIds: string[] = [...new Set<string>((links ?? []).map((row: { enrolment_id?: unknown }) => String(row.enrolment_id ?? "").trim()).filter(Boolean))];
   const results: LearnerPortalAccessResult[] = [];
   for (const enrolmentId of enrolmentIds) {
-    results.push(await ensureAndSendLearnerPortalAccess(admin, { enrolmentId, registrationRequestId: input.registrationRequestId, origin: input.origin, createdBy: input.createdBy }));
+    results.push(await ensureAndSendLearnerPortalAccess(admin, { enrolmentId, registrationRequestId: input.registrationRequestId, origin: input.origin, createdBy: input.createdBy, source: "accepted_registration_request" }));
   }
   return results;
 }
