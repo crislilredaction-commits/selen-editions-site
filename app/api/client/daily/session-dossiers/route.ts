@@ -26,6 +26,7 @@ export async function GET(req: Request) {
   const [
     { data: formations, error: formationError },
     { data: signatures, error: signaturesError },
+    { data: missionOrders, error: missionOrdersError },
   ] = await Promise.all([
     formationIds.length
       ? context.admin.from("daily_formations").select("id,title,global_objective,learning_objectives,target_audience,prerequisites,duration_hours,duration_days,modality,modality_details,access_delays,registration_methods,detailed_program,detailed_program_document_url,pedagogical_methods,pedagogical_resources,evaluation_methods").in("id", formationIds)
@@ -33,14 +34,25 @@ export async function GET(req: Request) {
     sessionIds.length
       ? context.admin.from("daily_convention_signatures").select("id,convention_id,session_id,signatory_type,signatory_name,signatory_email,status,viewed_at,signed_at,expires_at,last_error,created_at,updated_at").in("session_id", sessionIds).order("created_at", { ascending: false }).limit(500)
       : Promise.resolve({ data: [], error: null }),
+    sessionIds.length
+      ? context.admin.from("daily_mission_orders").select("id,trainer_profile_id,trainer_user_id,trainer_name,trainer_email,order_type,start_date,end_date,session_ids,status,locked_at,created_at,updated_at").eq("organisation_id", context.organisationId).overlaps("session_ids", sessionIds).order("created_at", { ascending: false }).limit(500)
+      : Promise.resolve({ data: [], error: null }),
   ]);
-  if (formationError || signaturesError) return NextResponse.json({ error: formationError?.message || signaturesError?.message }, { status: 500 });
+  if (formationError || signaturesError || missionOrdersError) return NextResponse.json({ error: formationError?.message || signaturesError?.message || missionOrdersError?.message }, { status: 500 });
 
-  const communicationIds = (communications ?? []).map((row) => row.id);
-  const { data: communicationDocuments, error: linkedDocumentsError } = communicationIds.length
-    ? await context.admin.from("daily_communication_documents").select("communication_id,document_id,document_type,logical_name,document_version,created_at").in("communication_id", communicationIds)
-    : { data: [], error: null };
-  if (linkedDocumentsError) return NextResponse.json({ error: linkedDocumentsError.message }, { status: 500 });
+  const missionOrderIds = (missionOrders ?? []).map((order) => order.id);
+  const [
+    { data: missionOrderSignatures, error: missionOrderSignaturesError },
+    { data: communicationDocuments, error: linkedDocumentsError },
+  ] = await Promise.all([
+    missionOrderIds.length
+      ? context.admin.from("daily_mission_order_signatures").select("id,mission_order_id,signatory_type,user_id,signatory_name,signatory_email,signed_at,created_at").in("mission_order_id", missionOrderIds).order("created_at", { ascending: false }).limit(500)
+      : Promise.resolve({ data: [], error: null }),
+    (communications ?? []).length
+      ? context.admin.from("daily_communication_documents").select("communication_id,document_id,document_type,logical_name,document_version,created_at").in("communication_id", (communications ?? []).map((row) => row.id))
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (missionOrderSignaturesError || linkedDocumentsError) return NextResponse.json({ error: missionOrderSignaturesError?.message || linkedDocumentsError?.message }, { status: 500 });
 
   return NextResponse.json({
     sessions: sessions ?? [],
@@ -51,6 +63,8 @@ export async function GET(req: Request) {
     communicationDocuments: communicationDocuments ?? [],
     documents: documents ?? [],
     signatures: signatures ?? [],
+    missionOrders: missionOrders ?? [],
+    missionOrderSignatures: missionOrderSignatures ?? [],
   });
 }
 

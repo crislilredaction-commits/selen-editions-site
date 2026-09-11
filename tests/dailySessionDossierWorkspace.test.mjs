@@ -40,9 +40,21 @@ test("le dossier consolide communications documents et signatures depuis les sou
   assert.match(page, /Signatures convention \/ contrat/);
 });
 
-test("les signatures sans organisation_id sont bornées aux sessions déjà autorisées", () => {
+test("les signatures de convention sans organisation_id sont bornées aux sessions déjà autorisées", () => {
   assert.match(route, /const sessionIds = \(sessions \?\? \[\]\)\.map/);
   assert.match(route, /daily_convention_signatures[\s\S]*\.in\("session_id", sessionIds\)/);
+});
+
+test("les ordres de mission sont bornés à l'organisation et aux sessions autorisées", () => {
+  assert.match(route, /from\("daily_mission_orders"\)/);
+  assert.match(route, /daily_mission_orders[\s\S]*\.eq\("organisation_id", context\.organisationId\)[\s\S]*\.overlaps\("session_ids", sessionIds\)/);
+});
+
+test("les signatures d'ordre de mission sont relues uniquement depuis les ordres autorisés", () => {
+  assert.match(route, /const missionOrderIds = \(missionOrders \?\? \[\]\)\.map/);
+  assert.match(route, /from\("daily_mission_order_signatures"\)[\s\S]*\.in\("mission_order_id", missionOrderIds\)/);
+  assert.match(route, /missionOrders: missionOrders \?\? \[\]/);
+  assert.match(route, /missionOrderSignatures: missionOrderSignatures \?\? \[\]/);
 });
 
 test("les signaux email ne sont jamais présentés comme preuve de signature", () => {
@@ -57,4 +69,5 @@ test("le lot reste une agrégation en lecture sans nouvelle source métier", () 
   assert.doesNotMatch(route, /\.upsert\(/);
   assert.doesNotMatch(route, /daily_session_program/);
   assert.doesNotMatch(route, /daily_session_signature_timeline/);
+  assert.doesNotMatch(route, /daily_mission_order_signature_timeline/);
 });
