@@ -1,0 +1,151 @@
+.daily-sessions-compact {
+  --daily-form-radius: 14px;
+  --daily-control-radius: 10px;
+}
+
+.daily-sessions-compact > main {
+  max-width: 1120px !important;
+  padding-inline: clamp(.85rem, 2vw, 1.25rem) !important;
+}
+
+.daily-sessions-compact > main > header,
+.daily-sessions-compact > main > section {
+  border-radius: var(--daily-form-radius) !important;
+}
+
+.daily-sessions-compact > main > header {
+  border-color: var(--sepia-mid) !important;
+  background: linear-gradient(135deg, var(--paper), #fffaf0) !important;
+  padding: clamp(1rem, 2.5vw, 1.5rem) !important;
+  box-shadow: 0 8px 24px rgba(77, 47, 27, .06) !important;
+}
+
+.daily-sessions-compact > main > section {
+  box-shadow: 0 6px 18px rgba(77, 47, 27, .05) !important;
+}
+
+.daily-sessions-compact form {
+  gap: 1rem !important;
+}
+
+.daily-sessions-compact form input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.daily-sessions-compact form select,
+.daily-sessions-compact form textarea {
+  min-height: 42px !important;
+  border: 1px solid var(--sepia-mid) !important;
+  border-radius: var(--daily-control-radius) !important;
+  background: #fffdf8 !important;
+  padding: .62rem .72rem !important;
+  color: var(--ink) !important;
+  font: inherit !important;
+  line-height: 1.35 !important;
+  box-shadow: none !important;
+  transition: border-color .15s ease, box-shadow .15s ease, background .15s ease !important;
+}
+
+.daily-sessions-compact form textarea {
+  min-height: 92px !important;
+  resize: vertical !important;
+}
+
+.daily-sessions-compact form input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus,
+.daily-sessions-compact form select:focus,
+.daily-sessions-compact form textarea:focus {
+  outline: none !important;
+  border-color: var(--rust) !important;
+  background: white !important;
+  box-shadow: 0 0 0 3px rgba(138, 75, 36, .12) !important;
+}
+
+.daily-sessions-compact form label {
+  line-height: 1.35 !important;
+}
+
+.daily-sessions-compact button,
+.daily-sessions-compact .daily-sessions-feedback a {
+  min-height: 36px !important;
+  width: fit-content !important;
+  padding: .48rem .72rem !important;
+  border-radius: 9px !important;
+  font-size: .86rem !important;
+  line-height: 1.2 !important;
+}
+
+.daily-sessions-compact button[type="submit"] {
+  min-height: 40px !important;
+  padding: .55rem .9rem !important;
+  font-size: .9rem !important;
+}
+
+.daily-sessions-compact button[aria-expanded] {
+  width: 100% !important;
+  min-height: 48px !important;
+  padding: .7rem .85rem !important;
+  border-radius: calc(var(--daily-form-radius) - 2px) !important;
+}
+
+.daily-sessions-compact form div[style*="grid-template-columns"] {
+  gap: .8rem !important;
+}
+
+.daily-sessions-compact form div[style*="1.5fr 1fr 1fr auto"] {
+  grid-template-columns: minmax(150px, 1.5fr) minmax(105px, 1fr) minmax(105px, 1fr) auto !important;
+}
+
+.daily-sessions-compact form label[style*="border"] {
+  align-items: center;
+}
+
+.daily-sessions-compact > main > section:last-child button {
+  min-height: 34px !important;
+  padding: .45rem .65rem !important;
+  font-size: .82rem !important;
+}
+
+@media (max-width: 760px) {
+  .daily-sessions-compact > main {
+    padding: 1rem .75rem 4rem !important;
+  }
+
+  .daily-sessions-compact > main > header {
+    align-items: flex-start !important;
+    flex-direction: column !important;
+    gap: .85rem !important;
+    padding: 1rem !important;
+  }
+
+  .daily-sessions-compact > main > header > div:last-child {
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .daily-sessions-compact form {
+    gap: .8rem !important;
+  }
+
+  .daily-sessions-compact form > div[style*="grid-template-columns"],
+  .daily-sessions-compact form div[style*="1.5fr 1fr 1fr auto"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  .daily-sessions-compact form input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+  .daily-sessions-compact form select,
+  .daily-sessions-compact form textarea {
+    font-size: 16px !important;
+  }
+
+  .daily-sessions-compact form button,
+  .daily-sessions-compact > main > section:last-child button,
+  .daily-sessions-compact .daily-sessions-feedback a {
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  .daily-sessions-compact > main > section:last-child {
+    grid-template-columns: 1fr !important;
+  }
+
+  .daily-sessions-feedback {
+    padding-inline: .75rem !important;
+  }
+}
