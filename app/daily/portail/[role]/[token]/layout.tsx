@@ -9,6 +9,7 @@ export default async function DailyStakeholderPortalLayout({
 }) {
   const { role, token } = await params;
   const isLearner = role === "apprenant" || role === "learner";
+  const isTrainer = role === "formateur" || role === "trainer";
 
   return (
     <>
@@ -17,13 +18,24 @@ export default async function DailyStakeholderPortalLayout({
         <div style={s.content}>
           <div style={s.copy}>
             <strong>Besoin d’agir depuis votre espace ?</strong>
-            <span>{isLearner ? "Votre évaluation de fin et le formulaire de réclamation restent accessibles ici." : "Vous pouvez transmettre une réclamation ou une suggestion directement à Selen."}</span>
+            <span>
+              {isLearner
+                ? "Votre évaluation de fin, votre questionnaire de satisfaction et le formulaire de réclamation restent regroupés ici."
+                : isTrainer
+                  ? "En fin de session, pensez à faire compléter la satisfaction par les apprenants avant leur départ. Vous pouvez aussi transmettre votre propre retour."
+                  : "Vous pouvez transmettre une réclamation ou une suggestion directement à Selen."}
+            </span>
           </div>
           <div style={s.actions}>
             {isLearner ? (
-              <a href={`/daily/portail/${role}/${token}/evaluation`} style={s.secondaryLink}>
-                Mon évaluation
-              </a>
+              <>
+                <a href={`/daily/portail/${role}/${token}/evaluation`} style={s.secondaryLink}>
+                  Mon évaluation
+                </a>
+                <a href={`/daily/portail/${role}/${token}/learner-satisfaction`} style={s.secondaryLink}>
+                  Ma satisfaction
+                </a>
+              </>
             ) : null}
             <a href={`/daily/portail/${role}/${token}/feedback`} style={s.link}>
               Réclamation / suggestion
@@ -54,7 +66,7 @@ const s: Record<string, React.CSSProperties> = {
     justifyContent: "space-between",
     gap: "0.75rem",
   },
-  copy: { display: "grid", gap: "0.15rem", color: "var(--ink)", lineHeight: 1.4 },
+  copy: { display: "grid", gap: "0.15rem", color: "var(--ink)", lineHeight: 1.4, maxWidth: 720 },
   actions: { display: "flex", flexWrap: "wrap", gap: "0.55rem", alignItems: "center" },
   link: {
     display: "inline-flex",
