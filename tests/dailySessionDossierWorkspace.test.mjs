@@ -4,10 +4,12 @@ import { readFile } from "node:fs/promises";
 
 const pagePath = new URL("../app/client/daily/dossiers/page.tsx", import.meta.url);
 const routePath = new URL("../app/api/client/daily/session-dossiers/route.ts", import.meta.url);
+const sessionsManagerPath = new URL("../components/daily/DailySessionsManager.tsx", import.meta.url);
 
-const [page, route] = await Promise.all([
+const [page, route, sessionsManager] = await Promise.all([
   readFile(pagePath, "utf8"),
   readFile(routePath, "utf8"),
+  readFile(sessionsManagerPath, "utf8"),
 ]);
 
 test("le dossier de session expose une timeline cliquable avant pendant après", () => {
@@ -90,6 +92,38 @@ test("les états D3 restent bornés à l'organisation ou aux sessions déjà aut
   assert.match(route, /daily_attendance_slots[\s\S]*\.eq\("organisation_id", context\.organisationId\)[\s\S]*\.in\("session_id", sessionIds\)/);
   assert.match(route, /daily_attendance_records[\s\S]*\.eq\("organisation_id", context\.organisationId\)[\s\S]*\.in\("session_id", sessionIds\)/);
   assert.match(route, /daily_learning_assessments[\s\S]*\.eq\("organisation_id", context\.organisationId\)[\s\S]*\.in\("session_id", sessionIds\)/);
+});
+
+test("D4 sort les sessions réellement terminées du planning actif sans clôturer artificiellement leur dossier", () => {
+  assert.match(sessionsManager, /function sessionEndTimestamp\(session: Session\)/);
+  assert.match(sessionsManager, /schedule_blocks[\s\S]*Math\.max\(\.\.\.scheduledEnds\)/);
+  assert.match(sessionsManager, /const plannedSessions = useMemo\([\s\S]*dossierStatus !== "completed"[\s\S]*!isSessionEnded\(session, planningNow\)/);
+  assert.match(sessionsManager, /const endedSessions = useMemo\([\s\S]*dossierStatus !== "completed"[\s\S]*isSessionEnded\(session, planningNow\)/);
+  assert.match(sessionsManager, /title="Sessions terminées"/);
+  assert.match(sessionsManager, /dossier encore à finaliser/);
+});
+
+test("D4 calcule la fin de session dans le fuseau canonique Europe Paris", () => {
+  assert.match(sessionsManager, /const PARIS_TIME_ZONE = "Europe\/Paris"/);
+  assert.match(sessionsManager, /timeZone: PARIS_TIME_ZONE/);
+  assert.match(sessionsManager, /\.map\(\(block\) => parisTimestamp\(block\.date, block\.end\)\)/);
+  assert.match(sessionsManager, /parisTimestamp\(session\.end_date, "23:59:59"\)/);
+  assert.doesNotMatch(sessionsManager, /new Date\(`\$\{block\.date\}T\$\{block\.end\}:00`\)/);
+});
+
+test("D4 rafraîchit l'horloge du planning tant que la page reste ouverte", () => {
+  assert.match(sessionsManager, /const \[planningNow, setPlanningNow\] = useState\(\(\) => Date\.now\(\)\)/);
+  assert.match(sessionsManager, /const refreshPlanningClock = \(\) => setPlanningNow\(Date\.now\(\)\)/);
+  assert.match(sessionsManager, /window\.setInterval\(refreshPlanningClock, 60_000\)/);
+  assert.match(sessionsManager, /window\.clearInterval\(intervalId\)/);
+});
+
+test("D4 conserve l'accès aux preuves et actions sur les sessions terminées", () => {
+  assert.match(sessionsManager, /sessions={endedSessions}[\s\S]*openEvidence={openEvidence}/);
+  assert.match(sessionsManager, />Modifier<\/button>/);
+  assert.match(sessionsManager, />Preuves apprenants<\/button>/);
+  assert.match(sessionsManager, />Dupliquer<\/button>/);
+  assert.match(sessionsManager, />Archiver<\/button>/);
 });
 
 test("le lot reste une agrégation en lecture sans nouvelle source métier", () => {
