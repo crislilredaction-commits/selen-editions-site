@@ -36,6 +36,7 @@ export default function DailyDossiersPage() {
   const [selected,setSelected]=useState("");
   const [error,setError]=useState("");
   const [saving,setSaving]=useState("");
+  const focusedItemId = searchParams.get("item") || "";
 
   const load=useCallback(async()=>{
     setError("");
@@ -67,6 +68,13 @@ export default function DailyDossiersPage() {
   const done=completedItems.length;
   const progress=sessionItems.length?Math.round(done/sessionItems.length*100):0;
   const dossier=dossiers.find((value)=>value.session_id===selected);
+  const focusedItem=sessionItems.find((item)=>item.id===focusedItemId) ?? null;
+
+  useEffect(()=>{
+    if (!focusedItemId || !activeItems.some((item)=>item.id===focusedItemId)) return;
+    const frame=window.requestAnimationFrame(()=>document.getElementById(`task-${focusedItemId}`)?.scrollIntoView({behavior:"smooth",block:"center"}));
+    return ()=>window.cancelAnimationFrame(frame);
+  },[focusedItemId,selected,activeItems]);
 
   async function complete(item: Item, note: string){
     setSaving(item.id);setError("");
@@ -97,9 +105,12 @@ export default function DailyDossiersPage() {
         </div>
       </section>:null}
 
+      {focusedItem && !isCompleted(focusedItem) && phaseOrder[focusedItem.phase] > phaseOrder[currentPhase] ? <div style={notice}>L’action demandée est bien rattachée à cette session, mais elle ne devient exigible que pendant la phase « {phaseLabels[focusedItem.phase]} ».</div> : null}
+      {focusedItem && isCompleted(focusedItem) ? <div style={notice}>Cette action est déjà terminée et reste disponible dans l’historique du dossier.</div> : null}
+
       <section style={{marginTop:24}}>
         <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"baseline",flexWrap:"wrap"}}><h2 style={{marginBottom:6}}>À faire maintenant</h2><span style={{color:"#70503b"}}>{activeItems.length} action{activeItems.length>1?"s":""}</span></div>
-        {activeItems.length===0?<div style={empty}>Aucune action exigible pour le moment.</div>:<div style={{display:"grid",gap:12}}>{activeItems.map((item)=><ChecklistCard key={item.id} item={item} saving={saving===item.id} onComplete={complete}/>)}</div>}
+        {activeItems.length===0?<div style={empty}>Aucune action exigible pour le moment.</div>:<div style={{display:"grid",gap:12}}>{activeItems.map((item)=><ChecklistCard key={item.id} item={item} saving={saving===item.id} focused={focusedItemId===item.id} onComplete={complete}/>)}</div>}
         {futureItems.length>0?<p style={{color:"#70503b",fontSize:14}}>Étapes futures préparées : {futureItems.length}. Elles apparaîtront automatiquement lorsqu’elles deviendront exigibles.</p>:null}
       </section>
 
@@ -108,11 +119,12 @@ export default function DailyDossiersPage() {
   </main>;
 }
 
-function ChecklistCard({item,saving,onComplete}:{item:Item;saving:boolean;onComplete:(item:Item,note:string)=>Promise<void>}){
+function ChecklistCard({item,saving,focused,onComplete}:{item:Item;saving:boolean;focused:boolean;onComplete:(item:Item,note:string)=>Promise<void>}){
   const [note,setNote]=useState(item.note||"");
   useEffect(()=>{setNote(item.note||"");},[item.note]);
-  return <article style={card}>
+  return <article id={`task-${item.id}`} style={{...card,...(focused?focusedCard:{})}}>
     <div style={{display:"flex",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}><strong>{item.label}</strong><span>{phaseLabels[item.phase]}</span></div>
+    {focused?<p style={{margin:"8px 0 0",fontSize:13,fontWeight:800,color:"var(--rust)"}}>Action à traiter maintenant</p>:null}
     {item.description?<p>{item.description}</p>:null}
     {item.due_at?<small>Échéance : {new Date(item.due_at).toLocaleDateString("fr-FR")}</small>:null}
     {item.status !== "todo" ? <p style={{margin:"8px 0 0",fontSize:13,color:"#70503b"}}>État actuel : {statusLabels[item.status]||item.status}</p> : null}
@@ -121,8 +133,10 @@ function ChecklistCard({item,saving,onComplete}:{item:Item;saving:boolean;onComp
 }
 
 const card: React.CSSProperties={border:"1px solid var(--sepia-mid)",padding:"1rem",background:"var(--paper)",boxShadow:"0 4px 18px rgba(70,45,20,.05)",borderRadius:14};
+const focusedCard: React.CSSProperties={border:"2px solid var(--rust)",background:"#fffaf0",boxShadow:"0 7px 24px rgba(110,62,31,.14)"};
 const input: React.CSSProperties={border:"1px solid var(--sepia-mid)",padding:".65rem",background:"white",borderRadius:8,minWidth:0};
 const button: React.CSSProperties={border:"1px solid var(--rust)",background:"var(--rust)",color:"white",padding:".65rem .9rem",cursor:"pointer",borderRadius:8,fontWeight:800};
 const linkButton: React.CSSProperties={display:"inline-block",border:"1px solid var(--rust)",padding:".55rem .75rem",color:"var(--rust)",fontWeight:700,textDecoration:"none",borderRadius:8};
 const phaseBadge: React.CSSProperties={padding:".4rem .65rem",border:"1px solid var(--sepia-mid)",background:"white",borderRadius:999,fontWeight:800,color:"var(--rust)"};
 const empty: React.CSSProperties={padding:"1rem",border:"1px dashed var(--sepia-mid)",borderRadius:12,color:"#70503b"};
+const notice: React.CSSProperties={padding:".85rem 1rem",border:"1px solid #c8aa78",background:"#fff8e8",borderRadius:10,color:"#654525",margin:"0 0 1rem"};
