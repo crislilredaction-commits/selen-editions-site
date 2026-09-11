@@ -94,6 +94,20 @@ function formatDate(value?: string | null) {
   if (!value) return "Date à définir";
   return new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short", year: "numeric" }).format(new Date(`${value}T12:00:00`));
 }
+function sessionEndTimestamp(session: Session) {
+  const scheduledEnds = (session.schedule_blocks ?? [])
+    .filter((block) => block.date && block.end)
+    .map((block) => new Date(`${block.date}T${block.end}:00`).getTime())
+    .filter(Number.isFinite);
+  if (scheduledEnds.length > 0) return Math.max(...scheduledEnds);
+  if (!session.end_date) return null;
+  const fallbackEnd = new Date(`${session.end_date}T23:59:59`).getTime();
+  return Number.isFinite(fallbackEnd) ? fallbackEnd : null;
+}
+function isSessionEnded(session: Session, now: number) {
+  const end = sessionEndTimestamp(session);
+  return end !== null && end < now;
+}
 function modalityLabel(session: Session) {
   if (session.modality === "distanciel" && session.distance_mode === "asynchrone") return "Distanciel asynchrone";
   if (session.modality === "distanciel") return "Distanciel synchrone";
@@ -120,6 +134,7 @@ export default function DailySessionsManager() {
   const [evidenceLoading, setEvidenceLoading] = useState(false);
   const [uploadingKey, setUploadingKey] = useState("");
   const [abandoningKey, setAbandoningKey] = useState("");
+  const [planningNow] = useState(() => Date.now());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -152,7 +167,8 @@ export default function DailySessionsManager() {
   useEffect(() => { void load(); }, [load]);
 
   const trainers = useMemo(() => (workspace?.trainers ?? []).filter((trainer) => !["rejected", "archived"].includes(trainer.status)), [workspace]);
-  const plannedSessions = useMemo(() => sessions.filter((session) => completion[session.id]?.dossierStatus !== "completed").sort(sortSessions), [sessions, completion]);
+  const plannedSessions = useMemo(() => sessions.filter((session) => completion[session.id]?.dossierStatus !== "completed" && !isSessionEnded(session, planningNow)).sort(sortSessions), [sessions, completion, planningNow]);
+  const endedSessions = useMemo(() => sessions.filter((session) => completion[session.id]?.dossierStatus !== "completed" && isSessionEnded(session, planningNow)).sort(sortSessions), [sessions, completion, planningNow]);
   const closedSessions = useMemo(() => sessions.filter((session) => completion[session.id]?.dossierStatus === "completed").sort(sortSessions), [sessions, completion]);
 
   function resetForm(close = true) {
@@ -331,7 +347,7 @@ export default function DailySessionsManager() {
   const company = form.companies[0] ?? { name: "", address: "", siret: "", email: "", participants: [] };
 
   return <main style={styles.main}>
-    <header style={styles.hero}><div><p style={styles.eyebrow}>Selen Daily · Sessions</p><h1 style={styles.h1}>Sessions</h1><p style={styles.lead}>Les sessions sont séparées entre celles qui restent à piloter et celles dont le dossier est réellement clôturé.</p></div><div style={styles.stat}><strong>{plannedSessions.length}</strong><span>à piloter</span></div></header>
+    <header style={styles.hero}><div><p style={styles.eyebrow}>Selen Daily · Sessions</p><h1 style={styles.h1}>Sessions</h1><p style={styles.lead}>Le planning actif ne conserve que les sessions à venir ou en cours. Une formation terminée reste accessible avec son dossier, ses preuves et ses actions de finalisation jusqu’à la clôture administrative.</p></div><div style={styles.stat}><strong>{plannedSessions.length}</strong><span>à piloter</span></div></header>
     {error ? <div style={styles.error}>{error}</div> : null}{message ? <div style={styles.success}>{message}</div> : null}
 
     <section style={styles.accordion}>
@@ -361,7 +377,8 @@ export default function DailySessionsManager() {
     </section>
 
     <section style={styles.columns}>
-      <SessionColumn title="Sessions planifiées" subtitle="En cours de préparation ou de réalisation" sessions={plannedSessions} empty="Aucune session planifiée." completion={completion} edit={editSession} duplicate={duplicate} archive={archive} openEvidence={openEvidence} evidenceSessionId={evidenceSessionId} evidenceLoading={evidenceLoading} evidenceContext={evidenceContext} uploadEvidence={uploadEvidence} confirmAbandonment={confirmAbandonment} uploadingKey={uploadingKey} abandoningKey={abandoningKey} />
+      <SessionColumn title="Sessions planifiées" subtitle="À venir ou en cours de réalisation" sessions={plannedSessions} empty="Aucune session planifiée." completion={completion} edit={editSession} duplicate={duplicate} archive={archive} openEvidence={openEvidence} evidenceSessionId={evidenceSessionId} evidenceLoading={evidenceLoading} evidenceContext={evidenceContext} uploadEvidence={uploadEvidence} confirmAbandonment={confirmAbandonment} uploadingKey={uploadingKey} abandoningKey={abandoningKey} />
+      <SessionColumn title="Sessions terminées" subtitle="Formation terminée · dossier encore à finaliser" sessions={endedSessions} empty="Aucun dossier de session à finaliser." completion={completion} edit={editSession} duplicate={duplicate} archive={archive} openEvidence={openEvidence} evidenceSessionId={evidenceSessionId} evidenceLoading={evidenceLoading} evidenceContext={evidenceContext} uploadEvidence={uploadEvidence} confirmAbandonment={confirmAbandonment} uploadingKey={uploadingKey} abandoningKey={abandoningKey} />
       <SessionColumn title="Sessions clôturées" subtitle="Dossier de session terminé" sessions={closedSessions} empty="Aucune session clôturée." completion={completion} edit={editSession} duplicate={duplicate} archive={archive} openEvidence={openEvidence} evidenceSessionId={evidenceSessionId} evidenceLoading={evidenceLoading} evidenceContext={evidenceContext} uploadEvidence={uploadEvidence} confirmAbandonment={confirmAbandonment} uploadingKey={uploadingKey} abandoningKey={abandoningKey} />
     </section>
   </main>;
