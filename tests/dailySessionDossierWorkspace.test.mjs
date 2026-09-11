@@ -30,8 +30,31 @@ test("le dossier réutilise le programme canonique de la formation", () => {
   assert.match(page, /Délais d’accès/);
 });
 
-test("le lot reste une lecture de la formation sans nouvelle source métier", () => {
+test("le dossier consolide communications documents et signatures depuis les sources canoniques", () => {
+  assert.match(route, /from\("daily_communications"\)/);
+  assert.match(route, /from\("daily_communication_documents"\)/);
+  assert.match(route, /from\("daily_documents"\)/);
+  assert.match(route, /from\("daily_convention_signatures"\)/);
+  assert.match(page, /Communications & preuves/);
+  assert.match(page, /Journal de la session/);
+  assert.match(page, /Signatures convention \/ contrat/);
+});
+
+test("les signatures sans organisation_id sont bornées aux sessions déjà autorisées", () => {
+  assert.match(route, /const sessionIds = \(sessions \?\? \[\]\)\.map/);
+  assert.match(route, /daily_convention_signatures[\s\S]*\.in\("session_id", sessionIds\)/);
+});
+
+test("les signaux email ne sont jamais présentés comme preuve de signature", () => {
+  assert.match(page, /Cliqué · signal technique/);
+  assert.match(page, /Ouvert · signal technique/);
+  assert.match(page, /jamais une preuve de signature/);
+  assert.match(page, /signature\.signed_at/);
+});
+
+test("le lot reste une agrégation en lecture sans nouvelle source métier", () => {
   assert.doesNotMatch(route, /\.insert\(/);
   assert.doesNotMatch(route, /\.upsert\(/);
   assert.doesNotMatch(route, /daily_session_program/);
+  assert.doesNotMatch(route, /daily_session_signature_timeline/);
 });

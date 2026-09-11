@@ -14,6 +14,14 @@ type Formation = {
   registration_methods?:string|null; detailed_program?:string|null; detailed_program_document_url?:string|null; pedagogical_methods?:string|null;
   pedagogical_resources?:string|null; evaluation_methods?:string|null;
 };
+type Communication = {
+  id:string; session_id:string; enrolment_id?:string|null; communication_type:string; channel?:string|null; recipient_email?:string|null; recipient_name?:string|null;
+  subject?:string|null; provider?:string|null; status?:string|null; sent_at?:string|null; delivered_at?:string|null; failed_at?:string|null; failure_reason?:string|null;
+  created_at:string; metadata?:Record<string,unknown>|null;
+};
+type CommunicationDocument = { communication_id:string; document_id:string; document_type:string; logical_name:string; document_version:number; created_at:string };
+type SessionDocument = { id:string; session_id:string; enrolment_id?:string|null; document_type:string; status:string; logical_name:string; version:number; published_at?:string|null; validated_at?:string|null; signed_at?:string|null; created_at:string; metadata?:Record<string,unknown>|null };
+type Signature = { id:string; convention_id:string; session_id:string; signatory_type:string; signatory_name?:string|null; signatory_email?:string|null; status:string; viewed_at?:string|null; signed_at?:string|null; expires_at?:string|null; last_error?:string|null; created_at:string; updated_at:string };
 
 const phaseLabels: Record<Phase,string> = { before:"Avant la formation", during:"Pendant la formation", after:"Après la formation" };
 const phaseOrder: Record<Phase,number> = { before:0, during:1, after:2 };
@@ -38,12 +46,46 @@ function objectiveList(value: unknown): string[] {
   return value.map((item) => typeof item === "string" ? item : typeof item === "object" && item && "label" in item ? String((item as { label?: unknown }).label ?? "") : "").map((item) => item.trim()).filter(Boolean);
 }
 
+function displayDate(value?: string | null) {
+  if (!value) return "";
+  return new Intl.DateTimeFormat("fr-FR", { dateStyle:"short", timeStyle:"short" }).format(new Date(value));
+}
+
+function communicationStatusLabel(communication: Communication) {
+  const status=String(communication.status ?? "").toLowerCase();
+  if (communication.failed_at || ["failed","bounced","complained"].includes(status)) return "Échec d’envoi";
+  if (status === "clicked") return "Cliqué · signal technique";
+  if (status === "opened") return "Ouvert · signal technique";
+  if (communication.delivered_at || status === "delivered") return "Délivré";
+  if (communication.sent_at || status === "sent") return "Envoyé";
+  return communication.status || "En préparation";
+}
+
+function signatureStatusLabel(signature: Signature) {
+  const status=String(signature.status ?? "").toLowerCase();
+  if (signature.signed_at || status === "signed") return "Signé";
+  if (signature.last_error || ["failed","error"].includes(status)) return "Échec";
+  if (["declined","rejected","cancelled","canceled"].includes(status)) return "Refusé / annulé";
+  if (status === "expired" || (signature.expires_at && new Date(signature.expires_at).getTime() < Date.now())) return "Expiré";
+  if (signature.viewed_at) return "Consulté · signature attendue";
+  return "Signature attendue";
+}
+
+function actorLabel(value?: string | null) {
+  const labels: Record<string,string>={ learner:"Apprenant", trainer:"Formateur", enterprise:"Entreprise", company:"Entreprise", organisation:"OF", organization:"OF", client:"Client" };
+  return labels[String(value ?? "").toLowerCase()] || value || "Partie prenante";
+}
+
 export default function DailyDossiersPage() {
   const searchParams = useSearchParams();
   const [sessions,setSessions]=useState<Session[]>([]);
   const [dossiers,setDossiers]=useState<Dossier[]>([]);
   const [items,setItems]=useState<Item[]>([]);
   const [formations,setFormations]=useState<Formation[]>([]);
+  const [communications,setCommunications]=useState<Communication[]>([]);
+  const [communicationDocuments,setCommunicationDocuments]=useState<CommunicationDocument[]>([]);
+  const [documents,setDocuments]=useState<SessionDocument[]>([]);
+  const [signatures,setSignatures]=useState<Signature[]>([]);
   const [selected,setSelected]=useState("");
   const [error,setError]=useState("");
   const [saving,setSaving]=useState("");
@@ -59,6 +101,10 @@ export default function DailyDossiersPage() {
     setDossiers(body.dossiers||[]);
     setItems(body.checklist||[]);
     setFormations(body.formations||[]);
+    setCommunications(body.communications||[]);
+    setCommunicationDocuments(body.communicationDocuments||[]);
+    setDocuments(body.documents||[]);
+    setSignatures(body.signatures||[]);
     setSelected((current) => {
       if (current && loadedSessions.some((session) => session.id === current)) return current;
       const requested = searchParams.get("session");
@@ -73,6 +119,9 @@ export default function DailyDossiersPage() {
   const formationMap=useMemo(()=>new Map(formations.map((f)=>[f.id,f])),[formations]);
   const formation=session ? formationMap.get(session.formation_id) : undefined;
   const sessionItems=items.filter((i)=>i.session_id===selected);
+  const sessionCommunications=communications.filter((item)=>item.session_id===selected);
+  const sessionDocuments=documents.filter((item)=>item.session_id===selected);
+  const sessionSignatures=signatures.filter((item)=>item.session_id===selected);
   const currentPhase=session ? sessionPhase(session) : "before";
   const activeItems=sessionItems.filter((item)=>!isCompleted(item) && phaseOrder[item.phase] <= phaseOrder[currentPhase]);
   const completedItems=sessionItems.filter(isCompleted);
@@ -122,7 +171,7 @@ export default function DailyDossiersPage() {
           return <button key={phase} type="button" onClick={()=>scrollToPhase(phase)} style={{...timelineStep,...(phase===currentPhase?timelineCurrent:{})}}><span>{phaseLabels[phase]}</span><small>{relation} · {phaseDone}/{phaseItems.length} terminé{phaseDone>1?"s":""}</small></button>;
         })}</div>
         <div style={{marginTop:14,paddingTop:12,borderTop:"1px solid var(--sepia-mid)",display:"flex",gap:8,flexWrap:"wrap"}}>
-          <a href={`/client/daily/communications?session_id=${encodeURIComponent(session.id)}`} style={linkButton}>Communications & preuves</a>
+          <button type="button" onClick={()=>document.getElementById("communications-preuves")?.scrollIntoView({behavior:"smooth",block:"start"})} style={linkButtonAsButton}>Communications & preuves</button>
           <a href={`/client/daily/suivi?session=${encodeURIComponent(session.id)}`} style={linkButton}>Suivi de session</a>
           <button type="button" onClick={()=>document.getElementById("programme-session")?.scrollIntoView({behavior:"smooth",block:"start"})} style={linkButtonAsButton}>Programme de formation</button>
         </div>
@@ -146,6 +195,7 @@ export default function DailyDossiersPage() {
       })}</section>
 
       <ProgramPanel formation={formation} />
+      <CommunicationProofPanel sessionId={selected} communications={sessionCommunications} communicationDocuments={communicationDocuments} documents={sessionDocuments} signatures={sessionSignatures} />
 
       {completedItems.length>0?<details style={{...card,marginTop:24}}><summary style={{cursor:"pointer",fontWeight:800}}>Historique des actions terminées · {completedItems.length}</summary><div style={{display:"grid",gap:8,marginTop:12}}>{completedItems.map((item)=><article key={item.id} style={{padding:".75rem",border:"1px solid var(--sepia-mid)",background:"white"}}><div style={{display:"flex",justifyContent:"space-between",gap:8,flexWrap:"wrap"}}><strong>{item.label}</strong><span>{statusLabels[item.status]||item.status}</span></div>{item.note?<p style={{marginBottom:0}}>Note : {item.note}</p>:null}</article>)}</div></details>:null}
     </>}
@@ -175,9 +225,33 @@ function ProgramPanel({ formation }: { formation?: Formation }) {
   </section>;
 }
 
-function ProgramField({label,value}:{label:string;value:string}){
-  return <div style={programField}><strong>{label}</strong><p style={{whiteSpace:"pre-wrap",marginBottom:0}}>{value}</p></div>;
+function CommunicationProofPanel({ sessionId, communications, communicationDocuments, documents, signatures }: { sessionId:string; communications:Communication[]; communicationDocuments:CommunicationDocument[]; documents:SessionDocument[]; signatures:Signature[] }) {
+  const linkedByCommunication=useMemo(()=>{
+    const map=new Map<string,CommunicationDocument[]>();
+    for(const document of communicationDocuments){
+      const current=map.get(document.communication_id)||[];
+      current.push(document);map.set(document.communication_id,current);
+    }
+    return map;
+  },[communicationDocuments]);
+  const failed=communications.filter((item)=>item.failed_at || ["failed","bounced","complained"].includes(String(item.status??"").toLowerCase())).length;
+  const signed=signatures.filter((item)=>Boolean(item.signed_at) || String(item.status??"").toLowerCase()==="signed").length;
+  return <section id="communications-preuves" style={{...card,marginTop:24}}>
+    <div style={{display:"flex",justifyContent:"space-between",gap:12,flexWrap:"wrap",alignItems:"flex-start"}}><div><p style={{margin:"0 0 4px",fontWeight:800,color:"var(--rust)"}}>Communications & preuves</p><h2 style={{margin:0,fontSize:"1.25rem"}}>Journal de la session</h2><p style={{margin:"8px 0 0",color:"#70503b"}}>Emails, documents et signatures sont relus depuis leurs sources métier existantes. Une ouverture ou un clic d’email reste un signal technique, jamais une preuve de signature.</p></div><a href={`/client/daily/communications?session_id=${encodeURIComponent(sessionId)}`} style={linkButton}>Ouvrir le journal complet</a></div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:8,marginTop:16}}><Stat label="Communications" value={communications.length}/><Stat label="Documents" value={documents.length}/><Stat label="Signatures" value={`${signed}/${signatures.length}`}/><Stat label="Envois en échec" value={failed}/></div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:14,marginTop:16}}>
+      <div style={proofColumn}><h3 style={proofTitle}>Dernières communications</h3>{communications.length===0?<p style={muted}>Aucune communication tracée pour cette session.</p>:communications.slice(0,8).map((communication)=>{
+        const linked=linkedByCommunication.get(communication.id)||[];
+        return <article key={communication.id} style={proofItem}><div style={proofHead}><strong>{communication.subject || communication.communication_type || "Communication"}</strong><span style={smallBadge}>{communicationStatusLabel(communication)}</span></div><p style={proofMeta}>{communication.recipient_name || communication.recipient_email || "Destinataire non renseigné"}{communication.recipient_name && communication.recipient_email?` · ${communication.recipient_email}`:""}</p><p style={proofMeta}>{displayDate(communication.delivered_at || communication.sent_at || communication.created_at)}{communication.channel?` · ${communication.channel}`:""}</p>{linked.length?<small>{linked.map((doc)=>doc.logical_name || doc.document_type).join(" · ")}</small>:null}{communication.failure_reason?<p style={{...proofMeta,color:"#9b2c2c"}}>Erreur : {communication.failure_reason}</p>:null}</article>;
+      })}</div>
+      <div style={proofColumn}><h3 style={proofTitle}>Documents de session</h3>{documents.length===0?<p style={muted}>Aucun document courant rattaché à cette session.</p>:documents.slice(0,8).map((document)=><article key={document.id} style={proofItem}><div style={proofHead}><strong>{document.logical_name || document.document_type}</strong><span style={smallBadge}>{document.signed_at?"Signé":document.status || "Document"}</span></div><p style={proofMeta}>Version {document.version} · {displayDate(document.published_at || document.validated_at || document.created_at)}</p>{document.signed_at?<p style={proofMeta}>Signature enregistrée le {displayDate(document.signed_at)}</p>:null}</article>)}</div>
+      <div style={proofColumn}><h3 style={proofTitle}>Signatures convention / contrat</h3>{signatures.length===0?<p style={muted}>Aucune demande de signature canonique rattachée à cette session.</p>:signatures.map((signature)=><article key={signature.id} style={proofItem}><div style={proofHead}><strong>{actorLabel(signature.signatory_type)}</strong><span style={smallBadge}>{signatureStatusLabel(signature)}</span></div><p style={proofMeta}>{signature.signatory_name || signature.signatory_email || "Signataire"}{signature.signatory_name && signature.signatory_email?` · ${signature.signatory_email}`:""}</p>{signature.viewed_at?<p style={proofMeta}>Consulté le {displayDate(signature.viewed_at)}</p>:null}{signature.signed_at?<p style={proofMeta}>Signé le {displayDate(signature.signed_at)}</p>:null}{signature.expires_at && !signature.signed_at?<p style={proofMeta}>Échéance : {displayDate(signature.expires_at)}</p>:null}{signature.last_error?<p style={{...proofMeta,color:"#9b2c2c"}}>Erreur : {signature.last_error}</p>:null}</article>)}</div>
+    </div>
+  </section>;
 }
+
+function Stat({label,value}:{label:string;value:string|number}){return <div style={{padding:".75rem",border:"1px solid var(--sepia-mid)",borderRadius:10,background:"white"}}><strong style={{display:"block",fontSize:"1.15rem"}}>{value}</strong><small>{label}</small></div>}
+function ProgramField({label,value}:{label:string;value:string}){return <div style={programField}><strong>{label}</strong><p style={{whiteSpace:"pre-wrap",marginBottom:0}}>{value}</p></div>}
 
 function ChecklistCard({item,saving,focused,onComplete}:{item:Item;saving:boolean;focused:boolean;onComplete:(item:Item,note:string)=>Promise<void>}){
   const [note,setNote]=useState(item.note||"");
@@ -203,5 +277,12 @@ const timeline: React.CSSProperties={display:"grid",gridTemplateColumns:"repeat(
 const timelineStep: React.CSSProperties={display:"grid",gap:4,textAlign:"left",padding:".75rem",border:"1px solid var(--sepia-mid)",background:"white",borderRadius:10,cursor:"pointer",color:"#4e3524"};
 const timelineCurrent: React.CSSProperties={border:"2px solid var(--rust)",background:"#fff8e8"};
 const programField: React.CSSProperties={padding:".85rem",border:"1px solid var(--sepia-mid)",background:"white",borderRadius:10};
+const proofColumn: React.CSSProperties={display:"grid",gap:8,alignContent:"start"};
+const proofTitle: React.CSSProperties={margin:"0 0 2px",fontSize:"1rem"};
+const proofItem: React.CSSProperties={padding:".75rem",border:"1px solid var(--sepia-mid)",background:"white",borderRadius:10};
+const proofHead: React.CSSProperties={display:"flex",justifyContent:"space-between",gap:8,alignItems:"flex-start",flexWrap:"wrap"};
+const proofMeta: React.CSSProperties={margin:"5px 0 0",fontSize:13,color:"#70503b",overflowWrap:"anywhere"};
+const smallBadge: React.CSSProperties={padding:".2rem .4rem",border:"1px solid var(--sepia-mid)",borderRadius:999,fontSize:11,fontWeight:800,color:"#80502f"};
+const muted: React.CSSProperties={margin:0,color:"#70503b",fontSize:14};
 const empty: React.CSSProperties={padding:"1rem",border:"1px dashed var(--sepia-mid)",borderRadius:12,color:"#70503b"};
 const notice: React.CSSProperties={padding:".85rem 1rem",border:"1px solid #c8aa78",background:"#fff8e8",borderRadius:10,color:"#654525",margin:"0 0 1rem"};
