@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const route = fs.readFileSync("app/api/client/daily/registration-requests/route.ts", "utf8");
+const manualRoute = fs.readFileSync("app/api/client/daily/learners/route.ts", "utf8");
 const helper = fs.readFileSync("lib/server/dailyLearnerPortalAccess.ts", "utf8");
 
 test("materialized registrations trigger learner portal provisioning", () => {
@@ -12,6 +13,13 @@ test("materialized registrations trigger learner portal provisioning", () => {
   assert.match(route, /body\.action === "materialize"/);
 });
 
+test("manual enrolment triggers the same canonical learner access provisioning", () => {
+  assert.match(manualRoute, /ensureAndSendLearnerPortalAccess/);
+  assert.match(manualRoute, /action==="enrolment"/);
+  assert.match(manualRoute, /source:"manual_enrolment"/);
+  assert.match(manualRoute, /learner_access:learnerAccess/);
+});
+
 test("learner portal access reuses the existing canonical token surface", () => {
   assert.match(helper, /from\("daily_portal_access_tokens"\)/);
   assert.match(helper, /portal_type: "learner"/);
@@ -19,6 +27,12 @@ test("learner portal access reuses the existing canonical token surface", () => 
   assert.match(helper, /\.eq\("session_id", session\.id\)/);
   assert.match(helper, /\.eq\("portal_type", "learner"\)/);
   assert.match(helper, /\.eq\("entity_key", entityKey\)/);
+});
+
+test("manual and registration origins are traced without creating a second access mechanism", () => {
+  assert.match(helper, /"accepted_registration_request" \| "manual_enrolment"/);
+  assert.match(helper, /source = input\.source \?\? "accepted_registration_request"/);
+  assert.match(helper, /source,/);
 });
 
 test("the learner does not need a Supabase account before opening the portal", () => {

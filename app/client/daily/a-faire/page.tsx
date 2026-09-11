@@ -31,6 +31,14 @@ const kindLabel: Record<ActionItem["kind"], string> = {
   registration: "Inscription publique",
 };
 
+function actionHref(item: ActionItem) {
+  if (item.kind !== "dossier" || !item.sessionId) return item.href;
+  const itemId = item.id.startsWith("dossier:") ? item.id.slice("dossier:".length) : "";
+  const params = new URLSearchParams({ session: item.sessionId });
+  if (itemId) params.set("item", itemId);
+  return `/client/daily/dossiers?${params.toString()}`;
+}
+
 export default function DailyActionCenterPage() {
   const [data, setData] = useState<ActionResponse | null>(null);
   const [error, setError] = useState("");
@@ -121,7 +129,7 @@ export default function DailyActionCenterPage() {
                   </div>
                   <h2 style={s.title}>{item.title}</h2>
                   <p style={s.detail}>{item.detail}</p>
-                  <Link href={item.href} style={s.link}>{item.kind === "registration" ? "Voir le lien et le QR code →" : "Ouvrir l’espace concerné →"}</Link>
+                  <Link href={actionHref(item)} style={s.link}>{item.kind === "registration" ? "Voir le lien et le QR code →" : item.kind === "dossier" ? "Traiter dans le dossier →" : "Ouvrir l’espace concerné →"}</Link>
                 </article>
               ))}
             </section>

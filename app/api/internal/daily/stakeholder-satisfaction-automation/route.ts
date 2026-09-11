@@ -9,6 +9,7 @@ const COMMUNICATION_TYPE = "stakeholder_satisfaction_request";
 const PHONE_FOLLOWUP_SOURCE = "satisfaction_phone_followup";
 const REMINDER_OFFSETS_DAYS = [2, 4] as const;
 const RESPONSE_WINDOW_DAYS = 30;
+const ENTERPRISE_INITIAL_OFFSET_DAYS = 15;
 
 type StakeholderType = "company" | "trainer";
 type PortalType = "enterprise" | "trainer";
@@ -81,6 +82,9 @@ function authorized(req: Request) {
 function stakeholderTypeForPortal(portal: PortalRow): StakeholderType {
   return portal.portal_type === "enterprise" ? "company" : "trainer";
 }
+function initialOffsetForPortal(portal: PortalRow) {
+  return portal.portal_type === "enterprise" ? ENTERPRISE_INITIAL_OFFSET_DAYS : 0;
+}
 function entityMatches(row: CommunicationRow, portal: PortalRow) {
   return row.session_id === portal.session_id
     && text(row.recipient_email).toLowerCase() === text(portal.entity_email).toLowerCase()
@@ -100,10 +104,10 @@ function queuedStage(rows: CommunicationRow[], portal: PortalRow, stage: Automat
     && ["queued", "sent", "delivered"].includes(row.status)
     && text(row.metadata?.automation_stage) === stage);
 }
-function stageDue(ageDays: number, stages: Set<string>): AutomationStage | null {
-  if (!stages.has("initial")) return ageDays >= 0 ? "initial" : null;
-  if (!stages.has("j2")) return ageDays >= REMINDER_OFFSETS_DAYS[0] ? "j2" : null;
-  if (!stages.has("j4")) return ageDays >= REMINDER_OFFSETS_DAYS[1] ? "j4" : null;
+function stageDue(ageDaysSinceAvailability: number, stages: Set<string>): AutomationStage | null {
+  if (!stages.has("initial")) return ageDaysSinceAvailability >= 0 ? "initial" : null;
+  if (!stages.has("j2")) return ageDaysSinceAvailability >= REMINDER_OFFSETS_DAYS[0] ? "j2" : null;
+  if (!stages.has("j4")) return ageDaysSinceAvailability >= REMINDER_OFFSETS_DAYS[1] ? "j4" : null;
   return null;
 }
 
@@ -197,8 +201,9 @@ export async function GET(req: Request) {
 
     const ageDays = daysBetween(session.end_date, today);
     if (ageDays < 0 || ageDays > RESPONSE_WINDOW_DAYS) { skipped += 1; continue; }
+    const ageDaysSinceAvailability = ageDays - initialOffsetForPortal(portal);
     const stages = successfulStages(communications, portal);
-    const stage = stageDue(ageDays, stages);
+    const stage = stageDue(ageDaysSinceAvailability, stages);
 
     if (!stage && stages.has("j4") && !phoneAction) {
       due += 1;
@@ -253,7 +258,7 @@ export async function GET(req: Request) {
       provider: "resend",
       status: "queued",
       created_by: null,
-      metadata: { stakeholder_type: stakeholderType, portal_type: portal.portal_type, entity_key: portal.entity_key, portal_access_id: portal.id, reminder, automation_stage: stage, response_window_days: RESPONSE_WINDOW_DAYS },
+      metadata: { stakeholder_type: stakeholderType, portal_type: portal.portal_type, entity_key: portal.entity_key, portal_access_id: portal.id, reminder, automation_stage: stage, availability_offset_days: initialOffsetForPortal(portal), response_window_days: RESPONSE_WINDOW_DAYS },
     }).select("id").single();
     if (evidenceError || !communication) { failed += 1; continue; }
 
@@ -297,6 +302,7 @@ export async function GET(req: Request) {
     failed,
     reminder_offsets_days: REMINDER_OFFSETS_DAYS,
     response_window_days: RESPONSE_WINDOW_DAYS,
+    enterprise_initial_offset_days: ENTERPRISE_INITIAL_OFFSET_DAYS,
     phone_tasks_created: phoneTasksCreated,
     phone_tasks_closed: phoneTasksClosed,
     details,

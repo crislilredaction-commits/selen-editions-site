@@ -2,9 +2,11 @@ import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 
 type Params = { params: Promise<{ token: string }> };
-const ENTRY_TYPES = new Set(["incident", "adaptation"]);
+const ENTRY_TYPES = new Set(["incident", "adaptation", "absence", "delay", "abandonment_alert"]);
+const ATTENDANCE_ENTRY_TYPES = new Set(["absence", "delay", "abandonment_alert"]);
 const LEVELS = new Set(["info", "attention", "critical"]);
 const STATUSES = new Set(["open", "resolved"]);
+const INACTIVE_ENROLMENTS = new Set(["declined", "cancelled", "abandoned"]);
 const text = (value: unknown) => String(value ?? "").trim();
 
 async function trainerAccess(token: string) {
@@ -32,10 +34,16 @@ export async function POST(request: Request, { params }: Params) {
   const { token } = await params; const auth = await trainerAccess(text(token));
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
   const body = await request.json().catch(() => ({})) as Record<string, unknown>;
-  const entryType = text(body.entry_type), level = text(body.level), summary = text(body.summary);
+  const entryType = text(body.entry_type), level = text(body.level), summary = text(body.summary), enrolmentId = text(body.enrolment_id);
   if (!ENTRY_TYPES.has(entryType) || !LEVELS.has(level) || !summary) return NextResponse.json({ error: "Type, niveau et constat sont requis." }, { status: 400 });
+  if (ATTENDANCE_ENTRY_TYPES.has(entryType)) {
+    if (!enrolmentId) return NextResponse.json({ error: "Apprenant requis pour ce signalement." }, { status: 400 });
+    const { data: enrolment, error: enrolmentError } = await auth.admin.from("daily_session_enrolments").select("id,status").eq("id", enrolmentId).eq("session_id", auth.access.session_id).eq("organisation_id", auth.session.organisation_id).maybeSingle();
+    if (enrolmentError) return NextResponse.json({ error: enrolmentError.message }, { status: 500 });
+    if (!enrolment || INACTIVE_ENROLMENTS.has(text(enrolment.status))) return NextResponse.json({ error: "Inscription introuvable ou inactive." }, { status: 404 });
+  }
   const authorName = text(auth.access.entity_name) || text(auth.access.entity_email) || "Formateur";
-  const { data, error } = await auth.admin.from("daily_session_followup_entries").insert({ organisation_id: auth.session.organisation_id, session_id: auth.access.session_id, enrolment_id: text(body.enrolment_id) || null, entry_type: entryType, level, summary, description: text(body.description) || null, action_taken: text(body.action_taken) || null, status: "open", author_role: "Formateur", author_name: authorName }).select("id,enrolment_id,entry_type,level,occurred_at,summary,description,action_taken,status,resolved_at,author_role,author_name").single();
+  const { data, error } = await auth.admin.from("daily_session_followup_entries").insert({ organisation_id: auth.session.organisation_id, session_id: auth.access.session_id, enrolment_id: enrolmentId || null, entry_type: entryType, level, summary, description: text(body.description) || null, action_taken: text(body.action_taken) || null, status: "open", author_role: "Formateur", author_name: authorName }).select("id,enrolment_id,entry_type,level,occurred_at,summary,description,action_taken,status,resolved_at,author_role,author_name").single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ entry: data }, { status: 201 });
 }

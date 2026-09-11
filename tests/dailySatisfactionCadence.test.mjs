@@ -26,6 +26,13 @@ for (const [label, source] of [["apprenants", learner], ["parties prenantes", st
   });
 }
 
+test("la satisfaction entreprise démarre à J+15 puis conserve les relances J+2/J+4", () => {
+  assert.match(stakeholder, /ENTERPRISE_INITIAL_OFFSET_DAYS = 15/);
+  assert.match(stakeholder, /initialOffsetForPortal/);
+  assert.match(stakeholder, /ageDaysSinceAvailability = ageDays - initialOffsetForPortal\(portal\)/);
+  assert.match(stakeholder, /stageDue\(ageDaysSinceAvailability, stages\)/);
+});
+
 test("les inscriptions abandonnées sont exclues des relances de satisfaction", () => {
   assert.match(endEvaluations, /status !== "cancelled" && status !== "declined" && status !== "abandoned"/);
   assert.match(learner, /activeDailyEnrolment\(row\.status\)/);

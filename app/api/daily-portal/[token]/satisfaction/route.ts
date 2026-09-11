@@ -44,8 +44,8 @@ function stakeholderTypeForPortal(portalType: SupportedPortalType) {
   return portalType === "enterprise" ? "company" : "trainer";
 }
 
-function availabilityOffsetForPortal(_portalType: SupportedPortalType) {
-  return 0;
+function availabilityOffsetForPortal(portalType: SupportedPortalType) {
+  return portalType === "enterprise" ? 15 : 0;
 }
 
 function portalLabel(portalType: SupportedPortalType) {
@@ -140,7 +140,9 @@ export async function POST(request: Request, { params }: Params) {
   if ("error" in portal) return NextResponse.json({ error: portal.error }, { status: portal.status });
   if (!portal.isAvailable) {
     return NextResponse.json({
-      error: "Le questionnaire sera disponible le dernier jour de la formation.",
+      error: portal.portalType === "enterprise"
+        ? "Le questionnaire entreprise sera disponible 15 jours après la fin de la formation."
+        : "Le questionnaire formateur sera disponible le dernier jour de la formation.",
       availableFrom: portal.availableFrom,
     }, { status: 409 });
   }

@@ -7,7 +7,7 @@ import DailySessionFollowupSummary from "@/components/daily/DailySessionFollowup
 type Session = { id: string; internal_reference?: string | null; start_date?: string | null; end_date?: string | null; daily_formations?: { title?: string } | { title?: string }[] | null };
 type Learner = { first_name?: string | null; last_name?: string | null; email?: string | null };
 type Enrolment = { id: string; status: string; daily_learners?: Learner | Learner[] | null };
-type Entry = { id: string; enrolment_id?: string | null; entry_type: "incident" | "adaptation"; level: "info" | "attention" | "critical"; occurred_at: string; summary: string; description?: string | null; action_taken?: string | null; status: "open" | "resolved"; resolved_at?: string | null; author_role?: string | null; author_name?: string | null };
+type Entry = { id: string; enrolment_id?: string | null; entry_type: "incident" | "adaptation" | "note"; level: "info" | "attention" | "critical"; occurred_at: string; summary: string; description?: string | null; action_taken?: string | null; status: "open" | "resolved"; resolved_at?: string | null; author_role?: string | null; author_name?: string | null };
 
 function formationTitle(session: Session) {
   const formation = Array.isArray(session.daily_formations) ? session.daily_formations[0] : session.daily_formations;
@@ -21,6 +21,11 @@ function learner(enrolment?: Enrolment) {
 function learnerName(enrolment?: Enrolment) {
   const value = learner(enrolment);
   return [value?.first_name, value?.last_name].filter(Boolean).join(" ") || value?.email || "Apprenant";
+}
+function entryTypeLabel(entryType: Entry["entry_type"]) {
+  if (entryType === "adaptation") return "Adaptation";
+  if (entryType === "note") return "Note de suivi";
+  return "Incident";
 }
 
 export default function DailySessionFollowupPage() {
@@ -124,10 +129,10 @@ export default function DailySessionFollowupPage() {
 
     {sessionId ? <section style={{ display: "grid", gap: ".75rem" }}>
       <h2>Historique de la session</h2>
-      {entries.length === 0 ? <p>Aucun incident ni adaptation enregistré.</p> : entries.map((entry) => {
+      {entries.length === 0 ? <p>Aucun élément de suivi enregistré.</p> : entries.map((entry) => {
         const enrolment = enrolments.find((item) => item.id === entry.enrolment_id);
         return <article key={entry.id} style={{ padding: "1rem", background: "#fffaf0", border: entry.level === "critical" ? "2px solid #8a4b24" : "1px solid #d8b989" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: ".7rem", flexWrap: "wrap" }}><strong>{entry.entry_type === "adaptation" ? "Adaptation" : "Incident"} · {entry.summary}</strong><span>{entry.status === "resolved" ? "Traité" : "Ouvert"}</span></div>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: ".7rem", flexWrap: "wrap" }}><strong>{entryTypeLabel(entry.entry_type)} · {entry.summary}</strong><span>{entry.status === "resolved" ? "Traité" : "Ouvert"}</span></div>
           <p style={{ marginBottom: ".3rem" }}>{new Date(entry.occurred_at).toLocaleString("fr-FR")} · {entry.level}{enrolment ? ` · ${learnerName(enrolment)}` : ""}</p>
           <p style={{ marginTop: 0, color: "#70503b", fontSize: ".9rem" }}><strong>Ajouté par :</strong> {entry.author_name || "Auteur non renseigné (historique antérieur)"}{entry.author_role ? ` · ${entry.author_role}` : ""}</p>
           {entry.description ? <p>{entry.description}</p> : null}

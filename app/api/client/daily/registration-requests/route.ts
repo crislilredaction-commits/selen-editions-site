@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import { getDailyClientWorkspace } from "@/lib/server/dailyClientWorkspace";
 import { sendLearnerPortalAccessForRegistrationRequest } from "@/lib/server/dailyLearnerPortalAccess";
+import { sendEnterprisePortalAccessForRegistrationRequest } from "@/lib/server/dailyEnterprisePortalAccess";
 
 type DecisionStatus = "pending" | "agent_review" | "accepted";
 type ActorType = "organisation" | "trainer";
@@ -66,6 +67,46 @@ async function provisionLearnerAccess(access: Awaited<ReturnType<typeof getAcces
     console.error("Daily : inscription créée mais accès apprenant non finalisé", cause);
     return [];
   }
+}
+
+async function provisionEnterpriseAccess(access: Awaited<ReturnType<typeof getAccess>>, requestId: string, sessionId: string | null, req: Request) {
+  if (!access.ok) return [];
+  try {
+    const { data: requestScope, error: requestScopeError } = await access.admin
+      .from("daily_formation_registration_requests")
+      .select("formation_id,attached_session_id")
+      .eq("id", requestId)
+      .maybeSingle();
+    if (requestScopeError || !requestScope) return [];
+    const resolvedSessionId = sessionId || requestScope.attached_session_id || null;
+    if (!resolvedSessionId) return [];
+    const { data: sessionScope, error: sessionScopeError } = await access.admin
+      .from("daily_sessions")
+      .select("organisation_id,formation_id")
+      .eq("id", resolvedSessionId)
+      .maybeSingle();
+    if (sessionScopeError || !sessionScope || sessionScope.organisation_id !== access.organisationId || sessionScope.formation_id !== requestScope.formation_id) {
+      console.error("Daily : tentative d’accès entreprise hors périmètre de l’organisme");
+      return [];
+    }
+    return await sendEnterprisePortalAccessForRegistrationRequest(access.admin, {
+      registrationRequestId: requestId,
+      sessionId: resolvedSessionId,
+      origin: new URL(req.url).origin,
+      createdBy: access.user.id,
+    });
+  } catch (cause) {
+    console.error("Daily : inscription entreprise validée mais accès entreprise non finalisé", cause);
+    return [];
+  }
+}
+
+async function provisionAcceptedAccesses(access: Awaited<ReturnType<typeof getAccess>>, requestId: string, sessionId: string | null, req: Request) {
+  const [learnerAccess, enterpriseAccess] = await Promise.all([
+    provisionLearnerAccess(access, requestId, req),
+    provisionEnterpriseAccess(access, requestId, sessionId, req),
+  ]);
+  return { learnerAccess, enterpriseAccess };
 }
 
 export async function GET() {
@@ -154,14 +195,21 @@ export async function POST(req: Request) {
       if (requestRow.decision_status !== "accepted") return NextResponse.json({ error: "La candidature doit d'abord être acceptée." }, { status: 409 });
       const { data, error } = await access.admin.rpc("daily_materialize_registration_request", { p_request_id: requestId, p_session_id: sessionId });
       if (error) return NextResponse.json({ error: error.message }, { status: 409 });
-      const learnerAccess = await provisionLearnerAccess(access, requestId, req);
-      return NextResponse.json({ ok: true, materialized: true, result: data, learner_access: learnerAccess });
+      const { learnerAccess, enterpriseAccess } = await provisionAcceptedAccesses(access, requestId, sessionId, req);
+      return NextResponse.json({ ok: true, materialized: true, result: data, learner_access: learnerAccess, enterprise_access: enterpriseAccess });
     }
 
     if (body.action === "send_learner_access") {
       if (!access.isManager) return NextResponse.json({ error: "Seul le responsable de l'organisme peut relancer les accès apprenants." }, { status: 403 });
       const learnerAccess = await provisionLearnerAccess(access, requestId, req);
       return NextResponse.json({ ok: true, learner_access: learnerAccess });
+    }
+
+    if (body.action === "send_enterprise_access") {
+      if (!access.isManager) return NextResponse.json({ error: "Seul le responsable de l'organisme peut relancer les accès entreprise." }, { status: 403 });
+      const sessionId = typeof body.session_id === "string" ? body.session_id.trim() : null;
+      const enterpriseAccess = await provisionEnterpriseAccess(access, requestId, sessionId, req);
+      return NextResponse.json({ ok: true, enterprise_access: enterpriseAccess });
     }
 
     const decision: Decision | null = body.decision === "accepted" || body.decision === "refused" ? body.decision : null;
@@ -189,8 +237,8 @@ export async function POST(req: Request) {
       if (acceptedRequest?.attached_session_id) {
         const { data: materialized, error: materializedError } = await access.admin.rpc("daily_materialize_registration_request", { p_request_id: requestId, p_session_id: acceptedRequest.attached_session_id });
         if (!materializedError) {
-          const learnerAccess = await provisionLearnerAccess(access, requestId, req);
-          return NextResponse.json({ ok: true, result: data, materialized: true, materialization: materialized, learner_access: learnerAccess });
+          const { learnerAccess, enterpriseAccess } = await provisionAcceptedAccesses(access, requestId, acceptedRequest.attached_session_id, req);
+          return NextResponse.json({ ok: true, result: data, materialized: true, materialization: materialized, learner_access: learnerAccess, enterprise_access: enterpriseAccess });
         }
         return NextResponse.json({ ok: true, result: data, materialized: false, materialization_error: materializedError.message });
       }
