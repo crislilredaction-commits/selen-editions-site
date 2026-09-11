@@ -103,6 +103,21 @@ test("D4 sort les sessions réellement terminées du planning actif sans clôtur
   assert.match(sessionsManager, /dossier encore à finaliser/);
 });
 
+test("D4 calcule la fin de session dans le fuseau canonique Europe Paris", () => {
+  assert.match(sessionsManager, /const PARIS_TIME_ZONE = "Europe\/Paris"/);
+  assert.match(sessionsManager, /timeZone: PARIS_TIME_ZONE/);
+  assert.match(sessionsManager, /\.map\(\(block\) => parisTimestamp\(block\.date, block\.end\)\)/);
+  assert.match(sessionsManager, /parisTimestamp\(session\.end_date, "23:59:59"\)/);
+  assert.doesNotMatch(sessionsManager, /new Date\(`\$\{block\.date\}T\$\{block\.end\}:00`\)/);
+});
+
+test("D4 rafraîchit l'horloge du planning tant que la page reste ouverte", () => {
+  assert.match(sessionsManager, /const \[planningNow, setPlanningNow\] = useState\(\(\) => Date\.now\(\)\)/);
+  assert.match(sessionsManager, /const refreshPlanningClock = \(\) => setPlanningNow\(Date\.now\(\)\)/);
+  assert.match(sessionsManager, /window\.setInterval\(refreshPlanningClock, 60_000\)/);
+  assert.match(sessionsManager, /window\.clearInterval\(intervalId\)/);
+});
+
 test("D4 conserve l'accès aux preuves et actions sur les sessions terminées", () => {
   assert.match(sessionsManager, /sessions={endedSessions}[\s\S]*openEvidence={openEvidence}/);
   assert.match(sessionsManager, />Modifier<\/button>/);

@@ -80,6 +80,18 @@ const emptyForm: SessionForm = {
   status: "draft",
 };
 
+const PARIS_TIME_ZONE = "Europe/Paris";
+const parisDateTimeFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: PARIS_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+});
+
 function formationOf(session: Session) {
   return Array.isArray(session.daily_formations) ? session.daily_formations[0] ?? null : session.daily_formations ?? null;
 }
@@ -94,14 +106,41 @@ function formatDate(value?: string | null) {
   if (!value) return "Date à définir";
   return new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short", year: "numeric" }).format(new Date(`${value}T12:00:00`));
 }
+function parisTimestamp(date: string, time: string) {
+  const [year, month, day] = date.split("-").map(Number);
+  const [hour, minute, second = 0] = time.split(":").map(Number);
+  if (![year, month, day, hour, minute, second].every(Number.isFinite)) return NaN;
+
+  const targetAsUtc = Date.UTC(year, month - 1, day, hour, minute, second);
+  let candidate = targetAsUtc;
+  for (let iteration = 0; iteration < 3; iteration += 1) {
+    const parts = Object.fromEntries(
+      parisDateTimeFormatter.formatToParts(new Date(candidate))
+        .filter((part) => part.type !== "literal")
+        .map((part) => [part.type, part.value]),
+    );
+    const parisAsUtc = Date.UTC(
+      Number(parts.year),
+      Number(parts.month) - 1,
+      Number(parts.day),
+      Number(parts.hour),
+      Number(parts.minute),
+      Number(parts.second),
+    );
+    const correction = targetAsUtc - parisAsUtc;
+    candidate += correction;
+    if (correction === 0) break;
+  }
+  return candidate;
+}
 function sessionEndTimestamp(session: Session) {
   const scheduledEnds = (session.schedule_blocks ?? [])
     .filter((block) => block.date && block.end)
-    .map((block) => new Date(`${block.date}T${block.end}:00`).getTime())
+    .map((block) => parisTimestamp(block.date, block.end))
     .filter(Number.isFinite);
   if (scheduledEnds.length > 0) return Math.max(...scheduledEnds);
   if (!session.end_date) return null;
-  const fallbackEnd = new Date(`${session.end_date}T23:59:59`).getTime();
+  const fallbackEnd = parisTimestamp(session.end_date, "23:59:59");
   return Number.isFinite(fallbackEnd) ? fallbackEnd : null;
 }
 function isSessionEnded(session: Session, now: number) {
@@ -134,7 +173,7 @@ export default function DailySessionsManager() {
   const [evidenceLoading, setEvidenceLoading] = useState(false);
   const [uploadingKey, setUploadingKey] = useState("");
   const [abandoningKey, setAbandoningKey] = useState("");
-  const [planningNow] = useState(() => Date.now());
+  const [planningNow, setPlanningNow] = useState(() => Date.now());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -165,6 +204,12 @@ export default function DailySessionsManager() {
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    const refreshPlanningClock = () => setPlanningNow(Date.now());
+    refreshPlanningClock();
+    const intervalId = window.setInterval(refreshPlanningClock, 60_000);
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   const trainers = useMemo(() => (workspace?.trainers ?? []).filter((trainer) => !["rejected", "archived"].includes(trainer.status)), [workspace]);
   const plannedSessions = useMemo(() => sessions.filter((session) => completion[session.id]?.dossierStatus !== "completed" && !isSessionEnded(session, planningNow)).sort(sortSessions), [sessions, completion, planningNow]);
