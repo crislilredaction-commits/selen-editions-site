@@ -139,7 +139,7 @@ export async function POST(request: Request, { params }: Params) {
     const organisation = rating(body.organisation_rating);
     const content = rating(body.content_rating);
     const pace = rating(body.pace_rating);
-    if (overall === null || objectives === null || trainer === null || organisation === null || content === null || pace === null) {
+    if (overall == null || objectives == null || trainer === null || organisation === null || content === null || pace === null) {
       return NextResponse.json({ error: "Les notes doivent être comprises entre 1 et 5. La satisfaction globale et l’atteinte des objectifs sont obligatoires." }, { status: 400 });
     }
 
