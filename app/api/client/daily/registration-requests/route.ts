@@ -72,9 +72,26 @@ async function provisionLearnerAccess(access: Awaited<ReturnType<typeof getAcces
 async function provisionEnterpriseAccess(access: Awaited<ReturnType<typeof getAccess>>, requestId: string, sessionId: string | null, req: Request) {
   if (!access.ok) return [];
   try {
+    const { data: requestScope, error: requestScopeError } = await access.admin
+      .from("daily_formation_registration_requests")
+      .select("formation_id,attached_session_id")
+      .eq("id", requestId)
+      .maybeSingle();
+    if (requestScopeError || !requestScope) return [];
+    const resolvedSessionId = sessionId || requestScope.attached_session_id || null;
+    if (!resolvedSessionId) return [];
+    const { data: sessionScope, error: sessionScopeError } = await access.admin
+      .from("daily_sessions")
+      .select("organisation_id,formation_id")
+      .eq("id", resolvedSessionId)
+      .maybeSingle();
+    if (sessionScopeError || !sessionScope || sessionScope.organisation_id !== access.organisationId || sessionScope.formation_id !== requestScope.formation_id) {
+      console.error("Daily : tentative d’accès entreprise hors périmètre de l’organisme");
+      return [];
+    }
     return await sendEnterprisePortalAccessForRegistrationRequest(access.admin, {
       registrationRequestId: requestId,
-      sessionId,
+      sessionId: resolvedSessionId,
       origin: new URL(req.url).origin,
       createdBy: access.user.id,
     });

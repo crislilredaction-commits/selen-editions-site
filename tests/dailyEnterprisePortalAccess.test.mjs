@@ -6,6 +6,7 @@ const helper = fs.readFileSync("lib/server/dailyEnterprisePortalAccess.ts", "utf
 const registrationRoute = fs.readFileSync("app/api/client/daily/registration-requests/route.ts", "utf8");
 const sessionsRoute = fs.readFileSync("app/api/client/daily/sessions/route.ts", "utf8");
 const portalRoute = fs.readFileSync("app/api/daily-portal/[token]/route.ts", "utf8");
+const packageJson = fs.readFileSync("package.json", "utf8");
 
 test("accepted company registrations provision the enterprise portal after materialization", () => {
   assert.match(registrationRoute, /sendEnterprisePortalAccessForRegistrationRequest/);
@@ -35,6 +36,13 @@ test("registration companies are synchronized into the session before portal acc
   assert.match(helper, /update\(\{ companies: nextCompanies/);
 });
 
+test("manual retry is scoped to the current organisation and matching formation", () => {
+  assert.match(registrationRoute, /select\("formation_id,attached_session_id"\)/);
+  assert.match(registrationRoute, /select\("organisation_id,formation_id"\)/);
+  assert.match(registrationRoute, /sessionScope\.organisation_id !== access\.organisationId/);
+  assert.match(registrationRoute, /sessionScope\.formation_id !== requestScope\.formation_id/);
+});
+
 test("enterprise access email is traceable and idempotent", () => {
   assert.match(helper, /communication_type: "enterprise_portal_access"/);
   assert.match(helper, /contains\("metadata", \{ portal_access_id: access\.id \}\)/);
@@ -53,4 +61,9 @@ test("missing email or provider failure does not roll back the validated registr
   assert.match(helper, /status: "send_failed"/);
   assert.doesNotMatch(helper, /daily_sessions"\)\.delete/);
   assert.doesNotMatch(helper, /daily_session_enrolments"\)\.delete/);
+});
+
+test("enterprise portal access guard is executed by the production build", () => {
+  assert.match(packageJson, /test:daily-enterprise-portal-access/);
+  assert.match(packageJson, /npm run test:daily-enterprise-portal-access/);
 });
