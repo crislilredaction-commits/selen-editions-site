@@ -43,3 +43,13 @@ test("learner satisfaction stores the canonical response with bounded ratings", 
   assert.match(route, /daily_learner_feedback_responses/);
   assert.match(route, /enrolment_id: resolved\.enrolment\.id/);
 });
+
+test("useful learner satisfaction feedback feeds the canonical session follow-up", () => {
+  assert.match(route, /daily_session_followup_entries/);
+  assert.match(route, /entry_type: "note"/);
+  assert.match(route, /level: needsAttention \? "attention" : "info"/);
+  assert.match(route, /status: needsAttention \? "open" : "resolved"/);
+  assert.match(route, /enrolment_id: resolved\.enrolment\.id/);
+  assert.match(route, /author_role: "Apprenant"/);
+  assert.match(route, /resolved_at: needsAttention \? null : created\.submitted_at/);
+});

@@ -24,6 +24,18 @@ function optionalText(value: unknown) {
   return clean ? clean.slice(0, 4000) : null;
 }
 
+function enrolmentLearner(enrolment: { daily_learners?: unknown }) {
+  const raw = Array.isArray(enrolment.daily_learners) ? enrolment.daily_learners[0] : enrolment.daily_learners;
+  return raw && typeof raw === "object" ? raw as JsonRecord : null;
+}
+
+function learnerDisplayName(enrolment: { daily_learners?: unknown }) {
+  const learner = enrolmentLearner(enrolment);
+  return [text(learner?.first_name), text(learner?.last_name)].filter(Boolean).join(" ")
+    || text(learner?.email)
+    || "Apprenant";
+}
+
 async function resolveLearner(token: string) {
   const supabase = getAdminSupabase();
   const { data: access, error: accessError } = await supabase
@@ -131,6 +143,10 @@ export async function POST(request: Request, { params }: Params) {
       return NextResponse.json({ error: "Les notes doivent être comprises entre 1 et 5. La satisfaction globale et l’atteinte des objectifs sont obligatoires." }, { status: 400 });
     }
 
+    const strengths = optionalText(body.strengths);
+    const improvements = optionalText(body.improvements);
+    const adaptationFeedback = optionalText(body.adaptation_feedback);
+    const freeComment = optionalText(body.free_comment);
     const { data: created, error: insertError } = await resolved.supabase
       .from("daily_learner_feedback_responses")
       .insert({
@@ -144,10 +160,10 @@ export async function POST(request: Request, { params }: Params) {
         content_rating: content ?? null,
         pace_rating: pace ?? null,
         would_recommend: typeof body.would_recommend === "boolean" ? body.would_recommend : null,
-        strengths: optionalText(body.strengths),
-        improvements: optionalText(body.improvements),
-        adaptation_feedback: optionalText(body.adaptation_feedback),
-        free_comment: optionalText(body.free_comment),
+        strengths,
+        improvements,
+        adaptation_feedback: adaptationFeedback,
+        free_comment: freeComment,
       })
       .select("id,submitted_at")
       .single();
@@ -155,6 +171,44 @@ export async function POST(request: Request, { params }: Params) {
       if (insertError?.code === "23505") return NextResponse.json({ error: "Votre questionnaire a déjà été transmis." }, { status: 409 });
       return NextResponse.json({ error: insertError?.message ?? "Enregistrement impossible." }, { status: 500 });
     }
+
+    const hasUsefulComment = Boolean(strengths || improvements || adaptationFeedback || freeComment);
+    const needsAttention = overall <= 3 || objectives <= 3 || Boolean(improvements || adaptationFeedback || freeComment);
+    if (hasUsefulComment || needsAttention) {
+      const authorName = learnerDisplayName(resolved.enrolment);
+      const description = [
+        `Satisfaction globale : ${overall}/5.`,
+        `Atteinte des objectifs : ${objectives}/5.`,
+        strengths ? `Points positifs : ${strengths}` : null,
+        improvements ? `À améliorer : ${improvements}` : null,
+        adaptationFeedback ? `Adaptations / besoins : ${adaptationFeedback}` : null,
+        freeComment ? `Commentaire : ${freeComment}` : null,
+      ].filter(Boolean).join("\n");
+      const { error: followupError } = await resolved.supabase
+        .from("daily_session_followup_entries")
+        .insert({
+          organisation_id: resolved.session.organisation_id,
+          session_id: resolved.session.id,
+          enrolment_id: resolved.enrolment.id,
+          entry_type: "note",
+          level: needsAttention ? "attention" : "info",
+          occurred_at: created.submitted_at,
+          summary: `Satisfaction apprenant — ${authorName}`.slice(0, 240),
+          description,
+          status: needsAttention ? "open" : "resolved",
+          resolved_at: needsAttention ? null : created.submitted_at,
+          author_role: "Apprenant",
+          author_name: authorName,
+        });
+      if (followupError) {
+        return NextResponse.json({
+          submitted: true,
+          submittedAt: created.submitted_at,
+          warning: "Questionnaire enregistré, mais le commentaire n’a pas pu être ajouté au suivi de session.",
+        }, { status: 207 });
+      }
+    }
+
     return NextResponse.json({ submitted: true, submittedAt: created.submitted_at });
   } catch (cause) {
     return NextResponse.json({ error: cause instanceof Error ? cause.message : "Enregistrement impossible." }, { status: 500 });

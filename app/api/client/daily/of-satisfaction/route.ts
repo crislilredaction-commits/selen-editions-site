@@ -106,15 +106,21 @@ export async function POST(request: Request) {
     improvements ? `À améliorer : ${improvements}` : null,
     freeComment ? `Suggestions : ${freeComment}` : null,
   ].filter(Boolean).join("\n");
+  const needsAttention = overallRating <= 3 || Boolean(improvements || freeComment);
   const { error: followupError } = await admin.from("daily_session_followup_entries").insert({
     organisation_id: organisationId,
     session_id: sessionId,
-    author_user_id: user.id,
-    entry_type: "client_satisfaction",
-    title: `Retour OF sur Selen Daily — ${formationTitle}`,
-    note: noteParts,
-    followup_status: "closed",
-    metadata: { satisfaction_response_id: inserted.id, overall_rating: overallRating, source: "of_platform_satisfaction" },
+    entry_type: "note",
+    level: needsAttention ? "attention" : "info",
+    occurred_at: inserted.submitted_at,
+    summary: `Retour OF sur Selen Daily — ${formationTitle}`.slice(0, 240),
+    description: noteParts,
+    status: needsAttention ? "open" : "resolved",
+    created_by: user.id,
+    resolved_by: needsAttention ? null : user.id,
+    resolved_at: needsAttention ? null : inserted.submitted_at,
+    author_role: "Organisme de formation",
+    author_name: clean(user.email) || "Organisme de formation",
   });
   if (followupError) return NextResponse.json({ ok: true, response: inserted, warning: "Réponse enregistrée, mais la trace de suivi n’a pas pu être ajoutée." }, { status: 207 });
 
