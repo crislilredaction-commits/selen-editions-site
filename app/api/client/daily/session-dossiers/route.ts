@@ -12,7 +12,10 @@ export async function GET(req: Request) {
   ]);
   if (sessionError || dossierError || checklistError) return NextResponse.json({ error: sessionError?.message || dossierError?.message || checklistError?.message }, { status: 500 });
   const formationIds = [...new Set((sessions ?? []).map((s) => s.formation_id).filter(Boolean))];
-  const { data: formations } = formationIds.length ? await context.admin.from("daily_formations").select("id,title").in("id", formationIds) : { data: [] };
+  const { data: formations, error: formationError } = formationIds.length
+    ? await context.admin.from("daily_formations").select("id,title,global_objective,learning_objectives,target_audience,prerequisites,duration_hours,duration_days,modality,modality_details,access_delays,registration_methods,detailed_program,detailed_program_document_url,pedagogical_methods,pedagogical_resources,evaluation_methods").in("id", formationIds)
+    : { data: [], error: null };
+  if (formationError) return NextResponse.json({ error: formationError.message }, { status: 500 });
   return NextResponse.json({ sessions: sessions ?? [], dossiers: dossiers ?? [], checklist: checklist ?? [], formations: formations ?? [] });
 }
 
