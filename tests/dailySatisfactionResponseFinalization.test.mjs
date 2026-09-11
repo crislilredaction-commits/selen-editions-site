@@ -5,10 +5,10 @@ import test from "node:test";
 const learner = await readFile(new URL("../app/api/daily-feedback/[token]/route.ts", import.meta.url), "utf8");
 const stakeholder = await readFile(new URL("../app/api/daily-portal/[token]/satisfaction/route.ts", import.meta.url), "utf8");
 
-test("formateur et entreprise peuvent répondre dès le dernier jour de session", () => {
-  assert.match(stakeholder, /function availabilityOffsetForPortal\(_portalType: SupportedPortalType\) \{\s*return 0;/);
-  assert.doesNotMatch(stakeholder, /portalType === "enterprise" \? 10 : 0/);
-  assert.doesNotMatch(stakeholder, /10 jours après la fin/);
+test("le formateur peut répondre le dernier jour et l’entreprise à J+15", () => {
+  assert.match(stakeholder, /function availabilityOffsetForPortal\(portalType: SupportedPortalType\) \{\s*return portalType === "enterprise" \? 15 : 0;/);
+  assert.match(stakeholder, /questionnaire entreprise sera disponible 15 jours après la fin/);
+  assert.match(stakeholder, /questionnaire formateur sera disponible le dernier jour/);
 });
 
 test("une réponse apprenant ferme immédiatement sa relance téléphonique", () => {
