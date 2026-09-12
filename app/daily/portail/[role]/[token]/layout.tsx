@@ -14,8 +14,8 @@ export default async function DailyStakeholderPortalLayout({
   return (
     <>
       {children}
-      <aside style={s.panel} aria-label="Actions du portail">
-        <div style={s.content}>
+      <aside className="daily-portal-actions-panel" style={s.panel} aria-label="Actions du portail">
+        <div className="daily-portal-actions-content" style={s.content}>
           <div style={s.copy}>
             <strong>Besoin d’agir depuis votre espace ?</strong>
             <span>
@@ -26,23 +26,52 @@ export default async function DailyStakeholderPortalLayout({
                   : "Vous pouvez transmettre une réclamation ou une suggestion directement à Selen."}
             </span>
           </div>
-          <div style={s.actions}>
+          <div className="daily-portal-actions-links" style={s.actions}>
             {isLearner ? (
               <>
-                <a href={`/daily/portail/${role}/${token}/evaluation`} style={s.secondaryLink}>
+                <a className="daily-portal-action-link" href={`/daily/portail/${role}/${token}/evaluation`} style={s.secondaryLink}>
                   Mon évaluation
                 </a>
-                <a href={`/daily/portail/${role}/${token}/learner-satisfaction`} style={s.secondaryLink}>
+                <a className="daily-portal-action-link" href={`/daily/portail/${role}/${token}/learner-satisfaction`} style={s.secondaryLink}>
                   Ma satisfaction
                 </a>
               </>
             ) : null}
-            <a href={`/daily/portail/${role}/${token}/feedback`} style={s.link}>
+            <a className="daily-portal-action-link" href={`/daily/portail/${role}/${token}/feedback`} style={s.link}>
               Réclamation / suggestion
             </a>
           </div>
         </div>
       </aside>
+      <style>{`
+        @media (max-width: 640px) {
+          .daily-portal-actions-panel {
+            position: static !important;
+            padding: 0.85rem 1rem 1.25rem !important;
+          }
+
+          .daily-portal-actions-content,
+          .daily-portal-actions-links {
+            align-items: stretch !important;
+          }
+
+          .daily-portal-actions-content,
+          .daily-portal-actions-links,
+          .daily-portal-action-link {
+            width: 100% !important;
+            box-sizing: border-box;
+          }
+
+          .daily-portal-actions-links {
+            display: grid !important;
+          }
+
+          .daily-portal-action-link {
+            text-align: center;
+            white-space: normal;
+          }
+        }
+      `}</style>
     </>
   );
 }
