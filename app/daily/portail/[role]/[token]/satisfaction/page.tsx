@@ -123,7 +123,7 @@ export default function StakeholderSatisfactionPage({ params }: { params: Promis
           <p style={s.text}>
             {isTrainer
               ? `Le questionnaire formateur sera disponible à partir du ${formatDate(data.availableFrom)}, dernier jour de la formation.`
-              : `Le questionnaire commanditaire sera disponible à partir du ${formatDate(data.availableFrom)}, soit environ 15 jours après la fin de la formation.`}
+              : `Le questionnaire commanditaire sera disponible à partir du ${formatDate(data.availableFrom)}, soit 15 jours après la fin de la formation.`}
           </p>
         </section>
       ) : null}
