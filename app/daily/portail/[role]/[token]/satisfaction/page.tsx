@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, use, useEffect, useState } from "react";
 import Header from "@/components/Header";
 
 type SatisfactionData = {
@@ -42,8 +42,8 @@ function formatDate(value?: string | null) {
   return new Intl.DateTimeFormat("fr-FR", { dateStyle: "long" }).format(date);
 }
 
-export default function StakeholderSatisfactionPage({ params }: { params: { role: string; token: string } }) {
-  const { token } = params;
+export default function StakeholderSatisfactionPage({ params }: { params: Promise<{ role: string; token: string }> }) {
+  const { token } = use(params);
   const [data, setData] = useState<SatisfactionData | null>(null);
   const [form, setForm] = useState<FormState>(initialForm);
   const [loading, setLoading] = useState(true);

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, use, useEffect, useMemo, useState } from "react";
 import Header from "@/components/Header";
 
 type Question = {
@@ -33,8 +33,8 @@ function formatDate(value?: string | null) {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString("fr-FR");
 }
 
-export default function LearnerAssessmentPage({ params }: { params: { role: string; token: string } }) {
-  const { role, token } = params;
+export default function LearnerAssessmentPage({ params }: { params: Promise<{ role: string; token: string }> }) {
+  const { role, token } = use(params);
   const [assessment, setAssessment] = useState<Assessment | null>(null);
   const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
   const [loading, setLoading] = useState(true);

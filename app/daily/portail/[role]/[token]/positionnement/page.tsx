@@ -1,12 +1,12 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, use, useEffect, useState } from "react";
 
 type Question={id:string;type:string;label:string;options:string[];required:boolean;help_text?:string};
 type Positioning={mode:string;title:string;submitted:boolean;submittedAt?:string|null;status:string;questions:Question[]};
 
-export default function PositioningPage({params}:{params:{role:string;token:string}}){
- const{role,token}=params;const[data,setData]=useState<Positioning|null>(null);const[answers,setAnswers]=useState<Record<string,string|string[]>>({});const[error,setError]=useState("");const[loading,setLoading]=useState(true);const[submitting,setSubmitting]=useState(false);const[done,setDone]=useState(false);
+export default function PositioningPage({params}:{params:Promise<{role:string;token:string}>}){
+ const{role,token}=use(params);const[data,setData]=useState<Positioning|null>(null);const[answers,setAnswers]=useState<Record<string,string|string[]>>({});const[error,setError]=useState("");const[loading,setLoading]=useState(true);const[submitting,setSubmitting]=useState(false);const[done,setDone]=useState(false);
  useEffect(()=>{void(async()=>{const response=await fetch(`/api/daily-portal/${token}/positioning`,{cache:"no-store"});const payload=await response.json().catch(()=>({}));setLoading(false);if(!response.ok)return setError(payload.error??"Positionnement indisponible.");setData(payload.positioning)})()},[token]);
  function setAnswer(question:Question,value:string){setAnswers(current=>({...current,[question.id]:value}))}
  async function submit(event:FormEvent){event.preventDefault();setError("");setSubmitting(true);const response=await fetch(`/api/daily-portal/${token}/positioning`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({answers})});const payload=await response.json().catch(()=>({}));setSubmitting(false);if(!response.ok)return setError(payload.error??"Transmission impossible.");setDone(true);setData(current=>current?{...current,submitted:true,status:"completed",questions:[]}:current)}

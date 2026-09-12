@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, use, useEffect, useState } from "react";
 import Header from "@/components/Header";
 
 type FormContext = {
@@ -9,8 +9,8 @@ type FormContext = {
   submitterEmail: string;
 };
 
-export default function StakeholderFeedbackPage({ params }: { params: { role: string; token: string } }) {
-  const { role, token } = params;
+export default function StakeholderFeedbackPage({ params }: { params: Promise<{ role: string; token: string }> }) {
+  const { role, token } = use(params);
   const [context, setContext] = useState<FormContext | null>(null);
   const [submissionType, setSubmissionType] = useState<"complaint" | "suggestion">("suggestion");
   const [subject, setSubject] = useState("");
