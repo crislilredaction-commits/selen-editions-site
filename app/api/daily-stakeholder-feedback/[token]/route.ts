@@ -23,12 +23,22 @@ async function loadAccess(rawToken: string) {
   const admin = getAdminSupabase();
   const { data: access, error } = await admin
     .from("daily_portal_access_tokens")
-    .select("id,user_id,organisation_id,session_id,portal_type,entity_name,entity_email,status,expires_at")
+    .select("id,user_id,session_id,portal_type,entity_name,entity_email,status,expires_at")
     .eq("token", rawToken)
     .maybeSingle();
 
   if (error) throw new Error(error.message);
-  return access ? { admin, access } : null;
+  if (!access) return null;
+
+  const { data: session, error: sessionError } = await admin
+    .from("daily_sessions")
+    .select("organisation_id")
+    .eq("id", access.session_id)
+    .maybeSingle();
+  if (sessionError) throw new Error(sessionError.message);
+  if (!session?.organisation_id) throw new Error("Organisation de la session introuvable.");
+
+  return { admin, access: { ...access, organisation_id: session.organisation_id } };
 }
 
 async function learnerEnrolmentId(
@@ -86,7 +96,7 @@ export async function POST(request: Request, { params }: Params) {
   const submissionType = clean(body.submissionType, 20);
   const subject = clean(body.subject, 200);
   const message = clean(body.message, 6000);
-  if (!['complaint', 'suggestion'].includes(submissionType)) {
+  if (!["complaint", "suggestion"].includes(submissionType)) {
     return NextResponse.json({ error: "Choisissez réclamation ou suggestion." }, { status: 400 });
   }
   if (!subject || !message) {
