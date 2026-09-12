@@ -30,6 +30,15 @@ test("enterprise access reuses daily_portal_access_tokens and the existing enter
   assert.match(portalRoute, /access\.portal_type==="enterprise"/);
 });
 
+test("public portal response exposes only the session fields required by the stakeholder UI", () => {
+  assert.match(portalRoute, /const publicSession=\{id:session\.id,internal_reference:session\.internal_reference/);
+  assert.match(portalRoute, /session:publicSession/);
+  assert.doesNotMatch(portalRoute, /publicSession=\{[^}]*user_id:/);
+  assert.doesNotMatch(portalRoute, /publicSession=\{[^}]*organisation_id:/);
+  assert.doesNotMatch(portalRoute, /publicSession=\{[^}]*registration_summary:/);
+  assert.doesNotMatch(portalRoute, /publicSession=\{[^}]*created_at:/);
+});
+
 test("registration companies are synchronized into the session before portal access", () => {
   assert.match(helper, /response_type,respondent_first_name,respondent_last_name,respondent_email,company_name,participants,attached_session_id/);
   assert.match(helper, /nextCompanies\.push\(registrationCompany\)/);
