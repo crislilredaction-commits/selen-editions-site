@@ -39,6 +39,15 @@ test("public portal response exposes only the session fields required by the sta
   assert.doesNotMatch(portalRoute, /publicSession=\{[^}]*created_at:/);
 });
 
+test("enterprise participants come from active canonical enrolments for the selected company", () => {
+  assert.match(portalRoute, /id,learner_id,company_name,status,positioning_status/);
+  assert.match(portalRoute, /const companyName=String\(company\?\.name\?\?""\)\.trim\(\)\.toLowerCase\(\)/);
+  assert.match(portalRoute, /const enterpriseParticipants=access\.portal_type==="enterprise"\?\(enrolmentsR\.data\?\?\[\]\)\.filter/);
+  assert.match(portalRoute, /String\(row\.company_name\?\?""\)\.trim\(\)\.toLowerCase\(\)===companyName/);
+  assert.match(portalRoute, /participants:access\.portal_type==="enterprise"\?enterpriseParticipants/);
+  assert.doesNotMatch(portalRoute, /participants:access\.portal_type==="enterprise"\?asArray\(company\?\.participants\)/);
+});
+
 test("registration companies are synchronized into the session before portal access", () => {
   assert.match(helper, /response_type,respondent_first_name,respondent_last_name,respondent_email,company_name,participants,attached_session_id/);
   assert.match(helper, /nextCompanies\.push\(registrationCompany\)/);
