@@ -122,6 +122,7 @@ function ClientActivationContent() {
 
     const { error } = await supabase.auth.updateUser({
       password,
+      data: { selen_password_configured: true },
     });
 
     if (error) {
