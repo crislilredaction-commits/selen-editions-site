@@ -6,6 +6,7 @@ const login = readFileSync(new URL("../app/client/login/page.tsx", import.meta.u
 const forgot = readFileSync(new URL("../app/client/mot-de-passe-oublie/page.tsx", import.meta.url), "utf8");
 const confirm = readFileSync(new URL("../app/client/confirmer-recuperation/page.tsx", import.meta.url), "utf8");
 const update = readFileSync(new URL("../app/client/nouveau-mot-de-passe/page.tsx", import.meta.url), "utf8");
+const activation = readFileSync(new URL("../app/client/activation/page.tsx", import.meta.url), "utf8");
 const clientDashboard = readFileSync(new URL("../app/client/page.tsx", import.meta.url), "utf8");
 const supabaseClient = readFileSync(new URL("../app/lib/supabase/client.ts", import.meta.url), "utf8");
 
@@ -60,6 +61,11 @@ test("le nouveau mot de passe historique exige une session et met à jour l'util
   assert.match(update, /updateUser\(\{ password \}\)/);
   assert.match(update, /password\.length < 8/);
   assert.match(update, /password !== confirmation/);
+});
+
+test("l'activation d'un accès marque le mot de passe comme réellement configuré", () => {
+  assert.match(activation, /selen_password_configured:\s*true/);
+  assert.match(activation, /updateUser\(\{[\s\S]*password,[\s\S]*data:/);
 });
 
 test("le retour Supabase historique vers le Bureau est redirigé vers le changement de mot de passe", () => {
