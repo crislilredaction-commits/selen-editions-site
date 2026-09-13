@@ -16,17 +16,21 @@ function isApiRequest(pathname: string) {
   return pathname.startsWith("/api/daily-portal/");
 }
 
-function unauthorized(request: NextRequest) {
-  if (isApiRequest(request.nextUrl.pathname)) {
-    return NextResponse.json({ error: "Authentification requise." }, { status: 401 });
-  }
-
+function portalLoginRedirect(request: NextRequest, switchAccount = false) {
   const loginUrl = request.nextUrl.clone();
   loginUrl.pathname = "/client/login";
   loginUrl.search = "";
   const nextPath = `${request.nextUrl.pathname}${request.nextUrl.search}`;
   loginUrl.searchParams.set("next", nextPath);
+  if (switchAccount) loginUrl.searchParams.set("switch", "1");
   return NextResponse.redirect(loginUrl);
+}
+
+function unauthorized(request: NextRequest) {
+  if (isApiRequest(request.nextUrl.pathname)) {
+    return NextResponse.json({ error: "Authentification requise." }, { status: 401 });
+  }
+  return portalLoginRedirect(request);
 }
 
 function forbidden(request: NextRequest) {
@@ -123,6 +127,9 @@ export async function proxy(request: NextRequest) {
   }
 
   if (!normalizeEmail(user.email) || normalizeEmail(user.email) !== normalizeEmail(access.entity_email)) {
+    if (!isApiRequest(request.nextUrl.pathname)) {
+      return portalLoginRedirect(request, true);
+    }
     return forbidden(request);
   }
 
