@@ -2,7 +2,14 @@
 
 import { createBrowserClient } from "@supabase/ssr";
 
-export function createSupabaseBrowserClient() {
+type SupabaseBrowserClientOptions = {
+  detectSessionInUrl?: boolean;
+  isSingleton?: boolean;
+};
+
+export function createSupabaseBrowserClient(
+  options: SupabaseBrowserClientOptions = {},
+) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -14,5 +21,14 @@ export function createSupabaseBrowserClient() {
     throw new Error("NEXT_PUBLIC_SUPABASE_ANON_KEY manquant dans .env.local");
   }
 
-  return createBrowserClient(supabaseUrl, supabaseAnonKey);
+  return createBrowserClient(supabaseUrl, supabaseAnonKey, {
+    ...(typeof options.isSingleton === "boolean"
+      ? { isSingleton: options.isSingleton }
+      : {}),
+    auth: {
+      ...(typeof options.detectSessionInUrl === "boolean"
+        ? { detectSessionInUrl: options.detectSessionInUrl }
+        : {}),
+    },
+  });
 }
