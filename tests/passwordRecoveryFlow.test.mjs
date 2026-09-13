@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 
 const login = readFileSync(new URL("../app/client/login/page.tsx", import.meta.url), "utf8");
 const forgot = readFileSync(new URL("../app/client/mot-de-passe-oublie/page.tsx", import.meta.url), "utf8");
+const confirm = readFileSync(new URL("../app/client/confirmer-recuperation/page.tsx", import.meta.url), "utf8");
 const update = readFileSync(new URL("../app/client/nouveau-mot-de-passe/page.tsx", import.meta.url), "utf8");
 const clientDashboard = readFileSync(new URL("../app/client/page.tsx", import.meta.url), "utf8");
 const supabaseClient = readFileSync(new URL("../app/lib/supabase/client.ts", import.meta.url), "utf8");
@@ -15,8 +16,20 @@ test("la connexion expose un accès mot de passe oublié", () => {
 
 test("la demande de récupération utilise Supabase avec un retour Selen explicite", () => {
   assert.match(forgot, /resetPasswordForEmail\(normalizedEmail, \{ redirectTo \}\)/);
-  assert.match(forgot, /\/client\/nouveau-mot-de-passe/);
+  assert.match(forgot, /\/client\/confirmer-recuperation/);
   assert.match(forgot, /Si un compte Selen correspond à cette adresse/);
+});
+
+test("le jeton de récupération attend une confirmation humaine avant vérification", () => {
+  assert.match(confirm, /searchParams\.get\("token_hash"\)/);
+  assert.match(confirm, /recoveryType !== "recovery"/);
+  assert.match(confirm, /window\.history\.replaceState/);
+  assert.match(confirm, /async function handleConfirm\(\)/);
+  assert.match(confirm, /verifyOtp\(\{/);
+  assert.match(confirm, /token_hash: recoveryToken/);
+  assert.match(confirm, /type: "recovery"/);
+  assert.match(confirm, /onClick=\{handleConfirm\}/);
+  assert.match(confirm, /router\.replace\("\/client\/nouveau-mot-de-passe"\)/);
 });
 
 test("le nouveau mot de passe exige une session et met à jour l'utilisateur authentifié", () => {

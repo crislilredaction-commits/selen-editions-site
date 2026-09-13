@@ -22,7 +22,7 @@ export default function ForgotPasswordPage() {
     setIsError(false);
 
     const normalizedEmail = email.trim().toLowerCase();
-    const redirectTo = `${window.location.origin}/client/nouveau-mot-de-passe`;
+    const redirectTo = `${window.location.origin}/client/confirmer-recuperation`;
 
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, { redirectTo });
