@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/app/lib/supabase/client";
 import { assistanceFetch } from "@/components/AgentAssistanceBanner";
@@ -68,6 +69,14 @@ export default function ClientDailyPage() {
 
   return (
     <>
+      <div className="mx-auto max-w-6xl px-4 pt-5 md:px-6">
+        <Link
+          href="/client/daily/formateur"
+          className="inline-flex items-center gap-2 border border-[#b28a62]/45 bg-[#fffaf0]/70 px-4 py-3 font-['Cinzel'] text-[0.66rem] font-bold uppercase tracking-[0.1em] text-[#8a4b24] no-underline hover:bg-[#efe3cf]/70"
+        >
+          Mon espace formateur →
+        </Link>
+      </div>
       <RecentPublishedDocumentsCard />
       <DailyDashboardOverviewV2 />
     </>
