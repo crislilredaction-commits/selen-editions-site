@@ -7,6 +7,36 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { createSupabaseBrowserClient } from "../../lib/supabase/client";
 
 type FlowStatus = "checking" | "confirm" | "password" | "success" | "invalid";
+type PasswordUpdateError = {
+  code?: string;
+  status?: number;
+  name?: string;
+};
+
+function passwordUpdateErrorMessage(error: PasswordUpdateError) {
+  switch (error.code) {
+    case "weak_password":
+      return "Ce mot de passe est refusé par les règles de sécurité. Choisissez-en un plus long et combinez majuscules, minuscules, chiffres et symbole.";
+    case "same_password":
+      return "Le nouveau mot de passe doit être différent de l'ancien.";
+    case "reauthentication_needed":
+    case "current_password_required":
+      return "La sécurité du compte demande une vérification supplémentaire avant ce changement de mot de passe. Le lien est toujours valide, mais ce parcours doit être ajusté.";
+    case "reauthentication_not_valid":
+      return "La vérification de sécurité n'a pas abouti. Demandez un nouveau lien de récupération.";
+    case "session_expired":
+    case "session_not_found":
+    case "refresh_token_not_found":
+    case "refresh_token_already_used":
+      return "La session de récupération n'est plus valide. Demandez un nouveau lien.";
+    case "conflict":
+      return "Une opération de sécurité est encore en cours. Attendez quelques secondes puis réessayez sur cette page.";
+    default:
+      return error.code
+        ? `Le mot de passe n'a pas pu être modifié (code : ${error.code}). Réessayez sur cette page.`
+        : "Le mot de passe n'a pas pu être modifié. Réessayez sur cette page.";
+  }
+}
 
 export default function ConfirmRecoveryPage() {
   const supabase = useMemo(
@@ -105,7 +135,13 @@ export default function ConfirmRecoveryPage() {
     setLoading(false);
 
     if (error) {
-      setMessage("Impossible de modifier le mot de passe. Réessayez sans quitter cette page ou demandez un nouveau lien.");
+      const authError: PasswordUpdateError = {
+        code: typeof error.code === "string" ? error.code : undefined,
+        status: typeof error.status === "number" ? error.status : undefined,
+        name: typeof error.name === "string" ? error.name : undefined,
+      };
+      console.error("Password recovery update failed", authError);
+      setMessage(passwordUpdateErrorMessage(authError));
       return;
     }
 
@@ -155,6 +191,9 @@ export default function ConfirmRecoveryPage() {
                 Confirmer le mot de passe
                 <input type="password" autoComplete="new-password" minLength={8} value={confirmation} onChange={(event) => setConfirmation(event.target.value)} required style={{ width: "100%", padding: "0.75rem", border: "1px solid var(--sepia-mid)", background: "rgba(255,255,255,0.6)", color: "var(--ink)" }} />
               </label>
+              <p style={{ margin: 0, fontSize: "0.92rem", lineHeight: 1.5, color: "var(--sepia-dark)" }}>
+                Conseil : utilisez 12 caractères ou plus avec majuscule, minuscule, chiffre et symbole, et un mot de passe différent de l'ancien.
+              </p>
               <button type="submit" disabled={loading} className="btn-ink" style={{ width: "100%", opacity: loading ? 0.55 : 1, cursor: loading ? "not-allowed" : "pointer" }}>
                 <span>{loading ? "Modification…" : "Enregistrer le nouveau mot de passe"}</span>
               </button>

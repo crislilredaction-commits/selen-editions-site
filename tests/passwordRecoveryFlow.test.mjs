@@ -37,6 +37,19 @@ test("la récupération conserve la même session du lien jusqu'au nouveau mot d
   assert.match(confirm, /password !== confirmation/);
 });
 
+test("la récupération explique les refus Auth au lieu de les confondre avec un lien expiré", () => {
+  assert.match(confirm, /case "weak_password"/);
+  assert.match(confirm, /règles de sécurité/);
+  assert.match(confirm, /case "same_password"/);
+  assert.match(confirm, /différent de l'ancien/);
+  assert.match(confirm, /case "reauthentication_needed"/);
+  assert.match(confirm, /case "session_expired"/);
+  assert.match(confirm, /passwordUpdateErrorMessage\(authError\)/);
+  assert.match(confirm, /code : \$\{error\.code\}/);
+  assert.match(confirm, /12 caractères ou plus/);
+  assert.doesNotMatch(confirm, /Impossible de modifier le mot de passe\. Réessayez sans quitter cette page/);
+});
+
 test("le nouveau mot de passe historique exige une session et met à jour l'utilisateur authentifié", () => {
   assert.match(update, /detectSessionInUrl: false/);
   assert.match(update, /isSingleton: false/);
