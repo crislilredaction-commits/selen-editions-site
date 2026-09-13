@@ -39,6 +39,23 @@ test("les actions apprenant suivent la phase réelle de la session", async () =>
   assert.match(workspace, /Mon évaluation/);
 });
 
+test("C3 rend les trois phases librement consultables sans mutation métier", async () => {
+  const navigation = await read("components/daily/LearnerPhaseNavigation.tsx");
+  assert.match(navigation, /Avant la formation/);
+  assert.match(navigation, /Pendant la formation/);
+  assert.match(navigation, /Après la formation/);
+  assert.match(navigation, /setSelected\(phase\)/);
+  assert.match(navigation, /étape actuelle/);
+  assert.doesNotMatch(navigation, /method:\s*["'](?:POST|PATCH|PUT|DELETE)["']/);
+});
+
+test("C3 conserve les documents de session accessibles quelle que soit la phase consultée", async () => {
+  const navigation = await read("components/daily/LearnerPhaseNavigation.tsx");
+  assert.match(navigation, /Documents de cette session/);
+  assert.match(navigation, /\/resources/);
+  assert.match(navigation, /document\?id=/);
+});
+
 test("la convocation ouvre directement le document concerné", async () => {
   const workspace = await read("components/daily/DailyStakeholderWorkspace.tsx");
   assert.match(workspace, /Consulter ma convocation/);
