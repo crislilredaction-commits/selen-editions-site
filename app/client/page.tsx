@@ -139,6 +139,36 @@ export default function ClientDashboardPage() {
       setError("");
       setAuthRequired(false);
 
+      const currentUrl = new URL(window.location.href);
+      const recoveryCode = currentUrl.searchParams.get("code");
+      const hashParams = new URLSearchParams(currentUrl.hash.slice(1));
+      const accessToken = hashParams.get("access_token");
+      const refreshToken = hashParams.get("refresh_token");
+      const isImplicitRecovery =
+        hashParams.get("type") === "recovery" && accessToken && refreshToken;
+
+      if (recoveryCode || isImplicitRecovery) {
+        const { error: recoveryError } = recoveryCode
+          ? await supabase.auth.exchangeCodeForSession(recoveryCode)
+          : await supabase.auth.setSession({
+              access_token: accessToken!,
+              refresh_token: refreshToken!,
+            });
+
+        if (recoveryError) {
+          window.history.replaceState({}, document.title, currentUrl.pathname);
+          setError(
+            "Ce lien de réinitialisation est invalide ou a expiré. Demandez un nouveau lien.",
+          );
+          setAuthRequired(true);
+          setLoading(false);
+          return;
+        }
+
+        router.replace("/client/nouveau-mot-de-passe");
+        return;
+      }
+
       const assistanceToken = getStoredAssistanceToken();
 
       if (assistanceToken) {
