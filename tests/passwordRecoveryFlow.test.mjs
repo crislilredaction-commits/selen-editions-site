@@ -20,19 +20,24 @@ test("la demande de récupération utilise Supabase avec un retour Selen explici
   assert.match(forgot, /Si un compte Selen correspond à cette adresse/);
 });
 
-test("le jeton de récupération attend une confirmation humaine avant vérification", () => {
+test("la récupération conserve la même session du lien jusqu'au nouveau mot de passe", () => {
   assert.match(confirm, /searchParams\.get\("token_hash"\)/);
   assert.match(confirm, /recoveryType !== "recovery"/);
   assert.match(confirm, /window\.history\.replaceState/);
+  assert.match(confirm, /createSupabaseBrowserClient\(\{/);
   assert.match(confirm, /async function handleConfirm\(\)/);
   assert.match(confirm, /verifyOtp\(\{/);
   assert.match(confirm, /token_hash: recoveryToken/);
   assert.match(confirm, /type: "recovery"/);
-  assert.match(confirm, /onClick=\{handleConfirm\}/);
-  assert.match(confirm, /router\.replace\("\/client\/nouveau-mot-de-passe"\)/);
+  assert.match(confirm, /setStatus\("password"\)/);
+  assert.doesNotMatch(confirm, /router\.replace\("\/client\/nouveau-mot-de-passe"\)/);
+  assert.match(confirm, /refreshSession\(\)/);
+  assert.match(confirm, /updateUser\(\{ password \}\)/);
+  assert.match(confirm, /password\.length < 8/);
+  assert.match(confirm, /password !== confirmation/);
 });
 
-test("le nouveau mot de passe exige une session et met à jour l'utilisateur authentifié", () => {
+test("le nouveau mot de passe historique exige une session et met à jour l'utilisateur authentifié", () => {
   assert.match(update, /detectSessionInUrl: false/);
   assert.match(update, /isSingleton: false/);
   assert.match(update, /exchangeCodeForSession\(code\)/);
