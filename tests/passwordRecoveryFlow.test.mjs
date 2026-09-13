@@ -1,0 +1,26 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+
+const login = readFileSync(new URL("../app/client/login/page.tsx", import.meta.url), "utf8");
+const forgot = readFileSync(new URL("../app/client/mot-de-passe-oublie/page.tsx", import.meta.url), "utf8");
+const update = readFileSync(new URL("../app/client/nouveau-mot-de-passe/page.tsx", import.meta.url), "utf8");
+
+test("la connexion expose un accès mot de passe oublié", () => {
+  assert.match(login, /Mot de passe oublié \?/);
+  assert.match(login, /href="\/client\/mot-de-passe-oublie"/);
+});
+
+test("la demande de récupération utilise Supabase avec un retour Selen explicite", () => {
+  assert.match(forgot, /resetPasswordForEmail\(normalizedEmail, \{ redirectTo \}\)/);
+  assert.match(forgot, /\/client\/nouveau-mot-de-passe/);
+  assert.match(forgot, /Si un compte Selen correspond à cette adresse/);
+});
+
+test("le nouveau mot de passe exige une session et met à jour l'utilisateur authentifié", () => {
+  assert.match(update, /getSession\(\)/);
+  assert.match(update, /PASSWORD_RECOVERY/);
+  assert.match(update, /updateUser\(\{ password \}\)/);
+  assert.match(update, /password\.length < 8/);
+  assert.match(update, /password !== confirmation/);
+});

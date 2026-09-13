@@ -12,11 +12,9 @@ type LoginMode = "client" | "agent";
 export default function ClientLoginPage() {
   const supabase = createSupabaseBrowserClient();
   const router = useRouter();
-
   const [mode, setMode] = useState<LoginMode>("client");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -24,24 +22,15 @@ export default function ClientLoginPage() {
     e.preventDefault();
     setLoading(true);
     setMessage("");
-
     const normalizedEmail = email.trim().toLowerCase();
     const { error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
-
     if (error) {
       setMessage("Connexion impossible. Vérifiez votre email et votre mot de passe.");
       setLoading(false);
       return;
     }
-
     if (mode === "agent") {
-      const { data: agentData, error: agentError } = await supabase
-        .from("agent_profiles")
-        .select("email, role, is_active")
-        .eq("email", normalizedEmail)
-        .eq("is_active", true)
-        .maybeSingle();
-
+      const { data: agentData, error: agentError } = await supabase.from("agent_profiles").select("email, role, is_active").eq("email", normalizedEmail).eq("is_active", true).maybeSingle();
       if (agentError) {
         setMessage(`Connexion réussie, mais impossible de vérifier l’accès agent : ${agentError.message}`);
         setLoading(false);
@@ -56,7 +45,6 @@ export default function ClientLoginPage() {
       setLoading(false);
       return;
     }
-
     try {
       const dailyResponse = await fetch("/api/client/daily/onboarding", { cache: "no-store" });
       if (dailyResponse.ok) {
@@ -67,7 +55,6 @@ export default function ClientLoginPage() {
     } catch {
       // Le bureau général reste le repli si Daily n'est pas accessible.
     }
-
     router.push("/client");
     setLoading(false);
   };
@@ -80,21 +67,13 @@ export default function ClientLoginPage() {
           <div style={{ position: "relative", zIndex: 1, textAlign: "center" }}>
             <p className="gazette-label">Connexion</p>
             <h1 className="gazette-hero-title" style={{ color: "var(--parchment)", marginBottom: "0.6rem" }}>Accéder au bureau Selen</h1>
-            <p style={{ color: "var(--sepia-mid)", lineHeight: 1.65, maxWidth: 680, margin: "0 auto" }}>
-              Choisissez votre espace, puis connectez-vous avec l’adresse email utilisée lors de votre achat ou fournie par Selen.
-            </p>
+            <p style={{ color: "var(--sepia-mid)", lineHeight: 1.65, maxWidth: 680, margin: "0 auto" }}>Choisissez votre espace, puis connectez-vous avec l’adresse email utilisée lors de votre achat ou fournie par Selen.</p>
           </div>
         </div>
 
         <div style={{ marginTop: "1.5rem", display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: "1rem" }} className="preaudit-grid">
-          <button type="button" onClick={() => setMode("client")} style={{ border: "1px solid var(--sepia-mid)", borderLeft: mode === "client" ? "4px solid var(--ocre-gold)" : "1px solid var(--sepia-mid)", background: mode === "client" ? "rgba(201,160,85,0.14)" : "var(--paper)", padding: "1rem", textAlign: "left", cursor: "pointer" }}>
-            <p className="gazette-label">Client</p><h2 style={{ color: "var(--ink)", marginTop: "0.35rem" }}>Le bureau Selen</h2>
-            <p style={{ color: "var(--ink-faint)", fontSize: "0.9rem", lineHeight: 1.5, marginTop: "0.35rem" }}>Daily, auto-audit, audit blanc, rapports et documents transmis.</p>
-          </button>
-          <button type="button" onClick={() => setMode("agent")} style={{ border: "1px solid var(--sepia-mid)", borderLeft: mode === "agent" ? "4px solid var(--ocre-gold)" : "1px solid var(--sepia-mid)", background: mode === "agent" ? "rgba(201,160,85,0.14)" : "var(--paper)", padding: "1rem", textAlign: "left", cursor: "pointer" }}>
-            <p className="gazette-label">Agent</p><h2 style={{ color: "var(--ink)", marginTop: "0.35rem" }}>Espace agent</h2>
-            <p style={{ color: "var(--ink-faint)", fontSize: "0.9rem", lineHeight: 1.5, marginTop: "0.35rem" }}>Gestion des dossiers, audits blancs, rapports et documents.</p>
-          </button>
+          <button type="button" onClick={() => setMode("client")} style={{ border: "1px solid var(--sepia-mid)", borderLeft: mode === "client" ? "4px solid var(--ocre-gold)" : "1px solid var(--sepia-mid)", background: mode === "client" ? "rgba(201,160,85,0.14)" : "var(--paper)", padding: "1rem", textAlign: "left", cursor: "pointer" }}><p className="gazette-label">Client</p><h2 style={{ color: "var(--ink)", marginTop: "0.35rem" }}>Le bureau Selen</h2><p style={{ color: "var(--ink-faint)", fontSize: "0.9rem", lineHeight: 1.5, marginTop: "0.35rem" }}>Daily, auto-audit, audit blanc, rapports et documents transmis.</p></button>
+          <button type="button" onClick={() => setMode("agent")} style={{ border: "1px solid var(--sepia-mid)", borderLeft: mode === "agent" ? "4px solid var(--ocre-gold)" : "1px solid var(--sepia-mid)", background: mode === "agent" ? "rgba(201,160,85,0.14)" : "var(--paper)", padding: "1rem", textAlign: "left", cursor: "pointer" }}><p className="gazette-label">Agent</p><h2 style={{ color: "var(--ink)", marginTop: "0.35rem" }}>Espace agent</h2><p style={{ color: "var(--ink-faint)", fontSize: "0.9rem", lineHeight: 1.5, marginTop: "0.35rem" }}>Gestion des dossiers, audits blancs, rapports et documents.</p></button>
         </div>
 
         <section style={{ marginTop: "1.2rem", background: "var(--paper)", border: "1px solid var(--sepia-mid)", padding: "1.4rem" }}>
@@ -103,6 +82,7 @@ export default function ClientLoginPage() {
           <form onSubmit={handleLogin} style={{ display: "grid", gap: "1rem" }}>
             <label style={{ display: "grid", gap: "0.35rem" }}>Email<input type="email" placeholder="votre@email.fr" value={email} onChange={(e) => setEmail(e.target.value)} required style={{ width: "100%", padding: "0.75rem", border: "1px solid var(--sepia-mid)", background: "rgba(255,255,255,0.6)", color: "var(--ink)" }} /></label>
             <label style={{ display: "grid", gap: "0.35rem" }}>Mot de passe<input type="password" placeholder="Votre mot de passe" value={password} onChange={(e) => setPassword(e.target.value)} required style={{ width: "100%", padding: "0.75rem", border: "1px solid var(--sepia-mid)", background: "rgba(255,255,255,0.6)", color: "var(--ink)" }} /></label>
+            <div style={{ textAlign: "right", marginTop: "-0.35rem" }}><Link href="/client/mot-de-passe-oublie" style={{ color: "var(--ocre-dark)", fontWeight: 700, textDecoration: "none", fontSize: "0.9rem" }}>Mot de passe oublié ?</Link></div>
             <button type="submit" disabled={loading} className="btn-ink" style={{ width: "100%", opacity: loading ? 0.55 : 1, cursor: loading ? "not-allowed" : "pointer" }}><span>{loading ? "Connexion..." : mode === "agent" ? "Entrer dans l’espace agent" : "Entrer dans le bureau Selen"}</span></button>
           </form>
 
@@ -110,7 +90,7 @@ export default function ClientLoginPage() {
 
           <div style={{ marginTop: "1.2rem", borderTop: "1px solid var(--sepia-mid)", paddingTop: "1rem", display: "grid", gap: "0.55rem", color: "var(--ink-faint)", fontSize: "0.9rem", lineHeight: 1.5 }}>
             <p>Si vous venez d’acheter une prestation, un email de connexion peut vous être envoyé automatiquement. Pensez à vérifier vos courriers indésirables : le message peut apparaître comme envoyé par Supabase.</p>
-            <p>Si vous ne retrouvez pas votre accès, retournez vers <a href="/client" style={{ color: "var(--ocre-dark)", fontWeight: 700 }}>le bureau Selen</a> pour utiliser le bouton Prévenir Selen.</p>
+            <p>Si vous ne retrouvez pas votre accès, utilisez d’abord « Mot de passe oublié ? ». Si le problème persiste, retournez vers <a href="/client" style={{ color: "var(--ocre-dark)", fontWeight: 700 }}>le bureau Selen</a> pour prévenir Selen.</p>
             <Link href="/client" style={{ color: "var(--ocre-dark)", fontWeight: 700, textDecoration: "none" }}>Retourner au bureau Selen</Link>
           </div>
         </section>
