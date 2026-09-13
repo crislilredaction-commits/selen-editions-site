@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 const SIGNATURE_HEIGHT = 210;
+const CONSENT_TEXT = "Je confirme ma présence pour ce créneau de formation et j’accepte que ma signature électronique, la date et l’heure de signature ainsi que les éléments techniques de preuve soient conservés dans le dossier de formation.";
 type Json = Record<string, any>;
 type Props = { role: string; token: string; slotId: string };
 
@@ -109,7 +110,7 @@ export default function LateAttendanceForm({ role, token, slotId }: Props) {
     {notice ? <p style={{ padding: 12, border: "1px solid #7a8" }}>{notice}</p> : null}
     {slot && !notice ? <section style={{ padding: 16, border: "1px solid var(--sepia-mid)", background: "var(--paper)" }}>
       <p><strong>Créneau concerné :</strong> {new Date(`${slot.date}T12:00:00`).toLocaleDateString("fr-FR")} · {String(slot.startsAt).slice(0,5)} à {String(slot.endsAt).slice(0,5)}</p>
-      <label style={{ display: "flex", gap: 10, alignItems: "flex-start", margin: "1rem 0", lineHeight: 1.5 }}><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} style={{ width: 22, height: 22 }} /><span>Je confirme que cette signature correspond à ma présence sur le créneau indiqué et j’accepte la conservation de la preuve d’émargement dans mon dossier de formation.</span></label>
+      <label style={{ display: "flex", gap: 10, alignItems: "flex-start", margin: "1rem 0", lineHeight: 1.5 }}><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} style={{ width: 22, height: 22 }} /><span>{CONSENT_TEXT}</span></label>
       <p style={{ fontWeight: 800 }}>Signez dans le cadre :</p>
       <canvas ref={canvasRef} aria-label="Zone de signature" onPointerDown={start} onPointerMove={move} onPointerUp={() => { drawing.current = false; }} onPointerCancel={() => { drawing.current = false; }} style={{ display: "block", width: "100%", height: SIGNATURE_HEIGHT, border: "1px solid var(--sepia-mid)", background: "#fffaf0", touchAction: "none" }} />
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}><button type="button" onClick={clearSignature} disabled={saving}>Effacer</button><button type="button" onClick={() => void submit()} disabled={saving}>{saving ? "Enregistrement…" : "Confirmer ma présence maintenant"}</button></div>
