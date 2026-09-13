@@ -31,6 +31,14 @@ test("le générateur choisit contrat ou convention depuis le SIRET client final
   assert.match(generator, /Convention de formation/);
 });
 
+test("le SIRET client doit être vide ou contenir exactement 14 chiffres", () => {
+  assert.match(generator, /rawClientSiret/);
+  assert.match(generator, /rawClientSiret\.replace\(\/\\s\+\/g,""\)/);
+  assert.match(generator, /\^\\d\{14\}\$/);
+  assert.match(generator, /Le SIRET du client doit comporter exactement 14 chiffres/);
+  assert.match(generator, /SIRET valide \(14 chiffres\) : convention\. Champ vide : contrat\./);
+});
+
 test("le programme généré reprend les indicateurs de performance de la formation", () => {
   assert.match(generator, /result_beneficiary_count/);
   assert.match(generator, /result_satisfaction_rate/);
