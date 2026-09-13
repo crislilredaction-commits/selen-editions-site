@@ -9,6 +9,13 @@ import Link from "next/link";
 
 type LoginMode = "client" | "agent";
 
+function sanitizeNextPath(value: string | null) {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) {
+    return null;
+  }
+  return value;
+}
+
 export default function ClientLoginPage() {
   const supabase = createSupabaseBrowserClient();
   const router = useRouter();
@@ -45,6 +52,17 @@ export default function ClientLoginPage() {
       setLoading(false);
       return;
     }
+
+    const nextPath = typeof window !== "undefined"
+      ? sanitizeNextPath(new URLSearchParams(window.location.search).get("next"))
+      : null;
+    if (nextPath) {
+      router.push(nextPath);
+      router.refresh();
+      setLoading(false);
+      return;
+    }
+
     try {
       const dailyResponse = await fetch("/api/client/daily/onboarding", { cache: "no-store" });
       if (dailyResponse.ok) {
