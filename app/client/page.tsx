@@ -101,7 +101,14 @@ function formatSupportStatus(status?: string | null) {
 
 export default function ClientDashboardPage() {
   const router = useRouter();
-  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const supabase = useMemo(
+    () =>
+      createSupabaseBrowserClient({
+        detectSessionInUrl: false,
+        isSingleton: false,
+      }),
+    [],
+  );
 
   const [loading, setLoading] = useState(true);
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);

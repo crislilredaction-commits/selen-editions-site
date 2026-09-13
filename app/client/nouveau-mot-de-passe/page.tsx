@@ -7,7 +7,14 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "../../lib/supabase/client";
 
 export default function UpdatePasswordPage() {
-  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const supabase = useMemo(
+    () =>
+      createSupabaseBrowserClient({
+        detectSessionInUrl: false,
+        isSingleton: false,
+      }),
+    [],
+  );
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [sessionReady, setSessionReady] = useState(false);
