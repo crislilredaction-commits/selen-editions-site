@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 const login = readFileSync(new URL("../app/client/login/page.tsx", import.meta.url), "utf8");
 const forgot = readFileSync(new URL("../app/client/mot-de-passe-oublie/page.tsx", import.meta.url), "utf8");
 const update = readFileSync(new URL("../app/client/nouveau-mot-de-passe/page.tsx", import.meta.url), "utf8");
+const clientDashboard = readFileSync(new URL("../app/client/page.tsx", import.meta.url), "utf8");
 
 test("la connexion expose un accès mot de passe oublié", () => {
   assert.match(login, /Mot de passe oublié \?/);
@@ -18,9 +19,17 @@ test("la demande de récupération utilise Supabase avec un retour Selen explici
 });
 
 test("le nouveau mot de passe exige une session et met à jour l'utilisateur authentifié", () => {
+  assert.match(update, /exchangeCodeForSession\(code\)/);
+  assert.match(update, /setSession\(\{/);
   assert.match(update, /getSession\(\)/);
   assert.match(update, /PASSWORD_RECOVERY/);
   assert.match(update, /updateUser\(\{ password \}\)/);
   assert.match(update, /password\.length < 8/);
   assert.match(update, /password !== confirmation/);
+});
+
+test("le retour Supabase historique vers le Bureau est redirigé vers le changement de mot de passe", () => {
+  assert.match(clientDashboard, /exchangeCodeForSession\(recoveryCode\)/);
+  assert.match(clientDashboard, /hashParams\.get\("type"\) === "recovery"/);
+  assert.match(clientDashboard, /router\.replace\("\/client\/nouveau-mot-de-passe"\)/);
 });
