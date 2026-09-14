@@ -8,6 +8,7 @@ import {
   attendanceMode,
   createAttendanceToken,
 } from "@/lib/server/dailyAttendance";
+import { ensurePosttrainingDocuments } from "@/lib/server/dailyPosttrainingDocuments";
 
 function text(body: Record<string, unknown>, key: string) {
   return String(body[key] ?? "").trim();
@@ -58,6 +59,19 @@ async function refreshChecklist(
     .eq("session_id", sessionId)
     .eq("item_key", "attendance_followup")
     .in("status", ["todo", "in_progress", "to_review"]);
+}
+
+async function tryEnsurePosttrainingDocuments(
+  admin: ReturnType<typeof import("@/lib/server/clientNdaAccess").getAdminSupabase>,
+  organisationId: string,
+  userId: string,
+  sessionId: string,
+) {
+  try {
+    await ensurePosttrainingDocuments({ admin, organisationId, userId, sessionId });
+  } catch (error) {
+    console.error("[daily] automatic post-training document generation failed after attendance update", error);
+  }
 }
 
 async function loadSessionOverview(
@@ -287,6 +301,7 @@ export async function POST(req: Request) {
       .eq("slot_id", slotId)
       .eq("status", "active");
     await refreshChecklist(context.admin, sessionId, context.organisationId);
+    await tryEnsurePosttrainingDocuments(context.admin, context.organisationId, context.user.id, sessionId);
     return NextResponse.json({ ok: true });
   }
 
@@ -307,6 +322,7 @@ export async function POST(req: Request) {
       .neq("status", "present");
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     await refreshChecklist(context.admin, sessionId, context.organisationId);
+    await tryEnsurePosttrainingDocuments(context.admin, context.organisationId, context.user.id, sessionId);
     return NextResponse.json({ ok: true });
   }
 
