@@ -22,10 +22,10 @@ async function getTrainerContext() {
   const workspace = await getDailyClientWorkspace();
   if (!workspace.ok) return workspace;
 
-  const trainer = workspace.workspace.trainers.find((item) =>
-    String(item.user_id ?? "") === workspace.user.id
-    || (Boolean(workspace.user.email)
-      && normalizedEmail(item.professional_email) === normalizedEmail(workspace.user.email)),
+  const linkedTrainer = workspace.workspace.trainers.find((item) => String(item.user_id ?? "") === workspace.user.id);
+  const trainer = linkedTrainer ?? workspace.workspace.trainers.find((item) =>
+    Boolean(workspace.user.email)
+      && normalizedEmail(item.professional_email) === normalizedEmail(workspace.user.email),
   );
   const hasTrainerAccess = workspace.workspace.capabilities.trainer_self
     || workspace.workspace.membership.roles.includes("trainer")
