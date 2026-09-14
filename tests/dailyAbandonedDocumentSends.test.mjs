@@ -5,19 +5,33 @@ import test from "node:test";
 const pretrainingPath = new URL("../app/api/client/daily/pretraining-documents/send/route.ts", import.meta.url);
 const pretrainingGenerationPath = new URL("../app/api/client/daily/pretraining-documents/route.ts", import.meta.url);
 const posttrainingGenerationPath = new URL("../app/api/client/daily/posttraining-documents/route.ts", import.meta.url);
+const posttrainingHelperPath = new URL("../lib/server/dailyPosttrainingDocuments.ts", import.meta.url);
 const posttrainingPath = new URL("../app/api/client/daily/posttraining-documents/send/route.ts", import.meta.url);
 const signedConventionDispatchPath = new URL("../lib/server/dailySignedConventionPretrainingPack.ts", import.meta.url);
 const attendancePath = new URL("../app/api/client/daily/attendance/route.ts", import.meta.url);
 const attendanceAutomationPath = new URL("../app/api/internal/daily/attendance-automation/route.ts", import.meta.url);
+const endEvaluationsPath = new URL("../app/api/client/daily/end-evaluations/route.ts", import.meta.url);
 
-const [pretraining, pretrainingGeneration, posttrainingGeneration, posttraining, signedConventionDispatch, attendance, attendanceAutomation] = await Promise.all([
+const [
+  pretraining,
+  pretrainingGeneration,
+  posttrainingGeneration,
+  posttrainingHelper,
+  posttraining,
+  signedConventionDispatch,
+  attendance,
+  attendanceAutomation,
+  endEvaluations,
+] = await Promise.all([
   readFile(pretrainingPath, "utf8"),
   readFile(pretrainingGenerationPath, "utf8"),
   readFile(posttrainingGenerationPath, "utf8"),
+  readFile(posttrainingHelperPath, "utf8"),
   readFile(posttrainingPath, "utf8"),
   readFile(signedConventionDispatchPath, "utf8"),
   readFile(attendancePath, "utf8"),
   readFile(attendanceAutomationPath, "utf8"),
+  readFile(endEvaluationsPath, "utf8"),
 ]);
 
 test("une inscription abandonnée ne peut plus recevoir de convocation", () => {
@@ -36,9 +50,37 @@ test("une inscription abandonnée est exclue de la génération des documents pr
 
 test("une inscription abandonnée est exclue de la génération des documents de fin", () => {
   assert.match(
-    posttrainingGeneration,
-    /\.not\("status","in",'\(declined,cancelled,abandoned\)'\)/,
+    posttrainingHelper,
+    /\.not\("status", "in", '\(declined,cancelled,abandoned\)'\)/,
   );
+});
+
+test("la route manuelle réutilise le même générateur de documents de fin", () => {
+  assert.match(posttrainingGeneration, /generatePosttrainingDocuments/);
+  assert.match(posttrainingGeneration, /mode: "manual"/);
+});
+
+test("la génération automatique attend une vraie fin de session", () => {
+  assert.match(posttrainingHelper, /mode === "auto"/);
+  assert.match(posttrainingHelper, /session\.end_date/);
+  assert.match(posttrainingHelper, /slot\.status !== "closed"/);
+  assert.match(posttrainingHelper, /record\.status !== "pending"/);
+  assert.match(posttrainingHelper, /assessment\.outcome !== "pending"/);
+});
+
+test("la génération automatique est idempotente et ne recrée pas les versions existantes", () => {
+  assert.match(posttrainingHelper, /existingKeys\.has\(attendanceKey\)/);
+  assert.match(posttrainingHelper, /existingKeys\.has\(certificateKey\)/);
+  assert.match(posttrainingHelper, /return autoBlocked\("already_generated", eligibleCertificates\)/);
+});
+
+test("la clôture d'émargement et la régularisation d'absence retentent les documents de fin", () => {
+  assert.match(attendance, /action === "close_slot"[\s\S]*tryEnsurePosttrainingDocuments/);
+  assert.match(attendance, /action === "set_absence"[\s\S]*tryEnsurePosttrainingDocuments/);
+});
+
+test("la dernière évaluation finale peut déclencher les documents de fin", () => {
+  assert.match(endEvaluations, /action === "save_assessment"[\s\S]*tryEnsurePosttrainingDocuments/);
 });
 
 test("une inscription abandonnée ne peut plus recevoir de certificat de réalisation", () => {

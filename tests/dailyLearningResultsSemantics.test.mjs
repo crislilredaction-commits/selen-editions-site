@@ -10,6 +10,7 @@ const abandonmentMigration = await readFile(new URL("../supabase/migrations/2026
 const evaluationsPage = await readFile(new URL("../app/client/daily/evaluations/page.tsx", import.meta.url), "utf8");
 const evaluationRoute = await readFile(new URL("../app/api/client/daily/end-evaluations/route.ts", import.meta.url), "utf8");
 const posttrainingRoute = await readFile(new URL("../app/api/client/daily/posttraining-documents/route.ts", import.meta.url), "utf8");
+const posttrainingDocuments = await readFile(new URL("../lib/server/dailyPosttrainingDocuments.ts", import.meta.url), "utf8");
 const posttrainingHtml = await readFile(new URL("../lib/server/dailyPosttrainingDocumentHtml.ts", import.meta.url), "utf8");
 
 test("résultats pédagogiques: seul Acquis compte comme réussite", () => {
@@ -30,10 +31,11 @@ test("résultats pédagogiques: le libellé métier remplace Partiellement acqui
 });
 
 test("certificat de réalisation: l’évaluation finale est chargée et tracée", () => {
-  assert.match(posttrainingRoute, /from\("daily_learning_assessments"\)/);
-  assert.match(posttrainingRoute, /learning_outcome:learningOutcome/);
-  assert.match(posttrainingRoute, /learning_result:learningResult/);
-  assert.match(posttrainingRoute, /learning_assessed_at:assessment\?\.assessed_at\?\?null/);
+  assert.match(posttrainingRoute, /generatePosttrainingDocuments/);
+  assert.match(posttrainingDocuments, /from\("daily_learning_assessments"\)/);
+  assert.match(posttrainingDocuments, /learning_outcome: learningOutcome/);
+  assert.match(posttrainingDocuments, /learning_result: learningResult/);
+  assert.match(posttrainingDocuments, /learning_assessed_at: assessment\?\.assessed_at \?\? null/);
 });
 
 test("certificat de réalisation: Acquis et Non acquis suivent la sémantique métier", () => {
