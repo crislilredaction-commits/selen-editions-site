@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { Resend } from "resend";
+import { buildDailyPortalAuthEntryUrl } from "@/lib/server/dailyPortalAuthEntry";
 
 const resendApiKey = process.env.RESEND_API_KEY?.trim();
 const resendFromEmail = process.env.RESEND_FROM_EMAIL || "Selen Editions <hello@selen-editions.fr>";
@@ -34,7 +35,7 @@ function portalEmail(input: { learnerName: string; formationTitle: string; porta
 }
 
 type AdminClient = any;
-type LearnerAccessSource = "accepted_registration_request" | "manual_enrolment";
+type LearnerAccessSource = "accepted_registration_request" | "manual_enrolment" | "manual_resend";
 
 type EnsureAccessInput = {
   enrolmentId: string;
@@ -42,6 +43,7 @@ type EnsureAccessInput = {
   origin: string;
   createdBy?: string | null;
   source?: LearnerAccessSource;
+  force?: boolean;
 };
 
 export type LearnerPortalAccessResult = {
@@ -125,24 +127,28 @@ export async function ensureAndSendLearnerPortalAccess(admin: AdminClient, input
   }
 
   const portalUrl = `${input.origin}/daily/portail/learner/${encodeURIComponent(access.token)}`;
-  const { data: previous, error: previousError } = await admin
-    .from("daily_communications")
-    .select("id,status,sent_at")
-    .eq("organisation_id", enrolment.organisation_id)
-    .eq("session_id", session.id)
-    .eq("communication_type", "learner_portal_access")
-    .eq("recipient_email", email)
-    .contains("metadata", { portal_access_id: access.id, enrolment_id: enrolment.id })
-    .in("status", ["queued", "sent", "delivered"])
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (previousError) throw previousError;
-  if (previous) {
-    return { enrolmentId: enrolment.id, learnerId: learner.id, email, portalAccessId: access.id, status: "already_sent", communicationId: previous.id, portalUrl };
+  if (!input.force) {
+    const { data: previous, error: previousError } = await admin
+      .from("daily_communications")
+      .select("id,status,sent_at")
+      .eq("organisation_id", enrolment.organisation_id)
+      .eq("session_id", session.id)
+      .eq("communication_type", "learner_portal_access")
+      .eq("recipient_email", email)
+      .contains("metadata", { portal_access_id: access.id, enrolment_id: enrolment.id })
+      .contains("metadata", { auth_protected: true })
+      .in("status", ["queued", "sent", "delivered"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (previousError) throw previousError;
+    if (previous) {
+      return { enrolmentId: enrolment.id, learnerId: learner.id, email, portalAccessId: access.id, status: "already_sent", communicationId: previous.id, portalUrl };
+    }
   }
 
-  const message = portalEmail({ learnerName, formationTitle: text(formation?.title) || "Formation Selen Daily", portalUrl });
+  const authUrl = await buildDailyPortalAuthEntryUrl({ email, portalType: "learner", token: access.token });
+  const message = portalEmail({ learnerName, formationTitle: text(formation?.title) || "Formation Selen Daily", portalUrl: authUrl });
   const { data: communication, error: evidenceError } = await admin
     .from("daily_communications")
     .insert({
@@ -164,6 +170,7 @@ export async function ensureAndSendLearnerPortalAccess(admin: AdminClient, input
         enrolment_id: enrolment.id,
         registration_request_id: input.registrationRequestId ?? null,
         source,
+        auth_protected: true,
       },
     })
     .select("id")

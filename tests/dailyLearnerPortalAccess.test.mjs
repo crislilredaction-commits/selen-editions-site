@@ -5,6 +5,8 @@ import fs from "node:fs";
 const route = fs.readFileSync("app/api/client/daily/registration-requests/route.ts", "utf8");
 const manualRoute = fs.readFileSync("app/api/client/daily/learners/route.ts", "utf8");
 const helper = fs.readFileSync("lib/server/dailyLearnerPortalAccess.ts", "utf8");
+const authEntry = fs.readFileSync("lib/server/dailyPortalAuthEntry.ts", "utf8");
+const learnerPage = fs.readFileSync("app/client/daily/apprenants/page.tsx", "utf8");
 
 test("materialized registrations trigger learner portal provisioning", () => {
   assert.match(route, /sendLearnerPortalAccessForRegistrationRequest/);
@@ -64,4 +66,22 @@ test("expired or revoked portal links are renewed instead of duplicated", () => 
 test("only the organisation manager can manually retry learner access delivery", () => {
   assert.match(route, /body\.action === "send_learner_access"/);
   assert.match(route, /Seul le responsable de l'organisme peut relancer les accès apprenants/);
+});
+
+test("learner access email always enters through password activation or login", () => {
+  assert.match(helper, /buildDailyPortalAuthEntryUrl/);
+  assert.match(helper, /auth_protected: true/);
+  assert.match(authEntry, /selen_password_configured/);
+  assert.match(authEntry, /type: linkType/);
+  assert.match(authEntry, /properties\?\.hashed_token/);
+  assert.match(authEntry, /\/client\/activation\?token_hash=/);
+  assert.match(authEntry, /\/client\/login\?next=/);
+});
+
+test("an existing manual enrolment can receive a fresh secure access link", () => {
+  assert.match(manualRoute, /action==="send_access"/);
+  assert.match(manualRoute, /source:"manual_resend"/);
+  assert.match(manualRoute, /force:true/);
+  assert.match(learnerPage, /Renvoyer l’accès sécurisé/);
+  assert.match(learnerPage, /action:"send_access"/);
 });
