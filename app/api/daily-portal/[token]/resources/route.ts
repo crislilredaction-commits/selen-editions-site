@@ -9,6 +9,90 @@ const array = (value: unknown): Json[] => Array.isArray(value) ? value.filter((v
 const published = ["validated", "published", "signed", "active"];
 const learnerTypes = ["training_program", "convocation", "registration_positioning", "completion_certificate", "organisation_shared"];
 
+function matchesLearnerRecipient(row: Json, access: Json) {
+  const entityEmail = email(access.entity_email);
+  const entityName = text(access.entity_name).toLowerCase();
+  return row.recipient_type === "beneficiary" && (
+    (entityEmail && email(row.recipient_email) === entityEmail)
+    || (entityName && text(row.recipient_name).toLowerCase() === entityName)
+  );
+}
+
+function latestVersion(rows: Json[]) {
+  return [...rows].sort((a, b) => {
+    const versionDelta = Number(b.version ?? 0) - Number(a.version ?? 0);
+    if (versionDelta) return versionDelta;
+    return new Date(text(b.generated_at) || 0).getTime() - new Date(text(a.generated_at) || 0).getTime();
+  })[0] ?? null;
+}
+
+async function loadLearnerPretrainingResources(admin: ReturnType<typeof getAdminSupabase>, sessionId: string, access: Json) {
+  if (access.portal_type !== "learner") return [] as Json[];
+
+  const [conventionsResult, convocationsResult] = await Promise.all([
+    admin
+      .from("daily_conventions")
+      .select("id,recipient_type,recipient_name,recipient_email,version,document_name,generated_at,storage_path")
+      .eq("session_id", sessionId)
+      .eq("recipient_type", "beneficiary"),
+    admin
+      .from("daily_convocations")
+      .select("id,recipient_type,recipient_name,recipient_email,version,document_name,status,generated_at,storage_path")
+      .eq("session_id", sessionId)
+      .eq("recipient_type", "beneficiary"),
+  ]);
+
+  if (conventionsResult.error) throw conventionsResult.error;
+  if (convocationsResult.error) throw convocationsResult.error;
+
+  const convention = latestVersion((conventionsResult.data ?? []).filter((row: Json) => matchesLearnerRecipient(row, access) && text(row.storage_path)));
+  const convocation = latestVersion((convocationsResult.data ?? []).filter((row: Json) => matchesLearnerRecipient(row, access) && text(row.storage_path)));
+  const resources: Json[] = [];
+
+  if (convention) {
+    const conventionId = text(convention.id);
+    resources.push({
+      id: `portal:convention:${conventionId}`,
+      document_type: "learner_convention",
+      linked_object_type: "convention",
+      linked_object_id: conventionId,
+      logical_name: "Convention de formation",
+      version: convention.version ?? null,
+      status: "published",
+      mime_type: null,
+      created_at: convention.generated_at ?? null,
+    });
+    resources.push({
+      id: `portal:regulations:${conventionId}`,
+      document_type: "internal_regulations",
+      linked_object_type: "convention",
+      linked_object_id: conventionId,
+      logical_name: "Règlement intérieur (annexe de la convention)",
+      version: convention.version ?? null,
+      status: "published",
+      mime_type: null,
+      created_at: convention.generated_at ?? null,
+    });
+  }
+
+  if (convocation) {
+    const convocationId = text(convocation.id);
+    resources.push({
+      id: `portal:welcome:${convocationId}`,
+      document_type: "welcome_booklet",
+      linked_object_type: "convocation",
+      linked_object_id: convocationId,
+      logical_name: "Livret d’accueil (annexe de la convocation)",
+      version: convocation.version ?? null,
+      status: "published",
+      mime_type: null,
+      created_at: convocation.generated_at ?? null,
+    });
+  }
+
+  return resources;
+}
+
 export async function GET(_request: Request, { params }: Params) {
   const { token } = await params; const admin = getAdminSupabase();
   const { data: access, error: accessError } = await admin.from("daily_portal_access_tokens").select("*").eq("token", text(token)).maybeSingle();
@@ -49,5 +133,13 @@ export async function GET(_request: Request, { params }: Params) {
     if (scope === "learners") return access.portal_type === "learner" && text(metadata.session_id) === session.id && Array.isArray(metadata.learner_ids) && metadata.learner_ids.map(String).some((learnerId) => allowedLearnerIds.includes(learnerId));
     return false;
   });
-  return NextResponse.json({ documents: visible });
+
+  let pretrainingResources: Json[] = [];
+  try {
+    pretrainingResources = await loadLearnerPretrainingResources(admin, session.id, access as Json);
+  } catch (cause) {
+    return NextResponse.json({ error: cause instanceof Error ? cause.message : "Documents avant formation indisponibles." }, { status: 500 });
+  }
+
+  return NextResponse.json({ documents: [...pretrainingResources, ...visible] });
 }
