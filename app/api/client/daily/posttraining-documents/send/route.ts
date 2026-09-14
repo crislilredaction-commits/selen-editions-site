@@ -65,6 +65,32 @@ export async function POST(request: Request) {
   const learnerName = [learner?.first_name, learner?.last_name].map(text).filter(Boolean).join(" ");
   if (!email) return NextResponse.json({ error: "Aucune adresse e-mail n’est enregistrée pour cet apprenant." }, { status: 400 });
 
+  const { data: existingCommunication, error: existingCommunicationError } = await context.admin
+    .from("daily_communications")
+    .select("id,status,sent_at,recipient_email")
+    .eq("organisation_id", context.organisationId)
+    .eq("enrolment_id", enrolment.id)
+    .eq("communication_type", "completion_certificate")
+    .contains("metadata", { document_id: document.id, document_version: document.version })
+    .eq("status", "sent")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (existingCommunicationError) {
+    return NextResponse.json({ error: existingCommunicationError.message }, { status: 500 });
+  }
+  if (existingCommunication) {
+    return NextResponse.json({
+      ok: true,
+      alreadySent: true,
+      sentTo: existingCommunication.recipient_email,
+      sentAt: existingCommunication.sent_at,
+      evidenceRecorded: true,
+      communicationId: existingCommunication.id,
+    });
+  }
+
   const { data: session, error: sessionError } = await context.admin
     .from("daily_sessions")
     .select("id,start_date,end_date,status,daily_formations(title)")
@@ -169,6 +195,7 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     ok: true,
+    alreadySent: false,
     sentTo: email,
     sentAt,
     evidenceRecorded: !finalizeError,
