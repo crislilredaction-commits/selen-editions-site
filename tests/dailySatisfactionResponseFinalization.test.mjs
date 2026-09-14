@@ -17,6 +17,13 @@ test("une réponse apprenant ferme immédiatement sa relance téléphonique", ()
   assert.match(learner, /status: "closed"/);
 });
 
+test("le questionnaire apprenant refuse les inscriptions annulées, refusées ou abandonnées", () => {
+  assert.match(learner, /activeDailyEnrolment/);
+  assert.match(learner, /if \(!session \|\| !enrolment \|\| !activeDailyEnrolment\(enrolment\.status\)\)/);
+  assert.match(learner, /if \(!enrolment \|\| !activeDailyEnrolment\(enrolment\.status\)\)/);
+  assert.match(learner, /\(cancelled,declined,abandoned\)/);
+});
+
 test("une réponse formateur ou entreprise ferme immédiatement sa relance téléphonique", () => {
   assert.match(stakeholder, /source_type", PHONE_FOLLOWUP_SOURCE/);
   assert.match(stakeholder, /source_id", portal\.access\.id/);
