@@ -21,11 +21,18 @@ function normalizedEmail(value: unknown) {
 async function getTrainerContext() {
   const workspace = await getDailyClientWorkspace();
   if (!workspace.ok) return workspace;
-  if (!workspace.workspace.capabilities.trainer_self) {
+
+  const trainer = workspace.workspace.trainers.find((item) =>
+    String(item.user_id ?? "") === workspace.user.id
+    || (Boolean(workspace.user.email)
+      && normalizedEmail(item.professional_email) === normalizedEmail(workspace.user.email)),
+  );
+  const hasTrainerAccess = workspace.workspace.capabilities.trainer_self
+    || workspace.workspace.membership.roles.includes("trainer")
+    || Boolean(trainer);
+  if (!hasTrainerAccess) {
     return { ok: false as const, status: 403, error: "Cet espace est réservé au formateur concerné." };
   }
-
-  const trainer = workspace.workspace.trainers.find((item) => String(item.user_id ?? "") === workspace.user.id);
   if (!trainer?.id) {
     return { ok: false as const, status: 404, error: "Fiche formateur introuvable." };
   }
