@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const trainersPage = fs.readFileSync("app/client/daily/formateurs/page.tsx", "utf8");
+const trainerFollowupRoute = fs.readFileSync("app/api/client/daily/trainer-followup/route.ts", "utf8");
 
 test("manual trainer creation provisions canonical trainer workspace access", () => {
   assert.match(trainersPage, /const isCreation=!values\.id/);
@@ -31,4 +32,16 @@ test("trainer invitation UI distinguishes sent, unsent and failed delivery", () 
   assert.match(trainersPage, /L’invitation a été créée, mais l’email n’a pas pu être envoyé/);
   assert.match(trainersPage, /L’accès n’a pas pu être envoyé/);
   assert.match(trainersPage, /invitationBody\.error/);
+});
+
+test("dirigeant trainer can resolve the trainer profile by professional email", () => {
+  assert.match(trainerFollowupRoute, /normalizedEmail\(item\.professional_email\)\s*===\s*normalizedEmail\(workspace\.user\.email\)/);
+  assert.match(trainerFollowupRoute, /workspace\.workspace\.membership\.roles\.includes\("trainer"\)/);
+  assert.match(trainerFollowupRoute, /\|\| Boolean\(trainer\)/);
+});
+
+test("trainer follow-up remains restricted to explicitly assigned sessions", () => {
+  assert.match(trainerFollowupRoute, /trainerIds\(session\.trainer_ids\)\.includes\(context\.trainerProfileId\)/);
+  assert.match(trainerFollowupRoute, /trainerIds\(data\.trainer_ids\)\.includes\(trainerProfileId\)/);
+  assert.doesNotMatch(trainerFollowupRoute, /trainer_ids[^\n]*length\s*===\s*0[^\n]*all/i);
 });
