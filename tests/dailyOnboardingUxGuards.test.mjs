@@ -36,6 +36,17 @@ test("le NDA n'est pas présenté comme facultatif lorsqu'il existe", () => {
   assert.doesNotMatch(onboardingPage, /NDA[^\n]{0,40}facultatif/i);
 });
 
+test("le client peut saisir le SIRET et l'adresse avant la vérification INSEE", () => {
+  assert.match(onboardingPage, /<Input label="SIRET" value=\{form\.siret\}/);
+  assert.match(onboardingPage, /<Input label="Adresse de l'organisme" value=\{form\.address\}/);
+  assert.match(onboardingPage, /L&apos;avis INSEE permet à Selen de vérifier le SIRET et l&apos;adresse renseignés ci-dessus/);
+  assert.doesNotMatch(onboardingPage, /seront repris depuis cet avis/);
+});
+
+test("le profil reconnaît le statut Qualiopi canonique de l'organisme", () => {
+  assert.match(accountPanel, /qualiopiStatus==="certified"\|\|qualiopiStatus==="yes"/);
+});
+
 test("les imports utilisent un bouton encadré explicite plutôt que le sélecteur natif", () => {
   assert.match(onboardingPage, /const inputRef = useRef<HTMLInputElement>\(null\)/);
   assert.match(onboardingPage, /style=\{s\.fileInput\}/);

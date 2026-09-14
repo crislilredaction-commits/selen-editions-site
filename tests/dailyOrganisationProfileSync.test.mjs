@@ -70,8 +70,15 @@ test("le premier onboarding rattache le client à l'organisme Daily déjà cré�
 test("le rattachement réutilisé synchronise aussi les données légales saisies pendant l'onboarding", () => {
   assert.match(clientWorkspace, /legal_name: organisationName/);
   assert.match(clientWorkspace, /siret: siret \|\| null/);
+  assert.match(clientWorkspace, /nda_number: ndaNumber \|\| null/);
+  assert.match(clientWorkspace, /nda_status: ndaNumber \? "registered" : "unknown"/);
+  assert.match(clientWorkspace, /qualiopiStatus === "yes"[\s\S]*"certified"/);
   assert.match(clientWorkspace, /administrative_address: address \|\| null/);
   assert.match(clientWorkspace, /contact_name: managerName \|\| null/);
+  assert.match(clientWorkspace, /legal_representative_name: managerName \|\| null/);
+  assert.match(clientWorkspace, /legal_representative_email: legalRepresentativeEmail \|\| cleanEmail/);
+  assert.match(clientWorkspace, /ndaNumber: onboarding\.nda_number \|\| null/);
+  assert.match(clientWorkspace, /qualiopiStatus: onboarding\.qualiopi_status \|\| null/);
   assert.match(clientWorkspace, /Plusieurs organismes Daily correspondent à ce compte/);
   assert.match(clientWorkspace, /n'est pas actif\. Selen doit le vérifier/);
 });

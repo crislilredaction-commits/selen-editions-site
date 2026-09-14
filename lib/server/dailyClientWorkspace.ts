@@ -75,15 +75,21 @@ async function linkPurchasedDailyOrganisation({
   userEmail,
   organisationName,
   siret,
+  ndaNumber,
   address,
   managerName,
+  qualiopiStatus,
+  legalRepresentativeEmail,
 }: {
   userId: string;
   userEmail: string | null | undefined;
   organisationName: string;
   siret: string | null;
+  ndaNumber: string | null;
   address: string | null;
   managerName: string | null;
+  qualiopiStatus: string | null;
+  legalRepresentativeEmail: string | null;
 }) {
   const admin = getAdminSupabase();
   const cleanEmail = userEmail?.trim().toLowerCase() ?? "";
@@ -180,13 +186,24 @@ async function linkPurchasedDailyOrganisation({
     .from("organisations")
     .update({
       name: organisationName,
+      company_name: organisationName,
       legal_name: organisationName,
       siret: siret || null,
+      nda_number: ndaNumber || null,
+      nda_status: ndaNumber ? "registered" : "unknown",
+      qualiopi_status:
+        qualiopiStatus === "yes"
+          ? "certified"
+          : qualiopiStatus === "no" || qualiopiStatus === "planned"
+            ? "not_certified"
+            : "unknown",
       email: cleanEmail,
       administrative_email: cleanEmail,
       address: address || null,
       administrative_address: address || null,
       contact_name: managerName || null,
+      legal_representative_name: managerName || null,
+      legal_representative_email: legalRepresentativeEmail || cleanEmail,
     })
     .eq("id", organisationId);
   if (profileError) throw new Error(profileError.message);
@@ -202,7 +219,9 @@ async function bootstrapFromCompletedOnboarding(
   const admin = getAdminSupabase();
   const { data: onboarding, error } = await admin
     .from("daily_onboarding")
-    .select("organisation_name,siret,address,manager_first_name,manager_last_name,status")
+    .select(
+      "organisation_name,siret,nda_number,address,manager_first_name,manager_last_name,qualiopi_status,platform_contact_email,status",
+    )
     .eq("user_id", userId)
     .eq("status", "completed")
     .maybeSingle();
@@ -220,8 +239,11 @@ async function bootstrapFromCompletedOnboarding(
     userEmail,
     organisationName: onboarding.organisation_name,
     siret: onboarding.siret || null,
+    ndaNumber: onboarding.nda_number || null,
     address: onboarding.address || null,
     managerName,
+    qualiopiStatus: onboarding.qualiopi_status || null,
+    legalRepresentativeEmail: onboarding.platform_contact_email || userEmail || null,
   });
 
   if (!linkedPurchasedOrganisation) {

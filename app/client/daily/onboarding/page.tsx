@@ -329,6 +329,10 @@ export default function DailyOnboardingPage() {
               <p className="gazette-label">Étape 2</p>
               <h2 style={s.title}>Informations de l&apos;organisme</h2>
               <Input label="Nom de l&apos;organisme de formation" value={form.organisation_name} onChange={(value) => update("organisation_name", value)} />
+              <div style={s.twoCols}>
+                <Input label="SIRET" value={form.siret} onChange={(value) => update("siret", value)} />
+                <Input label="Adresse de l'organisme" value={form.address} onChange={(value) => update("address", value)} />
+              </div>
               <div style={s.field}>
                 <Input label="Numéro NDA" value={form.nda_number} onChange={(value) => update("nda_number", value)} />
                 <p style={s.fieldHint}>Si votre organisme possède déjà un numéro de déclaration d&apos;activité, il doit être renseigné ici.</p>
@@ -348,7 +352,7 @@ export default function DailyOnboardingPage() {
               {form.qualiopi_status === "planned" ? <p style={s.notice}>{"Aucun souci. Quand le moment viendra, Selen pourra vous aider à préparer le chemin vers Qualiopi."}</p> : null}
               <div style={s.stackSmall}>
                 <FileUploadField label="Avis de situation INSEE (PDF)" kind="insee_notice" accept=".pdf" value={form.insee_document_url} onUploaded={(url) => { update("insee_document_url", url); update("insee_document_pending", false); }} />
-                <p style={s.muted}>Le SIRET et l&apos;adresse seront repris depuis cet avis puis vérifiés avant validation.</p>
+                <p style={s.muted}>L&apos;avis INSEE permet à Selen de vérifier le SIRET et l&apos;adresse renseignés ci-dessus.</p>
                 <label style={s.check}><input type="checkbox" checked={form.insee_document_pending} onChange={(event) => update("insee_document_pending", event.target.checked)} /> Avis INSEE à fournir plus tard</label>
                 {form.qualiopi_status === "yes" ? <><FileUploadField label="Certificat Qualiopi (PDF)" kind="qualiopi_certificate" accept=".pdf" value={form.qualiopi_certificate_url} onUploaded={(url) => { update("qualiopi_certificate_url", url); update("qualiopi_certificate_pending", false); }} /><label style={s.check}><input type="checkbox" checked={form.qualiopi_certificate_pending} onChange={(event) => update("qualiopi_certificate_pending", event.target.checked)} /> Certificat Qualiopi à fournir plus tard</label></> : null}
                 <label style={s.check}>
