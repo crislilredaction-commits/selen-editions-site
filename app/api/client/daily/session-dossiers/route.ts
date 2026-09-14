@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { blockedAgentAssistanceResponse, getAssistanceTokenFromRequest } from "@/lib/server/agentAssistance";
 import { getDailyOrganisationReadContext } from "@/lib/server/dailyOrganisationContext";
+import { reconcileDailySessionDossier } from "@/lib/server/dailySessionCompletion";
 
 export async function GET(req: Request) {
   const context = await getDailyOrganisationReadContext(req, ["sessions", "trainings"]);
@@ -116,9 +117,23 @@ export async function PATCH(req: Request) {
   const note = String(body.note ?? "").trim();
   const allowed = new Set(["todo", "in_progress", "to_review", "validated", "blocked"]);
   if (!itemId || !allowed.has(status)) return NextResponse.json({ error: "Mise à jour invalide." }, { status: 400 });
-  const { data: item } = await context.admin.from("daily_session_checklist_items").select("id,responsibility").eq("id", itemId).eq("organisation_id", context.organisationId).maybeSingle();
+  const { data: item } = await context.admin.from("daily_session_checklist_items").select("id,session_id,responsibility").eq("id", itemId).eq("organisation_id", context.organisationId).maybeSingle();
   if (!item || !["client", "shared"].includes(item.responsibility)) return NextResponse.json({ error: "Ce point n’est pas modifiable depuis l’espace client." }, { status: 403 });
   const { data, error } = await context.admin.from("daily_session_checklist_items").update({ status, note: note || null }).eq("id", itemId).eq("organisation_id", context.organisationId).select("id,status,note").single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ item: data });
+
+  let completion = null;
+  if (status === "validated") {
+    try {
+      completion = await reconcileDailySessionDossier({
+        admin: context.admin,
+        organisationId: context.organisationId,
+        sessionId: item.session_id,
+      });
+    } catch (cause) {
+      console.error("Daily : point de dossier validé mais clôture automatique non finalisée", cause);
+    }
+  }
+
+  return NextResponse.json({ item: data, completion });
 }
