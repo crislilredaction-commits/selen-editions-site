@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { blockedAgentAssistanceResponse, getAssistanceTokenFromRequest } from "@/lib/server/agentAssistance";
 import { getDailyOrganisationContext, getDailyOrganisationReadContext } from "@/lib/server/dailyOrganisationContext";
 import { activeDailyEnrolment, createDailyFeedbackToken, dailyFeedbackPath } from "@/lib/server/dailyEndEvaluations";
+import { ensurePosttrainingDocuments } from "@/lib/server/dailyPosttrainingDocuments";
 
 const OUTCOMES = new Set(["pending", "achieved", "partially_achieved", "not_achieved", "not_applicable"]);
 
@@ -54,6 +55,19 @@ async function refreshChecklist(
     .eq("session_id", sessionId)
     .eq("item_key", "end_evaluations")
     .neq("status", "not_applicable");
+}
+
+async function tryEnsurePosttrainingDocuments(
+  admin: ReturnType<typeof import("@/lib/server/clientNdaAccess").getAdminSupabase>,
+  organisationId: string,
+  userId: string,
+  sessionId: string,
+) {
+  try {
+    await ensurePosttrainingDocuments({ admin, organisationId, userId, sessionId });
+  } catch (error) {
+    console.error("[daily] automatic post-training document generation failed after end evaluation", error);
+  }
 }
 
 async function loadOverview(
@@ -196,6 +210,7 @@ export async function POST(request: Request) {
     }, { onConflict: "session_id,enrolment_id" }).select("*").single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     await refreshChecklist(context.admin, context.organisationId, sessionId);
+    await tryEnsurePosttrainingDocuments(context.admin, context.organisationId, context.user.id, sessionId);
     return NextResponse.json({ ok: true, assessment: data });
   }
 
