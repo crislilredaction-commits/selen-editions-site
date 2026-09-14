@@ -4,6 +4,8 @@ import test from "node:test";
 
 const learner = await readFile(new URL("../app/api/internal/daily/satisfaction-automation/route.ts", import.meta.url), "utf8");
 const stakeholder = await readFile(new URL("../app/api/internal/daily/stakeholder-satisfaction-automation/route.ts", import.meta.url), "utf8");
+const cronRoute = await readFile(new URL("../app/api/cron/daily-satisfaction/route.ts", import.meta.url), "utf8");
+const vercelConfig = JSON.parse(await readFile(new URL("../vercel.json", import.meta.url), "utf8"));
 const endEvaluations = await readFile(new URL("../lib/server/dailyEndEvaluations.ts", import.meta.url), "utf8");
 
 for (const [label, source] of [["apprenants", learner], ["parties prenantes", stakeholder]]) {
@@ -36,4 +38,21 @@ test("la satisfaction entreprise démarre à J+15 puis conserve les relances J+2
 test("les inscriptions abandonnées sont exclues des relances de satisfaction", () => {
   assert.match(endEvaluations, /status !== "cancelled" && status !== "declined" && status !== "abandoned"/);
   assert.match(learner, /activeDailyEnrolment\(row\.status\)/);
+});
+
+test("Vercel déclenche quotidiennement le lot satisfaction complet", () => {
+  assert.deepEqual(vercelConfig.crons, [{
+    path: "/api/cron/daily-satisfaction",
+    schedule: "0 7 * * *",
+  }]);
+  assert.match(cronRoute, /runLearnerSatisfactionAutomation/);
+  assert.match(cronRoute, /runStakeholderSatisfactionAutomation/);
+  assert.match(cronRoute, /url\.search = "\?execute=1"/);
+});
+
+test("le cron exige CRON_SECRET et relaie le secret uniquement aux automations internes", () => {
+  assert.match(cronRoute, /process\.env\.CRON_SECRET/);
+  assert.match(cronRoute, /authorization.*Bearer \$\{secret\}/s);
+  assert.match(cronRoute, /process\.env\.DAILY_AUTOMATION_SECRET = secret/);
+  assert.doesNotMatch(cronRoute, /x-vercel-cron-schedule/);
 });
