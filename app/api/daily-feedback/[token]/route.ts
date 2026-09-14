@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
-import { hashDailyFeedbackToken } from "@/lib/server/dailyEndEvaluations";
+import { activeDailyEnrolment, hashDailyFeedbackToken } from "@/lib/server/dailyEndEvaluations";
 
 type Params = { params: Promise<{ token: string }> };
 const PHONE_FOLLOWUP_SOURCE = "satisfaction_phone_followup";
@@ -50,7 +50,7 @@ export async function GET(_request: Request, { params }: Params) {
       admin.from("daily_session_enrolments").select("id,status,daily_learners(id,first_name,last_name)").eq("id", token.enrolment_id).eq("session_id", token.session_id).eq("organisation_id", token.organisation_id).maybeSingle(),
       admin.from("daily_learner_feedback_responses").select("submitted_at").eq("session_id", token.session_id).eq("enrolment_id", token.enrolment_id).maybeSingle(),
     ]);
-    if (!session || !enrolment || ["cancelled", "declined"].includes(enrolment.status)) return NextResponse.json({ error: "Cette inscription n'est plus active." }, { status: 410 });
+    if (!session || !enrolment || !activeDailyEnrolment(enrolment.status)) return NextResponse.json({ error: "Cette inscription n'est plus active." }, { status: 410 });
     await admin.from("daily_learner_feedback_tokens").update({ last_used_at: new Date().toISOString() }).eq("id", token.id);
     const learner = Array.isArray(enrolment.daily_learners) ? enrolment.daily_learners[0] : enrolment.daily_learners;
     return NextResponse.json({
@@ -74,6 +74,18 @@ export async function POST(request: Request, { params }: Params) {
     if (!loaded) return NextResponse.json({ error: "Lien de satisfaction introuvable." }, { status: 404 });
     const { admin, token } = loaded;
     if (unavailable(token)) return NextResponse.json({ error: "Ce lien de satisfaction n'est plus actif." }, { status: 410 });
+
+    const { data: enrolment } = await admin
+      .from("daily_session_enrolments")
+      .select("id,status")
+      .eq("id", token.enrolment_id)
+      .eq("session_id", token.session_id)
+      .eq("organisation_id", token.organisation_id)
+      .maybeSingle();
+    if (!enrolment || !activeDailyEnrolment(enrolment.status)) {
+      return NextResponse.json({ error: "Cette inscription n'est plus active." }, { status: 410 });
+    }
+
     const { data: existing } = await admin.from("daily_learner_feedback_responses").select("id,submitted_at").eq("session_id", token.session_id).eq("enrolment_id", token.enrolment_id).maybeSingle();
     if (existing) return NextResponse.json({ ok: true, alreadySubmitted: true, submittedAt: existing.submitted_at });
 
@@ -117,7 +129,7 @@ export async function POST(request: Request, { params }: Params) {
       .in("status", ["open", "planned"]);
 
     const [{ data: active }, { data: assessments }, { data: responses }] = await Promise.all([
-      admin.from("daily_session_enrolments").select("id,status").eq("organisation_id", token.organisation_id).eq("session_id", token.session_id).not("status", "in", "(cancelled,declined)"),
+      admin.from("daily_session_enrolments").select("id,status").eq("organisation_id", token.organisation_id).eq("session_id", token.session_id).not("status", "in", "(cancelled,declined,abandoned)"),
       admin.from("daily_learning_assessments").select("enrolment_id,outcome").eq("organisation_id", token.organisation_id).eq("session_id", token.session_id),
       admin.from("daily_learner_feedback_responses").select("enrolment_id").eq("organisation_id", token.organisation_id).eq("session_id", token.session_id),
     ]);
