@@ -15,9 +15,9 @@ test("le formulaire de création d'apprenant reste replié par défaut", () => {
 });
 
 test("le formulaire d'ajout d'un formateur reste replié par défaut", () => {
-  assert.match(trainersPage, /const\[showCreate,setShowCreate\]=useState\(false\)/);
+  assert.match(trainersPage, /const\s*\[showCreate,\s*setShowCreate\]\s*=\s*useState\(false\)/);
   assert.match(trainersPage, /Ajouter un nouveau formateur/);
-  assert.match(trainersPage, /showCreate\?"▲":"▼"/);
+  assert.match(trainersPage, /showCreate\s*\?\s*"▲"\s*:\s*"▼"/);
   assert.match(trainersPage, /Ajouter le formateur/);
   assert.match(trainersPage, /Compétences \/ spécialités/);
 });
