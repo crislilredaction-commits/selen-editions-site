@@ -1,26 +1,428 @@
 "use client";
+
 import Link from "next/link";
-import {FormEvent,useCallback,useEffect,useState} from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import LoadingMascot from "@/components/ui/LoadingMascot";
-type Trainer={id?:string;display_name?:string;professional_email?:string|null;phone?:string|null;status?:string|null;engagement_type?:string|null;biography?:string|null;specialties?:string[]|null};
-type WorkspaceUser={email?:string|null;status?:string|null;roles?:string[]|null};
-type WorkspaceInvitation={invited_email?:string|null;normalized_email?:string|null;status?:string|null;expires_at?:string|null;intended_roles?:string[]|null};
-type AnnualTrainer={id:string;certifications?:Array<{id:string;title:string;issuer?:string|null;valid_until?:string|null}>;trainings?:Array<{id:string;title:string;training_kind:string;completed_on?:string|null}>};
-type RecordData={sessions:Array<{id:string;internal_reference?:string|null;start_date?:string|null;end_date?:string|null;status:string;daily_formations?:{title?:string|null}|null}>;orders:Array<{id:string;start_date?:string|null;end_date?:string|null;status:string;missions?:string[]|null;mission_details?:string|null}>;documents:Array<{id:string;document_type:string;logical_name?:string|null;created_at:string;url?:string|null;metadata?:Record<string,unknown>|null}>};
-export default function DailyTrainersPage(){const[trainers,setTrainers]=useState<Trainer[]>([]);const[annual,setAnnual]=useState<AnnualTrainer[]>([]);const[records,setRecords]=useState<Record<string,RecordData>>({});const[loading,setLoading]=useState(true);const[saving,setSaving]=useState(false);const[showCreate,setShowCreate]=useState(false);const[openId,setOpenId]=useState<string|null>(null);const[error,setError]=useState("");const[message,setMessage]=useState("");
-const load=useCallback(async()=>{setError("");try{const[w,a]=await Promise.all([fetch("/api/client/daily/workspace",{cache:"no-store"}),fetch("/api/client/daily/trainer-annual-reviews",{cache:"no-store"})]);const wb=await w.json().catch(()=>({}));const ab=await a.json().catch(()=>({}));if(!w.ok)throw new Error(wb.error??"Chargement impossible.");setTrainers(wb.workspace?.trainers??[]);if(a.ok)setAnnual([...(ab.trainers??[]),...(ab.exemptTrainers??[])])}catch(e){setError(e instanceof Error?e.message:"Chargement impossible.")}finally{setLoading(false)}},[]);useEffect(()=>{void load()},[load]);
-async function loadRecords(id:string){if(records[id])return;const r=await fetch(`/api/client/daily/trainer-records?trainer_id=${encodeURIComponent(id)}`,{cache:"no-store"});const b=await r.json().catch(()=>({}));if(!r.ok){setError(b.error??"Historique formateur indisponible.");return}setRecords(c=>({...c,[id]:b}))}
-async function saveTrainer(values:Record<string,unknown>){setSaving(true);setError("");setMessage("");const isCreation=!values.id;const r=await fetch("/api/client/daily/workspace",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"save_trainer",...values})});const b=await r.json().catch(()=>({}));if(!r.ok){setSaving(false);setError(b.error??"Enregistrement impossible.");return false}setTrainers(b.workspace?.trainers??[]);let notice="Fiche formateur enregistrée.";
-if(isCreation){const email=String(values.professional_email??"").trim().toLowerCase();if(email){const users=(b.workspace?.users??[]) as WorkspaceUser[];const invitations=(b.workspace?.invitations??[]) as WorkspaceInvitation[];const alreadyActive=users.some(user=>String(user.email??"").trim().toLowerCase()===email&&String(user.status??"")==="active"&&(user.roles??[]).map(String).includes("trainer"));const now=Date.now();const pendingInvitation=invitations.some(invitation=>{const invitationEmail=String(invitation.normalized_email??invitation.invited_email??"").trim().toLowerCase();const roles=(invitation.intended_roles??[]).map(String);const expiresAt=invitation.expires_at?new Date(invitation.expires_at).getTime():0;return invitationEmail===email&&invitation.status==="pending"&&roles.includes("trainer")&&expiresAt>now});if(alreadyActive){notice="Fiche formateur enregistrée. L’accès formateur est déjà actif pour cette adresse."}else if(pendingInvitation){notice="Fiche formateur enregistrée. Une invitation formateur active existe déjà pour cette adresse."}else{const invitationResponse=await fetch("/api/client/daily/workspace/invitations",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"create",email,roles:["trainer"],permission_blocks:[]})});const invitationBody=await invitationResponse.json().catch(()=>({}));if(invitationResponse.ok){notice=invitationBody.sent?"Fiche formateur enregistrée. L’email d’accès formateur a été envoyé.":"Fiche formateur enregistrée. L’invitation a été créée, mais l’email n’a pas pu être envoyé."}else{notice=`Fiche formateur enregistrée. L’accès n’a pas pu être envoyé : ${invitationBody.error??"erreur d’invitation"}.`}}}}
-setSaving(false);setMessage(notice);return true}
-async function createTrainer(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);const ok=await saveTrainer({display_name:f.get("display_name"),professional_email:f.get("professional_email"),phone:f.get("phone"),engagement_type:f.get("engagement_type")||"external",biography:f.get("biography"),specialties:String(f.get("specialties")||"").split(/[,;\n]/).map(x=>x.trim()).filter(Boolean),status:"draft"});if(ok){e.currentTarget.reset();setShowCreate(false)}}
-async function uploadContract(e:FormEvent<HTMLFormElement>,trainerId:string){e.preventDefault();const form=e.currentTarget;const fd=new FormData(form);fd.set("trainer_id",trainerId);setSaving(true);const r=await fetch("/api/client/daily/trainer-records",{method:"POST",body:fd});const b=await r.json().catch(()=>({}));setSaving(false);if(!r.ok){setError(b.error??"Import du contrat impossible.");return}setRecords(c=>{const n={...c};delete n[trainerId];return n});await loadRecords(trainerId);form.reset();setMessage("Contrat PDF ajouté à la fiche formateur.")}
-if(loading)return <LoadingMascot message="Sélion rassemble vos formateurs…"/>;return <main style={s.page}><div style={s.wrap}><header style={s.hero}><p style={s.kicker}>Selen Daily · Formateurs</p><h1>Mes formateurs</h1><p style={s.muted}>Coordonnées, compétences, sessions, certifications, ordres de mission, contrats et CV sont regroupés dans une seule fiche.</p></header>{error?<p style={s.error}>{error}</p>:null}{message?<p style={s.ok}>{message}</p>:null}
-<section style={s.card}><button type="button" onClick={()=>setShowCreate(v=>!v)} aria-expanded={showCreate} style={s.toggle}><span>Ajouter un nouveau formateur</span><span>{showCreate?"▲":"▼"}</span></button>{showCreate?<form onSubmit={createTrainer} style={s.form}><div style={s.grid}><Field label="Nom et prénom *"><input name="display_name" required style={s.input}/></Field><Field label="Email professionnel"><input name="professional_email" type="email" style={s.input}/></Field><Field label="Téléphone"><input name="phone" style={s.input}/></Field><Field label="Statut"><select name="engagement_type" defaultValue="external" style={s.input}><option value="external">Formateur externe</option><option value="employee">Formateur salarié</option><option value="owner">Dirigeant / formateur</option></select></Field></div><Field label="Compétences / spécialités" help="Expression libre. Séparez les compétences par une virgule, un point-virgule ou une ligne."><textarea name="specialties" rows={4} style={s.input} placeholder="Ingénierie pédagogique, management, Excel…"/></Field><Field label="Présentation / expérience" help="Le formateur pourra compléter librement cette partie depuis son espace."><textarea name="biography" rows={5} style={s.input}/></Field><button disabled={saving} style={s.primary}>{saving?"Ajout…":"Ajouter le formateur"}</button></form>:<p style={s.muted}>Le formulaire reste replié tant qu’il n’est pas utile.</p>}</section>
-<section style={s.links}><Link href="/client/daily/formateurs/suivi-annuel" style={s.link}>Suivi annuel des formateurs →</Link><Link href="/client/daily/formateurs/certifications" style={s.link}>Certifications →</Link><Link href="/client/daily/formateurs/ordres-de-mission" style={s.link}>Ordres de mission →</Link></section>
-<section style={s.card}><h2>{trainers.length} formateur{trainers.length>1?"s":""}</h2><div style={s.list}>{trainers.map((t,i)=>{const id=t.id??String(i);const opened=openId===id;const extra=annual.find(x=>x.id===t.id);const owner=t.engagement_type==="owner";const rec=t.id?records[t.id]:undefined;return <article key={id} style={s.row}><button type="button" style={s.trainerHead} aria-expanded={opened} onClick={()=>{const next=opened?null:id;setOpenId(next);if(next&&t.id)void loadRecords(t.id)}}><span><strong>{t.display_name||"Formateur"}</strong><small>{t.professional_email||"Email non renseigné"}{t.phone?` · ${t.phone}`:""}</small></span><span>{opened?"▲":"▼"}</span></button>{opened?<div style={s.details}><div style={s.grid}><Info title="Coordonnées" text={`${t.professional_email||"Email non renseigné"}${t.phone?` · ${t.phone}`:""}`}/><Info title="Statut" text={owner?"Dirigeant / formateur":t.engagement_type==="employee"?"Formateur salarié":"Formateur externe"}/></div>{owner?<p style={s.notice}>Dirigeant-formateur : aucune auto-évaluation annuelle ni relance d’auto-évaluation n’est demandée.</p>:null}<form onSubmit={async e=>{e.preventDefault();const f=new FormData(e.currentTarget);await saveTrainer({id:t.id,display_name:t.display_name,professional_email:t.professional_email,phone:t.phone,engagement_type:t.engagement_type,biography:f.get("biography"),specialties:String(f.get("specialties")||"").split(/[,;\n]/).map(x=>x.trim()).filter(Boolean),status:t.status||"draft"})}} style={s.form}><Field label="Compétences / spécialités"><textarea name="specialties" defaultValue={(t.specialties??[]).join("\n")} rows={5} style={s.input}/></Field><Field label="Présentation / expérience"><textarea name="biography" defaultValue={t.biography??""} rows={5} style={s.input}/></Field><button disabled={saving} style={s.secondary}>Enregistrer la fiche</button></form>
-<div style={s.grid}><div><h3>Historique des sessions</h3>{!rec?<p style={s.muted}>Chargement…</p>:rec.sessions.length?<ul>{rec.sessions.map(x=><li key={x.id}><strong>{x.daily_formations?.title??"Formation"}</strong> · {x.internal_reference??"Session"}{x.start_date?` · ${new Intl.DateTimeFormat("fr-FR").format(new Date(x.start_date))}`:""} · {x.status}</li>)}</ul>:<p style={s.muted}>Aucune session affectée.</p>}</div><div><h3>Certifications</h3>{extra?.certifications?.length?<ul>{extra.certifications.map(c=><li key={c.id}>{c.title}{c.issuer?` · ${c.issuer}`:""}{c.valid_until?` · jusqu’au ${new Intl.DateTimeFormat("fr-FR").format(new Date(c.valid_until))}`:""}</li>)}</ul>:<p style={s.muted}>Aucune certification enregistrée.</p>}<Link href="/client/daily/formateurs/certifications" style={s.inline}>Voir les justificatifs →</Link></div></div>
-<div style={s.grid}><div><h3>Ordres de mission</h3>{!rec?<p style={s.muted}>Chargement…</p>:rec.orders.length?<ul>{rec.orders.map(o=><li key={o.id}><strong>{o.missions?.join(", ")||o.mission_details||"Mission"}</strong>{o.start_date?` · ${o.start_date}`:""}{o.end_date?` → ${o.end_date}`:""} · {o.status}</li>)}</ul>:<p style={s.muted}>Aucun ordre de mission.</p>}<Link href="/client/daily/formateurs/ordres-de-mission" style={s.inline}>Gérer les ordres de mission →</Link></div><div><h3>CV et contrats</h3>{rec?.documents?.length?<ul>{rec.documents.map(d=><li key={d.id}><strong>{d.document_type==="trainer_cv"?"CV":"Contrat"}</strong> · {new Intl.DateTimeFormat("fr-FR").format(new Date(d.created_at))}{d.url?<a href={d.url} target="_blank" rel="noreferrer" style={s.inline}> · ouvrir ↗</a>:null}</li>)}</ul>:<p style={s.muted}>Aucun document enregistré.</p>}{t.id?<form onSubmit={e=>void uploadContract(e,t.id!)} style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}><input type="file" name="file" accept="application/pdf,.pdf" required/><button disabled={saving} style={s.secondary}>Importer un contrat PDF</button></form>:null}<p style={s.muted}>Le CV est alimenté par le formateur depuis son paramétrage/suivi annuel et reste consultable ici.</p></div></div>
-<div><h3>Développement des compétences</h3>{extra?.trainings?.length?<ul>{extra.trainings.map(x=><li key={x.id}>{x.title}{x.completed_on?` · ${new Intl.DateTimeFormat("fr-FR").format(new Date(x.completed_on))}`:""}</li>)}</ul>:<p style={s.muted}>Aucun historique déclaré.</p>}{!owner?<Link href="/client/daily/formateurs/suivi-annuel" style={s.inline}>Ouvrir le suivi annuel →</Link>:null}</div></div>:null}</article>})}</div></section></div></main>}
-function Field({label,help,children}:{label:string;help?:string;children:React.ReactNode}){return <label style={s.field}><strong>{label}</strong>{children}{help?<small style={s.muted}>{help}</small>:null}</label>};function Info({title,text}:{title:string;text:string}){return <div><strong>{title}</strong><p style={s.muted}>{text}</p></div>}
-const s:Record<string,React.CSSProperties>={page:{minHeight:"100vh",padding:"2rem 1rem 5rem",color:"#392a19"},wrap:{maxWidth:1120,margin:"auto",display:"grid",gap:16},hero:{background:"#f8f0dc",border:"1px solid #d9c391",padding:"1.5rem"},kicker:{textTransform:"uppercase",letterSpacing:".14em",fontSize:11,fontWeight:800,color:"#9b682d"},card:{background:"#f8f0dc",border:"1px solid #d9c391",padding:"1.3rem"},toggle:{width:"100%",display:"flex",justifyContent:"space-between",border:0,background:"transparent",fontWeight:800,fontSize:17,cursor:"pointer",color:"#392a19"},form:{display:"grid",gap:12,marginTop:12},grid:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:12},field:{display:"grid",gap:6},input:{width:"100%",boxSizing:"border-box",padding:10,border:"1px solid #c9ae78",background:"white",font:"inherit"},primary:{width:"fit-content",padding:".55rem .75rem",background:"#7a2e22",color:"white",border:"1px solid #7a2e22",fontWeight:800},secondary:{width:"fit-content",padding:".45rem .65rem",background:"transparent",border:"1px solid #b89b6c",fontWeight:700,color:"#5c3a1e"},links:{display:"flex",gap:8,flexWrap:"wrap"},link:{border:"1px solid #d9c391",background:"#fffaf0",padding:".55rem .7rem",color:"#7a2e22",fontWeight:700,textDecoration:"none"},list:{display:"grid",gap:10},row:{borderTop:"1px solid #d9c391",paddingTop:10},trainerHead:{width:"100%",display:"flex",justifyContent:"space-between",textAlign:"left",border:0,background:"transparent",padding:".4rem 0",cursor:"pointer",color:"#392a19"},details:{display:"grid",gap:16,padding:"1rem",marginTop:8,border:"1px solid #d9c391",background:"#fffaf0"},notice:{padding:10,border:"1px solid #8aa36c",background:"#f6fff0",color:"#4f6338"},muted:{color:"#806c52",margin:".35rem 0",fontWeight:400},inline:{color:"#7a2e22",fontWeight:700},error:{border:"1px solid #a64b3b",padding:10,color:"#7d2e22"},ok:{border:"1px solid #668153",padding:10,color:"#455a3b"}};
+
+type Trainer = {
+  id?: string;
+  display_name?: string;
+  professional_email?: string | null;
+  phone?: string | null;
+  status?: string | null;
+  engagement_type?: string | null;
+  biography?: string | null;
+  specialties?: string[] | null;
+};
+
+type WorkspaceUser = { email?: string | null; status?: string | null; roles?: string[] | null };
+type WorkspaceInvitation = {
+  id?: string | null;
+  invited_email?: string | null;
+  normalized_email?: string | null;
+  status?: string | null;
+  expires_at?: string | null;
+  intended_roles?: string[] | null;
+};
+type AnnualTrainer = {
+  id: string;
+  certifications?: Array<{ id: string; title: string; issuer?: string | null; valid_until?: string | null }>;
+  trainings?: Array<{ id: string; title: string; training_kind: string; completed_on?: string | null }>;
+};
+type RecordData = {
+  sessions: Array<{
+    id: string;
+    internal_reference?: string | null;
+    start_date?: string | null;
+    end_date?: string | null;
+    status: string;
+    daily_formations?: { title?: string | null } | null;
+  }>;
+  orders: Array<{
+    id: string;
+    start_date?: string | null;
+    end_date?: string | null;
+    status: string;
+    missions?: string[] | null;
+    mission_details?: string | null;
+  }>;
+  documents: Array<{
+    id: string;
+    document_type: string;
+    logical_name?: string | null;
+    created_at: string;
+    url?: string | null;
+    metadata?: Record<string, unknown> | null;
+  }>;
+};
+
+const normalizeEmail = (value: unknown) => String(value ?? "").trim().toLowerCase();
+
+export default function DailyTrainersPage() {
+  const [trainers, setTrainers] = useState<Trainer[]>([]);
+  const [annual, setAnnual] = useState<AnnualTrainer[]>([]);
+  const [records, setRecords] = useState<Record<string, RecordData>>({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  const load = useCallback(async () => {
+    setError("");
+    try {
+      const [w, a] = await Promise.all([
+        fetch("/api/client/daily/workspace", { cache: "no-store" }),
+        fetch("/api/client/daily/trainer-annual-reviews", { cache: "no-store" }),
+      ]);
+      const wb = await w.json().catch(() => ({}));
+      const ab = await a.json().catch(() => ({}));
+      if (!w.ok) throw new Error(wb.error ?? "Chargement impossible.");
+      setTrainers(wb.workspace?.trainers ?? []);
+      if (a.ok) setAnnual([...(ab.trainers ?? []), ...(ab.exemptTrainers ?? [])]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Chargement impossible.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function loadRecords(id: string) {
+    if (records[id]) return;
+    const r = await fetch(`/api/client/daily/trainer-records?trainer_id=${encodeURIComponent(id)}`, { cache: "no-store" });
+    const b = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      setError(b.error ?? "Historique formateur indisponible.");
+      return;
+    }
+    setRecords((c) => ({ ...c, [id]: b }));
+  }
+
+  async function sendTrainerAccess(emailValue: string) {
+    const email = normalizeEmail(emailValue);
+    if (!email) {
+      setError("Ajoutez une adresse email professionnelle avant d’envoyer un accès.");
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+    setMessage("");
+    try {
+      const workspaceResponse = await fetch("/api/client/daily/workspace", { cache: "no-store" });
+      const workspaceBody = await workspaceResponse.json().catch(() => ({}));
+      if (!workspaceResponse.ok) throw new Error(workspaceBody.error ?? "Impossible de vérifier l’accès formateur.");
+
+      const invitations = (workspaceBody.workspace?.invitations ?? []) as WorkspaceInvitation[];
+      const pendingInvitation = invitations.find((invitation) => {
+        const invitationEmail = normalizeEmail(invitation.normalized_email ?? invitation.invited_email);
+        const roles = (invitation.intended_roles ?? []).map(String);
+        return invitationEmail === email && invitation.status === "pending" && roles.includes("trainer") && Boolean(invitation.id);
+      });
+
+      const body = pendingInvitation?.id
+        ? { action: "resend", invitation_id: pendingInvitation.id }
+        : { action: "create", email, roles: ["trainer"], permission_blocks: [] };
+      const invitationResponse = await fetch("/api/client/daily/workspace/invitations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const invitationBody = await invitationResponse.json().catch(() => ({}));
+      if (!invitationResponse.ok) throw new Error(invitationBody.error ?? "Impossible d’envoyer l’accès formateur.");
+
+      setMessage(
+        invitationBody.sent
+          ? pendingInvitation?.id
+            ? "Un nouvel email d’accès sécurisé a été envoyé au formateur."
+            : "L’email d’accès sécurisé a été envoyé au formateur."
+          : "L’accès sécurisé a été généré, mais l’email n’a pas pu être envoyé.",
+      );
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Impossible d’envoyer l’accès formateur.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveTrainer(values: Record<string, unknown>) {
+    setSaving(true);
+    setError("");
+    setMessage("");
+    const isCreation = !values.id;
+    const r = await fetch("/api/client/daily/workspace", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "save_trainer", ...values }),
+    });
+    const b = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      setSaving(false);
+      setError(b.error ?? "Enregistrement impossible.");
+      return false;
+    }
+    setTrainers(b.workspace?.trainers ?? []);
+    let notice = "Fiche formateur enregistrée.";
+
+    if (isCreation) {
+      const email = normalizeEmail(values.professional_email);
+      if (email) {
+        const users = (b.workspace?.users ?? []) as WorkspaceUser[];
+        const invitations = (b.workspace?.invitations ?? []) as WorkspaceInvitation[];
+        const alreadyActive = users.some(
+          (user) => normalizeEmail(user.email) === email && String(user.status ?? "") === "active" && (user.roles ?? []).map(String).includes("trainer"),
+        );
+        const now = Date.now();
+        const pendingInvitation = invitations.some((invitation) => {
+          const invitationEmail = normalizeEmail(invitation.normalized_email ?? invitation.invited_email);
+          const roles = (invitation.intended_roles ?? []).map(String);
+          const expiresAt = invitation.expires_at ? new Date(invitation.expires_at).getTime() : 0;
+          return invitationEmail === email && invitation.status === "pending" && roles.includes("trainer") && expiresAt > now;
+        });
+        if (alreadyActive) {
+          notice = "Fiche formateur enregistrée. L’accès formateur est déjà actif pour cette adresse.";
+        } else if (pendingInvitation) {
+          notice = "Fiche formateur enregistrée. Une invitation formateur active existe déjà pour cette adresse.";
+        } else {
+          const invitationResponse = await fetch("/api/client/daily/workspace/invitations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "create", email, roles: ["trainer"], permission_blocks: [] }),
+          });
+          const invitationBody = await invitationResponse.json().catch(() => ({}));
+          if (invitationResponse.ok) {
+            notice = invitationBody.sent
+              ? "Fiche formateur enregistrée. L’email d’accès formateur a été envoyé."
+              : "Fiche formateur enregistrée. L’invitation a été créée, mais l’email n’a pas pu être envoyé.";
+          } else {
+            notice = `Fiche formateur enregistrée. L’accès n’a pas pu être envoyé : ${invitationBody.error ?? "erreur d’invitation"}.`;
+          }
+        }
+      }
+    }
+
+    setSaving(false);
+    setMessage(notice);
+    return true;
+  }
+
+  async function createTrainer(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    const ok = await saveTrainer({
+      display_name: f.get("display_name"),
+      professional_email: f.get("professional_email"),
+      phone: f.get("phone"),
+      engagement_type: f.get("engagement_type") || "external",
+      biography: f.get("biography"),
+      specialties: String(f.get("specialties") || "").split(/[,;\n]/).map((x) => x.trim()).filter(Boolean),
+      status: "draft",
+    });
+    if (ok) {
+      e.currentTarget.reset();
+      setShowCreate(false);
+    }
+  }
+
+  async function uploadContract(e: FormEvent<HTMLFormElement>, trainerId: string) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const fd = new FormData(form);
+    fd.set("trainer_id", trainerId);
+    setSaving(true);
+    const r = await fetch("/api/client/daily/trainer-records", { method: "POST", body: fd });
+    const b = await r.json().catch(() => ({}));
+    setSaving(false);
+    if (!r.ok) {
+      setError(b.error ?? "Import du contrat impossible.");
+      return;
+    }
+    setRecords((c) => {
+      const n = { ...c };
+      delete n[trainerId];
+      return n;
+    });
+    await loadRecords(trainerId);
+    form.reset();
+    setMessage("Contrat PDF ajouté à la fiche formateur.");
+  }
+
+  if (loading) return <LoadingMascot message="Sélion rassemble vos formateurs…" />;
+
+  return (
+    <main style={s.page}>
+      <div style={s.wrap}>
+        <header style={s.hero}>
+          <p style={s.kicker}>Selen Daily · Formateurs</p>
+          <h1>Mes formateurs</h1>
+          <p style={s.muted}>Coordonnées, compétences, sessions, certifications, ordres de mission, contrats et CV sont regroupés dans une seule fiche.</p>
+        </header>
+        {error ? <p style={s.error}>{error}</p> : null}
+        {message ? <p style={s.ok}>{message}</p> : null}
+
+        <section style={s.card}>
+          <button type="button" onClick={() => setShowCreate((v) => !v)} aria-expanded={showCreate} style={s.toggle}>
+            <span>Ajouter un nouveau formateur</span><span>{showCreate ? "▲" : "▼"}</span>
+          </button>
+          {showCreate ? (
+            <form onSubmit={createTrainer} style={s.form}>
+              <div style={s.grid}>
+                <Field label="Nom et prénom *"><input name="display_name" required style={s.input} /></Field>
+                <Field label="Email professionnel"><input name="professional_email" type="email" style={s.input} /></Field>
+                <Field label="Téléphone"><input name="phone" style={s.input} /></Field>
+                <Field label="Statut">
+                  <select name="engagement_type" defaultValue="external" style={s.input}>
+                    <option value="external">Formateur externe</option>
+                    <option value="employee">Formateur salarié</option>
+                    <option value="owner">Dirigeant / formateur</option>
+                  </select>
+                </Field>
+              </div>
+              <Field label="Compétences / spécialités" help="Expression libre. Séparez les compétences par une virgule, un point-virgule ou une ligne.">
+                <textarea name="specialties" rows={4} style={s.input} placeholder="Ingénierie pédagogique, management, Excel…" />
+              </Field>
+              <Field label="Présentation / expérience" help="Le formateur pourra compléter librement cette partie depuis son espace.">
+                <textarea name="biography" rows={5} style={s.input} />
+              </Field>
+              <button disabled={saving} style={s.primary}>{saving ? "Ajout…" : "Ajouter le formateur"}</button>
+            </form>
+          ) : <p style={s.muted}>Le formulaire reste replié tant qu’il n’est pas utile.</p>}
+        </section>
+
+        <section style={s.links}>
+          <Link href="/client/daily/formateurs/suivi-annuel" style={s.link}>Suivi annuel des formateurs →</Link>
+          <Link href="/client/daily/formateurs/certifications" style={s.link}>Certifications →</Link>
+          <Link href="/client/daily/formateurs/ordres-de-mission" style={s.link}>Ordres de mission →</Link>
+        </section>
+
+        <section style={s.card}>
+          <h2>{trainers.length} formateur{trainers.length > 1 ? "s" : ""}</h2>
+          <div style={s.list}>
+            {trainers.map((t, i) => {
+              const id = t.id ?? String(i);
+              const opened = openId === id;
+              const extra = annual.find((x) => x.id === t.id);
+              const owner = t.engagement_type === "owner";
+              const rec = t.id ? records[t.id] : undefined;
+              return (
+                <article key={id} style={s.row}>
+                  <button type="button" style={s.trainerHead} aria-expanded={opened} onClick={() => {
+                    const next = opened ? null : id;
+                    setOpenId(next);
+                    if (next && t.id) void loadRecords(t.id);
+                  }}>
+                    <span><strong>{t.display_name || "Formateur"}</strong><small>{t.professional_email || "Email non renseigné"}{t.phone ? ` · ${t.phone}` : ""}</small></span>
+                    <span>{opened ? "▲" : "▼"}</span>
+                  </button>
+                  {opened ? (
+                    <div style={s.details}>
+                      <div style={s.grid}>
+                        <Info title="Coordonnées" text={`${t.professional_email || "Email non renseigné"}${t.phone ? ` · ${t.phone}` : ""}`} />
+                        <Info title="Statut" text={owner ? "Dirigeant / formateur" : t.engagement_type === "employee" ? "Formateur salarié" : "Formateur externe"} />
+                      </div>
+                      {t.professional_email ? (
+                        <button type="button" disabled={saving} style={s.secondary} onClick={() => void sendTrainerAccess(t.professional_email!)}>
+                          {saving ? "Envoi…" : "Renvoyer l’accès sécurisé"}
+                        </button>
+                      ) : <p style={s.muted}>Ajoutez une adresse email professionnelle pour pouvoir envoyer l’accès formateur.</p>}
+                      {owner ? <p style={s.notice}>Dirigeant-formateur : aucune auto-évaluation annuelle ni relance d’auto-évaluation n’est demandée.</p> : null}
+                      <form onSubmit={async (e) => {
+                        e.preventDefault();
+                        const f = new FormData(e.currentTarget);
+                        await saveTrainer({
+                          id: t.id,
+                          display_name: t.display_name,
+                          professional_email: t.professional_email,
+                          phone: t.phone,
+                          engagement_type: t.engagement_type,
+                          biography: f.get("biography"),
+                          specialties: String(f.get("specialties") || "").split(/[,;\n]/).map((x) => x.trim()).filter(Boolean),
+                          status: t.status || "draft",
+                        });
+                      }} style={s.form}>
+                        <Field label="Compétences / spécialités"><textarea name="specialties" defaultValue={(t.specialties ?? []).join("\n")} rows={5} style={s.input} /></Field>
+                        <Field label="Présentation / expérience"><textarea name="biography" defaultValue={t.biography ?? ""} rows={5} style={s.input} /></Field>
+                        <button disabled={saving} style={s.secondary}>Enregistrer la fiche</button>
+                      </form>
+
+                      <div style={s.grid}>
+                        <div>
+                          <h3>Historique des sessions</h3>
+                          {!rec ? <p style={s.muted}>Chargement…</p> : rec.sessions.length ? <ul>{rec.sessions.map((x) => <li key={x.id}><strong>{x.daily_formations?.title ?? "Formation"}</strong> · {x.internal_reference ?? "Session"}{x.start_date ? ` · ${new Intl.DateTimeFormat("fr-FR").format(new Date(x.start_date))}` : ""} · {x.status}</li>)}</ul> : <p style={s.muted}>Aucune session affectée.</p>}
+                        </div>
+                        <div>
+                          <h3>Certifications</h3>
+                          {extra?.certifications?.length ? <ul>{extra.certifications.map((c) => <li key={c.id}>{c.title}{c.issuer ? ` · ${c.issuer}` : ""}{c.valid_until ? ` · jusqu’au ${new Intl.DateTimeFormat("fr-FR").format(new Date(c.valid_until))}` : ""}</li>)}</ul> : <p style={s.muted}>Aucune certification enregistrée.</p>}
+                          <Link href="/client/daily/formateurs/certifications" style={s.inline}>Voir les justificatifs →</Link>
+                        </div>
+                      </div>
+
+                      <div style={s.grid}>
+                        <div>
+                          <h3>Ordres de mission</h3>
+                          {!rec ? <p style={s.muted}>Chargement…</p> : rec.orders.length ? <ul>{rec.orders.map((o) => <li key={o.id}><strong>{o.missions?.join(", ") || o.mission_details || "Mission"}</strong>{o.start_date ? ` · ${o.start_date}` : ""}{o.end_date ? ` → ${o.end_date}` : ""} · {o.status}</li>)}</ul> : <p style={s.muted}>Aucun ordre de mission.</p>}
+                          <Link href="/client/daily/formateurs/ordres-de-mission" style={s.inline}>Gérer les ordres de mission →</Link>
+                        </div>
+                        <div>
+                          <h3>CV et contrats</h3>
+                          {rec?.documents?.length ? <ul>{rec.documents.map((d) => <li key={d.id}><strong>{d.document_type === "trainer_cv" ? "CV" : "Contrat"}</strong> · {new Intl.DateTimeFormat("fr-FR").format(new Date(d.created_at))}{d.url ? <a href={d.url} target="_blank" rel="noreferrer" style={s.inline}> · ouvrir ↗</a> : null}</li>)}</ul> : <p style={s.muted}>Aucun document enregistré.</p>}
+                          {t.id ? <form onSubmit={(e) => void uploadContract(e, t.id!)} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}><input type="file" name="file" accept="application/pdf,.pdf" required /><button disabled={saving} style={s.secondary}>Importer un contrat PDF</button></form> : null}
+                          <p style={s.muted}>Le CV est alimenté par le formateur depuis son paramétrage/suivi annuel et reste consultable ici.</p>
+                        </div>
+                      </div>
+
+                      <div>
+                        <h3>Développement des compétences</h3>
+                        {extra?.trainings?.length ? <ul>{extra.trainings.map((x) => <li key={x.id}>{x.title}{x.completed_on ? ` · ${new Intl.DateTimeFormat("fr-FR").format(new Date(x.completed_on))}` : ""}</li>)}</ul> : <p style={s.muted}>Aucun historique déclaré.</p>}
+                        {!owner ? <Link href="/client/daily/formateurs/suivi-annuel" style={s.inline}>Ouvrir le suivi annuel →</Link> : null}
+                      </div>
+                    </div>
+                  ) : null}
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+}
+
+function Field({ label, help, children }: { label: string; help?: string; children: React.ReactNode }) {
+  return <label style={s.field}><strong>{label}</strong>{children}{help ? <small style={s.muted}>{help}</small> : null}</label>;
+}
+function Info({ title, text }: { title: string; text: string }) {
+  return <div><strong>{title}</strong><p style={s.muted}>{text}</p></div>;
+}
+
+const s: Record<string, React.CSSProperties> = {
+  page: { minHeight: "100vh", padding: "2rem 1rem 5rem", color: "#392a19" },
+  wrap: { maxWidth: 1120, margin: "auto", display: "grid", gap: 16 },
+  hero: { background: "#f8f0dc", border: "1px solid #d9c391", padding: "1.5rem" },
+  kicker: { textTransform: "uppercase", letterSpacing: ".14em", fontSize: 11, fontWeight: 800, color: "#9b682d" },
+  card: { background: "#f8f0dc", border: "1px solid #d9c391", padding: "1.3rem" },
+  toggle: { width: "100%", display: "flex", justifyContent: "space-between", border: 0, background: "transparent", fontWeight: 800, fontSize: 17, cursor: "pointer", color: "#392a19" },
+  form: { display: "grid", gap: 12, marginTop: 12 },
+  grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 12 },
+  field: { display: "grid", gap: 6 },
+  input: { width: "100%", boxSizing: "border-box", padding: 10, border: "1px solid #c9ae78", background: "white", font: "inherit" },
+  primary: { width: "fit-content", padding: ".55rem .75rem", background: "#7a2e22", color: "white", border: "1px solid #7a2e22", fontWeight: 800 },
+  secondary: { width: "fit-content", padding: ".45rem .65rem", background: "transparent", border: "1px solid #b89b6c", fontWeight: 700, color: "#5c3a1e" },
+  links: { display: "flex", gap: 8, flexWrap: "wrap" },
+  link: { border: "1px solid #d9c391", background: "#fffaf0", padding: ".55rem .7rem", color: "#7a2e22", fontWeight: 700, textDecoration: "none" },
+  list: { display: "grid", gap: 10 },
+  row: { borderTop: "1px solid #d9c391", paddingTop: 10 },
+  trainerHead: { width: "100%", display: "flex", justifyContent: "space-between", textAlign: "left", border: 0, background: "transparent", padding: ".4rem 0", cursor: "pointer", color: "#392a19" },
+  details: { display: "grid", gap: 16, padding: "1rem", marginTop: 8, border: "1px solid #d9c391", background: "#fffaf0" },
+  notice: { padding: 10, border: "1px solid #8aa36c", background: "#f6fff0", color: "#4f6338" },
+  muted: { color: "#806c52", margin: ".35rem 0", fontWeight: 400 },
+  inline: { color: "#7a2e22", fontWeight: 700 },
+  error: { border: "1px solid #a64b3b", padding: 10, color: "#7d2e22" },
+  ok: { border: "1px solid #668153", padding: 10, color: "#455a3b" },
+};
