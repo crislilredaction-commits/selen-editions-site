@@ -27,7 +27,7 @@ async function generate(args:{admin:any;organisationId:string;userId:string;docu
 async function load(admin:any,organisationId:string,sessionId:string){
   const [{data:session,error:sessionError},{data:enrolments,error:enrolmentError},{data:slots,error:slotError},{data:records,error:recordError},{data:assessments,error:assessmentError},{data:org,error:orgError}]=await Promise.all([
     admin.from("daily_sessions").select("id,organisation_id,internal_reference,start_date,end_date,status,daily_formations(id,title)").eq("id",sessionId).eq("organisation_id",organisationId).maybeSingle(),
-    admin.from("daily_session_enrolments").select("id,status,learner_id,daily_learners(id,first_name,last_name,email)").eq("session_id",sessionId).eq("organisation_id",organisationId).not("status","in",'(declined,cancelled)'),
+    admin.from("daily_session_enrolments").select("id,status,learner_id,daily_learners(id,first_name,last_name,email)").eq("session_id",sessionId).eq("organisation_id",organisationId).not("status","in",'(declined,cancelled,abandoned)'),
     admin.from("daily_attendance_slots").select("id,slot_date,starts_at,ends_at,status").eq("session_id",sessionId).eq("organisation_id",organisationId).neq("status","cancelled").order("slot_date").order("starts_at"),
     admin.from("daily_attendance_records").select("id,slot_id,enrolment_id,status,proof_sha256,signed_at").eq("session_id",sessionId).eq("organisation_id",organisationId),
     admin.from("daily_learning_assessments").select("enrolment_id,outcome,assessed_at").eq("session_id",sessionId).eq("organisation_id",organisationId),
