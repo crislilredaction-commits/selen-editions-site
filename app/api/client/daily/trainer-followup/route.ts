@@ -105,7 +105,7 @@ export async function GET(request: Request) {
   const [{ data: entries, error: entriesError }, { data: enrolments, error: enrolmentsError }, { data: portalRows, error: portalError }] = await Promise.all([
     context.admin.from("daily_session_followup_entries").select("id,session_id,enrolment_id,entry_type,level,occurred_at,summary,description,action_taken,status,resolved_at,created_by,author_role,author_name,created_at,updated_at").eq("organisation_id", context.organisationId).eq("session_id", sessionId).order("occurred_at", { ascending: false }),
     context.admin.from("daily_session_enrolments").select("id,status,daily_learners(id,first_name,last_name,email)").eq("organisation_id", context.organisationId).eq("session_id", sessionId).not("status", "in", "(cancelled,declined)"),
-    context.admin.from("daily_portal_access_tokens").select("id,session_id,entity_name,entity_email,token,status,expires_at,last_viewed_at").eq("session_id", sessionId).eq("portal_type", "learner").not("status", "eq", "expired"),
+    context.admin.from("daily_portal_access_tokens").select("id,session_id,entity_name,entity_email,token,status,expires_at,viewed_at").eq("session_id", sessionId).eq("portal_type", "learner").not("status", "eq", "expired"),
   ]);
   if (entriesError || enrolmentsError || portalError) {
     return NextResponse.json({ error: entriesError?.message ?? enrolmentsError?.message ?? portalError?.message }, { status: 500 });
