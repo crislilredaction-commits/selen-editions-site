@@ -4,14 +4,16 @@ import test from "node:test";
 
 const pretrainingPath = new URL("../app/api/client/daily/pretraining-documents/send/route.ts", import.meta.url);
 const pretrainingGenerationPath = new URL("../app/api/client/daily/pretraining-documents/route.ts", import.meta.url);
+const posttrainingGenerationPath = new URL("../app/api/client/daily/posttraining-documents/route.ts", import.meta.url);
 const posttrainingPath = new URL("../app/api/client/daily/posttraining-documents/send/route.ts", import.meta.url);
 const signedConventionDispatchPath = new URL("../lib/server/dailySignedConventionPretrainingPack.ts", import.meta.url);
 const attendancePath = new URL("../app/api/client/daily/attendance/route.ts", import.meta.url);
 const attendanceAutomationPath = new URL("../app/api/internal/daily/attendance-automation/route.ts", import.meta.url);
 
-const [pretraining, pretrainingGeneration, posttraining, signedConventionDispatch, attendance, attendanceAutomation] = await Promise.all([
+const [pretraining, pretrainingGeneration, posttrainingGeneration, posttraining, signedConventionDispatch, attendance, attendanceAutomation] = await Promise.all([
   readFile(pretrainingPath, "utf8"),
   readFile(pretrainingGenerationPath, "utf8"),
+  readFile(posttrainingGenerationPath, "utf8"),
   readFile(posttrainingPath, "utf8"),
   readFile(signedConventionDispatchPath, "utf8"),
   readFile(attendancePath, "utf8"),
@@ -28,6 +30,13 @@ test("une inscription abandonnée ne peut plus recevoir de convocation", () => {
 test("une inscription abandonnée est exclue de la génération des documents préformation", () => {
   assert.match(
     pretrainingGeneration,
+    /\.not\("status","in",'\(declined,cancelled,abandoned\)'\)/,
+  );
+});
+
+test("une inscription abandonnée est exclue de la génération des documents de fin", () => {
+  assert.match(
+    posttrainingGeneration,
     /\.not\("status","in",'\(declined,cancelled,abandoned\)'\)/,
   );
 });
