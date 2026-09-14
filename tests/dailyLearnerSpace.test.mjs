@@ -22,6 +22,23 @@ test("les documents individuels restent bornés à l’inscription de l’appren
   assert.match(resources, /daily_learners\(email\)/);
 });
 
+test("les documents avant formation incluent convention, règlement et livret sans dupliquer les fichiers", async () => {
+  const resources = await read("app/api/daily-portal/[token]/resources/route.ts");
+  const download = await read("app/api/daily-portal/[token]/document/route.ts");
+
+  assert.match(resources, /from\("daily_conventions"\)/);
+  assert.match(resources, /from\("daily_convocations"\)/);
+  assert.match(resources, /Convention de formation/);
+  assert.match(resources, /Règlement intérieur \(annexe de la convention\)/);
+  assert.match(resources, /Livret d’accueil \(annexe de la convocation\)/);
+  assert.match(resources, /recipient_type", "beneficiary/);
+  assert.match(resources, /matchesLearnerRecipient/);
+
+  assert.match(download, /portal:\(convention\|regulations\|welcome\)/);
+  assert.match(download, /match\[1\]===\"welcome\"\?\"convocation\":\"convention\"/);
+  assert.match(download, /virtualDocumentTarget/);
+});
+
 test("le portail lit le positionnement depuis l’inscription canonique", async () => {
   const route = await read("app/api/daily-portal/[token]/route.ts");
   assert.match(route, /daily_session_enrolments/);
