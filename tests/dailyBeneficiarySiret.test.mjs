@@ -5,6 +5,7 @@ import test from "node:test";
 const helper = await readFile(new URL("../lib/dailyBeneficiarySiret.ts", import.meta.url), "utf8");
 const registrationPage = await readFile(new URL("../app/daily-inscription/[token]/page.tsx", import.meta.url), "utf8");
 const registrationRoute = await readFile(new URL("../app/api/daily-registration/[token]/route.ts", import.meta.url), "utf8");
+const beneficiarySiretFields = await readFile(new URL("../components/daily/BeneficiaryProfessionalSiretFields.tsx", import.meta.url), "utf8");
 
 test("le SIRET bénéficiaire est une donnée distincte du commanditaire", () => {
   assert.match(helper, /normalizeBeneficiarySiret/);
@@ -22,4 +23,14 @@ test("le parcours candidature expose les deux rôles sans transformer un bénéf
   assert.match(registrationPage, /Je suis apprenant/);
   assert.match(registrationPage, /Je représente une entreprise/);
   assert.match(registrationRoute, /\["beneficiary", "company"\]/);
+});
+
+test("le champ SIRET bénéficiaire explique le bon choix de profil et reste facultatif", () => {
+  assert.match(beneficiarySiretFields, /même si vous avez un SIRET/);
+  assert.match(beneficiarySiretFields, /réservé à la personne qui inscrit ou représente un autre bénéficiaire/);
+  assert.match(beneficiarySiretFields, /Votre SIRET professionnel, si vous en avez un/);
+  assert.match(beneficiarySiretFields, /Facultatif/);
+  assert.match(beneficiarySiretFields, /ne crée pas d’entreprise commanditaire ni d’espace entreprise/);
+  assert.match(beneficiarySiretFields, /normalizeBeneficiarySiret/);
+  assert.match(beneficiarySiretFields, /exactement 14 chiffres/);
 });
