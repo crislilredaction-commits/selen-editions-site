@@ -9,6 +9,11 @@ const registrationRoute = await readFile(new URL("../app/api/daily-registration/
 test("le SIRET bénéficiaire est une donnée distincte du commanditaire", () => {
   assert.match(helper, /normalizeBeneficiarySiret/);
   assert.match(helper, /\^\\d\{14\}\$/);
+  assert.match(registrationRoute, /normalizeBeneficiarySiret\(needAnswers\.beneficiary_siret\)/);
+  assert.match(registrationRoute, /validateOptionalBeneficiarySiret\(beneficiarySiret\)/);
+  assert.match(registrationRoute, /needAnswers\.beneficiary_siret = beneficiarySiret \|\| null/);
+  assert.match(registrationRoute, /delete needAnswers\.beneficiary_siret/);
+  assert.match(registrationRoute, /Le SIRET doit comporter exactement 14 chiffres/);
   assert.match(registrationRoute, /company_name: responseType === "company" \? text\(body, "company_name"\) \|\| null : null/);
   assert.match(registrationRoute, /participants: responseType === "company" \? jsonArray\(body\.participants\) : \[\]/);
 });
@@ -16,5 +21,5 @@ test("le SIRET bénéficiaire est une donnée distincte du commanditaire", () =>
 test("le parcours candidature expose les deux rôles sans transformer un bénéficiaire en entreprise", () => {
   assert.match(registrationPage, /Je suis apprenant/);
   assert.match(registrationPage, /Je représente une entreprise/);
-  assert.match(registrationRoute, /responseType === "beneficiary"|\["beneficiary", "company"\]/);
+  assert.match(registrationRoute, /\["beneficiary", "company"\]/);
 });
