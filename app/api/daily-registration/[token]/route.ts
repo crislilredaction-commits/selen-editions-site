@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import { sendDailyRegistrationConfirmation } from "@/lib/server/dailyRegistrationEmails";
+import { normalizeBeneficiarySiret, validateOptionalBeneficiarySiret } from "@/lib/dailyBeneficiarySiret";
 import {
   buildDailyRegistrationSummary,
   DAILY_COMPANY_QUESTIONS,
@@ -129,6 +130,16 @@ export async function POST(request: Request, { params }: Params) {
   const formation = session ? null : await findFormation(clean);
   if (!session && !formation) return NextResponse.json({ error: "Lien introuvable ou expiré." }, { status: 404 });
   const needAnswers = jsonObject(body.need_answers);
+  if (responseType === "beneficiary") {
+    const beneficiarySiret = normalizeBeneficiarySiret(needAnswers.beneficiary_siret);
+    const beneficiarySiretValidation = validateOptionalBeneficiarySiret(beneficiarySiret);
+    if (!beneficiarySiretValidation.valid) {
+      return NextResponse.json({ error: "Le SIRET doit comporter exactement 14 chiffres." }, { status: 400 });
+    }
+    needAnswers.beneficiary_siret = beneficiarySiretValidation.value;
+  } else {
+    delete needAnswers.beneficiary_siret;
+  }
   const positioningAnswers = jsonObject(body.positioning_answers);
   const targetId = session?.id ?? formation?.id;
   if (!targetId) return NextResponse.json({ error: "Dossier de candidature introuvable." }, { status: 404 });
