@@ -41,7 +41,7 @@ type RegistrationRequest = {
   can_materialize?: boolean;
   decisions: DecisionRow[];
 };
-type ResponseBody = { requests?: RegistrationRequest[]; sessions?: SessionRow[]; actor_types?: ActorType[]; materialized?: boolean; error?: string };
+type ResponseBody = { requests?: RegistrationRequest[]; sessions?: SessionRow[]; actor_types?: ActorType[]; materialized?: boolean; materialization_error?: string; error?: string };
 
 function statusLabel(status: DecisionStatus) {
   if (status === "accepted") return "Acceptée";
@@ -120,7 +120,8 @@ export default function RegistrationRequestsPage() {
       const body = await response.json().catch(() => ({})) as ResponseBody;
       if (!response.ok) throw new Error(body.error ?? "Décision impossible.");
       if (decision === "accepted") {
-        if (body.materialized) setMessage("Candidature acceptée et inscription créée automatiquement dans la session.");
+        if (body.materialization_error) setError(`Candidature acceptée, mais inscription non créée : ${body.materialization_error}`);
+        else if (body.materialized) setMessage("Candidature acceptée et inscription créée automatiquement dans la session.");
         else if (isManager) setMessage("Candidature acceptée. Choisissez maintenant la session pour créer l'inscription sans ressaisie.");
         else setMessage("Candidature acceptée. L'organisme choisira la session pour finaliser l'inscription.");
       } else {
