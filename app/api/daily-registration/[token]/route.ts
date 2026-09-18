@@ -132,10 +132,11 @@ export async function POST(request: Request, { params }: Params) {
   const needAnswers = jsonObject(body.need_answers);
   if (responseType === "beneficiary") {
     const beneficiarySiret = normalizeBeneficiarySiret(needAnswers.beneficiary_siret);
-    if (!validateOptionalBeneficiarySiret(beneficiarySiret)) {
+    const beneficiarySiretValidation = validateOptionalBeneficiarySiret(beneficiarySiret);
+    if (!beneficiarySiretValidation.valid) {
       return NextResponse.json({ error: "Le SIRET doit comporter exactement 14 chiffres." }, { status: 400 });
     }
-    needAnswers.beneficiary_siret = beneficiarySiret || null;
+    needAnswers.beneficiary_siret = beneficiarySiretValidation.value;
   } else {
     delete needAnswers.beneficiary_siret;
   }

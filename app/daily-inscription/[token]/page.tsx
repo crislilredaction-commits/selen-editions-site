@@ -2,7 +2,9 @@
 
 import { use, useEffect, useMemo, useState } from "react";
 import ApplicationSignature from "@/components/daily/ApplicationSignature";
+import BeneficiaryProfessionalSiretFields from "@/components/daily/BeneficiaryProfessionalSiretFields";
 import ProgramDetails from "@/components/daily/ProgramDetails";
+import { normalizeBeneficiarySiret, validateOptionalBeneficiarySiret } from "@/lib/dailyBeneficiarySiret";
 
 type RegistrationMode = "beneficiary" | "company";
 type Participant = { first_name: string; last_name: string; email: string };
@@ -171,6 +173,7 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
       birth_date: form.birth_date,
       phone: form.phone,
       postal_address: form.postal_address,
+      beneficiary_siret: normalizeBeneficiarySiret(form.beneficiary_siret) || null,
       professional_situation: form.professional_situation,
       highest_diploma: form.highest_diploma,
       current_knowledge_level: form.current_knowledge_level,
@@ -217,6 +220,13 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
     if (mode === "beneficiary" && !String(form.phone ?? "").trim()) {
       setError("Merci d'ajouter un téléphone. L'organisme de formation pourra ainsi vous recontacter si une précision est nécessaire.");
       return false;
+    }
+    if (mode === "beneficiary") {
+      const beneficiarySiret = validateOptionalBeneficiarySiret(form.beneficiary_siret);
+      if (!beneficiarySiret.valid) {
+        setError(beneficiarySiret.error);
+        return false;
+      }
     }
     if (registrationKind === "formation" && availableSessions.length > 0 && !form.selected_session_id) {
       setError("Merci de choisir la session qui vous convient parmi les dates proposées.");
@@ -368,6 +378,7 @@ function BeneficiaryStep({ step, form, update, hasSelenPositioning, positioningQ
         <Input label="Situation professionnelle actuelle" value={form.professional_situation} onChange={(value) => update("professional_situation", value)} />
         <Input label="Plus haut diplôme obtenu" value={form.highest_diploma} onChange={(value) => update("highest_diploma", value)} />
       </div>
+      <BeneficiaryProfessionalSiretFields value={form.beneficiary_siret} onChange={(value) => update("beneficiary_siret", value)} />
       <Textarea label="Adresse postale" value={form.postal_address} onChange={(value) => update("postal_address", value)} />
     </div>
   );

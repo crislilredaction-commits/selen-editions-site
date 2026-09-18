@@ -12,7 +12,8 @@ test("le SIRET bénéficiaire est une donnée distincte du commanditaire", () =>
   assert.match(helper, /\^\\d\{14\}\$/);
   assert.match(registrationRoute, /normalizeBeneficiarySiret\(needAnswers\.beneficiary_siret\)/);
   assert.match(registrationRoute, /validateOptionalBeneficiarySiret\(beneficiarySiret\)/);
-  assert.match(registrationRoute, /needAnswers\.beneficiary_siret = beneficiarySiret \|\| null/);
+  assert.match(registrationRoute, /if \(!beneficiarySiretValidation\.valid\)/);
+  assert.match(registrationRoute, /needAnswers\.beneficiary_siret = beneficiarySiretValidation\.value/);
   assert.match(registrationRoute, /delete needAnswers\.beneficiary_siret/);
   assert.match(registrationRoute, /Le SIRET doit comporter exactement 14 chiffres/);
   assert.match(registrationRoute, /company_name: responseType === "company" \? text\(body, "company_name"\) \|\| null : null/);
@@ -33,4 +34,14 @@ test("le champ SIRET bénéficiaire explique le bon choix de profil et reste fac
   assert.match(beneficiarySiretFields, /ne crée pas d’entreprise commanditaire ni d’espace entreprise/);
   assert.match(beneficiarySiretFields, /normalizeBeneficiarySiret/);
   assert.match(beneficiarySiretFields, /exactement 14 chiffres/);
+});
+
+test("le parcours apprenant raccorde, valide et transmet le SIRET personnel", () => {
+  assert.match(registrationPage, /import BeneficiaryProfessionalSiretFields from "@\/components\/daily\/BeneficiaryProfessionalSiretFields"/);
+  assert.match(registrationPage, /import \{ normalizeBeneficiarySiret, validateOptionalBeneficiarySiret \} from "@\/lib\/dailyBeneficiarySiret"/);
+  assert.match(registrationPage, /beneficiary_siret: normalizeBeneficiarySiret\(form\.beneficiary_siret\) \|\| null/);
+  assert.match(registrationPage, /validateOptionalBeneficiarySiret\(form\.beneficiary_siret\)/);
+  assert.match(registrationPage, /if \(!beneficiarySiret\.valid\)/);
+  assert.match(registrationPage, /setError\(beneficiarySiret\.error\)/);
+  assert.match(registrationPage, /<BeneficiaryProfessionalSiretFields value=\{form\.beneficiary_siret\} onChange=\{\(value\) => update\("beneficiary_siret", value\)\} \/>/);
 });
