@@ -7,6 +7,8 @@ const formationsRoute = await readFile(new URL("../app/api/client/daily/formatio
 const onboardingPage = await readFile(new URL("../app/client/daily/onboarding/page.tsx", import.meta.url), "utf8");
 const uploadRoute = await readFile(new URL("../app/api/client/daily/uploads/route.ts", import.meta.url), "utf8");
 const dailyLayout = await readFile(new URL("../app/client/daily/layout.tsx", import.meta.url), "utf8");
+const newFormationPage = await readFile(new URL("../app/client/daily/formations/new/page.tsx", import.meta.url), "utf8");
+const creationPolicy = await readFile(new URL("../lib/dailyFormationCreationPolicy.ts", import.meta.url), "utf8");
 
 test("la création de formation envoie au moins un objectif pédagogique éditable", () => {
   assert.match(formationsManager, /learning_objectives: \[""\]/);
@@ -62,4 +64,22 @@ test("une formation non validée est modifiée en place sans recréer son token 
   assert.match(formationsRoute, /\.from\("daily_formations"\)\.update\(\{/);
   assert.match(formationsRoute, /public_registration_token: existing\.public_registration_token \?\? registrationToken\(\)/);
   assert.match(formationsRoute, /versioned: false/);
+});
+
+test("P0-D propose explicitement import du programme ou formulaire Selen", () => {
+  assert.match(newFormationPage, /Importer mon programme/);
+  assert.match(newFormationPage, /Remplir le formulaire Selen/);
+  assert.match(newFormationPage, /Votre document original reste la référence lorsqu’il est importé/);
+  assert.match(newFormationPage, /dépôt d’un justificatif de prérequis ne vaudra jamais validation automatique/);
+});
+
+test("P0-D ne force pas la ressaisie descriptive lors d'un import de programme", () => {
+  assert.match(creationPolicy, /PROGRAM_IMPORT_REQUIRED_COMPLEMENTS/);
+  assert.match(creationPolicy, /validateFormationCreationSource/);
+  assert.match(creationPolicy, /requiresStructuredLearningObjectives/);
+  const importBlock = creationPolicy.match(/const PROGRAM_IMPORT_REQUIRED_COMPLEMENTS = \[([\s\S]*?)\] as const;/)?.[1] ?? "";
+  for (const field of ["global_objective", "target_audience", "pedagogical_resources", "evaluation_methods"]) {
+    assert.doesNotMatch(importBlock, new RegExp(`"${field}"`));
+  }
+  assert.match(creationPolicy, /mode === "selen_form"/);
 });
