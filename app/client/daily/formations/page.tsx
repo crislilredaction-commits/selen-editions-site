@@ -2,6 +2,7 @@ import DailyFormationsManager from "@/components/daily/DailyFormationsManager";
 import "./formations.css";
 
 type CreationMode = "program_import" | "selen_form" | null;
+type FormationSearchParams = Record<string, string | string[] | undefined>;
 
 function resolveCreationMode(value: string | string[] | undefined): CreationMode {
   const raw = Array.isArray(value) ? value[0] : value;
@@ -13,9 +14,9 @@ function resolveCreationMode(value: string | string[] | undefined): CreationMode
 export default async function DailyFormationsPage({
   searchParams,
 }: {
-  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+  searchParams?: Promise<FormationSearchParams>;
 }) {
-  const params = searchParams ? await searchParams : {};
+  const params: FormationSearchParams = searchParams ? await searchParams : {};
   const creationMode = resolveCreationMode(params.creation);
 
   return (
