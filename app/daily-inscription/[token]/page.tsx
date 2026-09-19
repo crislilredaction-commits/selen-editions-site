@@ -3,8 +3,10 @@
 import { use, useEffect, useMemo, useState } from "react";
 import ApplicationSignature from "@/components/daily/ApplicationSignature";
 import BeneficiaryProfessionalSiretFields from "@/components/daily/BeneficiaryProfessionalSiretFields";
+import IndividualEarlyStartFields from "@/components/daily/IndividualEarlyStartFields";
 import ProgramDetails from "@/components/daily/ProgramDetails";
 import { normalizeBeneficiarySiret, validateOptionalBeneficiarySiret } from "@/lib/dailyBeneficiarySiret";
+import { getIndividualEarlyStartRequirement, validateIndividualEarlyStartSubmission } from "@/lib/dailyIndividualEarlyStart";
 
 type RegistrationMode = "beneficiary" | "company";
 type Participant = { first_name: string; last_name: string; email: string };
@@ -18,6 +20,11 @@ type PositioningQuestion = {
   order?: number;
 };
 type PublicSession = {
+  id?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  modality?: string | null;
+  distance_mode?: string | null;
   daily_formations?: {
     title?: string | null;
     positioning_mode?: string | null;
@@ -29,6 +36,7 @@ type AvailableSession = {
   start_date?: string | null;
   end_date?: string | null;
   modality?: string | null;
+  distance_mode?: string | null;
   schedule_blocks?: Array<{ date?: string; start?: string; end?: string }> | null;
 };
 
@@ -57,6 +65,16 @@ function formatSession(session: AvailableSession) {
   return `${dates} · ${modality}`;
 }
 
+function buildEarlyStartRequirement(mode: RegistrationMode, beneficiarySiret: string | undefined, funding: string | undefined, session: AvailableSession | null, referenceAt: string) {
+  return getIndividualEarlyStartRequirement({
+    responseType: mode,
+    beneficiarySiret: normalizeBeneficiarySiret(beneficiarySiret) || null,
+    funding: funding || null,
+    sessionStartDate: session?.start_date ?? null,
+    referenceAt,
+  });
+}
+
 export default function DailyRegistrationPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = use(params);
   const [loading, setLoading] = useState(true);
@@ -74,14 +92,29 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
   const [signatureData, setSignatureData] = useState("");
   const [registrationKind, setRegistrationKind] = useState<"formation" | "session">("formation");
   const [availableSessions, setAvailableSessions] = useState<AvailableSession[]>([]);
+  const [automaticSession, setAutomaticSession] = useState<AvailableSession | null>(null);
   const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>("date_to_plan");
   const [organisationName, setOrganisationName] = useState("votre organisme de formation");
   const [submissionNextStep, setSubmissionNextStep] = useState<DeliveryMode>("date_to_plan");
+  const [applicationReferenceAt, setApplicationReferenceAt] = useState("");
 
   const positioningQuestions = useMemo(() => {
     const questions = session?.daily_formations?.positioning_questions;
     return Array.isArray(questions) ? [...questions].sort((a, b) => Number(a.order ?? 0) - Number(b.order ?? 0)) : [];
   }, [session]);
+
+  const selectedSessionForEarlyStart = useMemo<AvailableSession | null>(() => {
+    if (registrationKind === "session") {
+      if (!session?.id || !session.start_date) return null;
+      return { id: session.id, start_date: session.start_date, end_date: session.end_date, modality: session.modality, distance_mode: session.distance_mode };
+    }
+    return availableSessions.find((item) => item.id === form.selected_session_id) ?? automaticSession;
+  }, [automaticSession, availableSessions, form.selected_session_id, registrationKind, session]);
+
+  const earlyStartRequirement = useMemo(
+    () => buildEarlyStartRequirement(mode, form.beneficiary_siret, form.funding, selectedSessionForEarlyStart, applicationReferenceAt || "1970-01-01T00:00:00.000Z"),
+    [applicationReferenceAt, form.beneficiary_siret, form.funding, mode, selectedSessionForEarlyStart],
+  );
 
   const hasSelenPositioning = mode === "beneficiary" && session?.daily_formations?.positioning_mode === "selen" && positioningQuestions.length > 0;
   const totalSteps = mode === "company" ? 6 : hasSelenPositioning ? 7 : 6;
@@ -98,9 +131,11 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
       setSession(data.session);
       setRegistrationKind(data.registrationKind === "session" ? "session" : "formation");
       setAvailableSessions(Array.isArray(data.availableSessions) ? data.availableSessions : []);
+      setAutomaticSession(data.automaticSession?.id ? data.automaticSession : null);
       setDeliveryMode(data.deliveryMode === "asynchronous" ? "asynchronous" : data.deliveryMode === "scheduled" ? "scheduled" : "date_to_plan");
       setOrganisationName(data.organisation?.name || "votre organisme de formation");
       setSignatureConsentText(data.signatureConsentText ?? "");
+      setApplicationReferenceAt(new Date().toISOString());
       try {
         const draft = window.localStorage.getItem(`selen-daily-registration-${token}`);
         if (!draft) return;
@@ -130,6 +165,12 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
     }, 600);
     return () => window.clearTimeout(timer);
   }, [token, mode, step, form, participants, saved]);
+
+  useEffect(() => {
+    if (loading || saved) return;
+    const timer = window.setInterval(() => setApplicationReferenceAt(new Date().toISOString()), 60_000);
+    return () => window.clearInterval(timer);
+  }, [loading, saved]);
 
   const progress = useMemo(() => Math.round(((step + 1) / totalSteps) * 100), [step, totalSteps]);
 
@@ -227,6 +268,21 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
         setError(beneficiarySiret.error);
         return false;
       }
+      if (!beneficiarySiret.value && !fundingOptions.includes(form.funding as typeof fundingOptions[number])) {
+        setError("Merci d'indiquer le mode de financement envisagé. Cette information détermine les règles applicables à votre dossier.");
+        return false;
+      }
+      const currentReferenceAt = new Date().toISOString();
+      const currentEarlyStartRequirement = buildEarlyStartRequirement(mode, form.beneficiary_siret, form.funding, selectedSessionForEarlyStart, currentReferenceAt);
+      setApplicationReferenceAt(currentReferenceAt);
+      const earlyStartValidation = validateIndividualEarlyStartSubmission(currentEarlyStartRequirement, {
+        earlyStartRequested: form.early_start_requested === "yes",
+        fullPerformanceWithdrawalLossAcknowledged: form.full_performance_withdrawal_loss_acknowledged === "yes",
+      });
+      if (!earlyStartValidation.valid) {
+        setError(earlyStartValidation.error);
+        return false;
+      }
     }
     if (registrationKind === "formation" && availableSessions.length > 0 && !form.selected_session_id) {
       setError("Merci de choisir la session qui vous convient parmi les dates proposées.");
@@ -264,6 +320,8 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
         selected_session_id: form.selected_session_id || null,
         need_answers: buildNeedAnswers(),
         positioning_answers: buildPositioningAnswers(),
+        early_start_requested: form.early_start_requested === "yes",
+        full_performance_withdrawal_loss_acknowledged: form.full_performance_withdrawal_loss_acknowledged === "yes",
         signature_consent: signatureConsent,
         signature_data: signatureData,
       }),
@@ -338,7 +396,19 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
           )}
 
           {step === totalSteps - 1 ? (
-            <ApplicationSignature consentText={signatureConsentText} consent={signatureConsent} onConsentChange={setSignatureConsent} onSignatureChange={setSignatureData} />
+            <>
+              {earlyStartRequirement.required && selectedSessionForEarlyStart?.start_date && earlyStartRequirement.distanceWithdrawalDeadline ? (
+                <IndividualEarlyStartFields
+                  sessionStartDate={selectedSessionForEarlyStart.start_date}
+                  distanceWithdrawalDeadline={earlyStartRequirement.distanceWithdrawalDeadline}
+                  requested={form.early_start_requested === "yes"}
+                  fullPerformanceWithdrawalLossAcknowledged={form.full_performance_withdrawal_loss_acknowledged === "yes"}
+                  onRequestedChange={(checked) => update("early_start_requested", checked ? "yes" : "")}
+                  onFullPerformanceWithdrawalLossAcknowledgedChange={(checked) => update("full_performance_withdrawal_loss_acknowledged", checked ? "yes" : "")}
+                />
+              ) : null}
+              <ApplicationSignature consentText={signatureConsentText} consent={signatureConsent} onConsentChange={setSignatureConsent} onSignatureChange={setSignatureData} />
+            </>
           ) : null}
 
           <div style={s.actions}>

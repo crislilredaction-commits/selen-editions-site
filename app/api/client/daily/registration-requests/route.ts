@@ -3,6 +3,12 @@ import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import { getDailyClientWorkspace } from "@/lib/server/dailyClientWorkspace";
 import { sendLearnerPortalAccessForRegistrationRequest } from "@/lib/server/dailyLearnerPortalAccess";
 import { sendEnterprisePortalAccessForRegistrationRequest } from "@/lib/server/dailyEnterprisePortalAccess";
+import { normalizeBeneficiarySiret } from "@/lib/dailyBeneficiarySiret";
+import {
+  BENEFICIARY_EARLY_START_TRACE_KEY,
+  getIndividualEarlyStartRequirement,
+  validatePersistedIndividualEarlyStartTrace,
+} from "@/lib/dailyIndividualEarlyStart";
 
 type DecisionStatus = "pending" | "agent_review" | "accepted";
 type ActorType = "organisation" | "trainer";
@@ -23,14 +29,21 @@ type RequestRow = {
   submitted_at?: string | null;
   attached_session_id?: string | null;
   materialized_at?: string | null;
+  signature_signed_at?: string | null;
   status: string;
   decision_status: DecisionStatus;
   accepted_at?: string | null;
   agent_review_requested_at?: string | null;
 };
+type MaterializationRequestRow = Pick<RequestRow, "id" | "formation_id" | "response_type" | "signature_signed_at"> & {
+  need_answers?: Record<string, unknown> | null;
+};
 
 function jsonArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+function jsonObject(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 function applicantLabel(row: RequestRow) {
   const person = [row.respondent_first_name, row.respondent_last_name].filter(Boolean).join(" ").trim();
@@ -107,6 +120,39 @@ async function provisionAcceptedAccesses(access: Awaited<ReturnType<typeof getAc
     provisionEnterpriseAccess(access, requestId, sessionId, req),
   ]);
   return { learnerAccess, enterpriseAccess };
+}
+
+async function validateEarlyStartBeforeMaterialization(
+  admin: ReturnType<typeof getAdminSupabase>,
+  organisationId: string,
+  requestRow: MaterializationRequestRow,
+  sessionId: string,
+) {
+  const { data: session, error } = await admin
+    .from("daily_sessions")
+    .select("id,formation_id,organisation_id,start_date,end_date,modality,distance_mode")
+    .eq("id", sessionId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!session || session.organisation_id !== organisationId || session.formation_id !== requestRow.formation_id) {
+    return { valid: false as const, status: 403, error: "La session choisie ne correspond pas à cette candidature." };
+  }
+  const needAnswers = jsonObject(requestRow.need_answers);
+  const requirement = getIndividualEarlyStartRequirement({
+    responseType: requestRow.response_type,
+    beneficiarySiret: normalizeBeneficiarySiret(needAnswers.beneficiary_siret) || null,
+    funding: String(needAnswers.funding ?? "") || null,
+    sessionStartDate: session.start_date,
+    referenceAt: new Date().toISOString(),
+  });
+  const traceValidation = validatePersistedIndividualEarlyStartTrace({
+    requirement,
+    trace: needAnswers[BENEFICIARY_EARLY_START_TRACE_KEY],
+    sessionId: session.id,
+    sessionStartDate: session.start_date ?? "",
+    expectedRecordedAt: requestRow.signature_signed_at,
+  });
+  return traceValidation.valid ? { valid: true as const } : { valid: false as const, status: 409, error: traceValidation.error };
 }
 
 export async function GET() {
@@ -188,11 +234,13 @@ export async function POST(req: Request) {
       if (!access.isManager) return NextResponse.json({ error: "Seul le responsable de l'organisme peut choisir la session." }, { status: 403 });
       const sessionId = typeof body.session_id === "string" ? body.session_id.trim() : "";
       if (!sessionId) return NextResponse.json({ error: "Choisissez une session." }, { status: 400 });
-      const { data: requestRow, error: requestError } = await access.admin.from("daily_formation_registration_requests").select("id,formation_id,decision_status").eq("id", requestId).single();
+      const { data: requestRow, error: requestError } = await access.admin.from("daily_formation_registration_requests").select("id,formation_id,response_type,need_answers,signature_signed_at,decision_status").eq("id", requestId).single();
       if (requestError || !requestRow) return NextResponse.json({ error: "Candidature introuvable." }, { status: 404 });
       const { data: formation, error: formationError } = await access.admin.from("daily_formations").select("organisation_id").eq("id", requestRow.formation_id).single();
       if (formationError || formation?.organisation_id !== access.organisationId) return NextResponse.json({ error: "Candidature hors de votre organisme." }, { status: 403 });
       if (requestRow.decision_status !== "accepted") return NextResponse.json({ error: "La candidature doit d'abord être acceptée." }, { status: 409 });
+      const earlyStartValidation = await validateEarlyStartBeforeMaterialization(access.admin, access.organisationId, requestRow as MaterializationRequestRow, sessionId);
+      if (!earlyStartValidation.valid) return NextResponse.json({ error: earlyStartValidation.error }, { status: earlyStartValidation.status });
       const { data, error } = await access.admin.rpc("daily_materialize_registration_request", { p_request_id: requestId, p_session_id: sessionId });
       if (error) return NextResponse.json({ error: error.message }, { status: 409 });
       const { learnerAccess, enterpriseAccess } = await provisionAcceptedAccesses(access, requestId, sessionId, req);
@@ -232,9 +280,13 @@ export async function POST(req: Request) {
     }
 
     if (decision === "accepted") {
-      const { data: acceptedRequest, error: acceptedRequestError } = await access.admin.from("daily_formation_registration_requests").select("attached_session_id").eq("id", requestId).single();
+      const { data: acceptedRequest, error: acceptedRequestError } = await access.admin.from("daily_formation_registration_requests").select("id,formation_id,response_type,need_answers,signature_signed_at,attached_session_id").eq("id", requestId).single();
       if (acceptedRequestError) throw new Error(acceptedRequestError.message);
       if (acceptedRequest?.attached_session_id) {
+        const earlyStartValidation = await validateEarlyStartBeforeMaterialization(access.admin, access.organisationId, acceptedRequest as MaterializationRequestRow, acceptedRequest.attached_session_id);
+        if (!earlyStartValidation.valid) {
+          return NextResponse.json({ ok: true, result: data, materialized: false, materialization_error: earlyStartValidation.error });
+        }
         const { data: materialized, error: materializedError } = await access.admin.rpc("daily_materialize_registration_request", { p_request_id: requestId, p_session_id: acceptedRequest.attached_session_id });
         if (!materializedError) {
           const { learnerAccess, enterpriseAccess } = await provisionAcceptedAccesses(access, requestId, acceptedRequest.attached_session_id, req);

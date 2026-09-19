@@ -4,6 +4,12 @@ import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import { sendDailyRegistrationConfirmation } from "@/lib/server/dailyRegistrationEmails";
 import { normalizeBeneficiarySiret, validateOptionalBeneficiarySiret } from "@/lib/dailyBeneficiarySiret";
 import {
+  BENEFICIARY_EARLY_START_TRACE_KEY,
+  buildIndividualEarlyStartTrace,
+  getIndividualEarlyStartRequirement,
+  validateIndividualEarlyStartSubmission,
+} from "@/lib/dailyIndividualEarlyStart";
+import {
   buildDailyRegistrationSummary,
   DAILY_COMPANY_QUESTIONS,
   DAILY_NEED_QUESTIONS,
@@ -31,6 +37,7 @@ const FORMATION_SELECT = `id,user_id,public_registration_token,public_registrati
 const APPLICATION_CONSENT_TEXT =
   "Je certifie l'exactitude des informations renseignées dans ce dossier de candidature et confirme ma demande d'inscription à cette formation.";
 const MAX_SIGNATURE_LENGTH = 500_000;
+const BENEFICIARY_FUNDING_OPTIONS = new Set(["personnel", "entreprise", "opco", "cpf", "autre"]);
 
 function cleanToken(value?: string | null) { return String(value ?? "").trim(); }
 function text(body: Record<string, unknown>, key: string) { return String(body[key] ?? "").trim(); }
@@ -47,13 +54,12 @@ function hasExplicitAdaptationAnswer(answers: Record<string, unknown>) {
   return String(answers.adaptation_needed_answer ?? answers.company_adaptation_needed ?? "").toLowerCase() === "oui";
 }
 
-function buildApplicationSignature(request: Request, body: Record<string, unknown>, targetId: string, responseType: string, needAnswers: Record<string, unknown>, positioningAnswers: Record<string, unknown>) {
+function buildApplicationSignature(request: Request, body: Record<string, unknown>, targetId: string, responseType: string, needAnswers: Record<string, unknown>, positioningAnswers: Record<string, unknown>, signedAt: string) {
   const consentAccepted = body.signature_consent === true;
   const signatureData = text(body, "signature_data");
   if (!consentAccepted) return { error: "Merci de confirmer votre accord avant de signer le dossier." } as const;
   if (!signatureData.startsWith("data:image/png;base64,")) return { error: "Merci de dessiner votre signature dans l'encadré prévu." } as const;
   if (signatureData.length > MAX_SIGNATURE_LENGTH) return { error: "La signature transmise est trop volumineuse. Merci de l'effacer puis de signer à nouveau." } as const;
-  const signedAt = new Date().toISOString();
   const ipAddress = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("x-real-ip") || null;
   const userAgent = request.headers.get("user-agent");
   const proofHash = createHash("sha256").update([
@@ -113,7 +119,7 @@ export async function GET(_request: Request, { params }: Params) {
   const availableSessions = futureSessions.filter((item) => !isAsynchronous(item));
   const deliveryMode = availableSessions.length === 0 && asynchronousSessions.length > 0 ? "asynchronous" : availableSessions.length > 0 ? "scheduled" : "date_to_plan";
   return NextResponse.json({
-    registrationKind: "formation", organisation, availableSessions, deliveryMode,
+    registrationKind: "formation", organisation, availableSessions, deliveryMode, automaticSession: deliveryMode === "asynchronous" ? asynchronousSessions[0] : null,
     session: { id: null, user_id: formation.user_id, registration_token: null, registration_status: "spontaneous", daily_formations: formation },
     beneficiaryQuestions: DAILY_NEED_QUESTIONS, companyQuestions: DAILY_COMPANY_QUESTIONS, positioningQuestions: DAILY_POSITIONING_QUESTIONS, signatureConsentText: APPLICATION_CONSENT_TEXT,
   });
@@ -130,6 +136,7 @@ export async function POST(request: Request, { params }: Params) {
   const formation = session ? null : await findFormation(clean);
   if (!session && !formation) return NextResponse.json({ error: "Lien introuvable ou expiré." }, { status: 404 });
   const needAnswers = jsonObject(body.need_answers);
+  let canonicalBeneficiarySiret: string | null = null;
   if (responseType === "beneficiary") {
     const beneficiarySiret = normalizeBeneficiarySiret(needAnswers.beneficiary_siret);
     const beneficiarySiretValidation = validateOptionalBeneficiarySiret(beneficiarySiret);
@@ -137,13 +144,57 @@ export async function POST(request: Request, { params }: Params) {
       return NextResponse.json({ error: "Le SIRET doit comporter exactement 14 chiffres." }, { status: 400 });
     }
     needAnswers.beneficiary_siret = beneficiarySiretValidation.value;
+    canonicalBeneficiarySiret = beneficiarySiretValidation.value;
+    if (!canonicalBeneficiarySiret && !BENEFICIARY_FUNDING_OPTIONS.has(String(needAnswers.funding ?? ""))) {
+      return NextResponse.json({ error: "Merci d'indiquer le mode de financement envisagé. Cette information détermine les règles applicables à votre dossier." }, { status: 400 });
+    }
   } else {
     delete needAnswers.beneficiary_siret;
   }
   const positioningAnswers = jsonObject(body.positioning_answers);
   const targetId = session?.id ?? formation?.id;
   if (!targetId) return NextResponse.json({ error: "Dossier de candidature introuvable." }, { status: 404 });
-  const signature = buildApplicationSignature(request, body, targetId, responseType, needAnswers, positioningAnswers);
+
+  let attachedSession = session ? session as unknown as PublicSession : null;
+  let nextStep: "asynchronous" | "scheduled" | "date_to_plan" = attachedSession ? isAsynchronous(attachedSession) ? "asynchronous" : "scheduled" : "date_to_plan";
+  if (formation) {
+    const futureSessions = await findFutureSessions(formation.id);
+    const publicSessions = futureSessions.filter((item) => !isAsynchronous(item));
+    const asyncSession = futureSessions.find(isAsynchronous) ?? null;
+    const requestedSessionId = text(body, "selected_session_id");
+    attachedSession = null;
+    if (requestedSessionId) {
+      attachedSession = publicSessions.find((item) => item.id === requestedSessionId) ?? null;
+      if (!attachedSession) return NextResponse.json({ error: "La session choisie n'est plus disponible. Merci d'actualiser le dossier et de choisir une autre date." }, { status: 409 });
+    } else if (publicSessions.length === 0 && asyncSession) attachedSession = asyncSession;
+    nextStep = attachedSession ? isAsynchronous(attachedSession) ? "asynchronous" : "scheduled" : "date_to_plan";
+  }
+
+  const signedAt = new Date().toISOString();
+  delete needAnswers[BENEFICIARY_EARLY_START_TRACE_KEY];
+  const earlyStartRequirement = getIndividualEarlyStartRequirement({
+    responseType: responseType as "beneficiary" | "company",
+    beneficiarySiret: canonicalBeneficiarySiret,
+    funding: String(needAnswers.funding ?? "") || null,
+    sessionStartDate: attachedSession?.start_date ?? null,
+    referenceAt: signedAt,
+  });
+  const earlyStartValidation = validateIndividualEarlyStartSubmission(earlyStartRequirement, {
+    earlyStartRequested: body.early_start_requested,
+    fullPerformanceWithdrawalLossAcknowledged: body.full_performance_withdrawal_loss_acknowledged,
+  });
+  if (!earlyStartValidation.valid) return NextResponse.json({ error: earlyStartValidation.error }, { status: 400 });
+  if (earlyStartRequirement.required && attachedSession?.start_date) {
+    needAnswers[BENEFICIARY_EARLY_START_TRACE_KEY] = buildIndividualEarlyStartTrace({
+      requirement: earlyStartRequirement,
+      recordedAt: signedAt,
+      sessionId: attachedSession.id,
+      sessionStartDate: attachedSession.start_date,
+      sessionEndDate: attachedSession.end_date,
+    });
+  }
+
+  const signature = buildApplicationSignature(request, body, targetId, responseType, needAnswers, positioningAnswers, signedAt);
   if ("error" in signature) return NextResponse.json({ error: signature.error }, { status: 400 });
   const adaptationNeeded = hasExplicitAdaptationAnswer(needAnswers) || detectAdaptationNeeded(needAnswers);
   const supabase = getAdminSupabase();
@@ -152,16 +203,6 @@ export async function POST(request: Request, { params }: Params) {
   const respondentFirstName = text(body, "respondent_first_name");
 
   if (formation) {
-    const futureSessions = await findFutureSessions(formation.id);
-    const publicSessions = futureSessions.filter((item) => !isAsynchronous(item));
-    const asyncSession = futureSessions.find(isAsynchronous) ?? null;
-    const requestedSessionId = text(body, "selected_session_id");
-    let attachedSession: PublicSession | null = null;
-    if (requestedSessionId) {
-      attachedSession = publicSessions.find((item) => item.id === requestedSessionId) ?? null;
-      if (!attachedSession) return NextResponse.json({ error: "La session choisie n'est plus disponible. Merci d'actualiser le dossier et de choisir une autre date." }, { status: 409 });
-    } else if (publicSessions.length === 0 && asyncSession) attachedSession = asyncSession;
-    const nextStep = attachedSession ? isAsynchronous(attachedSession) ? "asynchronous" : "scheduled" : "date_to_plan";
     const { data: response, error } = await supabase.from("daily_formation_registration_requests").insert({
       formation_id: formation.id, user_id: formation.user_id, response_type: responseType,
       respondent_first_name: respondentFirstName || null, respondent_last_name: text(body, "respondent_last_name") || null, respondent_email: respondentEmail || null,
