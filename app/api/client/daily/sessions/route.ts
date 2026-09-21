@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { blockedAgentAssistanceResponse, getAssistanceTokenFromRequest } from "@/lib/server/agentAssistance";
+import { blockedAgentAssistanceResponse, getAssistanceTokenFromRequest, logAgentAssistanceAction } from "@/lib/server/agentAssistance";
 import {
   getDailyOrganisationBillingUserId,
   getDailyOrganisationContext,
@@ -131,8 +131,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  if (getAssistanceTokenFromRequest(req)) return blockedAgentAssistanceResponse();
-  const context = await getDailyOrganisationContext(req, "sessions");
+  const context = await getDailyOrganisationContext(req, "sessions", { allowAssistanceWrite: true });
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
   const body = await req.json().catch(() => ({})) as Record<string, unknown>;
   if (text(body, "action") === "duplicate") {
@@ -144,7 +143,8 @@ export async function POST(req: Request) {
     const { id: _id, created_at: _createdAt, updated_at: _updatedAt, registration_token: _registrationToken, registration_status: _registrationStatus, registration_summary: _registrationSummary, adaptation_needed: _adaptationNeeded, registration_prepared_at: _preparedAt, registration_sent_at: _sentAt, registration_responses_received_at: _responsesAt, registration_summary_validated_at: _validatedAt, ...copy } = source;
     const { data, error } = await context.admin.from("daily_sessions").insert({ ...copy, user_id: context.user.id, organisation_id: context.organisationId, internal_reference: source.internal_reference ? `${source.internal_reference}-COPIE` : null, status: "draft", registration_token: null, registration_status: "to_prepare", registration_summary: {}, adaptation_needed: false, registration_prepared_at: null, registration_sent_at: null, registration_responses_received_at: null, registration_summary_validated_at: null }).select("*, daily_formations(id,title,status,version)").single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ session: data, duplicated: true });
+    if (context.assisted && context.assistance) await logAgentAssistanceAction({ supabase: context.admin, req, assistance: context.assistance, action: "daily_session_duplicate", actionLabel: "Session dupliquée par Studio pour le client", newState: { session_id: data.id, status: data.status } });
+    return NextResponse.json({ session: data, duplicated: true, assistanceMode: context.assisted });
   }
   const built = buildPayload(body, context.user.id, context.organisationId);
   if ("error" in built) return NextResponse.json({ error: built.error }, { status: 400 });
@@ -156,12 +156,12 @@ export async function POST(req: Request) {
   const { data, error } = await context.admin.from("daily_sessions").insert({ ...built.payload, registration_token: null, registration_status: "to_prepare" }).select("*, daily_formations(id,title,status,version)").single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   const [learnerCount, enterpriseAccess] = await Promise.all([refreshLearnerTier(context.organisationId, context.user.id, context.admin), provisionManualCompanyAccess(context, data.id, req)]);
-  return NextResponse.json({ session: data, annualLearnerCount: learnerCount, enterprise_access: enterpriseAccess, validationWarning: formation.status !== "validated" ? "La session peut être préparée, mais les documents officiels ne devront partir qu'après validation des éléments de formation requis." : null });
+  if (context.assisted && context.assistance) await logAgentAssistanceAction({ supabase: context.admin, req, assistance: context.assistance, action: "daily_session_create", actionLabel: "Session créée par Studio pour le client", newState: { session_id: data.id, status: data.status, formation_id: data.formation_id } });
+  return NextResponse.json({ session: data, annualLearnerCount: learnerCount, enterprise_access: enterpriseAccess, assistanceMode: context.assisted, validationWarning: formation.status !== "validated" ? "La session peut être préparée, mais les documents officiels ne devront partir qu'après validation des éléments de formation requis." : null });
 }
 
 export async function PATCH(req: Request) {
-  if (getAssistanceTokenFromRequest(req)) return blockedAgentAssistanceResponse();
-  const context = await getDailyOrganisationContext(req, "sessions");
+  const context = await getDailyOrganisationContext(req, "sessions", { allowAssistanceWrite: true });
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
   const body = await req.json().catch(() => ({})) as Record<string, unknown>;
   const id = text(body, "id");
@@ -176,7 +176,8 @@ export async function PATCH(req: Request) {
   const { data, error } = await context.admin.from("daily_sessions").update({ ...built.payload, registration_token: null }).eq("id", id).eq("organisation_id", context.organisationId).select("*, daily_formations(id,title,status,version)").single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   const [learnerCount, enterpriseAccess] = await Promise.all([refreshLearnerTier(context.organisationId, context.user.id, context.admin), provisionManualCompanyAccess(context, data.id, req)]);
-  return NextResponse.json({ session: data, annualLearnerCount: learnerCount, enterprise_access: enterpriseAccess });
+  if (context.assisted && context.assistance) await logAgentAssistanceAction({ supabase: context.admin, req, assistance: context.assistance, action: "daily_session_update", actionLabel: "Session modifiée par Studio pour le client", newState: { session_id: data.id, status: data.status, formation_id: data.formation_id } });
+  return NextResponse.json({ session: data, annualLearnerCount: learnerCount, enterprise_access: enterpriseAccess, assistanceMode: context.assisted });
 }
 
 export async function DELETE(req: Request) {
