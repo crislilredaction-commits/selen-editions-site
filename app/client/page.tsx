@@ -122,7 +122,8 @@ export default function ClientDashboardPage() {
   const [ndaDossiers, setNdaDossiers] = useState<NdaDossier[]>([]);
   const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
   const [error, setError] = useState("");
-  const [authRequired, setAuthRequired] = useState(false);\n  const [assistedDailyAccess, setAssistedDailyAccess] = useState(false);
+  const [authRequired, setAuthRequired] = useState(false);
+  const [assistedDailyAccess, setAssistedDailyAccess] = useState(false);
 
   const preauditRemainingDays = getRemainingDays(preauditAccess?.ends_at);
   const auditBlancRemainingDays = getRemainingDays(auditBlancAccess?.ends_at);
