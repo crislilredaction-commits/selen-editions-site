@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { createSupabaseBrowserClient } from "@/app/lib/supabase/client";\nimport { assistanceFetch } from "@/components/AgentAssistanceBanner";
+import { createSupabaseBrowserClient } from "@/app/lib/supabase/client";
+import { assistanceFetch } from "@/components/AgentAssistanceBanner";
 import LoadingMascot from "@/components/ui/LoadingMascot";
 
 type Settings={required:boolean;enabled:boolean};
