@@ -22,9 +22,9 @@ async function getAssistedContext(req: Request) {
 export async function getDailyOrganisationContext(
   req: Request,
   capability: DailyCapability,
-  options: { allowAssistanceRead?: boolean } = {},
+  options: { allowAssistanceRead?: boolean; allowAssistanceWrite?: boolean } = {},
 ) {
-  if (options.allowAssistanceRead) {
+  if (options.allowAssistanceRead || options.allowAssistanceWrite) {
     const assisted = await getAssistedContext(req);
     if (assisted) return assisted;
   }
