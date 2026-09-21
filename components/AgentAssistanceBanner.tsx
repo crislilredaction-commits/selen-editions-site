@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 const TOKEN_KEY = "selen_agent_assistance_token";
+const RETURN_KEY = "selen_agent_assistance_return_to";
 
 export function getStoredAssistanceToken() {
   if (typeof window === "undefined") return "";
@@ -37,6 +38,17 @@ export default function AgentAssistanceBanner() {
 
     if (token) {
       window.sessionStorage.setItem(TOKEN_KEY, token);
+      const returnTo = url.searchParams.get("assistanceReturnTo");
+      if (returnTo) {
+        try {
+          const returnUrl = new URL(returnTo);
+          if (returnUrl.protocol === "https:" || returnUrl.hostname === "localhost") {
+            window.sessionStorage.setItem(RETURN_KEY, returnUrl.toString());
+          }
+        } catch {
+          window.sessionStorage.removeItem(RETURN_KEY);
+        }
+      }
       window.setTimeout(() => setActive(true), 0);
       return;
     }
@@ -45,6 +57,14 @@ export default function AgentAssistanceBanner() {
   }, []);
 
   if (!active) return null;
+
+  function exitAssistance() {
+    const returnTo = window.sessionStorage.getItem(RETURN_KEY);
+    window.sessionStorage.removeItem(TOKEN_KEY);
+    window.sessionStorage.removeItem(RETURN_KEY);
+    setActive(false);
+    window.location.href = returnTo || "/client/login";
+  }
 
   return (
     <div
@@ -61,8 +81,24 @@ export default function AgentAssistanceBanner() {
         textAlign: "center",
       }}
     >
-      <strong>Mode assistance agent</strong> — certaines actions sont réservées
-      au client. Les actions d’assistance sont enregistrées.
+      <strong>Mode assistance Studio</strong> — vous agissez pour cet organisme.
+      Les actions réalisées sont enregistrées et attribuées à l’agent Studio.
+      <button
+        type="button"
+        onClick={exitAssistance}
+        style={{
+          marginLeft: 14,
+          border: "1px solid #d6a14a",
+          borderRadius: 6,
+          background: "transparent",
+          color: "#f7ead6",
+          padding: "6px 10px",
+          cursor: "pointer",
+          fontWeight: 700,
+        }}
+      >
+        Retour à Studio
+      </button>
     </div>
   );
 }
