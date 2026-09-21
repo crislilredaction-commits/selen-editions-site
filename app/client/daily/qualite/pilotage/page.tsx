@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import LoadingMascot from "@/components/ui/LoadingMascot";
+import LoadingMascot from "@/components/ui/LoadingMascot";\nimport { assistanceFetch } from "@/components/AgentAssistanceBanner";
 
 type LearnerSat={id:string;overall_rating:number|null;strengths:string|null;improvements:string|null;free_comment:string|null;submitted_at:string|null};
 type StakeholderSat={id:string;stakeholder_type:string|null;entity_name:string|null;overall_rating:number|null;strengths:string|null;improvements:string|null;free_comment:string|null;submitted_at:string|null};
@@ -16,7 +16,7 @@ const txt=(v?:string|null)=>v?.trim()||"—";
 
 export default function DailyQualityPilotagePage(){
  const[data,setData]=useState<Overview|null>(null);const[tab,setTab]=useState<Tab>("satisfactions");const[loading,setLoading]=useState(true);const[error,setError]=useState("");
- useEffect(()=>{const p=new URLSearchParams(window.location.search).get("tab") as Tab|null;if(p&&tabs.some(x=>x.id===p))setTab(p);void(async()=>{try{const r=await fetch("/api/client/daily/quality-overview",{cache:"no-store"});const b=await r.json().catch(()=>({}));if(!r.ok)throw new Error(b.error??"Pilotage qualité indisponible.");setData({learnerSatisfaction:b.learnerSatisfaction??[],stakeholderSatisfaction:b.stakeholderSatisfaction??[],feedback:b.feedback??[],actions:b.actions??[]})}catch(e){setError(e instanceof Error?e.message:"Chargement impossible.")}finally{setLoading(false)}})()},[]);
+ useEffect(()=>{const p=new URLSearchParams(window.location.search).get("tab") as Tab|null;if(p&&tabs.some(x=>x.id===p))setTab(p);void(async()=>{try{const r=await assistanceFetch("/api/client/daily/quality-overview",{cache:"no-store"});const b=await r.json().catch(()=>({}));if(!r.ok)throw new Error(b.error??"Pilotage qualité indisponible.");setData({learnerSatisfaction:b.learnerSatisfaction??[],stakeholderSatisfaction:b.stakeholderSatisfaction??[],feedback:b.feedback??[],actions:b.actions??[]})}catch(e){setError(e instanceof Error?e.message:"Chargement impossible.")}finally{setLoading(false)}})()},[]);
  const learner=data?.learnerSatisfaction??[],stakeholders=data?.stakeholderSatisfaction??[],feedback=data?.feedback??[],actions=data?.actions??[];
  const satisfactionRows=useMemo(()=>[...learner.map(x=>({id:`l-${x.id}`,who:"Apprenant",rating:x.overall_rating,strengths:x.strengths,improvements:x.improvements,comment:x.free_comment,date:x.submitted_at})),...stakeholders.map(x=>({id:`s-${x.id}`,who:x.entity_name||x.stakeholder_type||"Partie prenante",rating:x.overall_rating,strengths:x.strengths,improvements:x.improvements,comment:x.free_comment,date:x.submitted_at}))],[learner,stakeholders]);
  const incidentActions=actions.filter(x=>["incident","difficulty"].includes(x.category));
