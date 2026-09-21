@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/app/lib/supabase/client";
-import { assistanceFetch } from "@/components/AgentAssistanceBanner";
+import { assistanceFetch, getStoredAssistanceToken, withAssistanceToken } from "@/components/AgentAssistanceBanner";
 import DailyDashboardOverviewV2 from "@/components/daily/DailyDashboardOverviewV2";
 import RecentPublishedDocumentsCard from "@/components/daily/RecentPublishedDocumentsCard";
 import LoadingMascot from "@/components/ui/LoadingMascot";
@@ -20,10 +20,13 @@ export default function ClientDailyPage() {
 
     async function boot() {
       try {
-        const { data, error: authError } = await supabase.auth.getUser();
-        if (authError || !data.user) {
-          router.replace("/client/login");
-          return;
+        const assistanceToken = getStoredAssistanceToken();
+        if (!assistanceToken) {
+          const { data, error: authError } = await supabase.auth.getUser();
+          if (authError || !data.user) {
+            router.replace("/client/login");
+            return;
+          }
         }
 
         const onboardingRes = await assistanceFetch("/api/client/daily/onboarding", { cache: "no-store" });
@@ -38,7 +41,7 @@ export default function ClientDailyPage() {
         }
 
         if (onboardingData?.onboarding?.status !== "completed") {
-          router.replace("/client/daily/onboarding");
+          router.replace(withAssistanceToken("/client/daily/onboarding"));
           return;
         }
 
