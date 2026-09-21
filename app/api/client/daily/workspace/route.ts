@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getDailyClientWorkspace } from "@/lib/server/dailyClientWorkspace";
+import { getDailyOrganisationReadContext } from "@/lib/server/dailyOrganisationContext";
 
 const PROFILE_CHANGE_KEYS: Record<string, Set<string>> = {
   legal_identity: new Set(["legal_name"]),
@@ -18,7 +19,51 @@ function cleanStringArray(value: unknown) {
   return Array.isArray(value) ? value.map((item) => clean(item)).filter(Boolean) : [];
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const readContext = await getDailyOrganisationReadContext(req, ["trainings", "sessions", "trainers"]);
+  if (!readContext.ok) return NextResponse.json({ error: readContext.error }, { status: readContext.status });
+
+  if (readContext.assisted) {
+    const admin = readContext.admin;
+    const organisationId = readContext.organisationId;
+    const [{ data: organisation, error: organisationError }, { data: trainers, error: trainerError }] = await Promise.all([
+      admin.from("organisations").select("*").eq("id", organisationId).maybeSingle(),
+      admin.from("daily_trainer_profiles").select("*").eq("organisation_id", organisationId).neq("status", "archived").order("display_name"),
+    ]);
+    const error = organisationError ?? trainerError;
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (!organisation) return NextResponse.json({ error: "Organisme introuvable." }, { status: 404 });
+
+    return NextResponse.json({
+      workspace: {
+        organisation,
+        membership: {
+          id: `assistance:${readContext.assistance.id}`,
+          organisation_id: organisationId,
+          status: "active",
+          primary_role: "agent_assistance",
+          roles: ["agent_assistance"],
+          permission_blocks: [],
+        },
+        capabilities: {
+          users: false,
+          trainers: true,
+          trainers_all: true,
+          trainer_self: false,
+          legal_profile: false,
+          permanent_documents: true,
+          trainings: true,
+          sessions: true,
+        },
+        users: [],
+        invitations: [],
+        trainers: trainers ?? [],
+        profile_change_requests: [],
+      },
+      assistanceMode: true,
+    });
+  }
+
   const context = await getDailyClientWorkspace();
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
   return NextResponse.json({ workspace: context.workspace });
