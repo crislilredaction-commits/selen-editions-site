@@ -28,12 +28,11 @@ export async function getDailyOrganisationContext(
   // only becomes writable on routes that explicitly opt in below.
   const assisted = await getAssistedContext(req);
   if (assisted) {
-    if (options.allowAssistanceRead || options.allowAssistanceWrite) return assisted;
-    return {
-      ok: false as const,
-      status: 403,
-      error: "Cette action n’est pas autorisée en mode assistance Studio.",
-    };
+    // Studio assistance represents a delegated Daily workspace. Reads and
+    // ordinary business writes use the target organisation context globally.
+    // Routes for sensitive/security/legal actions must explicitly block
+    // assistance at their own boundary.
+    return assisted;
   }
 
   const admin = getAdminSupabase();
