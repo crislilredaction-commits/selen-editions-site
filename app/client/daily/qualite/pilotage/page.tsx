@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import LoadingMascot from "@/components/ui/LoadingMascot";\nimport { assistanceFetch } from "@/components/AgentAssistanceBanner";
+import LoadingMascot from "@/components/ui/LoadingMascot";
+import { assistanceFetch } from "@/components/AgentAssistanceBanner";
 
 type LearnerSat={id:string;overall_rating:number|null;strengths:string|null;improvements:string|null;free_comment:string|null;submitted_at:string|null};
 type StakeholderSat={id:string;stakeholder_type:string|null;entity_name:string|null;overall_rating:number|null;strengths:string|null;improvements:string|null;free_comment:string|null;submitted_at:string|null};
