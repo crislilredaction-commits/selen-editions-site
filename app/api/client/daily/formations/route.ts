@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { blockedAgentAssistanceResponse, getAssistanceTokenFromRequest } from "@/lib/server/agentAssistance";
+import { blockedAgentAssistanceResponse, getAssistanceTokenFromRequest, logAgentAssistanceAction } from "@/lib/server/agentAssistance";
 import { getDailyOrganisationContext, getDailyOrganisationReadContext } from "@/lib/server/dailyOrganisationContext";
 
 const REQUIRED_FIELDS = [
@@ -128,8 +128,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  if (getAssistanceTokenFromRequest(req)) return blockedAgentAssistanceResponse();
-  const context = await getDailyOrganisationContext(req, "trainings");
+  const context = await getDailyOrganisationContext(req, "trainings", { allowAssistanceWrite: true });
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
   const body = await req.json().catch(() => ({})) as Record<string, unknown>;
 
@@ -146,7 +145,8 @@ export async function POST(req: Request) {
       public_registration_token: registrationToken(), public_registration_enabled: true, updated_visible_at: new Date().toISOString().slice(0, 10),
     }).select("*").single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ formation: data, duplicated: true });
+    if (context.assisted && context.assistance) await logAgentAssistanceAction({ supabase: context.admin, req, assistance: context.assistance, action: "daily_formation_duplicate", actionLabel: "Formation dupliquée par Studio pour le client", newState: { formation_id: data.id, title: data.title } });
+    return NextResponse.json({ formation: data, duplicated: true, assistanceMode: context.assisted });
   }
 
   const built = buildPayload(body, context.user.id, context.organisationId);
@@ -155,12 +155,12 @@ export async function POST(req: Request) {
   if (trainerError) return NextResponse.json({ error: trainerError }, { status: 400 });
   const { data, error } = await context.admin.from("daily_formations").insert({ ...built.payload, public_registration_token: registrationToken(), public_registration_enabled: true }).select("*").single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ formation: data });
+  if (context.assisted && context.assistance) await logAgentAssistanceAction({ supabase: context.admin, req, assistance: context.assistance, action: "daily_formation_create", actionLabel: "Formation créée par Studio pour le client", newState: { formation_id: data.id, title: data.title, status: data.status } });
+  return NextResponse.json({ formation: data, assistanceMode: context.assisted });
 }
 
 export async function PATCH(req: Request) {
-  if (getAssistanceTokenFromRequest(req)) return blockedAgentAssistanceResponse();
-  const context = await getDailyOrganisationContext(req, "trainings");
+  const context = await getDailyOrganisationContext(req, "trainings", { allowAssistanceWrite: true });
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
   const body = await req.json().catch(() => ({})) as Record<string, unknown>;
   const id = text(body, "id");
@@ -189,7 +189,8 @@ export async function PATCH(req: Request) {
       archived_at: null,
     }).eq("id", existing.id).eq("organisation_id", context.organisationId).select("*").single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ formation: data, versioned: false, retainedVersion: true });
+    if (context.assisted && context.assistance) await logAgentAssistanceAction({ supabase: context.admin, req, assistance: context.assistance, action: "daily_formation_update", actionLabel: "Formation modifiée par Studio pour le client", oldState: { id: existing.id, status: existing.status, title: existing.title }, newState: { id: data.id, status: data.status, title: data.title } });
+    return NextResponse.json({ formation: data, versioned: false, retainedVersion: true, assistanceMode: context.assisted });
   }
 
   const { data: pendingRows, error: pendingError } = await context.admin
@@ -217,7 +218,8 @@ export async function PATCH(req: Request) {
       archived_at: null,
     }).eq("id", pendingSuccessor.id).eq("organisation_id", context.organisationId).select("*").single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ formation: data, versioned: false, reusedPendingVersion: true, previousValidatedVersionStillPublished: true });
+    if (context.assisted && context.assistance) await logAgentAssistanceAction({ supabase: context.admin, req, assistance: context.assistance, action: "daily_formation_update_pending", actionLabel: "Version de formation modifiée par Studio pour le client", oldState: { id: pendingSuccessor.id, status: pendingSuccessor.status, title: pendingSuccessor.title }, newState: { id: data.id, status: data.status, title: data.title } });
+    return NextResponse.json({ formation: data, versioned: false, reusedPendingVersion: true, previousValidatedVersionStillPublished: true, assistanceMode: context.assisted });
   }
 
   const { data: created, error: insertError } = await context.admin.from("daily_formations").insert({
@@ -232,8 +234,9 @@ export async function PATCH(req: Request) {
     public_registration_enabled: false,
   }).select("*").single();
   if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
+  if (context.assisted && context.assistance) await logAgentAssistanceAction({ supabase: context.admin, req, assistance: context.assistance, action: "daily_formation_version_create", actionLabel: "Nouvelle version de formation créée par Studio pour le client", oldState: { id: existing.id, status: existing.status, title: existing.title }, newState: { id: created.id, status: created.status, title: created.title } });
 
-  return NextResponse.json({ formation: created, versioned: true, retainedVersion: true, previousValidatedVersionStillPublished: true });
+  return NextResponse.json({ formation: created, versioned: true, retainedVersion: true, previousValidatedVersionStillPublished: true, assistanceMode: context.assisted });
 }
 
 export async function DELETE(req: Request) {
