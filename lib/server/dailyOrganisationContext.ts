@@ -24,9 +24,16 @@ export async function getDailyOrganisationContext(
   capability: DailyCapability,
   options: { allowAssistanceRead?: boolean; allowAssistanceWrite?: boolean } = {},
 ) {
-  if (options.allowAssistanceRead || options.allowAssistanceWrite) {
-    const assisted = await getAssistedContext(req);
-    if (assisted) return assisted;
+  // A valid Studio assistance token is always authoritative for reads and
+  // only becomes writable on routes that explicitly opt in below.
+  const assisted = await getAssistedContext(req);
+  if (assisted) {
+    if (options.allowAssistanceRead || options.allowAssistanceWrite) return assisted;
+    return {
+      ok: false as const,
+      status: 403,
+      error: "Cette action n’est pas autorisée en mode assistance Studio.",
+    };
   }
 
   const admin = getAdminSupabase();
