@@ -24,8 +24,8 @@ function payload(qualiopi: Awaited<ReturnType<typeof readCanonicalQualiopi>>, en
 function validIsoDate(value: string) { if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false; const date = new Date(`${value}T00:00:00Z`); return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value; }
 function shiftDate(value:string, months:number){const d=new Date(`${value}T00:00:00Z`);const day=d.getUTCDate();d.setUTCDate(1);d.setUTCMonth(d.getUTCMonth()+months);const last=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,0)).getUTCDate();d.setUTCDate(Math.min(day,last));return d.toISOString().slice(0,10)}
 
-export async function GET() {
-  const context = await getDailyOrganisationContext(req, "trainings", { allowAssistanceWrite: true });
+export async function GET(req: Request) {
+  const context = await getDailyOrganisationContext(req, "trainings", { allowAssistanceRead: true });
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
   try {
     const organisationId = context.organisationId;
@@ -38,9 +38,9 @@ export async function GET() {
 }
 
 export async function PATCH(req: Request) {
-  const context = await getDailyClientWorkspace();
+  const context = await getDailyOrganisationContext(req, "trainings", { allowAssistanceWrite: true });
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
-  if (!context.assisted && !context.capabilities?.legal_profile) return NextResponse.json({ error: "Accès au profil de l’organisme requis." }, { status: 403 });
+  
   try {
     const organisationId = context.organisationId;
     const [billingUserId, qualiopi] = await Promise.all([resolveBillingUserId(organisationId), readCanonicalQualiopi(organisationId)]);
