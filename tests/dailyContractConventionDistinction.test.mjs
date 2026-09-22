@@ -49,7 +49,11 @@ test("le programme généré reprend les indicateurs de performance de la format
 
 test("le contrat généré conserve les protections essentielles du stagiaire individuel", () => {
   assert.match(generator, /délai légal de rétractation/);
-  assert.match(generator, /délai de rétractation de 10 jours/);\n  assert.match(generator, /Aucune somme ne peut être exigée/);\n  assert.match(generator, /30 %/);\n  assert.match(generator, /délai de rétractation de 14 jours/);\n  assert.match(generator, /à compter de la conclusion du contrat/);
+  assert.match(generator, /délai de rétractation de 10 jours/);
+  assert.match(generator, /Aucune somme ne peut être exigée/);
+  assert.match(generator, /30 %/);
+  assert.match(generator, /délai de rétractation de 14 jours/);
+  assert.match(generator, /à compter de la conclusion du contrat/);
   assert.match(generator, /Force majeure/);
 });
 
