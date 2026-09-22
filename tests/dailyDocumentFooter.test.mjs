@@ -13,13 +13,13 @@ test("les documents administratifs préformation portent le pied de page légal"
   assert.match(pretraining, /organisationNda/);
   assert.match(pretraining, /organisationPhone/);
   assert.match(pretraining, /organisationEmail/);
-  assert.match(pretraining, /Cette déclaration ne vaut pas agrément de l'État/);
+  assert.match(pretraining, /Cette déclaration ne vaut pas agrément de l[’']État/);
 });
 
 test("les procédures Word portent le même socle d'identification", () => {
   assert.match(procedures, /SIRET/);
   assert.match(procedures, /NDA/);
-  assert.match(procedures, /Cette déclaration ne vaut pas agrément de l'État/);
+  assert.match(procedures, /Cette déclaration ne vaut pas agrément de l[’']État/);
   assert.match(procedures, /administrative_phone/);
   assert.match(procedures, /administrative_email/);
   assert.match(procedures, /textAlign:"justify"/);
