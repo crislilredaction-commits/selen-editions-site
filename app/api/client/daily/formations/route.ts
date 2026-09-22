@@ -251,7 +251,6 @@ export async function DELETE(req: Request) {
   const dependencyChecks = [
     ["daily_sessions", "formation_id", "une ou plusieurs sessions"],
     ["daily_documents", "formation_id", "des documents ou preuves"],
-    ["daily_formation_registration_requests", "formation_id", "des demandes d’inscription"],
     ["daily_formations", "previous_version_id", "un historique de versions"],
   ] as const;
   for (const [table, column, label] of dependencyChecks) {
@@ -259,6 +258,11 @@ export async function DELETE(req: Request) {
     if (error) return NextResponse.json({ error: "Impossible de vérifier les dépendances de cette formation. Aucune suppression n’a été effectuée." }, { status: 500 });
     if ((data ?? []).length) return NextResponse.json({ error: `Suppression impossible : cette formation possède ${label}. L’historique doit être conservé.`, deletionBlocked: true, canArchive: true }, { status: 409 });
   }
+  // Les candidatures sont rattachées à la formation elle-même et ne portent pas organisation_id.
+  // L'appartenance de la formation à l'OF a déjà été vérifiée ci-dessus.
+  const { data: registrationRequests, error: registrationError } = await context.admin.from("daily_formation_registration_requests").select("id").eq("formation_id", id).limit(1);
+  if (registrationError) return NextResponse.json({ error: "Impossible de vérifier les demandes d’inscription de cette formation. Aucune suppression n’a été effectuée." }, { status: 500 });
+  if ((registrationRequests ?? []).length) return NextResponse.json({ error: "Suppression impossible : cette formation possède des demandes d’inscription. L’historique doit être conservé.", deletionBlocked: true, canArchive: true }, { status: 409 });
   const { error } = await context.admin.from("daily_formations").delete().eq("id", id).eq("organisation_id", context.organisationId);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (context.assisted && context.assistance) await logAgentAssistanceAction({ supabase: context.admin, req, assistance: context.assistance, action: "daily_formation_delete", actionLabel: "Suppression d’une formation vierge par Studio pour le client", oldState: { id: existing.id, title: existing.title, status: existing.status }, newState: null });
