@@ -131,7 +131,8 @@ function buildPayload(body: Record<string, unknown>, userId: string, organisatio
     updated_visible_at: new Date().toISOString().slice(0, 10), positioning_mode: positioningMode,
     positioning_questions: positioningMode === "selen" ? positioningQuestions : [], status,
   };
-  const missing = requiredFormationFields(creationMode).filter((key) => !String(payload[key as keyof typeof payload] ?? "").trim());
+  const requiredPayload = payload as Record<string, unknown>;
+  const missing = requiredFormationFields(creationMode).filter((key) => !String(requiredPayload[key] ?? "").trim());
   if (missing.length > 0) return { error: creationMode === "program_import" ? "Complétez les informations minimales nécessaires en plus du programme importé." : "Tous les champs obligatoires de la formation doivent être renseignés." };
   return { payload };
 }
