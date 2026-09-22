@@ -28,6 +28,36 @@ where f.submission_type = 'complaint'
     where q.source_type = 'stakeholder_feedback' and q.source_id = f.id
   );
 
+create or replace function public.daily_quality_register_stakeholder_complaint()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if new.submission_type = 'complaint' then
+    insert into public.daily_quality_actions (
+      organisation_id, session_id, category, source_type, source_id, title, observation,
+      status, event_date, event_source, created_at, updated_at
+    ) values (
+      new.organisation_id, new.session_id, 'complaint', 'stakeholder_feedback', new.id,
+      coalesce(nullif(new.subject,''), 'Réclamation partie prenante'), new.message,
+      case when new.status in ('resolved','closed') then 'closed' else 'open' end,
+      new.created_at::date,
+      coalesce(nullif(new.submitter_name,''), nullif(new.stakeholder_type,''), 'Partie prenante'),
+      new.created_at, coalesce(new.updated_at,new.created_at)
+    ) on conflict do nothing;
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function public.daily_quality_register_stakeholder_complaint() from public, anon, authenticated;
+
+drop trigger if exists daily_quality_register_stakeholder_complaint on public.daily_stakeholder_feedback;
+create trigger daily_quality_register_stakeholder_complaint
+after insert on public.daily_stakeholder_feedback
+for each row execute function public.daily_quality_register_stakeholder_complaint();
+
 comment on column public.daily_quality_actions.event_date is 'Date métier de l’événement qualité.';
 comment on column public.daily_quality_actions.event_source is 'Source ou origine de l’événement qualité.';
 comment on column public.daily_quality_actions.responsible_name is 'Responsable chargé du suivi de l’événement.';
