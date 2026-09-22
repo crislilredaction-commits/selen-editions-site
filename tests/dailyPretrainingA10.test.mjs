@@ -1,0 +1,10 @@
+import assert from "node:assert/strict"; import {readFile} from "node:fs/promises"; import test from "node:test";
+const route=await readFile(new URL("../app/api/client/daily/pretraining-documents/route.ts",import.meta.url),"utf8");
+const html=await readFile(new URL("../lib/server/dailyPretrainingDocumentHtml.ts",import.meta.url),"utf8");
+const page=await readFile(new URL("../app/client/daily/documents-avant-formation/page.tsx",import.meta.url),"utf8");
+const sessions=await readFile(new URL("../components/daily/DailySessionsManager.tsx",import.meta.url),"utf8");
+for(const type of ["training_program","training_agreement","training_contract","convocation","registration_positioning","welcome_booklet","internal_regulations"]) test(`A10 expose ${type}`,()=>assert.match(route,new RegExp(type)));
+test("A10 distingue convention avec SIRET et contrat individuel sans SIRET",()=>{assert.match(route,/companies\.filter\(\(row\)=>text\(row\.siret\)\)/);assert.match(route,/if \(!text\(company\?\.siret\)\)/);assert.match(route,/contractual_kind:"convention"/);assert.match(route,/contractual_kind:"individual_contract"/)});
+test("A10 réutilise les protections contractuelles A9",()=>{assert.match(html,/délai de rétractation de 10 jours/);assert.match(html,/30 %/);assert.match(html,/délai de rétractation de 14 jours/);assert.match(html,/conclusion du contrat/)});
+test("A10 a un écran unique accessible depuis la session",()=>{assert.match(page,/Documents avant formation/);assert.match(page,/Générer \/ actualiser les documents/);assert.match(sessions,/documents-avant-formation\?session_id=/)});
+test("A10 annonce le circuit Studio puis dashboard email",()=>{assert.match(page,/circuit de vérification Studio/);assert.match(page,/tableau de bord/);assert.match(page,/un seul email/)});
