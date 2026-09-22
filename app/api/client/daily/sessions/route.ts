@@ -197,7 +197,6 @@ export async function DELETE(req: Request) {
     ["daily_convocations", "session_id", "des convocations"],
     ["daily_portal_access_tokens", "session_id", "des accès parties prenantes"],
     ["daily_session_followup_entries", "session_id", "un historique de suivi"],
-    ["daily_session_dossiers", "session_id", "un dossier de session"],
   ] as const;
   for (const [table, column, label] of dependencyChecks) {
     const { data, error } = await context.admin.from(table).select("id").eq("organisation_id", context.organisationId).eq(column, id).limit(1);
