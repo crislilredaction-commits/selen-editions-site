@@ -7,6 +7,8 @@ const formationsRoute = await readFile(new URL("../app/api/client/daily/formatio
 const onboardingPage = await readFile(new URL("../app/client/daily/onboarding/page.tsx", import.meta.url), "utf8");
 const uploadRoute = await readFile(new URL("../app/api/client/daily/uploads/route.ts", import.meta.url), "utf8");
 const dailyLayout = await readFile(new URL("../app/client/daily/layout.tsx", import.meta.url), "utf8");
+const newFormationPage = await readFile(new URL("../app/client/daily/formations/new/page.tsx", import.meta.url), "utf8");
+const creationPolicy = await readFile(new URL("../lib/dailyFormationCreationPolicy.ts", import.meta.url), "utf8");
 
 test("la création de formation envoie au moins un objectif pédagogique éditable", () => {
   assert.match(formationsManager, /learning_objectives: \[""\]/);
@@ -62,4 +64,29 @@ test("une formation non validée est modifiée en place sans recréer son token 
   assert.match(formationsRoute, /\.from\("daily_formations"\)\.update\(\{/);
   assert.match(formationsRoute, /public_registration_token: existing\.public_registration_token \?\? registrationToken\(\)/);
   assert.match(formationsRoute, /versioned: false/);
+});
+
+test("P0-D propose un écran dédié import du programme ou formulaire Selen", () => {
+  assert.match(newFormationPage, /Importer mon programme PDF\/Word/);
+  assert.match(newFormationPage, /Créer le programme dans Selen/);
+  assert.match(newFormationPage, /Pas de ressaisie des champs descriptifs déjà portés par le document/);
+  assert.match(newFormationPage, /L’original est conservé et rattaché à cette formation/);
+  assert.match(newFormationPage, /Déposer un fichier ne vaut jamais validation/);
+  assert.match(newFormationPage, /prerequisite_requirements: prerequisiteRequirements/);
+  assert.match(newFormationPage, /creation_mode: mode/);
+});
+
+test("P0-D ne force pas la ressaisie descriptive lors d'un import de programme", () => {
+  assert.match(creationPolicy, /PROGRAM_IMPORT_REQUIRED_COMPLEMENTS/);
+  assert.match(creationPolicy, /validateFormationCreationSource/);
+  assert.match(creationPolicy, /requiresStructuredLearningObjectives/);
+  const importBlock = creationPolicy.match(/const PROGRAM_IMPORT_REQUIRED_COMPLEMENTS = \[([\s\S]*?)\] as const;/)?.[1] ?? "";
+  for (const field of ["global_objective", "target_audience", "pedagogical_resources", "evaluation_methods"]) assert.doesNotMatch(importBlock, new RegExp(`"${field}"`));
+  assert.match(creationPolicy, /mode === "selen_form"/);
+});
+
+test("P0-D conserve le droit d’écriture de l’assistance Studio", () => {
+  assert.match(formationsRoute, /allowAssistanceWrite: true/);
+  assert.match(formationsRoute, /logAgentAssistanceAction/);
+  assert.doesNotMatch(formationsRoute, /blockedAgentAssistanceResponse/);
 });
