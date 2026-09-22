@@ -4,6 +4,7 @@ import test from "node:test";
 
 const pretraining = fs.readFileSync("lib/server/dailyPretrainingDocumentHtml.ts", "utf8");
 const procedures = fs.readFileSync("app/client/daily/procedures/page.tsx", "utf8");
+const procedureExport = fs.readFileSync("app/api/client/daily/procedures/export/route.ts", "utf8");
 
 test("les documents administratifs préformation portent le pied de page légal", () => {
   assert.match(pretraining, /organisationName/);
@@ -21,5 +22,9 @@ test("les procédures Word portent le même socle d'identification", () => {
   assert.match(procedures, /Cette déclaration ne vaut pas agrément de l'État/);
   assert.match(procedures, /administrative_phone/);
   assert.match(procedures, /administrative_email/);
-  assert.match(procedures, /text-align:justify/);
+  assert.match(procedures, /textAlign:"justify"/);
+  assert.match(procedureExport, /SIRET/);
+  assert.match(procedureExport, /NDA/);
+  assert.match(procedureExport, /administrative_phone/);
+  assert.match(procedureExport, /administrative_email/);
 });
