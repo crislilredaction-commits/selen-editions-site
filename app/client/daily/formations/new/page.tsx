@@ -1,51 +1,67 @@
-import Link from "next/link";
+"use client";
 
-const card = {
-  display: "grid",
-  gap: 10,
-  padding: 22,
-  border: "1px solid #eadfce",
-  borderRadius: 18,
-  background: "#fffdf8",
-  color: "#3d2d26",
-  textDecoration: "none",
-  boxShadow: "0 8px 24px rgba(68, 42, 28, 0.06)",
-} as const;
+import { useState } from "react";
+import type { FormEvent } from "react";
+import { useRouter } from "next/navigation";
+import { assistanceFetch } from "@/components/AgentAssistanceBanner";
+import FormationSourceUpload from "@/components/daily/FormationSourceUpload";
+
+type CreationMode = "program_import" | "selen_form";
+type PrerequisiteMode = "none" | "required";
+type Requirement = { id: string; label: string; description: string; required: true };
+const input = { width: "100%", padding: "10px 12px", border: "1px solid #d8d8de", borderRadius: 10, font: "inherit" } as const;
+const card = { border: "1px solid #e4e4e8", borderRadius: 14, padding: 18, background: "#fff" } as const;
 
 export default function DailyNewFormationPage() {
-  return (
-    <main style={{ maxWidth: 980, margin: "0 auto", padding: "32px 20px 56px", color: "#3d2d26" }}>
-      <p style={{ margin: 0, fontSize: 13, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase", color: "#8a4b24" }}>
-        Selen Daily · Nouvelle formation
-      </p>
-      <h1 style={{ margin: "8px 0 10px", fontSize: "clamp(30px, 5vw, 46px)", lineHeight: 1.05 }}>Comment souhaitez-vous créer la formation ?</h1>
-      <p style={{ maxWidth: 720, margin: "0 0 26px", color: "#705e53", lineHeight: 1.6 }}>
-        Vous pouvez partir de votre programme existant ou renseigner la formation directement dans Selen. Votre document original reste la référence lorsqu’il est importé.
-      </p>
+  const router = useRouter();
+  const [mode, setMode] = useState<CreationMode>("program_import");
+  const [prerequisiteMode, setPrerequisiteMode] = useState<PrerequisiteMode>("none");
+  const [requirements, setRequirements] = useState<Requirement[]>([]);
+  const [programUrl, setProgramUrl] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
-      <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16 }} aria-label="Choix du mode de création">
-        <Link href="/client/daily/formations?creation=programme" style={card}>
-          <span aria-hidden="true" style={{ fontSize: 28 }}>📄</span>
-          <strong style={{ fontSize: 20 }}>Importer mon programme</strong>
-          <span style={{ color: "#705e53", lineHeight: 1.55 }}>
-            Pour un programme déjà rédigé en PDF ou Word. Selen conserve le fichier original et vous guide ensuite uniquement sur les informations complémentaires nécessaires.
-          </span>
-          <span style={{ fontWeight: 800, color: "#8a4b24" }}>Choisir l’import →</span>
-        </Link>
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setSaving(true); setError("");
+    const fd = new FormData(event.currentTarget); const text = (name: string) => String(fd.get(name) ?? "").trim();
+    const prerequisiteRequirements = prerequisiteMode === "required" ? requirements.filter((item) => item.label.trim()).map((item) => ({ ...item, label: item.label.trim(), description: item.description.trim() })) : [];
+    try {
+      if (mode === "program_import" && !programUrl) throw new Error("Importez le programme original avant d’enregistrer la formation.");
+      if (prerequisiteMode === "required" && prerequisiteRequirements.length === 0) throw new Error("Ajoutez au moins un justificatif attendu pour les prérequis obligatoires.");
+      const response = await assistanceFetch("/api/client/daily/formations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+        creation_mode: mode, prerequisite_mode: prerequisiteMode, prerequisite_requirements: prerequisiteRequirements,
+        detailed_program_document_url: mode === "program_import" ? programUrl : null,
+        title: text("title"), global_objective: text("global_objective"), learning_objectives: text("learning_objectives") ? [text("learning_objectives")] : [],
+        target_audience: text("target_audience"), prerequisites: prerequisiteMode === "none" ? "Aucun prérequis" : text("prerequisites"),
+        duration_hours: text("duration_hours"), duration_days: text("duration_days"), modality: text("modality"), access_delays: text("access_delays"), price: text("price"),
+        pedagogical_resources: text("pedagogical_resources"), evaluation_methods: text("evaluation_methods"), contact_phone: text("contact_phone"), contact_email: text("contact_email"),
+        positioning_mode: "off_platform", results_pending: true, status: "draft",
+      }) });
+      const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error ?? "Enregistrement impossible.");
+      const id = data.formation?.id as string | undefined; if (!id) throw new Error("Formation enregistrée sans identifiant retourné.");
+      router.push(`/client/daily/sessions/new?formation=${encodeURIComponent(id)}`);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Enregistrement impossible."); } finally { setSaving(false); }
+  }
 
-        <Link href="/client/daily/formations?creation=formulaire" style={card}>
-          <span aria-hidden="true" style={{ fontSize: 28 }}>✍️</span>
-          <strong style={{ fontSize: 20 }}>Remplir le formulaire Selen</strong>
-          <span style={{ color: "#705e53", lineHeight: 1.55 }}>
-            Pour construire le programme dans Selen à partir des champs structurés de la formation.
-          </span>
-          <span style={{ fontWeight: 800, color: "#8a4b24" }}>Choisir le formulaire →</span>
-        </Link>
+  return <main style={{ maxWidth: 980, margin: "0 auto", padding: "28px 18px 64px" }}>
+    <button type="button" onClick={() => router.push("/client/daily/formations")} style={{ border: 0, background: "transparent", cursor: "pointer", padding: 0 }}>← Formations</button>
+    <h1>Créer une formation</h1><p style={{ color: "#666" }}>Importez votre programme existant ou construisez-le dans Selen. Le fichier original reste conservé comme référence.</p>
+    {error ? <div role="alert" style={{ ...card, borderColor: "#b42318", marginBottom: 18 }}>{error}</div> : null}
+    <form onSubmit={submit} style={{ display: "grid", gap: 18 }}>
+      <section style={card}><h2 style={{ marginTop: 0 }}>1. Programme</h2><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 12 }}>
+        <label style={card}><input type="radio" checked={mode === "program_import"} onChange={() => setMode("program_import")} /> <b>Importer mon programme PDF/Word</b><p style={{ color: "#666" }}>Pas de ressaisie des champs descriptifs déjà portés par le document.</p></label>
+        <label style={card}><input type="radio" checked={mode === "selen_form"} onChange={() => setMode("selen_form")} /> <b>Créer le programme dans Selen</b><p style={{ color: "#666" }}>Renseignez les données structurées utilisées par Selen.</p></label>
+      </div>{mode === "program_import" ? <div style={{ marginTop: 16 }}><FormationSourceUpload kind="training_program_source" label="Programme original PDF ou Word *" value={programUrl} onUploaded={setProgramUrl} help="L’original est conservé et rattaché à cette formation." /></div> : null}</section>
+
+      <section style={card}><h2 style={{ marginTop: 0 }}>2. Informations</h2><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 14 }}>
+        <label>Intitulé *<input name="title" required style={input} /></label><label>Durée en heures *<input name="duration_hours" type="number" min="0.5" step="0.5" required style={input} /></label><label>Durée en jours *<input name="duration_days" type="number" min="0.5" step="0.5" required style={input} /></label>
+        <label>Modalité *<select name="modality" required style={input}><option value="presentiel">Présentiel</option><option value="distanciel">Distanciel</option><option value="mixte">Mixte</option></select></label><label>Téléphone organisme *<input name="contact_phone" required style={input} /></label><label>Email organisme *<input name="contact_email" type="email" required style={input} /></label>
+      </div>{mode === "selen_form" ? <div style={{ display: "grid", gap: 12, marginTop: 16 }}><label>Objectif principal *<textarea name="global_objective" required style={input} /></label><label>Objectif pédagogique *<input name="learning_objectives" required style={input} /></label><label>Public visé *<textarea name="target_audience" required style={input} /></label><label>Délais d’accès *<input name="access_delays" required style={input} /></label><label>Tarif *<input name="price" type="number" min="0" step="0.01" required style={input} /></label><label>Moyens pédagogiques et techniques *<textarea name="pedagogical_resources" required style={input} /></label><label>Modalités d’évaluation *<textarea name="evaluation_methods" required style={input} /></label></div> : null}</section>
+
+      <section style={card}><h2 style={{ marginTop: 0 }}>3. Prérequis</h2><p>Choisissez obligatoirement une situation.</p><label style={{ marginRight: 22 }}><input type="radio" checked={prerequisiteMode === "none"} onChange={() => { setPrerequisiteMode("none"); setRequirements([]); }} /> Aucun prérequis</label><label><input type="radio" checked={prerequisiteMode === "required"} onChange={() => setPrerequisiteMode("required")} /> Prérequis obligatoires</label>
+        {prerequisiteMode === "required" ? <div style={{ display: "grid", gap: 12, marginTop: 16 }}><label>Prérequis à satisfaire *<textarea name="prerequisites" required style={input} /></label><div><b>Justificatifs attendus *</b><p style={{ color: "#666" }}>Ils seront demandés dans la candidature. Déposer un fichier ne vaut jamais validation.</p></div>{requirements.map((requirement, index) => <div key={requirement.id} style={{ ...card, display: "grid", gap: 8 }}><label>Justificatif {index + 1}<input value={requirement.label} onChange={(e) => setRequirements((current) => current.map((item) => item.id === requirement.id ? { ...item, label: e.target.value } : item))} required style={input} /></label><label>Précision<textarea value={requirement.description} onChange={(e) => setRequirements((current) => current.map((item) => item.id === requirement.id ? { ...item, description: e.target.value } : item))} style={input} /></label><button type="button" onClick={() => setRequirements((current) => current.filter((item) => item.id !== requirement.id))}>Retirer</button></div>)}<button type="button" onClick={() => setRequirements((current) => [...current, { id: crypto.randomUUID(), label: "", description: "", required: true }])}>+ Ajouter un justificatif</button></div> : null}
       </section>
-
-      <aside style={{ marginTop: 22, padding: "16px 18px", borderRadius: 14, background: "#f7f0e5", lineHeight: 1.55 }}>
-        <strong>Dans les deux cas :</strong> Selen vous demandera séparément si la formation comporte des prérequis, puis vous proposera le positionnement et l’évaluation finale. Le dépôt d’un justificatif de prérequis ne vaudra jamais validation automatique.
-      </aside>
-    </main>
-  );
+      <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}><button type="button" onClick={() => router.push("/client/daily/formations")}>Annuler</button><button type="submit" disabled={saving}>{saving ? "Enregistrement…" : "Créer la formation"}</button></div>
+    </form>
+  </main>;
 }
