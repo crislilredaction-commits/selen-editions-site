@@ -23,3 +23,21 @@ test("l'accès reste contextuel depuis le suivi qualité",()=>{assert.match(layo
 test("A12 exporte un vrai paquet DOCX avec tout le corps",()=>{assert.ok(exportRoute.includes("application/vnd.openxmlformats-officedocument.wordprocessingml.document"));assert.ok(exportRoute.includes("[Content_Types].xml"));assert.ok(exportRoute.includes("word/document.xml"));for(const field of ["p.title","p.purpose","p.steps","p.responsibilities","p.evidence"])assert.ok(exportRoute.includes(field))});
 test("A12 versionne sans écraser une personnalisation",()=>{assert.match(route,/internal_procedure_version/);assert.match(route,/Sauvegarde automatique avant modification/);assert.match(route,/ignoreDuplicates: true/);assert.match(versioning,/confirm!==true/);assert.match(versioning,/Sauvegarde avant retour au modèle/);assert.match(versioning,/selen_procedure_model/)});
 test("A12 avertit avant retour au modèle",()=>{assert.match(page,/Revenir au modèle Selen/);assert.match(page,/window\.confirm/);assert.match(page,/version précédente reste historisée/)});
+
+
+test("A12 respecte le contrat daily_documents et cloisonne les modèles par organisme",()=>{
+  const route=read("app/api/client/daily/procedures/route.ts");
+  const versioning=read("app/api/client/daily/procedures/versioning/route.ts");
+  assert.match(route,/bucket:"documents"/);
+  assert.match(route,/storage_path:/);
+  assert.match(versioning,/bucket:"documents"/);
+  assert.match(versioning,/storage_path:/);
+  assert.match(versioning,/eq\("organisation_id",orgId\)/);
+  assert.match(versioning,/eq\("organisation_id",c\.orgId\)/);
+  assert.doesNotMatch(versioning,/Date\.now\(\)%/);
+});
+
+test("A12 rafraichit le formulaire apres restauration du modele",()=>{
+  const page=read("app/client/daily/procedures/page.tsx");
+  assert.match(page,/key=\{\x60\$\{p\.id\}:\$\{p\.updated_at\}\x60\}/);
+});
