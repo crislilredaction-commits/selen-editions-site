@@ -16,7 +16,7 @@ type Enrolment = { id: string; status: string; daily_learners?: Learner | Learne
 type Entry = {
   id: string;
   enrolment_id?: string | null;
-  entry_type: "incident" | "adaptation" | "note";
+  entry_type: "incident" | "adaptation" | "note" | "absence";
   level: "info" | "attention" | "critical";
   occurred_at: string;
   summary: string;
@@ -47,6 +47,7 @@ const typeLabels: Record<Entry["entry_type"], string> = {
   note: "Note de suivi",
   incident: "Incident / cas particulier",
   adaptation: "Adaptation mise en place",
+  absence: "Absence signalée",
 };
 const levelLabels: Record<Entry["level"], string> = {
   info: "Information",
@@ -170,6 +171,7 @@ export default function TrainerSessionFollowupPage() {
 
       <SelenCard>
         <SelenCardTitle>Session concernée</SelenCardTitle>
+        {sessionId ? <TrainerPedagogicalTools sessionId={sessionId} enrolments={enrolments} /> : null}
         <label style={styles.field}>
           <span style={styles.label}>Session</span>
           <select value={sessionId} onChange={(event) => setSessionId(event.target.value)} style={styles.input}>
@@ -202,6 +204,7 @@ export default function TrainerSessionFollowupPage() {
                   <option value="note">Note libre de suivi</option>
                   <option value="incident">Incident / cas particulier</option>
                   <option value="adaptation">Adaptation mise en place</option>
+                  <option value="absence">Absence apprenant à qualifier</option>
                 </select>
               </label>
               {entryType !== "note" ? (
@@ -298,6 +301,32 @@ export default function TrainerSessionFollowupPage() {
       ) : null}
     </main>
   );
+}
+
+function TrainerPedagogicalTools({sessionId,enrolments}:{sessionId:string;enrolments:Enrolment[]}) {
+  const [slots,setSlots]=useState<any[]>([]),[records,setRecords]=useState<any[]>([]),[documents,setDocuments]=useState<any[]>([]),[busy,setBusy]=useState(false),[message,setMessage]=useState("");
+  async function refresh(){const r=await fetch(`/api/client/daily/trainer-session-workspace?session_id=${encodeURIComponent(sessionId)}`,{cache:"no-store"});const d=await r.json().catch(()=>({}));if(r.ok){setSlots(d.slots??[]);setRecords(d.records??[]);setDocuments(d.documents??[])}}
+  useEffect(()=>{void refresh()},[sessionId]);
+  async function upload(event:React.FormEvent<HTMLFormElement>){event.preventDefault();setBusy(true);setMessage("");const fd=new FormData(event.currentTarget);fd.set("session_id",sessionId);const r=await fetch("/api/client/daily/trainer-session-workspace",{method:"POST",body:fd});const d=await r.json().catch(()=>({}));setBusy(false);setMessage(r.ok?"Document enregistré dans la session.":d.error??"Import impossible.");if(r.ok){(event.currentTarget as HTMLFormElement).reset();await refresh()}}
+  return <div style={{display:"grid",gap:12,marginBottom:16}}>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:8}}>
+      <div style={styles.metricCard}><span style={styles.metricLabel}>Créneaux d’émargement</span><strong>{slots.length}</strong></div>
+      <div style={styles.metricCard}><span style={styles.metricLabel}>Présences recueillies</span><strong>{records.filter(r=>r.status==="signed").length}</strong></div>
+      <div style={styles.metricCard}><span style={styles.metricLabel}>Ressources / preuves</span><strong>{documents.length}</strong></div>
+    </div>
+    <form onSubmit={upload} style={{display:"grid",gap:8,padding:12,border:"1px solid var(--sepia-mid)",borderRadius:12}}>
+      <strong>Ressource, feuille papier ou évaluation externe</strong>
+      <select name="kind" required style={styles.input}><option value="resource">Ressource pédagogique</option><option value="attendance_paper">Feuille d’émargement signée</option><option value="external_evaluation">Évaluation externe</option></select>
+      <input name="title" placeholder="Titre du document" style={styles.input}/>
+      <select name="enrolment_id" style={styles.input}><option value="">Session entière</option>{enrolments.map(e=><option key={e.id} value={e.id}>{learnerName(e)}</option>)}</select>
+      <select name="slot_id" style={styles.input}><option value="">Créneau si preuve d’émargement</option>{slots.map(s=><option key={s.id} value={s.id}>{s.slot_date} · {String(s.starts_at).slice(0,5)}-{String(s.ends_at).slice(0,5)} {s.label??""}</option>)}</select>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><input name="score" type="number" min="0" max="20" step=".25" placeholder="Note /20 (évaluation)" style={styles.input}/><select name="acquisition_level" style={styles.input}><option value="">Niveau d’acquisition</option><option value="acquis">Acquis</option><option value="en_cours">En cours d’acquisition</option><option value="non_acquis">Non acquis</option></select></div>
+      <textarea name="comment" rows={2} placeholder="Commentaire / résultat / précision" style={styles.textarea}/>
+      <input name="file" type="file" required accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" />
+      <button disabled={busy} style={{padding:10,fontWeight:800}}>{busy?"Import…":"Importer dans la session"}</button>{message?<small>{message}</small>:null}
+    </form>
+    {slots.length?<a href={`/api/client/daily/trainer-session-workspace/attendance-sheet?session_id=${encodeURIComponent(sessionId)}`} target="_blank" rel="noreferrer">Télécharger la feuille d’émargement préremplie</a>:null}
+  </div>
 }
 
 function SummaryMetric({ label, value, emphasis = false }: { label: string; value: number; emphasis?: boolean }) {

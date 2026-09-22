@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getDailyClientWorkspace } from "@/lib/server/dailyClientWorkspace";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 
-const ENTRY_TYPES = new Set(["incident", "adaptation", "note"]);
+const ENTRY_TYPES = new Set(["incident", "adaptation", "note", "absence"]);
 const LEVELS = new Set(["info", "attention", "critical"]);
 
 function text(body: Record<string, unknown>, key: string) {
@@ -72,7 +72,7 @@ async function refreshFollowupChecklist(
   const [{ data: slots }, { data: records }, { count: openOperationalEntries }] = await Promise.all([
     admin.from("daily_attendance_slots").select("status").eq("organisation_id", organisationId).eq("session_id", sessionId),
     admin.from("daily_attendance_records").select("status").eq("organisation_id", organisationId).eq("session_id", sessionId),
-    admin.from("daily_session_followup_entries").select("id", { count: "exact", head: true }).eq("organisation_id", organisationId).eq("session_id", sessionId).eq("status", "open").in("entry_type", ["incident", "adaptation"]),
+    admin.from("daily_session_followup_entries").select("id", { count: "exact", head: true }).eq("organisation_id", organisationId).eq("session_id", sessionId).eq("status", "open").in("entry_type", ["incident", "adaptation", "absence"]),
   ]);
 
   const allSlotsClosed = (slots ?? []).length > 0 && (slots ?? []).every((slot) => ["closed", "cancelled"].includes(slot.status));
