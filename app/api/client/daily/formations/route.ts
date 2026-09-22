@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { blockedAgentAssistanceResponse, getAssistanceTokenFromRequest, logAgentAssistanceAction } from "@/lib/server/agentAssistance";
+import { logAgentAssistanceAction } from "@/lib/server/agentAssistance";
 import { getDailyOrganisationContext, getDailyOrganisationReadContext } from "@/lib/server/dailyOrganisationContext";
 
 const REQUIRED_FIELDS = [
@@ -240,19 +240,27 @@ export async function PATCH(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  if (getAssistanceTokenFromRequest(req)) return blockedAgentAssistanceResponse();
-  const context = await getDailyOrganisationContext(req, "trainings");
+  const context = await getDailyOrganisationContext(req, "trainings", { allowAssistanceWrite: true });
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
   const body = await req.json().catch(() => ({})) as Record<string, unknown>;
   const id = text(body, "id");
   if (!id) return NextResponse.json({ error: "Identifiant formation requis." }, { status: 400 });
-
-  const { data: existing, error: existingError } = await context.admin.from("daily_formations").select("id,status").eq("id", id).eq("organisation_id", context.organisationId).maybeSingle();
+  const { data: existing, error: existingError } = await context.admin.from("daily_formations").select("id,title,status").eq("id", id).eq("organisation_id", context.organisationId).maybeSingle();
   if (existingError) return NextResponse.json({ error: existingError.message }, { status: 500 });
   if (!existing) return NextResponse.json({ error: "Formation introuvable." }, { status: 404 });
-  if (existing.status === "archived") return NextResponse.json({ ok: true, archived: true });
-
-  const { data, error } = await context.admin.from("daily_formations").update({ status: "archived", archived_at: new Date().toISOString() }).eq("id", id).eq("organisation_id", context.organisationId).select("*").single();
+  const dependencyChecks = [
+    ["daily_sessions", "formation_id", "une ou plusieurs sessions"],
+    ["daily_documents", "formation_id", "des documents ou preuves"],
+    ["daily_formation_registration_requests", "formation_id", "des demandes d’inscription"],
+    ["daily_formations", "previous_version_id", "un historique de versions"],
+  ] as const;
+  for (const [table, column, label] of dependencyChecks) {
+    const { data, error } = await context.admin.from(table).select("id").eq("organisation_id", context.organisationId).eq(column, id).limit(1);
+    if (error) return NextResponse.json({ error: "Impossible de vérifier les dépendances de cette formation. Aucune suppression n’a été effectuée." }, { status: 500 });
+    if ((data ?? []).length) return NextResponse.json({ error: `Suppression impossible : cette formation possède ${label}. L’historique doit être conservé.`, deletionBlocked: true, canArchive: true }, { status: 409 });
+  }
+  const { error } = await context.admin.from("daily_formations").delete().eq("id", id).eq("organisation_id", context.organisationId);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ formation: data, archived: true });
+  if (context.assisted && context.assistance) await logAgentAssistanceAction({ supabase: context.admin, req, assistance: context.assistance, action: "daily_formation_delete", actionLabel: "Suppression d’une formation vierge par Studio pour le client", oldState: { id: existing.id, title: existing.title, status: existing.status }, newState: null });
+  return NextResponse.json({ ok: true, deleted: true, assistanceMode: context.assisted });
 }
