@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { blockedAgentAssistanceResponse, getAssistanceTokenFromRequest, logAgentAssistanceAction } from "@/lib/server/agentAssistance";
+import { logAgentAssistanceAction } from "@/lib/server/agentAssistance";
 import {
   getDailyOrganisationBillingUserId,
   getDailyOrganisationContext,
@@ -166,6 +166,13 @@ export async function PATCH(req: Request) {
   const body = await req.json().catch(() => ({})) as Record<string, unknown>;
   const id = text(body, "id");
   if (!id) return NextResponse.json({ error: "Identifiant session requis." }, { status: 400 });
+  const hardDelete = body.hardDelete === true;
+  if (!hardDelete) {
+    const { data, error } = await context.admin.from("daily_sessions").update({ status: "archived", registration_token: null }).eq("id", id).eq("organisation_id", context.organisationId).select("*").single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (context.assisted && context.assistance) await logAgentAssistanceAction({ supabase: context.admin, req, assistance: context.assistance, action: "daily_session_archive", actionLabel: "Session archivée par Studio pour le client", newState: { session_id: data.id, status: data.status } });
+    return NextResponse.json({ session: data, archived: true, assistanceMode: context.assisted });
+  }
   const built = buildPayload(body, context.user.id, context.organisationId);
   if ("error" in built) return NextResponse.json({ error: built.error }, { status: 400 });
   const { data: formation, error: formationError } = await context.admin.from("daily_formations").select("id").eq("id", built.payload.formation_id).eq("organisation_id", context.organisationId).neq("status", "archived").maybeSingle();
@@ -181,13 +188,30 @@ export async function PATCH(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  if (getAssistanceTokenFromRequest(req)) return blockedAgentAssistanceResponse();
-  const context = await getDailyOrganisationContext(req, "sessions");
+  const context = await getDailyOrganisationContext(req, "sessions", { allowAssistanceWrite: true });
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
   const body = await req.json().catch(() => ({})) as Record<string, unknown>;
   const id = text(body, "id");
   if (!id) return NextResponse.json({ error: "Identifiant session requis." }, { status: 400 });
-  const { data, error } = await context.admin.from("daily_sessions").update({ status: "archived", registration_token: null }).eq("id", id).eq("organisation_id", context.organisationId).select("*").single();
+  const { data: existing, error: existingError } = await context.admin.from("daily_sessions").select("id,internal_reference,status,formation_id").eq("id", id).eq("organisation_id", context.organisationId).maybeSingle();
+  if (existingError) return NextResponse.json({ error: existingError.message }, { status: 500 });
+  if (!existing) return NextResponse.json({ error: "Session introuvable." }, { status: 404 });
+  const dependencyChecks = [
+    ["daily_session_enrolments", "session_id", "un ou plusieurs inscrits"],
+    ["daily_attendance_slots", "session_id", "des créneaux d’émargement"],
+    ["daily_documents", "session_id", "des documents ou preuves"],
+    ["daily_conventions", "session_id", "des conventions ou contrats"],
+    ["daily_convocations", "session_id", "des convocations"],
+    ["daily_portal_access_tokens", "session_id", "des accès parties prenantes"],
+    ["daily_session_followup_entries", "session_id", "un historique de suivi"],
+  ] as const;
+  for (const [table, column, label] of dependencyChecks) {
+    const { data, error } = await context.admin.from(table).select("id").eq("organisation_id", context.organisationId).eq(column, id).limit(1);
+    if (error) return NextResponse.json({ error: "Impossible de vérifier les dépendances de cette session. Aucune suppression n’a été effectuée." }, { status: 500 });
+    if ((data ?? []).length) return NextResponse.json({ error: `Suppression impossible : cette session possède ${label}. L’historique doit être conservé ; annulez ou archivez la session à la place.`, deletionBlocked: true, canArchive: true }, { status: 409 });
+  }
+  const { error } = await context.admin.from("daily_sessions").delete().eq("id", id).eq("organisation_id", context.organisationId);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ session: data, archived: true });
+  if (context.assisted && context.assistance) await logAgentAssistanceAction({ supabase: context.admin, req, assistance: context.assistance, action: "daily_session_delete", actionLabel: "Suppression d’une session vierge par Studio pour le client", oldState: { id: existing.id, internal_reference: existing.internal_reference, status: existing.status, formation_id: existing.formation_id }, newState: null });
+  return NextResponse.json({ ok: true, deleted: true, assistanceMode: context.assisted });
 }
