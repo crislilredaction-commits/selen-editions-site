@@ -309,10 +309,12 @@ export default function DailySessionsManager() {
   }
 
   async function archive(id: string) {
+    setError(""); setMessage("");
+    if (!window.confirm("Supprimer définitivement cette session vierge ? Cette action est impossible dès qu’un inscrit, une activité ou une preuve existe.")) return;
     const response = await assistanceFetch("/api/client/daily/sessions", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) return setError(data.error ?? "Archivage impossible.");
-    setMessage("Session archivée.");
+    if (!response.ok) return setError(data.error ?? "Suppression impossible.");
+    setMessage("Session vierge supprimée.");
     await load();
   }
 
@@ -449,7 +451,7 @@ function SessionColumn(props: {
     return <article key={session.id} style={styles.sessionCard}>
       <div style={styles.cardHead}><div><span style={styles.badge}>{modalityLabel(session)}</span><h3 style={styles.h3}>{formation?.title ?? "Formation"}</h3><p style={styles.muted}>{formatDate(session.start_date)}{session.end_date && session.end_date !== session.start_date ? ` → ${formatDate(session.end_date)}` : ""}{session.internal_reference ? ` · ${session.internal_reference}` : ""}</p></div><strong style={styles.percent}>{stats.percentage}%</strong></div>
       <div style={styles.progressTrack}><div style={{ ...styles.progressBar, width: `${stats.percentage}%` }} /></div><p style={styles.progressText}>{stats.expected > 0 ? `${stats.completed} éléments conformes ou recueillis sur ${stats.expected}` : "Les preuves apparaîtront ici au fur et à mesure du dossier."}</p>
-      <div style={styles.actions}><button type="button" style={styles.secondary} onClick={() => props.edit(session)}>Modifier</button><button type="button" style={styles.secondary} onClick={() => void props.openEvidence(session.id)}>Preuves apprenants</button><button type="button" style={styles.secondary} onClick={() => void props.duplicate(session.id)}>Dupliquer</button><button type="button" style={styles.danger} onClick={() => void props.archive(session.id)}>Archiver</button></div>
+      <div style={styles.actions}><button type="button" style={styles.secondary} onClick={() => props.edit(session)}>Modifier</button><button type="button" style={styles.secondary} onClick={() => void props.openEvidence(session.id)}>Preuves apprenants</button><button type="button" style={styles.secondary} onClick={() => void props.duplicate(session.id)}>Dupliquer</button><button type="button" style={styles.danger} onClick={() => void props.archive(session.id)}>Supprimer</button></div>
       {props.evidenceSessionId === session.id ? <EvidencePanel session={session} loading={props.evidenceLoading} context={props.evidenceContext} upload={props.uploadEvidence} confirmAbandonment={props.confirmAbandonment} uploadingKey={props.uploadingKey} abandoningKey={props.abandoningKey} /> : null}
     </article>;
   })}</div>;
