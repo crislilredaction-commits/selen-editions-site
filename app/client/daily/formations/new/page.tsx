@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { FormEvent } from "react";
+import type { CSSProperties, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { assistanceFetch } from "@/components/AgentAssistanceBanner";
 import FormationSourceUpload from "@/components/daily/FormationSourceUpload";
@@ -9,8 +9,9 @@ import FormationSourceUpload from "@/components/daily/FormationSourceUpload";
 type CreationMode = "program_import" | "selen_form";
 type PrerequisiteMode = "none" | "required";
 type Requirement = { id: string; label: string; description: string; required: true };
-const input = { width: "100%", padding: "10px 12px", border: "1px solid #d8d8de", borderRadius: 10, font: "inherit" } as const;
-const card = { border: "1px solid #e4e4e8", borderRadius: 14, padding: 18, background: "#fff" } as const;
+const input: CSSProperties = { width: "100%", padding: "10px 12px", border: "1px solid #d8d8de", borderRadius: 10, font: "inherit" };
+const card: CSSProperties = { border: "1px solid #e4e4e8", borderRadius: 14, padding: 18, background: "#fff" };
+type FormationCreateResponse = { error?: string; formation?: { id?: string } };
 
 export default function DailyNewFormationPage() {
   const router = useRouter();
@@ -37,8 +38,8 @@ export default function DailyNewFormationPage() {
         pedagogical_resources: text("pedagogical_resources"), evaluation_methods: text("evaluation_methods"), contact_phone: text("contact_phone"), contact_email: text("contact_email"),
         positioning_mode: "off_platform", results_pending: true, status: "draft",
       }) });
-      const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error ?? "Enregistrement impossible.");
-      const id = data.formation?.id as string | undefined; if (!id) throw new Error("Formation enregistrée sans identifiant retourné.");
+      const data = await response.json().catch(() => ({})) as FormationCreateResponse; if (!response.ok) throw new Error(data.error ?? "Enregistrement impossible.");
+      const id = data.formation?.id; if (!id) throw new Error("Formation enregistrée sans identifiant retourné.");
       router.push(`/client/daily/sessions/new?formation=${encodeURIComponent(id)}`);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Enregistrement impossible."); } finally { setSaving(false); }
   }
