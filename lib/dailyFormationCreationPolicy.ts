@@ -21,7 +21,7 @@ export function cleanPrerequisiteRequirements(value: unknown): DailyPrerequisite
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
   return value.flatMap((raw, index) => {
-    const source: Record<string, unknown> = raw !== null && typeof raw === "object"\n      ? raw as Record<string, unknown>\n      : { label: raw };
+    const source: Record<string, unknown> = raw !== null && typeof raw === "object" ? raw as Record<string, unknown> : { label: raw };
     const label = String(source.label ?? "").trim();
     if (!label) return [];
     const key = label.toLocaleLowerCase("fr");
