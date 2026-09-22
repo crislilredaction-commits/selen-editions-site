@@ -14,19 +14,15 @@ for (const [label, source] of [["apprenants", learner], ["parties prenantes", st
     assert.doesNotMatch(source, /REMINDER_INTERVAL_DAYS = 3|REMINDER_DAYS = 3/);
     assert.match(source, /automation_stage/);
   });
-
-  test(`${label}: une réponse stoppe les relances et ferme la tâche téléphone`, () => {
-    assert.match(source, /satisfaction_phone_followup/);
-    assert.match(source, /status: "closed"/);
-    assert.match(source, /Réponse satisfaction reçue/);
-  });
-
-  test(`${label}: après J+4 une tâche téléphonique idempotente est créée`, () => {
-    assert.match(source, /phoneActionBySource/);
-    assert.match(source, /source_type: PHONE_FOLLOWUP_SOURCE/);
-    assert.match(source, /status: "open"/);
-  });
 }
+test("parties prenantes: une réponse stoppe les emails et aucune tâche téléphone n'est imposée au client", () => {
+  assert.match(stakeholder, /already_submitted/);
+  assert.doesNotMatch(stakeholder, /satisfaction_phone_followup|Relance téléphonique satisfaction|Contacter la partie prenante par téléphone/);
+});
+test("apprenants: le suivi téléphonique existant reste inchangé hors périmètre A5", () => {
+  assert.match(learner, /satisfaction_phone_followup/);
+  assert.match(learner, /phoneActionBySource/);
+});
 
 test("la satisfaction entreprise démarre à J+15 puis conserve les relances J+2/J+4", () => {
   assert.match(stakeholder, /ENTERPRISE_INITIAL_OFFSET_DAYS = 15/);
