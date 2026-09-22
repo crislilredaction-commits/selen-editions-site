@@ -1,6 +1,7 @@
 "use client";
 
-import { ChangeEvent, useState } from "react";
+import { useState } from "react";
+import type { ChangeEvent } from "react";
 import { assistanceFetch } from "@/components/AgentAssistanceBanner";
 import { PROGRAMME_ACCEPT_ATTRIBUTE } from "@/lib/daily/formationGuidance";
 
