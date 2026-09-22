@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import LoadingMascot from "@/components/ui/LoadingMascot";
 
-type ActorType = "organisation" | "trainer";
-type DecisionStatus = "pending" | "agent_review" | "accepted";
+type ActorType = "organisation";
+type DecisionStatus = "pending" | "ready_for_of" | "accepted" | "refused";
 type DecisionRow = {
   id: string;
   actor_type: ActorType;
@@ -37,6 +37,8 @@ type RegistrationRequest = {
   decision_status: DecisionStatus;
   accepted_at?: string | null;
   agent_review_requested_at?: string | null;
+  agent_analysis_completed_at?: string | null;
+  agent_analysis_summary?: Record<string, unknown> | null;
   can_decide: boolean;
   can_materialize?: boolean;
   decisions: DecisionRow[];
@@ -45,8 +47,9 @@ type ResponseBody = { requests?: RegistrationRequest[]; sessions?: SessionRow[];
 
 function statusLabel(status: DecisionStatus) {
   if (status === "accepted") return "Acceptée";
-  if (status === "agent_review") return "Transmise à Selen";
-  return "À décider";
+  if (status === "refused") return "Refusée";
+  if (status === "ready_for_of") return "Analyse Selen terminée · décision OF attendue";
+  return "Analyse Selen en cours";
 }
 function participantCount(value: unknown) {
   return Array.isArray(value) ? value.length : 0;
@@ -98,14 +101,15 @@ export default function RegistrationRequestsPage() {
 
   useEffect(() => { void load(); }, [load]);
 
-  const pending = useMemo(() => requests.filter((request) => request.decision_status === "pending"), [requests]);
-  const history = useMemo(() => requests.filter((request) => request.decision_status !== "pending"), [requests]);
+  const pending = useMemo(() => requests.filter((request) => request.decision_status === "ready_for_of"), [requests]);
+  const waitingAnalysis = useMemo(() => requests.filter((request) => request.decision_status === "pending"), [requests]);
+  const history = useMemo(() => requests.filter((request) => request.decision_status === "accepted" || request.decision_status === "refused"), [requests]);
 
   async function decide(request: RegistrationRequest, decision: "accepted" | "refused") {
-    const actorType: ActorType = actorTypes.includes("organisation") ? "organisation" : "trainer";
+    const actorType: ActorType = "organisation";
     const wording = decision === "accepted"
-      ? `Accepter la candidature de ${request.applicant_label} ? Un seul accord OF ou formateur suffit et la candidature sera immédiatement considérée comme acceptée.`
-      : `Refuser la candidature de ${request.applicant_label} ? Aucun refus n'est automatique : le dossier sera transmis à Selen pour revue.`;
+      ? `Accepter la candidature de ${request.applicant_label} après analyse Selen ?`
+      : `Refuser définitivement la candidature de ${request.applicant_label} après analyse Selen ?`;
     if (!window.confirm(wording)) return;
     const comment = window.prompt("Commentaire facultatif", "") ?? "";
     setBusyId(request.id);
@@ -124,7 +128,7 @@ export default function RegistrationRequestsPage() {
         else if (isManager) setMessage("Candidature acceptée. Choisissez maintenant la session pour créer l'inscription sans ressaisie.");
         else setMessage("Candidature acceptée. L'organisme choisira la session pour finaliser l'inscription.");
       } else {
-        setMessage("Refus enregistré. La candidature est maintenant transmise à Selen pour revue.");
+        setMessage("Candidature refusée par l’organisme. La décision finale est enregistrée.");
       }
       await load();
     } catch (cause) {
@@ -164,13 +168,14 @@ export default function RegistrationRequestsPage() {
       <header style={s.hero}>
         <div>
           <p style={s.kicker}>Selen Daily · Candidatures</p>
-          <h1 style={s.h1}>Validez les demandes d'inscription</h1>
-          <p style={s.lead}>L'accord de l'organisme <strong>ou</strong> du formateur affecté suffit. Une fois la candidature acceptée, Daily crée l'apprenant et son inscription dans la session sans ressaisie.</p>
+          <h1 style={s.h1}>Décidez après l’analyse Selen</h1>
+          <p style={s.lead}>Selen analyse d’abord le dossier, le positionnement et les prérequis. La décision finale d’accepter ou de refuser appartient ensuite au responsable de l’organisme.</p>
         </div>
         <div style={s.metric}><strong>{pending.length}</strong><span>à décider</span></div>
       </header>
 
       {error ? <p role="alert" style={s.error}>{error}</p> : null}
+      {waitingAnalysis.length ? <p role="status" style={s.muted}>{waitingAnalysis.length} candidature(s) sont encore en cours d’analyse par Selen et ne peuvent pas encore être décidées.</p> : null}
       {message ? <p role="status" style={s.success}>{message}</p> : null}
 
       {pending.length === 0 ? (
@@ -191,7 +196,7 @@ export default function RegistrationRequestsPage() {
               </div>
               <div style={s.actions}>
                 <button type="button" disabled={busyId === request.id} style={s.accept} onClick={() => void decide(request, "accepted")}>{busyId === request.id ? "Enregistrement…" : "Accepter la candidature"}</button>
-                <button type="button" disabled={busyId === request.id} style={s.refuse} onClick={() => void decide(request, "refused")}>Refuser et transmettre à Selen</button>
+                <button type="button" disabled={busyId === request.id} style={s.refuse} onClick={() => void decide(request, "refused")}>Refuser la candidature</button>
               </div>
             </article>
           ))}
@@ -231,6 +236,7 @@ export default function RegistrationRequestsPage() {
                   ) : request.decision_status === "accepted" ? (
                     <p style={s.muted}>Candidature acceptée. L'organisme choisira la session avant création de l'inscription.</p>
                   ) : null}
+                  {request.agent_analysis_summary ? <p style={s.comment}><strong>Synthèse Selen :</strong> {String(request.agent_analysis_summary.observations ?? request.agent_analysis_summary.motivation_summary ?? "Analyse disponible")}</p> : null}
                   {request.decisions[0]?.comment ? <p style={s.comment}>« {request.decisions[0].comment} »</p> : null}
                 </article>
               );

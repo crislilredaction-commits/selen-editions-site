@@ -4,8 +4,8 @@ import { getDailyClientWorkspace } from "@/lib/server/dailyClientWorkspace";
 import { sendLearnerPortalAccessForRegistrationRequest } from "@/lib/server/dailyLearnerPortalAccess";
 import { sendEnterprisePortalAccessForRegistrationRequest } from "@/lib/server/dailyEnterprisePortalAccess";
 
-type DecisionStatus = "pending" | "agent_review" | "accepted";
-type ActorType = "organisation" | "trainer";
+type DecisionStatus = "pending" | "ready_for_of" | "accepted" | "refused";
+type ActorType = "organisation";
 type Decision = "accepted" | "refused";
 
 type FormationRow = { id: string; organisation_id: string; title: string; allowed_trainer_ids?: unknown };
@@ -27,6 +27,8 @@ type RequestRow = {
   decision_status: DecisionStatus;
   accepted_at?: string | null;
   agent_review_requested_at?: string | null;
+  agent_analysis_completed_at?: string | null;
+  agent_analysis_summary?: Record<string, unknown> | null;
 };
 
 function jsonArray(value: unknown): string[] {
@@ -113,7 +115,7 @@ export async function GET() {
   try {
     const access = await getAccess();
     if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
-    if (!access.isManager && !access.trainerProfileId) return NextResponse.json({ error: "Accès réservé au responsable de l'organisme ou à un formateur." }, { status: 403 });
+    if (!access.isManager) return NextResponse.json({ error: "Accès réservé au responsable de l’organisme." }, { status: 403 });
 
     const { data: formations, error: formationError } = await access.admin
       .from("daily_formations")
@@ -121,13 +123,13 @@ export async function GET() {
       .eq("organisation_id", access.organisationId)
       .neq("status", "archived");
     if (formationError) throw new Error(formationError.message);
-    const visibleFormations = ((formations ?? []) as FormationRow[]).filter((formation) => access.isManager || Boolean(access.trainerProfileId && jsonArray(formation.allowed_trainer_ids).includes(access.trainerProfileId)));
+    const visibleFormations = ((formations ?? []) as FormationRow[]);
     const formationIds = visibleFormations.map((formation) => formation.id);
     if (!formationIds.length) return NextResponse.json({ requests: [], sessions: [], actor_types: access.isManager ? ["organisation"] : ["trainer"] });
 
     const [{ data: requests, error: requestError }, { data: sessions, error: sessionError }] = await Promise.all([
       access.admin.from("daily_formation_registration_requests")
-        .select("id,formation_id,response_type,respondent_first_name,respondent_last_name,respondent_email,company_name,participants,adaptation_needed,submitted_at,attached_session_id,materialized_at,status,decision_status,accepted_at,agent_review_requested_at")
+        .select("id,formation_id,response_type,respondent_first_name,respondent_last_name,respondent_email,company_name,participants,adaptation_needed,submitted_at,attached_session_id,materialized_at,status,decision_status,accepted_at,agent_review_requested_at,agent_analysis_completed_at,agent_analysis_summary")
         .in("formation_id", formationIds).neq("status", "archived").order("submitted_at", { ascending: false }),
       access.isManager
         ? access.admin.from("daily_sessions").select("id,formation_id,internal_reference,start_date,end_date,status").eq("organisation_id", access.organisationId).in("formation_id", formationIds).neq("status", "archived").order("start_date", { ascending: true })
@@ -157,7 +159,6 @@ export async function GET() {
 
     const actorTypes: ActorType[] = [];
     if (access.isManager) actorTypes.push("organisation");
-    if (access.trainerProfileId) actorTypes.push("trainer");
     return NextResponse.json({
       actor_types: actorTypes,
       sessions: (sessions ?? []) as SessionRow[],
@@ -166,7 +167,7 @@ export async function GET() {
         applicant_label: applicantLabel(row),
         formation_title: formationById.get(row.formation_id)?.title ?? "Formation",
         decisions: decisionsByRequest.get(row.id) ?? [],
-        can_decide: row.decision_status === "pending",
+        can_decide: row.decision_status === "ready_for_of",
         can_materialize: access.isManager && row.decision_status === "accepted" && !row.materialized_at,
         materialized_count: materializedCount.get(row.id) ?? 0,
       })),
@@ -213,11 +214,11 @@ export async function POST(req: Request) {
     }
 
     const decision: Decision | null = body.decision === "accepted" || body.decision === "refused" ? body.decision : null;
-    const requestedActorType: ActorType | null = body.actor_type === "organisation" || body.actor_type === "trainer" ? body.actor_type : null;
+    const requestedActorType: ActorType | null = body.actor_type === "organisation" ? "organisation" : null;
     const comment = typeof body.comment === "string" ? body.comment.slice(0, 2000) : null;
     if (!decision || !requestedActorType) return NextResponse.json({ error: "Décision incomplète." }, { status: 400 });
     if (requestedActorType === "organisation" && !access.isManager) return NextResponse.json({ error: "Seul un responsable de l'organisme peut répondre au nom de l'OF." }, { status: 403 });
-    if (requestedActorType === "trainer" && !access.trainerProfileId) return NextResponse.json({ error: "Profil formateur actif requis." }, { status: 403 });
+    if (!access.isManager) return NextResponse.json({ error: "Seul le responsable de l’organisme peut prendre la décision finale." }, { status: 403 });
 
     const { data, error } = await access.admin.rpc("daily_record_registration_request_decision", {
       p_request_id: requestId,
@@ -227,7 +228,7 @@ export async function POST(req: Request) {
       p_comment: comment,
     });
     if (error) {
-      const known = error.message.includes("already accepted") ? "Cette candidature a déjà été acceptée." : error.message.includes("awaiting agent review") ? "Cette candidature a déjà été transmise à Selen pour décision." : error.message.includes("permission required") ? "Vous n'êtes pas autorisé à statuer sur cette candidature." : error.message;
+      const known = error.message.includes("already decided") ? "Cette candidature a déjà reçu une décision finale." : error.message.includes("analysis required") ? "L’analyse Selen doit être terminée avant la décision OF." : error.message.includes("permission required") ? "Vous n’êtes pas autorisé à statuer sur cette candidature." : error.message;
       return NextResponse.json({ error: known }, { status: 409 });
     }
 
