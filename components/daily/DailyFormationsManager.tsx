@@ -121,12 +121,12 @@ export default function DailyFormationsManager() {
     finally { setSaving(false); }
   }
 
-  async function action(actionName: "duplicate" | "delete", id: string) {
+  async function action(actionName: "duplicate" | "archive" | "delete", id: string) {
     setError(""); setMessage("");
     if (actionName === "delete" && !window.confirm("Supprimer définitivement cette formation vierge ? Cette action est impossible dès qu’un historique métier existe.")) return;
-    const response = await assistanceFetch("/api/client/daily/formations", { method: actionName === "delete" ? "DELETE" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(actionName === "delete" ? { id } : { action: "duplicate", id }) });
+    const response = await assistanceFetch("/api/client/daily/formations", { method: actionName === "duplicate" ? "POST" : "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify(actionName === "duplicate" ? { action: "duplicate", id } : actionName === "delete" ? { id, hardDelete: true } : { id }) });
     const data = await response.json().catch(() => ({})); if (!response.ok) return setError(data.error ?? "Action impossible.");
-    setMessage(actionName === "duplicate" ? "Copie créée en brouillon." : "Formation vierge supprimée."); await load();
+    setMessage(actionName === "duplicate" ? "Copie créée en brouillon." : actionName === "archive" ? "Formation archivée." : "Formation vierge supprimée."); await load();
   }
   async function copyRegistrationLink(token?: string | null) { const url = registrationUrl(token); if (!url) return; await navigator.clipboard.writeText(url); setMessage("Lien d'inscription copié."); }
 
@@ -204,7 +204,7 @@ export default function DailyFormationsManager() {
             </div>
             <div style={s.qrWrap}><img src={qrUrl(formation.public_registration_token)} width={132} height={132} alt={`QR code d'inscription pour ${formation.title}`} /><span>Scannez pour tester</span></div>
           </div> : null}
-          <div style={s.actions}><button type="button" style={s.secondary} onClick={() => editFormation(formation)}>Modifier</button><button type="button" style={s.secondary} onClick={() => void action("duplicate", formation.id)}>Dupliquer</button><button type="button" style={s.danger} onClick={() => void action("delete", formation.id)}>Supprimer</button></div>
+          <div style={s.actions}><button type="button" style={s.secondary} onClick={() => editFormation(formation)}>Modifier</button><button type="button" style={s.secondary} onClick={() => void action("duplicate", formation.id)}>Dupliquer</button><button type="button" style={s.danger} onClick={() => void action("archive", formation.id)}>Archiver</button><button type="button" style={s.secondary} onClick={() => void action("delete", formation.id)}>Supprimer</button></div>
         </article>;
       })}</div>}
     </section>
