@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
 import { logAgentAssistanceAction } from "@/lib/server/agentAssistance";
 import { getDailyOrganisationContext, getDailyOrganisationReadContext } from "@/lib/server/dailyOrganisationContext";
+import {
+  cleanPrerequisiteRequirements,
+  parseDailyFormationCreationMode,
+  parseDailyPrerequisiteMode,
+  requiredFormationFields,
+  requiresStructuredLearningObjectives,
+  validateFormationCreationSource,
+  validatePrerequisiteDeclaration,
+} from "@/lib/dailyFormationCreationPolicy";
 
-const REQUIRED_FIELDS = [
-  "title", "global_objective", "target_audience", "prerequisites", "duration_hours", "duration_days",
-  "modality", "access_delays", "price", "pedagogical_resources", "evaluation_methods", "contact_phone", "contact_email",
-];
 const STATUSES = new Set(["draft", "review", "validated", "correction_requested", "archived"]);
 const MODALITIES = new Set(["presentiel", "distanciel", "mixte"]);
 const POSITIONING_MODES = new Set(["off_platform", "selen"]);
@@ -62,6 +67,15 @@ async function validateAllowedTrainers(
 }
 
 function buildPayload(body: Record<string, unknown>, userId: string, organisationId: string) {
+  const creationMode = parseDailyFormationCreationMode(body.creation_mode);
+  const prerequisiteMode = parseDailyPrerequisiteMode(body.prerequisite_mode);
+  const prerequisiteRequirements = cleanPrerequisiteRequirements(body.prerequisite_requirements);
+  const detailedProgramDocumentUrl = nullableText(body, "detailed_program_document_url");
+  const sourceError = validateFormationCreationSource(creationMode, detailedProgramDocumentUrl);
+  if (sourceError) return { error: sourceError };
+  const prerequisiteError = validatePrerequisiteDeclaration(prerequisiteMode, prerequisiteRequirements);
+  if (prerequisiteError) return { error: prerequisiteError };
+
   const modality = text(body, "modality");
   const status = text(body, "status") || "draft";
   const durationHours = numberValue(body, "duration_hours");
@@ -72,7 +86,7 @@ function buildPayload(body: Record<string, unknown>, userId: string, organisatio
   if (!MODALITIES.has(modality)) return { error: "Modalité de formation invalide." };
   if (!STATUSES.has(status) || status === "validated") return { error: "Statut de formation invalide pour le client." };
   if (durationHours === null || durationHours <= 0 || durationDays === null || durationDays <= 0) return { error: "Les durées en heures et en jours doivent être renseignées." };
-  if (learningObjectives.length === 0) return { error: "Ajoutez au moins un objectif pédagogique." };
+  if (requiresStructuredLearningObjectives(creationMode) && learningObjectives.length === 0) return { error: "Ajoutez au moins un objectif pédagogique." };
 
   const resultsPending = boolValue(body.results_pending);
   const positioningMode = POSITIONING_MODES.has(text(body, "positioning_mode")) ? text(body, "positioning_mode") : "off_platform";
@@ -94,15 +108,18 @@ function buildPayload(body: Record<string, unknown>, userId: string, organisatio
   const payload = {
     user_id: userId,
     organisation_id: organisationId,
+    creation_mode: creationMode,
+    prerequisite_mode: prerequisiteMode,
+    prerequisite_requirements: prerequisiteRequirements,
     title: text(body, "title"), global_objective: text(body, "global_objective"), learning_objectives: learningObjectives,
     allowed_trainer_ids: allowedTrainerIds,
-    target_audience: text(body, "target_audience"), prerequisites: text(body, "prerequisites"),
+    target_audience: text(body, "target_audience"), prerequisites: prerequisiteMode === "none" ? "Aucun prérequis" : text(body, "prerequisites"),
     duration_hours: durationHours, duration_days: durationDays, modality, modality_details: modality,
     access_delays: text(body, "access_delays"),
     registration_methods: text(body, "registration_methods") || "Les modalités d'inscription sont préparées et suivies par Selen Daily.",
     price: text(body, "price"),
     detailed_program: "",
-    detailed_program_document_url: nullableText(body, "detailed_program_document_url"),
+    detailed_program_document_url: detailedProgramDocumentUrl,
     positioning_questionnaire_document_url: positioningMode === "off_platform" ? nullableText(body, "positioning_questionnaire_document_url") : null,
     accessibility: text(body, "accessibility") || "La formation est accessible aux personnes en situation de handicap. Les besoins d'adaptation sont analysés dans le dossier d'inscription et suivis par Selen.",
     disability_referent: nullableText(body, "disability_referent"), pedagogical_methods: text(body, "pedagogical_methods") || text(body, "pedagogical_resources"),
@@ -114,8 +131,8 @@ function buildPayload(body: Record<string, unknown>, userId: string, organisatio
     updated_visible_at: new Date().toISOString().slice(0, 10), positioning_mode: positioningMode,
     positioning_questions: positioningMode === "selen" ? positioningQuestions : [], status,
   };
-  const missing = REQUIRED_FIELDS.filter((key) => !String(payload[key as keyof typeof payload] ?? "").trim());
-  if (missing.length > 0) return { error: "Tous les champs obligatoires de la formation doivent être renseignés." };
+  const missing = requiredFormationFields(creationMode).filter((key) => !String(payload[key as keyof typeof payload] ?? "").trim());
+  if (missing.length > 0) return { error: creationMode === "program_import" ? "Complétez les informations minimales nécessaires en plus du programme importé." : "Tous les champs obligatoires de la formation doivent être renseignés." };
   return { payload };
 }
 
