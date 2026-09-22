@@ -26,8 +26,6 @@ test("A12 avertit avant retour au modèle",()=>{assert.match(page,/Revenir au mo
 
 
 test("A12 respecte le contrat daily_documents et cloisonne les modèles par organisme",()=>{
-  const route=read("app/api/client/daily/procedures/route.ts");
-  const versioning=read("app/api/client/daily/procedures/versioning/route.ts");
   assert.match(route,/bucket:"documents"/);
   assert.match(route,/storage_path:/);
   assert.match(versioning,/bucket:"documents"/);
@@ -38,6 +36,5 @@ test("A12 respecte le contrat daily_documents et cloisonne les modèles par orga
 });
 
 test("A12 rafraichit le formulaire apres restauration du modele",()=>{
-  const page=read("app/client/daily/procedures/page.tsx");
   assert.match(page,/key=\{\x60\$\{p\.id\}:\$\{p\.updated_at\}\x60\}/);
 });
