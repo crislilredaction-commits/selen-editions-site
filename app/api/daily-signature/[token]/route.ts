@@ -8,6 +8,7 @@ import {
 } from "@/lib/server/agentAssistance";
 import { dispatchPretrainingPackAfterConventionSigned } from "@/lib/server/dailySignedConventionPretrainingPack";
 import { resolveDailySignatureFollowupReminder } from "@/lib/server/dailySignatureFollowupReminders";
+import { getContractEarlyStartContext, individualEarlyStartRequestText, INDIVIDUAL_FULL_PERFORMANCE_ACKNOWLEDGEMENT_TEXT, INDIVIDUAL_EARLY_START_TEXT_VERSION } from "@/lib/dailyIndividualEarlyStart";
 
 type Params = { params: Promise<{ token: string }> };
 
@@ -158,6 +159,13 @@ export async function POST(request: Request, { params }: Params) {
   }
 
   const signedAt = new Date().toISOString();
+  const convention = Array.isArray(signature.daily_conventions) ? signature.daily_conventions[0] : signature.daily_conventions;
+  const session = Array.isArray(convention?.daily_sessions) ? convention.daily_sessions[0] : convention?.daily_sessions;
+  const legalContext = getContractEarlyStartContext({ recipientType: convention?.recipient_type ?? null, contractSignedAt: signedAt, sessionStartDate: session?.start_date ?? null });
+  const earlyStartRequested = legalContext.earlyStartApplicable && body.early_start_requested === true;
+  const fullPerformanceAcknowledged = earlyStartRequested && body.full_performance_withdrawal_loss_acknowledged === true;
+  if (earlyStartRequested && !fullPerformanceAcknowledged) return NextResponse.json({ error: "La reconnaissance relative à l’exécution complète est requise avec une demande de commencement anticipé." }, { status: 400 });
+  const earlyStartTrace = legalContext.individual ? { version: 2, text_version: INDIVIDUAL_EARLY_START_TEXT_VERSION, canonical_reference: "contract_signature", contract_signed_at: signedAt, contract_signed_date: legalContext.contractSignedDate, distance_withdrawal_deadline: legalContext.withdrawalDeadline, session_start_date: session?.start_date ?? null, applicable: legalContext.earlyStartApplicable, requested: earlyStartRequested, request_text: earlyStartRequested && session?.start_date ? individualEarlyStartRequestText(session.start_date) : null, full_performance_withdrawal_loss_acknowledged: fullPerformanceAcknowledged, full_performance_acknowledgement_text: fullPerformanceAcknowledged ? INDIVIDUAL_FULL_PERFORMANCE_ACKNOWLEDGEMENT_TEXT : null } : null;
   const ipAddress =
     request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
     request.headers.get("x-real-ip") ||

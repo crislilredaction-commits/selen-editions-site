@@ -36,6 +36,11 @@ export default function DailySignaturePage({ params }: { params: { token: string
   const [signature, setSignature] = useState<SignaturePayload | null>(null);
   const [consentText, setConsentText] = useState("");
   const [conservationText, setConservationText] = useState("");
+  const [legalContext, setLegalContext] = useState<{individual:boolean;earlyStartApplicable:boolean;contractSignedDate:string|null;withdrawalDeadline:string|null}|null>(null);
+  const [earlyStartRequestText, setEarlyStartRequestText] = useState("");
+  const [fullPerformanceAcknowledgementText, setFullPerformanceAcknowledgementText] = useState("");
+  const [earlyStartRequested, setEarlyStartRequested] = useState(false);
+  const [fullPerformanceAcknowledged, setFullPerformanceAcknowledged] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -49,6 +54,9 @@ export default function DailySignaturePage({ params }: { params: { token: string
       setSignature(data.signature);
       setConsentText(data.consentText ?? "");
       setConservationText(data.conservationText ?? "");
+      setLegalContext(data.legalContext ?? null);
+      setEarlyStartRequestText(data.earlyStartRequestText ?? "");
+      setFullPerformanceAcknowledgementText(data.fullPerformanceAcknowledgementText ?? "");
     }
     void load();
   }, [token]);
@@ -129,6 +137,8 @@ export default function DailySignaturePage({ params }: { params: { token: string
       body: JSON.stringify({
         consent,
         signature_data: canvasRef.current.toDataURL("image/png"),
+        early_start_requested: earlyStartRequested,
+        full_performance_withdrawal_loss_acknowledged: fullPerformanceAcknowledged,
       }),
     });
     const data = await res.json().catch(() => null);
@@ -179,6 +189,8 @@ export default function DailySignaturePage({ params }: { params: { token: string
                   <span>{consentText}</span>
                 </label>
                 <p style={s.muted}>{conservationText}</p>
+                {legalContext?.individual ? <p style={s.muted}>Pour ce contrat individuel, la date de signature ci-dessous constitue la référence contractuelle. Le délai de rétractation consommateur de 14 jours court à compter de la conclusion du contrat ; le délai propre au contrat de formation est de 10 jours à compter de sa signature. Aucun paiement ne peut être exigé pendant ces 10 jours.</p> : null}
+                {legalContext?.earlyStartApplicable ? <div style={s.legalBox}><strong>Session prévue pendant le délai de rétractation</strong><label style={s.check}><input type="checkbox" checked={earlyStartRequested} onChange={e=>{setEarlyStartRequested(e.target.checked);if(!e.target.checked)setFullPerformanceAcknowledged(false)}}/><span>{earlyStartRequestText}</span></label>{earlyStartRequested ? <label style={s.check}><input type="checkbox" checked={fullPerformanceAcknowledged} onChange={e=>setFullPerformanceAcknowledged(e.target.checked)}/><span>{fullPerformanceAcknowledgementText}</span></label> : null}<small>Cette demande permet seulement un commencement anticipé. Elle ne vaut pas renonciation générale au droit de rétractation.</small></div> : null}
                 <canvas
                   ref={canvasRef}
                   style={s.canvas}
@@ -216,4 +228,5 @@ const s: Record<string, React.CSSProperties> = {
   notice: { border: "1px solid rgba(106,138,74,0.45)", background: "rgba(106,138,74,0.08)", color: "#496532", padding: "0.75rem", lineHeight: 1.5 },
   error: { border: "1px solid var(--rust)", background: "rgba(138,75,36,0.08)", color: "var(--rust)", padding: "0.75rem", lineHeight: 1.5 },
   muted: { color: "var(--ink-soft)", lineHeight: 1.6 },
+  legalBox: { display: "grid", gap: "0.75rem", padding: "0.85rem", border: "1px solid rgba(178,138,98,0.55)", background: "rgba(178,138,98,0.08)" },
 };
