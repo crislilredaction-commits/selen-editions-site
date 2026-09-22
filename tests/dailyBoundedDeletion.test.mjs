@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
+// A2 regression guard: keep bounded deletions explicit and auditable.
+
 const read = (path) => fs.readFileSync(path, "utf8");
 
 test("A2: apprenant vierge supprimable, historique bloqué et assistance tracée", () => {
