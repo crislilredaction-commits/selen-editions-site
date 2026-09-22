@@ -55,6 +55,34 @@ export async function verifyAgentAssistance(
 
   const context = data as AgentAssistanceContext & { status: string };
 
+  // A still-valid token is not enough: the Studio actor must still be active.
+  const normalizedEmail = context.agent_email?.trim().toLowerCase() ?? null;
+  const profileQuery = supabase
+    .from("agent_profiles")
+    .select("id")
+    .eq("is_active", true)
+    .limit(1);
+  const [{ data: agentProfile }, { data: adminUser }] = await Promise.all([
+    context.agent_user_id
+      ? normalizedEmail
+        ? profileQuery
+            .or(`user_id.eq.${context.agent_user_id},email.eq.${normalizedEmail}`)
+            .maybeSingle()
+        : profileQuery.eq("user_id", context.agent_user_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+    normalizedEmail
+      ? supabase
+          .from("selen_admin_users")
+          .select("email")
+          .eq("email", normalizedEmail)
+          .eq("is_active", true)
+          .limit(1)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+
+  if (!agentProfile && !adminUser) return null;
+
   if (
     options.dossierId &&
     context.dossier_id &&

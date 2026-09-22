@@ -123,6 +123,7 @@ export default function ClientDashboardPage() {
   const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
   const [error, setError] = useState("");
   const [authRequired, setAuthRequired] = useState(false);
+  const [assistedDailyAccess, setAssistedDailyAccess] = useState(false);
 
   const preauditRemainingDays = getRemainingDays(preauditAccess?.ends_at);
   const auditBlancRemainingDays = getRemainingDays(auditBlancAccess?.ends_at);
@@ -133,6 +134,7 @@ export default function ClientDashboardPage() {
   const hasAuditBlancReadAccess = Boolean(auditBlancAccess);
   const hasExpiredPreauditAccess = hasExpiredToolAccess(preauditAccess);
   const hasDailyAccess =
+    assistedDailyAccess ||
     hasActiveToolAccess(dailyAccess) || dailySubscription?.status === "active";
 
   const isPreauditUnlimited = preauditAccess?.access_type === "unlimited";
@@ -189,6 +191,8 @@ export default function ClientDashboardPage() {
         const ndaData = await ndaRes.json().catch(() => null);
 
         if (ndaRes.ok) {
+          // A valid assistance token already resolves the target organisation server-side.
+          setAssistedDailyAccess(true);
           setNdaDossiers((ndaData?.dossiers ?? []) as NdaDossier[]);
         } else {
           setError(ndaData?.error ?? "Lien d'assistance invalide ou expiré.");

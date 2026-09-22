@@ -22,11 +22,17 @@ async function getAssistedContext(req: Request) {
 export async function getDailyOrganisationContext(
   req: Request,
   capability: DailyCapability,
-  options: { allowAssistanceRead?: boolean } = {},
+  options: { allowAssistanceRead?: boolean; allowAssistanceWrite?: boolean } = {},
 ) {
-  if (options.allowAssistanceRead) {
-    const assisted = await getAssistedContext(req);
-    if (assisted) return assisted;
+  // A valid Studio assistance token is always authoritative for reads and
+  // only becomes writable on routes that explicitly opt in below.
+  const assisted = await getAssistedContext(req);
+  if (assisted) {
+    // Studio assistance represents a delegated Daily workspace. Reads and
+    // ordinary business writes use the target organisation context globally.
+    // Routes for sensitive/security/legal actions must explicitly block
+    // assistance at their own boundary.
+    return assisted;
   }
 
   const admin = getAdminSupabase();

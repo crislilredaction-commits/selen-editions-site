@@ -316,6 +316,16 @@ export default function DailySessionsManager() {
     await load();
   }
 
+  async function deleteSession(id: string) {
+    setError(""); setMessage("");
+    if (!window.confirm("Supprimer définitivement cette session vierge ? Cette action est impossible dès qu’un inscrit, une activité ou une preuve existe.")) return;
+    const response = await assistanceFetch("/api/client/daily/sessions", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, hardDelete: true }) });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) return setError(data.error ?? "Suppression impossible.");
+    setMessage("Session vierge supprimée.");
+    await load();
+  }
+
   async function openEvidence(sessionId: string) {
     if (evidenceSessionId === sessionId) { setEvidenceSessionId(null); setEvidenceContext(null); return; }
     setEvidenceSessionId(sessionId);
@@ -422,9 +432,9 @@ export default function DailySessionsManager() {
     </section>
 
     <section style={styles.columns}>
-      <SessionColumn title="Sessions planifiées" subtitle="À venir ou en cours de réalisation" sessions={plannedSessions} empty="Aucune session planifiée." completion={completion} edit={editSession} duplicate={duplicate} archive={archive} openEvidence={openEvidence} evidenceSessionId={evidenceSessionId} evidenceLoading={evidenceLoading} evidenceContext={evidenceContext} uploadEvidence={uploadEvidence} confirmAbandonment={confirmAbandonment} uploadingKey={uploadingKey} abandoningKey={abandoningKey} />
-      <SessionColumn title="Sessions terminées" subtitle="Formation terminée · dossier encore à finaliser" sessions={endedSessions} empty="Aucun dossier de session à finaliser." completion={completion} edit={editSession} duplicate={duplicate} archive={archive} openEvidence={openEvidence} evidenceSessionId={evidenceSessionId} evidenceLoading={evidenceLoading} evidenceContext={evidenceContext} uploadEvidence={uploadEvidence} confirmAbandonment={confirmAbandonment} uploadingKey={uploadingKey} abandoningKey={abandoningKey} />
-      <SessionColumn title="Sessions clôturées" subtitle="Dossier de session terminé" sessions={closedSessions} empty="Aucune session clôturée." completion={completion} edit={editSession} duplicate={duplicate} archive={archive} openEvidence={openEvidence} evidenceSessionId={evidenceSessionId} evidenceLoading={evidenceLoading} evidenceContext={evidenceContext} uploadEvidence={uploadEvidence} confirmAbandonment={confirmAbandonment} uploadingKey={uploadingKey} abandoningKey={abandoningKey} />
+      <SessionColumn title="Sessions planifiées" subtitle="À venir ou en cours de réalisation" sessions={plannedSessions} empty="Aucune session planifiée." completion={completion} edit={editSession} duplicate={duplicate} archive={archive} deleteSession={deleteSession} openEvidence={openEvidence} evidenceSessionId={evidenceSessionId} evidenceLoading={evidenceLoading} evidenceContext={evidenceContext} uploadEvidence={uploadEvidence} confirmAbandonment={confirmAbandonment} uploadingKey={uploadingKey} abandoningKey={abandoningKey} />
+      <SessionColumn title="Sessions terminées" subtitle="Formation terminée · dossier encore à finaliser" sessions={endedSessions} empty="Aucun dossier de session à finaliser." completion={completion} edit={editSession} duplicate={duplicate} archive={archive} deleteSession={deleteSession} openEvidence={openEvidence} evidenceSessionId={evidenceSessionId} evidenceLoading={evidenceLoading} evidenceContext={evidenceContext} uploadEvidence={uploadEvidence} confirmAbandonment={confirmAbandonment} uploadingKey={uploadingKey} abandoningKey={abandoningKey} />
+      <SessionColumn title="Sessions clôturées" subtitle="Dossier de session terminé" sessions={closedSessions} empty="Aucune session clôturée." completion={completion} edit={editSession} duplicate={duplicate} archive={archive} deleteSession={deleteSession} openEvidence={openEvidence} evidenceSessionId={evidenceSessionId} evidenceLoading={evidenceLoading} evidenceContext={evidenceContext} uploadEvidence={uploadEvidence} confirmAbandonment={confirmAbandonment} uploadingKey={uploadingKey} abandoningKey={abandoningKey} />
     </section>
   </main>;
 }
@@ -438,6 +448,7 @@ function sortSessions(a: Session, b: Session) {
 function SessionColumn(props: {
   title: string; subtitle: string; sessions: Session[]; empty: string; completion: Record<string, Completion>;
   edit: (session: Session) => void; duplicate: (id: string) => Promise<void>; archive: (id: string) => Promise<void>;
+  deleteSession: (id: string) => Promise<void>;
   openEvidence: (id: string) => Promise<void>; evidenceSessionId: string | null; evidenceLoading: boolean; evidenceContext: EvidenceContext | null;
   uploadEvidence: (sessionId: string, enrolmentId: string, kind: "positioning" | "learning_assessment", file: File | null) => Promise<void>;
   confirmAbandonment: (sessionId: string, enrolmentId: string, occurredAt: string, reason: string) => Promise<void>;
@@ -449,7 +460,7 @@ function SessionColumn(props: {
     return <article key={session.id} style={styles.sessionCard}>
       <div style={styles.cardHead}><div><span style={styles.badge}>{modalityLabel(session)}</span><h3 style={styles.h3}>{formation?.title ?? "Formation"}</h3><p style={styles.muted}>{formatDate(session.start_date)}{session.end_date && session.end_date !== session.start_date ? ` → ${formatDate(session.end_date)}` : ""}{session.internal_reference ? ` · ${session.internal_reference}` : ""}</p></div><strong style={styles.percent}>{stats.percentage}%</strong></div>
       <div style={styles.progressTrack}><div style={{ ...styles.progressBar, width: `${stats.percentage}%` }} /></div><p style={styles.progressText}>{stats.expected > 0 ? `${stats.completed} éléments conformes ou recueillis sur ${stats.expected}` : "Les preuves apparaîtront ici au fur et à mesure du dossier."}</p>
-      <div style={styles.actions}><button type="button" style={styles.secondary} onClick={() => props.edit(session)}>Modifier</button><button type="button" style={styles.secondary} onClick={() => void props.openEvidence(session.id)}>Preuves apprenants</button><button type="button" style={styles.secondary} onClick={() => void props.duplicate(session.id)}>Dupliquer</button><button type="button" style={styles.danger} onClick={() => void props.archive(session.id)}>Archiver</button></div>
+      <div style={styles.actions}><button type="button" style={styles.secondary} onClick={() => props.edit(session)}>Modifier</button><button type="button" style={styles.secondary} onClick={() => void props.openEvidence(session.id)}>Preuves apprenants</button><button type="button" style={styles.secondary} onClick={() => void props.duplicate(session.id)}>Dupliquer</button><button type="button" style={styles.danger} onClick={() => void props.archive(session.id)}>Archiver</button><button type="button" style={styles.danger} onClick={() => void props.deleteSession(session.id)}>Supprimer</button></div>
       {props.evidenceSessionId === session.id ? <EvidencePanel session={session} loading={props.evidenceLoading} context={props.evidenceContext} upload={props.uploadEvidence} confirmAbandonment={props.confirmAbandonment} uploadingKey={props.uploadingKey} abandoningKey={props.abandoningKey} /> : null}
     </article>;
   })}</div>;
