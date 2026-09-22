@@ -6,7 +6,6 @@ import {
 } from "@/lib/server/dailyStakeholderSatisfactionEmails";
 
 const COMMUNICATION_TYPE = "stakeholder_satisfaction_request";
-const PHONE_FOLLOWUP_SOURCE = "satisfaction_phone_followup";
 const REMINDER_OFFSETS_DAYS = [2, 4] as const;
 const RESPONSE_WINDOW_DAYS = 30;
 const ENTERPRISE_INITIAL_OFFSET_DAYS = 15;
@@ -41,7 +40,6 @@ type CommunicationRow = {
   created_at: string;
   metadata: Record<string, unknown> | null;
 };
-type PhoneActionRow = { id: string; source_id: string | null; status: string };
 type AutomationStage = "initial" | "j2" | "j4";
 
 function one<T>(value: T | T[] | null | undefined): T | null {
@@ -136,7 +134,7 @@ export async function GET(req: Request) {
   }
   const sessionIds = sessions.map((session) => session.id);
 
-  const [portalsResult, responsesResult, communicationsResult, phoneActionsResult] = await Promise.all([
+  const [portalsResult, responsesResult, communicationsResult] = await Promise.all([
     admin.from("daily_portal_access_tokens")
       .select("id,session_id,portal_type,entity_key,entity_name,entity_email,token,status,expires_at")
       .in("session_id", sessionIds).in("portal_type", ["enterprise", "trainer"]).in("status", ["pending", "viewed"]),
@@ -147,27 +145,20 @@ export async function GET(req: Request) {
       .select("session_id,recipient_email,status,sent_at,created_at,metadata")
       .in("session_id", sessionIds).eq("communication_type", COMMUNICATION_TYPE)
       .in("status", ["queued", "sent", "delivered", "failed"]),
-    admin.from("daily_quality_actions")
-      .select("id,source_id,status")
-      .eq("source_type", PHONE_FOLLOWUP_SOURCE).in("status", ["open", "planned"]),
   ]);
-  const readError = portalsResult.error ?? responsesResult.error ?? communicationsResult.error ?? phoneActionsResult.error;
+  const readError = portalsResult.error ?? responsesResult.error ?? communicationsResult.error;
   if (readError) return NextResponse.json({ error: readError.message }, { status: 500 });
 
   const portals = (portalsResult.data ?? []) as PortalRow[];
   const responses = (responsesResult.data ?? []) as ResponseRow[];
   const communications = (communicationsResult.data ?? []) as CommunicationRow[];
-  const phoneActions = (phoneActionsResult.data ?? []) as PhoneActionRow[];
   const responseKeys = new Set(responses.map((row) => `${row.session_id}:${row.stakeholder_type}:${row.entity_key}`));
-  const phoneActionBySource = new Map(phoneActions.filter((row) => row.source_id).map((row) => [row.source_id as string, row]));
   const sessionMap = new Map(sessions.map((session) => [session.id, session]));
 
   let due = 0;
   let processed = 0;
   let skipped = 0;
   let failed = 0;
-  let phoneTasksCreated = 0;
-  let phoneTasksClosed = 0;
   const details: Array<{ session_id: string; entity_key: string; stakeholder_type: StakeholderType; status: string; stage?: AutomationStage }> = [];
 
   for (const portal of portals) {
@@ -175,15 +166,8 @@ export async function GET(req: Request) {
     const stakeholderType = stakeholderTypeForPortal(portal);
     if (!session?.end_date) { skipped += 1; continue; }
     const responseKey = `${portal.session_id}:${stakeholderType}:${portal.entity_key}`;
-    const phoneAction = phoneActionBySource.get(portal.id);
 
     if (responseKeys.has(responseKey)) {
-      if (execute && phoneAction) {
-        const { error } = await admin.from("daily_quality_actions")
-          .update({ status: "closed", implemented_at: new Date().toISOString(), implemented_improvement: "Réponse satisfaction reçue : relance téléphonique devenue sans objet." })
-          .eq("id", phoneAction.id).in("status", ["open", "planned"]);
-        if (!error) phoneTasksClosed += 1;
-      }
       skipped += 1;
       details.push({ session_id: portal.session_id, entity_key: portal.entity_key, stakeholder_type: stakeholderType, status: "already_submitted" });
       continue;
@@ -204,29 +188,6 @@ export async function GET(req: Request) {
     const ageDaysSinceAvailability = ageDays - initialOffsetForPortal(portal);
     const stages = successfulStages(communications, portal);
     const stage = stageDue(ageDaysSinceAvailability, stages);
-
-    if (!stage && stages.has("j4") && !phoneAction) {
-      due += 1;
-      if (execute) {
-        const label = stakeholderType === "company" ? "entreprise" : "formateur";
-        const { error } = await admin.from("daily_quality_actions").insert({
-          organisation_id: session.organisation_id,
-          session_id: session.id,
-          category: "corrective_action",
-          source_type: PHONE_FOLLOWUP_SOURCE,
-          source_id: portal.id,
-          title: `Relance téléphonique satisfaction — ${label}`,
-          observation: `Aucune réponse après les relances email J+2 et J+4 pour ${text(portal.entity_name) || text(portal.entity_email)}.`,
-          proposed_solution: "Contacter la partie prenante par téléphone et consigner le résultat de la relance.",
-          status: "open",
-          created_by: null,
-        });
-        if (error) failed += 1;
-        else { phoneTasksCreated += 1; processed += 1; }
-      }
-      details.push({ session_id: session.id, entity_key: portal.entity_key, stakeholder_type: stakeholderType, status: execute ? "phone_task_created" : "phone_task_due" });
-      continue;
-    }
 
     if (!stage || queuedStage(communications, portal, stage)) { skipped += 1; continue; }
     due += 1;
@@ -272,23 +233,6 @@ export async function GET(req: Request) {
     const { error: finalizeError } = await admin.from("daily_communications").update({ provider_message_id: sent.message.providerMessageId, status: "sent", sent_at: new Date().toISOString(), failed_at: null, failure_reason: null }).eq("id", communication.id);
     processed += 1;
 
-    if (stage === "j4" && !phoneAction) {
-      const label = stakeholderType === "company" ? "entreprise" : "formateur";
-      const { error: phoneError } = await admin.from("daily_quality_actions").insert({
-        organisation_id: session.organisation_id,
-        session_id: session.id,
-        category: "corrective_action",
-        source_type: PHONE_FOLLOWUP_SOURCE,
-        source_id: portal.id,
-        title: `Relance téléphonique satisfaction — ${label}`,
-        observation: `Aucune réponse après les relances email J+2 et J+4 pour ${text(portal.entity_name) || email}.`,
-        proposed_solution: "Contacter la partie prenante par téléphone et consigner le résultat de la relance.",
-        status: "open",
-        created_by: null,
-      });
-      if (phoneError) failed += 1;
-      else phoneTasksCreated += 1;
-    }
     details.push({ session_id: session.id, entity_key: portal.entity_key, stakeholder_type: stakeholderType, status: finalizeError ? "sent_evidence_finalize_failed" : "sent", stage });
   }
 
@@ -303,8 +247,6 @@ export async function GET(req: Request) {
     reminder_offsets_days: REMINDER_OFFSETS_DAYS,
     response_window_days: RESPONSE_WINDOW_DAYS,
     enterprise_initial_offset_days: ENTERPRISE_INITIAL_OFFSET_DAYS,
-    phone_tasks_created: phoneTasksCreated,
-    phone_tasks_closed: phoneTasksClosed,
     details,
   }, { status: failed === 0 ? 200 : 207 });
 }
