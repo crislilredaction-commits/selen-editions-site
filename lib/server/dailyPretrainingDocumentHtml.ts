@@ -87,3 +87,28 @@ export function buildRegistrationPositioningHtml(common: DailyPretrainingCommon,
     { title: "Validation des informations", body: `<p>Les informations ci-dessus doivent être confirmées ou complétées avant le démarrage de la session.</p>` },
   ]);
 }
+
+
+export function buildTrainingContractHtml(common: DailyPretrainingCommon, data: { learnerName:string; learnerEmail:string; price:string; objective:string; prerequisites:string; evaluation:string }) {
+  return wordHtml("Contrat de formation professionnelle", common, [
+    { title:"Entre les parties", body:`<p><strong>Organisme de formation :</strong> ${esc(common.organisationName)}, ${multiline(common.organisationAddress)}, SIRET ${esc(common.organisationSiret)}, NDA ${esc(common.organisationNda || "en cours / non renseigné")}.</p><p><strong>Stagiaire :</strong> ${esc(data.learnerName)} · ${esc(data.learnerEmail)}</p>` },
+    { title:"Objet", body:`<p>Le présent contrat porte sur l’action de formation <strong>${esc(common.formationTitle)}</strong>.</p><p>${multiline(data.objective)}</p>` },
+    { title:"Prérequis, organisation et évaluation", body:`<p><strong>Prérequis :</strong> ${multiline(data.prerequisites)}</p><p>${multiline(common.schedule)}</p><p>${multiline(data.evaluation)}</p>` },
+    { title:"Prix, rétractation et paiement", body:`<p>Prix total : <strong>${esc(data.price || "Non renseigné")}</strong>.</p><p>À compter de la signature du contrat, le stagiaire dispose du délai de rétractation de 10 jours prévu par le Code du travail. Aucune somme ne peut être exigée avant son expiration ; ensuite, le premier paiement ne peut excéder 30 % du prix convenu et le solde est échelonné au fur et à mesure du déroulement de la formation.</p><p>Lorsque le contrat est conclu à distance avec un consommateur, le délai de rétractation de 14 jours court à compter de la conclusion du contrat. Un commencement anticipé suppose une demande expresse ; le droit n’est perdu qu’après exécution complète dans les conditions légales.</p>` },
+    { title:"Signatures", body:"<table><tr><td><strong>Stagiaire</strong><br/><br/><br/>Date et signature</td><td><strong>Organisme de formation</strong><br/><br/><br/>Date et signature</td></tr></table>" },
+  ]);
+}
+
+export function buildWelcomeBookletHtml(common: DailyPretrainingCommon, data:{registrationMethods:string;accessDelays:string;accessibility:string}) {
+  return wordHtml("Livret d’accueil", common, [
+    { title:"Bienvenue", body:`<p>Ce livret rassemble les informations utiles avant votre entrée dans la formation <strong>${esc(common.formationTitle)}</strong>.</p>` },
+    { title:"Organisation pratique", body:`<p><strong>Dates et horaires :</strong><br/>${multiline(common.schedule)}</p><p><strong>Lieu / accès :</strong><br/>${multiline(common.location)}</p>` },
+    { title:"Inscription et délai d’accès", body:`<p>${multiline(data.registrationMethods)}</p><p>${multiline(data.accessDelays)}</p>` },
+    { title:"Accessibilité et besoins spécifiques", body:`<p>${multiline(data.accessibility || "Tout besoin d’adaptation peut être signalé à l’organisme afin d’étudier les aménagements possibles.")}</p>` },
+    { title:"Contacts", body:`<p>${esc(common.organisationEmail || "Email non renseigné")} · ${esc(common.organisationPhone || "Téléphone non renseigné")}</p>` },
+  ]);
+}
+
+export function buildInternalRegulationsHtml(common: DailyPretrainingCommon) {
+  return wordHtml("Règlement intérieur", common, [], [{ title:"Règlement intérieur", body:regulations }]);
+}
