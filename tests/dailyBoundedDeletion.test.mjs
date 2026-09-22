@@ -16,7 +16,7 @@ test("A2: apprenant vierge supprimable, historique bloqué et assistance tracée
 
 test("A2: formation supprimable seulement sans dépendance métier", () => {
   const route = read("app/api/client/daily/formations/route.ts");
-  for (const dependency of ["daily_sessions", "daily_documents", "daily_formation_registration_requests", "previous_version_id"]) {
+  for (const dependency of ["daily_sessions", "daily_documents", "daily_formation_registration_requests", "formation_id", "previous_version_id"]) {
     assert.ok(route.includes(dependency), `dépendance manquante: ${dependency}`);
   }
   assert.match(route, /\.delete\(\)/);
