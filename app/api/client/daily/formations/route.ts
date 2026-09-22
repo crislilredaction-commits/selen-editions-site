@@ -165,17 +165,6 @@ export async function PATCH(req: Request) {
   const body = await req.json().catch(() => ({})) as Record<string, unknown>;
   const id = text(body, "id");
   if (!id) return NextResponse.json({ error: "Identifiant formation requis." }, { status: 400 });
-  const hardDelete = body.hardDelete === true;
-  if (!hardDelete) {
-    const { data: current, error: currentError } = await context.admin.from("daily_formations").select("id,status").eq("id", id).eq("organisation_id", context.organisationId).maybeSingle();
-    if (currentError) return NextResponse.json({ error: currentError.message }, { status: 500 });
-    if (!current) return NextResponse.json({ error: "Formation introuvable." }, { status: 404 });
-    if (current.status === "archived") return NextResponse.json({ ok: true, archived: true, assistanceMode: context.assisted });
-    const { data, error } = await context.admin.from("daily_formations").update({ status: "archived", archived_at: new Date().toISOString() }).eq("id", id).eq("organisation_id", context.organisationId).select("*").single();
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    if (context.assisted && context.assistance) await logAgentAssistanceAction({ supabase: context.admin, req, assistance: context.assistance, action: "daily_formation_archive", actionLabel: "Formation archivée par Studio pour le client", newState: { formation_id: data.id, status: data.status } });
-    return NextResponse.json({ formation: data, archived: true, assistanceMode: context.assisted });
-  }
   const built = buildPayload(body, context.user.id, context.organisationId);
   if ("error" in built) return NextResponse.json({ error: built.error }, { status: 400 });
   const trainerError = await validateAllowedTrainers(context.organisationId, built.payload.allowed_trainer_ids, context.admin);
@@ -256,6 +245,17 @@ export async function DELETE(req: Request) {
   const body = await req.json().catch(() => ({})) as Record<string, unknown>;
   const id = text(body, "id");
   if (!id) return NextResponse.json({ error: "Identifiant formation requis." }, { status: 400 });
+  const hardDelete = body.hardDelete === true;
+  if (!hardDelete) {
+    const { data: current, error: currentError } = await context.admin.from("daily_formations").select("id,status").eq("id", id).eq("organisation_id", context.organisationId).maybeSingle();
+    if (currentError) return NextResponse.json({ error: currentError.message }, { status: 500 });
+    if (!current) return NextResponse.json({ error: "Formation introuvable." }, { status: 404 });
+    if (current.status === "archived") return NextResponse.json({ ok: true, archived: true, assistanceMode: context.assisted });
+    const { data, error } = await context.admin.from("daily_formations").update({ status: "archived", archived_at: new Date().toISOString() }).eq("id", id).eq("organisation_id", context.organisationId).select("*").single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (context.assisted && context.assistance) await logAgentAssistanceAction({ supabase: context.admin, req, assistance: context.assistance, action: "daily_formation_archive", actionLabel: "Formation archivée par Studio pour le client", newState: { formation_id: data.id, status: data.status } });
+    return NextResponse.json({ formation: data, archived: true, assistanceMode: context.assisted });
+  }
   const { data: existing, error: existingError } = await context.admin.from("daily_formations").select("id,title,status").eq("id", id).eq("organisation_id", context.organisationId).maybeSingle();
   if (existingError) return NextResponse.json({ error: existingError.message }, { status: 500 });
   if (!existing) return NextResponse.json({ error: "Formation introuvable." }, { status: 404 });

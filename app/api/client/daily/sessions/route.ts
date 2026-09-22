@@ -166,13 +166,6 @@ export async function PATCH(req: Request) {
   const body = await req.json().catch(() => ({})) as Record<string, unknown>;
   const id = text(body, "id");
   if (!id) return NextResponse.json({ error: "Identifiant session requis." }, { status: 400 });
-  const hardDelete = body.hardDelete === true;
-  if (!hardDelete) {
-    const { data, error } = await context.admin.from("daily_sessions").update({ status: "archived", registration_token: null }).eq("id", id).eq("organisation_id", context.organisationId).select("*").single();
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    if (context.assisted && context.assistance) await logAgentAssistanceAction({ supabase: context.admin, req, assistance: context.assistance, action: "daily_session_archive", actionLabel: "Session archivée par Studio pour le client", newState: { session_id: data.id, status: data.status } });
-    return NextResponse.json({ session: data, archived: true, assistanceMode: context.assisted });
-  }
   const built = buildPayload(body, context.user.id, context.organisationId);
   if ("error" in built) return NextResponse.json({ error: built.error }, { status: 400 });
   const { data: formation, error: formationError } = await context.admin.from("daily_formations").select("id").eq("id", built.payload.formation_id).eq("organisation_id", context.organisationId).neq("status", "archived").maybeSingle();
@@ -193,6 +186,13 @@ export async function DELETE(req: Request) {
   const body = await req.json().catch(() => ({})) as Record<string, unknown>;
   const id = text(body, "id");
   if (!id) return NextResponse.json({ error: "Identifiant session requis." }, { status: 400 });
+  const hardDelete = body.hardDelete === true;
+  if (!hardDelete) {
+    const { data, error } = await context.admin.from("daily_sessions").update({ status: "archived", registration_token: null }).eq("id", id).eq("organisation_id", context.organisationId).select("*").single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (context.assisted && context.assistance) await logAgentAssistanceAction({ supabase: context.admin, req, assistance: context.assistance, action: "daily_session_archive", actionLabel: "Session archivée par Studio pour le client", newState: { session_id: data.id, status: data.status } });
+    return NextResponse.json({ session: data, archived: true, assistanceMode: context.assisted });
+  }
   const { data: existing, error: existingError } = await context.admin.from("daily_sessions").select("id,internal_reference,status,formation_id").eq("id", id).eq("organisation_id", context.organisationId).maybeSingle();
   if (existingError) return NextResponse.json({ error: existingError.message }, { status: 500 });
   if (!existing) return NextResponse.json({ error: "Session introuvable." }, { status: 404 });
@@ -204,6 +204,7 @@ export async function DELETE(req: Request) {
     ["daily_convocations", "session_id", "des convocations"],
     ["daily_portal_access_tokens", "session_id", "des accès parties prenantes"],
     ["daily_session_followup_entries", "session_id", "un historique de suivi"],
+    ["daily_quality_actions", "session_id", "des actions qualité ou d’amélioration"],
   ] as const;
   for (const [table, column, label] of dependencyChecks) {
     const { data, error } = await context.admin.from(table).select("id").eq("organisation_id", context.organisationId).eq(column, id).limit(1);

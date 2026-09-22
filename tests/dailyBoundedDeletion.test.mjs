@@ -28,7 +28,7 @@ test("A2: formation supprimable seulement sans dépendance métier", () => {
 
 test("A2: session supprimable seulement sans inscrit, activité ni preuve", () => {
   const route = read("app/api/client/daily/sessions/route.ts");
-  for (const dependency of ["daily_session_enrolments", "daily_attendance_slots", "daily_documents", "daily_conventions", "daily_convocations", "daily_portal_access_tokens", "daily_session_followup_entries"]) {
+  for (const dependency of ["daily_session_enrolments", "daily_attendance_slots", "daily_documents", "daily_conventions", "daily_convocations", "daily_portal_access_tokens", "daily_session_followup_entries", "daily_quality_actions"]) {
     assert.ok(route.includes(dependency), `dépendance manquante: ${dependency}`);
   }
   assert.match(route, /\.delete\(\)/);
@@ -46,4 +46,15 @@ test("A2: confirmations explicites présentes dans les trois interfaces", () => 
   assert.match(sessions, />Supprimer<\/button>/);
   assert.match(learners, /window\.confirm/);
   assert.match(learners, /Supprimer cet apprenant/);
+});
+
+
+test("A2: archivage conservé séparément de la suppression physique", () => {
+  const formations = read("app/api/client/daily/formations/route.ts");
+  const sessions = read("app/api/client/daily/sessions/route.ts");
+  for (const route of [formations, sessions]) {
+    const deleteHandler = route.slice(route.indexOf("export async function DELETE"));
+    assert.match(deleteHandler, /hardDelete/);
+    assert.match(deleteHandler, /status: "archived"/);
+  }
 });
