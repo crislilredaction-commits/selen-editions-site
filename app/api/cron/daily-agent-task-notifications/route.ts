@@ -20,10 +20,6 @@ function authorized(req: Request) {
   return req.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim() === expected;
 }
 
-function sourceItemId(row: NotificationRow) {
-  return row.source_key?.split(":").at(-1) || "";
-}
-
 export async function GET(req: Request) {
   if (!authorized(req)) return NextResponse.json({ error: "Accès refusé." }, { status: 401 });
   const admin = getAdminSupabase();
@@ -79,22 +75,17 @@ export async function GET(req: Request) {
     const uniqueRecipients = [...new Map(recipients.map((recipient) => [recipient.email.toLowerCase(), recipient])).values()];
     if (!uniqueRecipients.length) { skipped += 1; continue; }
 
-    let notificationFailed = false;
-    for (const recipient of uniqueRecipients) {
-      const sent = await sendDailyAgentTaskEmail({
-        email: recipient.email,
-        recipientName: recipient.name,
-        title: notification.title,
-        content: notification.content,
-        organisationName: notification.organisation_name,
-      });
-      if (!sent.sent) { notificationFailed = true; failed += 1; continue; }
-    }
-    if (!notificationFailed) {
-      const { error: markError } = await admin.from("notifications").update({ email_sent_at: new Date().toISOString() }).eq("id", notification.id).is("email_sent_at", null);
-      if (markError) failed += 1;
-      else processed += 1;
-    }
+    const sent = await sendDailyAgentTaskEmail({
+      email: uniqueRecipients.map((recipient) => recipient.email),
+      recipientName: notification.target_agent_profile_id ? uniqueRecipients[0]?.name : "l’équipe Selen",
+      title: notification.title,
+      content: notification.content,
+      organisationName: notification.organisation_name,
+    });
+    if (!sent.sent) { failed += 1; continue; }
+    const { error: markError } = await admin.from("notifications").update({ email_sent_at: new Date().toISOString() }).eq("id", notification.id).is("email_sent_at", null);
+    if (markError) failed += 1;
+    else processed += 1;
   }
 
   return NextResponse.json({
