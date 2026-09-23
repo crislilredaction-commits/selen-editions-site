@@ -5,7 +5,7 @@ const resendFromEmail = process.env.RESEND_FROM_EMAIL || "Selen Editions <hello@
 const resend = resendApiKey ? new Resend(resendApiKey) : null;
 
 export type DailyAgentTaskEmailInput = {
-  email: string;
+  email: string | string[];
   recipientName?: string | null;
   title: string;
   content?: string | null;
