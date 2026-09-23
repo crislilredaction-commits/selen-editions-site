@@ -4,6 +4,10 @@
     {
       "path": "/api/cron/daily-satisfaction",
       "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/daily-agent-task-notifications",
+      "schedule": "*/10 * * * *"
     }
   ]
 }
