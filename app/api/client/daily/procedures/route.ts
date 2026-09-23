@@ -67,6 +67,9 @@ const definitions = [
 ] as const;
 const allowedTypes = new Set(definitions.map((item) => item.procedure_type));
 
+export const SELEN_PROCEDURE_MODEL_VERSION = 1;
+export const SELEN_PROCEDURE_DEFINITIONS = definitions;
+
 async function ensureProcedures(organisationId: string) {
   const admin = getAdminSupabase();
   const { error: upsertError } = await admin.from("daily_internal_procedures").upsert(
@@ -74,6 +77,14 @@ async function ensureProcedures(organisationId: string) {
     { onConflict: "organisation_id,procedure_type", ignoreDuplicates: true },
   );
   if (upsertError) throw upsertError;
+  for (const item of definitions) {
+    const metadata={model_version:SELEN_PROCEDURE_MODEL_VERSION,content:item};
+    const {data:existing}=await admin.from("daily_documents").select("id,metadata").eq("organisation_id",organisationId).eq("document_type","selen_procedure_model").eq("logical_name",item.procedure_type).eq("is_current",true).order("version",{ascending:false}).limit(1);
+    if(Number(existing?.[0]?.metadata?.model_version??0)<SELEN_PROCEDURE_MODEL_VERSION){
+      if(existing?.[0]?.id) await admin.from("daily_documents").update({is_current:false}).eq("id",existing[0].id);
+      await admin.from("daily_documents").insert({organisation_id:organisationId,document_type:"selen_procedure_model",linked_object_type:"organisation",linked_object_id:organisationId,version:SELEN_PROCEDURE_MODEL_VERSION,status:"active",logical_name:item.procedure_type,bucket:"documents",storage_path:`metadata/procedures/${organisationId}/${item.procedure_type}/model-v${SELEN_PROCEDURE_MODEL_VERSION}.json`,mime_type:"application/json",size_bytes:JSON.stringify(metadata).length,is_current:true,metadata});
+    }
+  }
   const { data, error } = await admin.from("daily_internal_procedures").select("id,procedure_type,title,purpose,steps,responsibilities,evidence,status,reviewed_at,updated_at").eq("organisation_id", organisationId).order("created_at", { ascending: true });
   if (error) throw error;
   return data ?? [];
@@ -99,6 +110,9 @@ export async function PATCH(req: Request) {
     const steps = String(body.steps ?? "").trim();
     if (!steps) return NextResponse.json({ error: "Le déroulement de la procédure est requis." }, { status: 400 });
     const definition = definitions.find((item) => item.procedure_type === procedureType)!;
+    const admin = getAdminSupabase();
+    const {data:current}=await admin.from("daily_internal_procedures").select("*").eq("organisation_id",context.workspace.membership.organisation_id).eq("procedure_type",procedureType).maybeSingle();
+    if(current){const {data:last}=await admin.from("daily_documents").select("version").eq("organisation_id",context.workspace.membership.organisation_id).eq("document_type","internal_procedure_version").eq("logical_name",procedureType).order("version",{ascending:false}).limit(1);const version=Number(last?.[0]?.version??0)+1;const metadata={procedure_type:procedureType,model_version:SELEN_PROCEDURE_MODEL_VERSION,customized:true,snapshot:current,reason:"Sauvegarde automatique avant modification"};const {error:snapshotError}=await admin.from("daily_documents").insert({organisation_id:context.workspace.membership.organisation_id,document_type:"internal_procedure_version",linked_object_type:"organisation",linked_object_id:context.workspace.membership.organisation_id,version,status:"active",logical_name:procedureType,bucket:"documents",storage_path:`metadata/procedures/${context.workspace.membership.organisation_id}/${procedureType}/history-v${version}.json`,mime_type:"application/json",size_bytes:JSON.stringify(metadata).length,created_by:context.user.id,updated_by:context.user.id,is_current:false,metadata});if(snapshotError)throw snapshotError;}
     const now = new Date().toISOString();
     const values = {
       organisation_id: context.workspace.membership.organisation_id,
@@ -112,7 +126,7 @@ export async function PATCH(req: Request) {
       reviewed_at: status === "active" ? now : null,
       updated_at: now,
     };
-    const { data, error } = await getAdminSupabase().from("daily_internal_procedures").upsert(values, { onConflict: "organisation_id,procedure_type" }).select("id,procedure_type,title,purpose,steps,responsibilities,evidence,status,reviewed_at,updated_at").single();
+    const { data, error } = await admin.from("daily_internal_procedures").upsert(values, { onConflict: "organisation_id,procedure_type" }).select("id,procedure_type,title,purpose,steps,responsibilities,evidence,status,reviewed_at,updated_at").single();
     if (error) throw error;
     return NextResponse.json({ procedure: data });
   } catch (cause) { return NextResponse.json({ error: cause instanceof Error ? cause.message : "Enregistrement impossible." }, { status: 500 }); }
