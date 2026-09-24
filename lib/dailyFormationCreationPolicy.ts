@@ -5,7 +5,7 @@ export type DailyFormationCreationMode = (typeof DAILY_FORMATION_CREATION_MODES)
 export type DailyPrerequisiteMode = (typeof DAILY_PREREQUISITE_MODES)[number];
 export type DailyPrerequisiteRequirement = { id: string; label: string; description: string; required: true };
 
-const SELEN_FORM_REQUIRED_FIELDS = ["title", "global_objective", "target_audience", "duration_hours", "duration_days", "modality", "access_delays", "price", "pedagogical_resources", "evaluation_methods", "contact_phone", "contact_email"] as const;
+const SELEN_FORM_REQUIRED_FIELDS = ["title", "global_objective", "target_audience", "duration_hours", "duration_days", "modality", "detailed_program", "access_delays", "price", "pedagogical_resources", "evaluation_methods", "contact_phone", "contact_email"] as const;
 const PROGRAM_IMPORT_REQUIRED_COMPLEMENTS = ["title", "duration_hours", "duration_days", "modality", "contact_phone", "contact_email"] as const;
 
 export function parseDailyFormationCreationMode(value: unknown): DailyFormationCreationMode {
