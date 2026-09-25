@@ -59,6 +59,7 @@ export default function LearnerPhaseNavigation({ role, token }: Props) {
       const positioning = positioningDone(data.enrolment?.positioning_status);
       const convocation = resources.find((doc) => doc.document_type === "convocation");
       return [
+        { label: "Programme de formation", detail: "Téléchargez le programme complet de votre formation au format PDF.", href: `/api/daily-portal/${token}/program` },
         positioning
           ? { label: "Positionnement", detail: "Votre positionnement est enregistré.", done: true }
           : { label: "Positionnement", detail: "Le questionnaire reste consultable tant que votre inscription est active.", href: `/daily/portail/${role}/${token}/positionnement` },
