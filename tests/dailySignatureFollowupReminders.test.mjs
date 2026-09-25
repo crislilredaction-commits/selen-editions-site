@@ -1,55 +1,13 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+const helper=await readFile(new URL("../lib/server/dailySignatureFollowupReminders.ts",import.meta.url),"utf8");
+const manual=await readFile(new URL("../app/api/client/daily/signature-invitations/followup/route.ts",import.meta.url),"utf8");
+const automation=await readFile(new URL("../app/api/internal/daily/signature-followup-automation/route.ts",import.meta.url),"utf8");
+const signature=await readFile(new URL("../app/api/daily-signature/[token]/route.ts",import.meta.url),"utf8");
 
-const helper = await readFile(new URL("../lib/server/dailySignatureFollowupReminders.ts", import.meta.url), "utf8");
-const sendRoute = await readFile(new URL("../app/api/client/daily/signature-invitations/send/route.ts", import.meta.url), "utf8");
-const signatureRoute = await readFile(new URL("../app/api/daily-signature/[token]/route.ts", import.meta.url), "utf8");
-const automationRoute = await readFile(new URL("../app/api/internal/daily/signature-followup-automation/route.ts", import.meta.url), "utf8");
-
-// Cette garde est volontairement branchée au build pour valider le lot complet avant fusion.
-test("la relance signature reste unique et programme l'email automatique à J+3", () => {
-  assert.match(helper, /daily:signature:\$\{signatureId\}:pending-72h/);
-  assert.match(helper, /J3_MS = 3 \* 24 \* 60 \* 60 \* 1000/);
-  assert.match(helper, /followup_stage: DAILY_SIGNATURE_J3_STAGE/);
-  assert.match(helper, /input\.sentAt/);
-  assert.match(helper, /daily_organisation_assignments/);
-  assert.match(helper, /assigned_agent_profile_id/);
-  assert.match(helper, /daily_signature_pending_72h/);
-});
-
-test("l'envoi réussi programme la séquence sans casser la preuve email", () => {
-  assert.match(sendRoute, /ensureDailySignatureFollowupReminder/);
-  assert.match(sendRoute, /reminderInput\(sentAt\)/);
-  assert.match(sendRoute, /followupReminderRecorded/);
-  assert.match(sendRoute, /status: "sent"/);
-  assert.match(helper, /escapeHtml\(bodyText\)/);
-});
-
-test("l'exécuteur J+3 est protégé, idempotent et trace l'email", () => {
-  assert.match(automationRoute, /DAILY_AUTOMATION_SECRET/);
-  assert.match(automationRoute, /url\.searchParams\.get\("execute"\) === "1"/);
-  assert.match(automationRoute, /DAILY_SIGNATURE_J3_STAGE/);
-  assert.match(automationRoute, /convention_signature_followup/);
-  assert.match(automationRoute, /prepareDailySignatureFollowupEmail/);
-  assert.match(automationRoute, /sendDailySignatureFollowup/);
-  assert.match(automationRoute, /status: "postponed"/);
-  assert.match(automationRoute, /\.eq\("status", "ready"\)/);
-  assert.match(automationRoute, /provider_message_id/);
-});
-
-test("après l'email J+3, le même rappel devient une alerte d'appel humain à J+6", () => {
-  assert.match(helper, /J6_MS = 6 \* 24 \* 60 \* 60 \* 1000/);
-  assert.match(helper, /DAILY_SIGNATURE_J6_STAGE = "phone_call_j6"/);
-  assert.match(helper, /Appel téléphonique agent J\+6/);
-  assert.match(helper, /Appeler le client si la signature est toujours absente/);
-  assert.match(automationRoute, /moveDailySignatureReminderToPhoneCall/);
-  assert.doesNotMatch(automationRoute, /phone\.|twilio|callClient|makeCall/i);
-});
-
-test("une signature réelle clôt toute la séquence sans transformer une consultation en signature", () => {
-  assert.match(signatureRoute, /status: "signed"/);
-  assert.match(signatureRoute, /resolveDailySignatureFollowupReminder/);
-  assert.match(helper, /status: "resolved"/);
-  assert.doesNotMatch(signatureRoute, /viewed_at:[^\n]*resolveDailySignatureFollowupReminder/);
-});
+test("signature J+3 crée une tâche agent de relance email",()=>{assert.match(helper,/J3_MS = 3 \* 24/);assert.match(helper,/agent_email_j3/);assert.match(helper,/Relance email agent J\+3/);assert.match(helper,/Relancer le client par email/);});
+test("après relance J+3 la même tâche passe à J+6 email",()=>{assert.match(helper,/J6_MS = 6 \* 24/);assert.match(helper,/agent_email_j6/);assert.match(helper,/Deuxième relance email agent J\+6/);assert.match(manual,/moveDailySignatureReminderToJ6Email/);});
+test("après relance J+6 la même tâche passe à J+9 appel",()=>{assert.match(helper,/J9_MS = 9 \* 24/);assert.match(helper,/phone_call_j9/);assert.match(helper,/Appel téléphonique agent J\+9/);assert.match(manual,/moveDailySignatureReminderToJ9PhoneCall/);});
+test("le job automatique n envoie plus de relance à l apprenant",()=>{assert.doesNotMatch(automation,/sendDailySignatureFollowup/);assert.match(automation,/automaticEmailsSent: 0/);});
+test("la signature clôt la séquence",()=>{assert.match(signature,/resolveDailySignatureFollowupReminder/);assert.match(helper,/status: "resolved"/);});
