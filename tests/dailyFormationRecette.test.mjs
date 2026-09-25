@@ -100,3 +100,10 @@ test("le contenu détaillé est saisissable en création et modification puis pe
   assert.match(formationsRoute, /detailed_program: text\(body, "detailed_program"\)/);
   assert.doesNotMatch(formationsRoute, /detailed_program: ""/);
 });
+
+
+test("le parcours dédié de création Selen saisit et transmet le contenu détaillé", () => {
+  assert.match(newFormationPage, /name="detailed_program"/);
+  assert.match(newFormationPage, /Contenu détaillé de la formation \*/);
+  assert.match(newFormationPage, /detailed_program: text\("detailed_program"\)/);
+});
