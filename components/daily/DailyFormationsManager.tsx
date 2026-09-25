@@ -13,7 +13,7 @@ type Trainer = { id: string; display_name: string; status: string };
 type Formation = {
   id: string; title: string; global_objective: string; learning_objectives: string[]; allowed_trainer_ids: string[]; target_audience: string; prerequisites: string;
   duration_hours: number | string; duration_days: number | string; modality: string; access_delays: string; registration_methods: string; price: string;
-  detailed_program_document_url?: string | null; positioning_questionnaire_document_url?: string | null; accessibility: string; disability_referent?: string | null;
+  detailed_program: string; detailed_program_document_url?: string | null; positioning_questionnaire_document_url?: string | null; accessibility: string; disability_referent?: string | null;
   pedagogical_methods: string; pedagogical_resources: string; evaluation_methods: string; contact_phone: string; contact_email: string; contact_website?: string | null;
   positioning_mode: "off_platform" | "selen"; positioning_questions: PositioningQuestion[]; learning_assessment_mode?: "external" | "selen_quiz";
   learning_assessment_instructions?: string | null; learning_assessment_questions?: AssessmentQuestion[] | null; results_pending: boolean; result_beneficiary_count?: number | null;
@@ -24,14 +24,14 @@ type Workspace = { capabilities?: { trainings?: boolean }; trainers?: Trainer[] 
 type FormState = {
   title: string; global_objective: string; learning_objectives: string[]; allowed_trainer_ids: string[]; target_audience: string; prerequisites: string;
   duration_hours: string; duration_days: string; modality: string; access_delays: string; registration_methods: string; price: string;
-  detailed_program_document_url: string; positioning_questionnaire_document_url: string; accessibility: string; disability_referent: string; pedagogical_methods: string;
+  detailed_program: string; detailed_program_document_url: string; positioning_questionnaire_document_url: string; accessibility: string; disability_referent: string; pedagogical_methods: string;
   pedagogical_resources: string; evaluation_methods: string; contact_phone: string; contact_email: string; contact_website: string; positioning_mode: "off_platform" | "selen";
   positioning_questions: PositioningQuestion[]; results_pending: boolean; result_beneficiary_count: number | null; result_satisfaction_rate: number | null; result_success_rate: number | null; status: string;
 };
 
 const emptyForm: FormState = {
   title: "", global_objective: "", learning_objectives: [""], allowed_trainer_ids: [], target_audience: "", prerequisites: "", duration_hours: "", duration_days: "",
-  modality: "presentiel", access_delays: "", registration_methods: "Les modalités d'inscription sont préparées et suivies par Selen Daily.", price: "", detailed_program_document_url: "",
+  modality: "presentiel", access_delays: "", registration_methods: "Les modalités d'inscription sont préparées et suivies par Selen Daily.", price: "", detailed_program: "", detailed_program_document_url: "",
   positioning_questionnaire_document_url: "", accessibility: "La formation est accessible aux personnes en situation de handicap. Les besoins d'adaptation sont analysés dans le dossier d'inscription et suivis par Selen.",
   disability_referent: "", pedagogical_methods: "", pedagogical_resources: "", evaluation_methods: "", contact_phone: "", contact_email: "", contact_website: "",
   positioning_mode: "off_platform", positioning_questions: [], results_pending: true, result_beneficiary_count: null, result_satisfaction_rate: null, result_success_rate: null, status: "draft",
@@ -93,7 +93,7 @@ export default function DailyFormationsManager() {
       title: formation.title ?? "", global_objective: formation.global_objective ?? "", learning_objectives: formation.learning_objectives?.length ? formation.learning_objectives : [""],
       allowed_trainer_ids: formation.allowed_trainer_ids ?? [], target_audience: formation.target_audience ?? "", prerequisites: formation.prerequisites ?? "", duration_hours: String(formation.duration_hours ?? ""),
       duration_days: String(formation.duration_days ?? ""), modality: formation.modality ?? "presentiel", access_delays: formation.access_delays ?? "", registration_methods: formation.registration_methods ?? emptyForm.registration_methods,
-      price: formation.price ?? "", detailed_program_document_url: formation.detailed_program_document_url ?? "", positioning_questionnaire_document_url: formation.positioning_questionnaire_document_url ?? "",
+      price: formation.price ?? "", detailed_program: formation.detailed_program ?? "", detailed_program_document_url: formation.detailed_program_document_url ?? "", positioning_questionnaire_document_url: formation.positioning_questionnaire_document_url ?? "",
       accessibility: formation.accessibility ?? emptyForm.accessibility, disability_referent: formation.disability_referent ?? "", pedagogical_methods: formation.pedagogical_methods ?? "",
       pedagogical_resources: formation.pedagogical_resources ?? "", evaluation_methods: formation.evaluation_methods ?? "", contact_phone: formation.contact_phone ?? "", contact_email: formation.contact_email ?? "",
       contact_website: formation.contact_website ?? "", positioning_mode: formation.positioning_mode ?? "off_platform", positioning_questions: formation.positioning_questions ?? [], results_pending: formation.results_pending ?? true,
@@ -155,6 +155,7 @@ export default function DailyFormationsManager() {
           <Field label="Modalité *"><select value={form.modality} onChange={(e) => setForm({ ...form, modality: e.target.value })} style={s.input}><option value="presentiel">Présentiel</option><option value="distanciel">Distanciel</option><option value="mixte">Mixte</option></select></Field>
           <Field label="Délais d'accès *"><input required value={form.access_delays} onChange={(e) => setForm({ ...form, access_delays: e.target.value })} style={s.input} /></Field>
           <Field label="Tarif *"><div style={s.money}><input type="number" min="0" step="0.01" required value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} style={s.input} /><strong>€ TTC</strong></div></Field>
+          <Field full label="Contenu détaillé de la formation *"><textarea required rows={10} value={form.detailed_program} onChange={(e) => setForm({ ...form, detailed_program: e.target.value })} style={s.textarea} placeholder="Décrivez ici le contenu détaillé de la formation : modules, séquences, thèmes et progression pédagogique." /></Field>
           <div style={s.full}><FormationSourceUpload kind="training_program_source" label="Programme détaillé Word ou PDF" value={form.detailed_program_document_url} onUploaded={(url) => setForm((current) => ({ ...current, detailed_program_document_url: url }))} help="Importez votre programme en PDF, DOC ou DOCX. Selen utilise ce document comme contenu détaillé de référence." /><a href="/templates/modele-programme-formation-selen.docx" style={s.link}>Télécharger le modèle de programme Selen (facultatif)</a></div>
           <Field full label="Méthodes pédagogiques"><textarea value={form.pedagogical_methods} onChange={(e) => setForm({ ...form, pedagogical_methods: e.target.value })} style={s.textarea} /></Field>
           <Field full label="Moyens pédagogiques et techniques *" help={FORMATION_GUIDANCE.pedagogicalResources}><textarea required value={form.pedagogical_resources} onChange={(e) => setForm({ ...form, pedagogical_resources: e.target.value })} style={s.textarea} /></Field>
