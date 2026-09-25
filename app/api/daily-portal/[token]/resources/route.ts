@@ -7,7 +7,7 @@ const text = (value: unknown) => String(value ?? "").trim();
 const email = (value: unknown) => text(value).toLowerCase();
 const array = (value: unknown): Json[] => Array.isArray(value) ? value.filter((v): v is Json => Boolean(v && typeof v === "object")) : [];
 const published = ["validated", "published", "signed", "active"];
-const learnerTypes = ["training_program", "convocation", "registration_positioning", "completion_certificate", "organisation_shared"];
+const learnerTypes = ["training_program", "convocation", "welcome_booklet", "internal_regulations", "registration_positioning", "completion_certificate", "organisation_shared"];
 
 function matchesLearnerRecipient(row: Json, access: Json) {
   const entityEmail = email(access.entity_email);
@@ -29,7 +29,7 @@ function latestVersion(rows: Json[]) {
 async function loadLearnerPretrainingResources(admin: ReturnType<typeof getAdminSupabase>, sessionId: string, access: Json) {
   if (access.portal_type !== "learner") return [] as Json[];
 
-  const [conventionsResult, convocationsResult] = await Promise.all([
+  const [conventionsResult, convocationsResult, signaturesResult] = await Promise.all([
     admin
       .from("daily_conventions")
       .select("id,recipient_type,recipient_name,recipient_email,version,document_name,generated_at,storage_path")
@@ -40,14 +40,18 @@ async function loadLearnerPretrainingResources(admin: ReturnType<typeof getAdmin
       .select("id,recipient_type,recipient_name,recipient_email,version,document_name,status,generated_at,storage_path")
       .eq("session_id", sessionId)
       .eq("recipient_type", "beneficiary"),
+    admin.from("daily_convention_signatures").select("convention_id,status,signed_at,signatory_email").eq("session_id",sessionId),
   ]);
 
   if (conventionsResult.error) throw conventionsResult.error;
   if (convocationsResult.error) throw convocationsResult.error;
+  if (signaturesResult.error) throw signaturesResult.error;
 
   const convention = latestVersion((conventionsResult.data ?? []).filter((row: Json) => matchesLearnerRecipient(row, access) && text(row.storage_path)));
   const convocation = latestVersion((convocationsResult.data ?? []).filter((row: Json) => matchesLearnerRecipient(row, access) && text(row.storage_path)));
   const resources: Json[] = [];
+  const signedConvention = convention ? (signaturesResult.data ?? []).filter((row:Json)=>text(row.convention_id)===text(convention.id)).some((row:Json)=>row.status==="signed"||Boolean(row.signed_at)) : false;
+  if (!signedConvention) return resources;
 
   if (convention) {
     const conventionId = text(convention.id);
@@ -124,7 +128,7 @@ export async function GET(_request: Request, { params }: Params) {
   }
 
   const visible = (documents ?? []).filter((document: Json) => {
-    if (document.document_type === "training_program") return document.linked_object_type === "session" && document.linked_object_id === session.id;
+    if (["training_program","welcome_booklet","internal_regulations"].includes(text(document.document_type))) return document.linked_object_type === "session" && document.linked_object_id === session.id;
     if (["convocation", "registration_positioning", "completion_certificate"].includes(text(document.document_type))) return access.portal_type === "learner" && document.linked_object_type === "enrolment" && allowedEnrolmentIds.includes(text(document.linked_object_id));
     const metadata = document.metadata && typeof document.metadata === "object" && !Array.isArray(document.metadata) ? document.metadata as Json : {};
     const scope = text(metadata.distribution_scope);
