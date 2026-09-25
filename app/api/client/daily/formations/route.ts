@@ -118,7 +118,7 @@ function buildPayload(body: Record<string, unknown>, userId: string, organisatio
     access_delays: text(body, "access_delays"),
     registration_methods: text(body, "registration_methods") || "Les modalités d'inscription sont préparées et suivies par Selen Daily.",
     price: text(body, "price"),
-    detailed_program: "",
+    detailed_program: creationMode === "selen_form" ? text(body, "detailed_program") : "",
     detailed_program_document_url: detailedProgramDocumentUrl,
     positioning_questionnaire_document_url: positioningMode === "off_platform" ? nullableText(body, "positioning_questionnaire_document_url") : null,
     accessibility: text(body, "accessibility") || "La formation est accessible aux personnes en situation de handicap. Les besoins d'adaptation sont analysés dans le dossier d'inscription et suivis par Selen.",
