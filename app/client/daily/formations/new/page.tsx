@@ -51,7 +51,7 @@ export default function DailyNewFormationPage() {
     {error ? <div role="alert" style={{ ...card, borderColor: "#b42318", marginBottom: 18 }}>{error}</div> : null}
     <form onSubmit={submit} style={{ display: "grid", gap: 18 }}>
       <section style={card}><h2 style={{ marginTop: 0 }}>1. Programme</h2><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 12 }}>
-        <label style={card}><input type="radio" checked={mode === "program_import"} onChange={() => setMode("program_import")} /> <b>Importer mon programme PDF/Word</b><p style={{ color: "#666" }}>Importez votre programme : Selen conserve le document et renseigne les champs nécessaires sans vous imposer une ressaisie du contenu détaillé.</p></label>
+        <label style={card}><input type="radio" checked={mode === "program_import"} onChange={() => setMode("program_import")} /> <b>Importer mon programme PDF/Word</b><p style={{ color: "#666" }}>Pas de ressaisie des champs descriptifs déjà portés par le document : Selen conserve le programme original et renseigne les champs nécessaires.</p></label>
         <label style={card}><input type="radio" checked={mode === "selen_form"} onChange={() => setMode("selen_form")} /> <b>Créer le programme dans Selen</b><p style={{ color: "#666" }}>Renseignez les données structurées utilisées par Selen.</p></label>
       </div>{mode === "program_import" ? <div style={{ marginTop: 16 }}><FormationSourceUpload kind="training_program_source" label="Programme original PDF ou Word *" value={programUrl} onUploaded={setProgramUrl} help="L’original est conservé et rattaché à cette formation." /></div> : null}</section>
 
