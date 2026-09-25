@@ -100,3 +100,12 @@ test("le contenu détaillé est saisissable en création et modification puis pe
   assert.match(formationsRoute, /detailed_program: text\(body, "detailed_program"\)/);
   assert.doesNotMatch(formationsRoute, /detailed_program: ""/);
 });
+
+
+test("le mode assistance Studio peut enregistrer l’évaluation métier de la formation", async () => {
+  const source = await readFile(new URL("../app/api/client/daily/formations/assessment-inline/route.ts", import.meta.url), "utf8");
+  assert.match(source, /allowAssistanceWrite: true/);
+  assert.doesNotMatch(source, /assistance agent est en lecture seule/);
+  assert.match(source, /daily_formation_assessment_update/);
+  assert.match(source, /assistanceMode: context\.assisted/);
+});
