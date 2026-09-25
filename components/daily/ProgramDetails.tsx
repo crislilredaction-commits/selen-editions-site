@@ -95,9 +95,10 @@ export default function ProgramDetails({ token }: { token: string }) {
           <h2 style={styles.title}>{formation.title ?? "Programme de formation"}</h2>
           <p style={styles.muted}>Consultez les informations de la formation avant de compléter votre dossier d&apos;inscription.</p>
         </div>
-        <button type="button" className={open ? "btn-ghost" : "btn-ink"} onClick={() => setOpen((value) => !value)}>
+        <div style={{ display: "flex", gap: ".6rem", flexWrap: "wrap" }}><a className="btn-ghost" href={`/api/daily-registration/${encodeURIComponent(token)}/program`} style={styles.link}><span>Télécharger le programme PDF</span></a>
+                <button type="button" className={open ? "btn-ghost" : "btn-ink"} onClick={() => setOpen((value) => !value)}>
           <span>{open ? "Masquer le programme" : "Consulter le programme"}</span>
-        </button>
+        </button></div>
       </div>
 
       {open ? (
