@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 type FormationProgram = {
   title?: string | null;
+  status?: string | null;
   global_objective?: string | null;
   target_audience?: string | null;
   prerequisites?: string | null;
@@ -116,6 +117,14 @@ export default function ProgramDetails({ token }: { token: string }) {
           <Value label="Moyens pédagogiques et techniques" value={formation.pedagogical_resources} />
           <Value label="Évaluation" value={formation.evaluation_methods} />
           <Value label="Accessibilité" value={formation.accessibility} />
+          {formation.status === "validated" ? (
+            <div style={styles.downloadBox}>
+              <p style={styles.downloadNotice}><strong>Vous envisagez de faire financer votre formation ?</strong> Téléchargez obligatoirement le programme afin de pouvoir le transmettre à votre financeur.</p>
+              <a className="btn-ink" href={`/api/daily-registration/${token}/program-pdf`} style={styles.link}>
+                <span>Télécharger le programme complet en PDF</span>
+              </a>
+            </div>
+          ) : null}
           {formation.detailed_program_document_url ? (
             <a className="btn-ghost" href={formation.detailed_program_document_url} target="_blank" rel="noreferrer" style={styles.link}>
               <span>Ouvrir le document programme</span>
@@ -144,4 +153,6 @@ const styles: Record<string, React.CSSProperties> = {
   value: { display: "grid", gap: "0.25rem", color: "var(--ink)", lineHeight: 1.5 },
   preline: { whiteSpace: "pre-line" },
   link: { width: "fit-content", textDecoration: "none" },
+  downloadBox: { display: "grid", gap: "0.75rem", padding: "1rem", border: "1px solid rgba(178,138,98,0.45)", background: "rgba(178,138,98,0.08)" },
+  downloadNotice: { margin: 0, color: "var(--ink)", lineHeight: 1.55 },
 };

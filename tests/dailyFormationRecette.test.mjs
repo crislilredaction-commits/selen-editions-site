@@ -107,3 +107,16 @@ test("le parcours dédié de création Selen saisit et transmet le contenu déta
   assert.match(newFormationPage, /Contenu détaillé de la formation \*/);
   assert.match(newFormationPage, /detailed_program: text\("detailed_program"\)/);
 });
+
+
+test("le dossier de candidature permet de télécharger le programme validé en PDF pour le financeur", async () => {
+  const details = await readFile(new URL("../components/daily/ProgramDetails.tsx", import.meta.url), "utf8");
+  const pdfRoute = await readFile(new URL("../app/api/daily-registration/[token]/program-pdf/route.ts", import.meta.url), "utf8");
+  assert.match(details, /formation\.status === "validated"/);
+  assert.match(details, /Télécharger le programme complet en PDF/);
+  assert.match(details, /Téléchargez obligatoirement le programme afin de pouvoir le transmettre à votre financeur/);
+  assert.match(details, /\/api\/daily-registration\/\$\{token\}\/program-pdf/);
+  assert.match(pdfRoute, /formation\.status !== "validated"/);
+  assert.match(pdfRoute, /Content-Type":"application\/pdf"/);
+  assert.match(pdfRoute, /Contenu détaillé de la formation/);
+});
