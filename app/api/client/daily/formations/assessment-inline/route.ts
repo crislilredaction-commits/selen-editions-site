@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getDailyOrganisationContext } from "@/lib/server/dailyOrganisationContext";
+import { logAgentAssistanceAction } from "@/lib/server/agentAssistance";
 
 const MODES = new Set(["external", "selen_quiz"]);
 const QUESTION_TYPES = new Set(["single_choice", "multiple_choice", "free_text"]);
@@ -27,9 +28,8 @@ function cleanQuestions(value: unknown) {
 }
 
 export async function PATCH(request: Request) {
-  const context = await getDailyOrganisationContext(request, "trainings");
+  const context = await getDailyOrganisationContext(request, "trainings", { allowAssistanceWrite: true });
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
-  if (context.assisted) return NextResponse.json({ error: "L’assistance agent est en lecture seule." }, { status: 403 });
 
   const body = await request.json().catch(() => ({})) as Record<string, unknown>;
   const id = String(body.id ?? "").trim();
@@ -61,5 +61,6 @@ export async function PATCH(request: Request) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ formation: data });
+  if (context.assisted && context.assistance) await logAgentAssistanceAction({ supabase: context.admin, req: request, assistance: context.assistance, action: "daily_formation_assessment_update", actionLabel: "Évaluation de formation modifiée par Studio pour le client", newState: { formation_id: data.id, learning_assessment_mode: data.learning_assessment_mode } });
+  return NextResponse.json({ formation: data, assistanceMode: context.assisted });
 }
