@@ -59,8 +59,8 @@ test("la création d'une formation est suivie par la création de sa session dé
   assert.doesNotMatch(formationsManager, /showSessionForm/);
 });
 
-test("une formation non validée est modifiée en place sans recréer son token public", () => {
-  assert.match(formationsRoute, /\["draft", "review", "correction_requested"\]\.includes\(existing\.status\)/);
+test("une formation existante est modifiée en place sans recréer son token public", () => {
+  assert.match(formationsRoute, /existing\.status === "validated" \|\| existing\.status === "correction_requested" \? "review"/);
   assert.match(formationsRoute, /\.from\("daily_formations"\)\.update\(\{/);
   assert.match(formationsRoute, /public_registration_token: existing\.public_registration_token \?\? registrationToken\(\)/);
   assert.match(formationsRoute, /versioned: false/);
