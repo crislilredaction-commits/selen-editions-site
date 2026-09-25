@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDailyOrganisationContext } from "@/lib/server/dailyOrganisationContext";
 import { prepareDailySignatureFollowupEmail, sendDailySignatureFollowup } from "@/lib/server/dailySignatureInvitationEmails";
+import { DAILY_SIGNATURE_J3_STAGE, DAILY_SIGNATURE_J6_STAGE, moveDailySignatureReminderToJ6Email, moveDailySignatureReminderToJ9PhoneCall } from "@/lib/server/dailySignatureFollowupReminders";
 
 const WINDOW_MS = 10 * 60 * 1000;
 const SLA_MS = 72 * 60 * 60 * 1000;
@@ -113,5 +114,22 @@ export async function POST(req: Request) {
 
   const sentAt = new Date().toISOString();
   await context.admin.from("daily_communications").update({ provider_message_id: sent.message.providerMessageId, status: "sent", sent_at: sentAt, failed_at: null, failure_reason: null }).eq("id", communication.id);
-  return NextResponse.json({ ok: true, sentAt, communicationId: communication.id });
+
+  const { data: reminder } = await context.admin.from("client_reminders")
+    .select("id,status,metadata")
+    .eq("prestation_id", signature.id)
+    .eq("reminder_type", "daily_signature_pending_72h")
+    .in("status", ["ready","postponed"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const reminderMetadata = (reminder?.metadata ?? {}) as Record<string, unknown>;
+  const stage = text(reminderMetadata.followup_stage);
+  if (reminder?.id && stage === DAILY_SIGNATURE_J3_STAGE) {
+    await context.admin.from("client_reminders").update({ status: "postponed" }).eq("id", reminder.id);
+    await moveDailySignatureReminderToJ6Email(context.admin, { reminderId: reminder.id, initialSentAt: initial.sent_at, documentName: input.documentName, j3EmailSentAt: sentAt, metadata: reminderMetadata });
+  } else if (reminder?.id && stage === DAILY_SIGNATURE_J6_STAGE) {
+    await moveDailySignatureReminderToJ9PhoneCall(context.admin, { reminderId: reminder.id, initialSentAt: initial.sent_at, documentName: input.documentName, j6EmailSentAt: sentAt, metadata: reminderMetadata });
+  }
+  return NextResponse.json({ ok: true, sentAt, communicationId: communication.id, followupStage: stage || null });
 }
