@@ -27,5 +27,5 @@ export function buildTrainingProgramPdf(formation:Program, organisation?:Record<
   add("Méthodes pédagogiques",formation.pedagogical_methods);add("Moyens pédagogiques et techniques",formation.pedagogical_resources);
   add("Modalités d'évaluation",formation.evaluation_methods);add("Accessibilité",formation.accessibility);
   add("Contact", [formation.contact_phone,formation.contact_email,formation.contact_website].map(text).filter(Boolean).join(" · "));
-  return Buffer.from(pdf.output("arraybuffer"));
+  return new Uint8Array(pdf.output("arraybuffer"));
 }
