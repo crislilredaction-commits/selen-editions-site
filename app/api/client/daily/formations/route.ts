@@ -192,69 +192,32 @@ export async function PATCH(req: Request) {
   if (!existing) return NextResponse.json({ error: "Formation introuvable." }, { status: 404 });
   if (existing.status === "archived") return NextResponse.json({ error: "Une ancienne version archivée ne peut pas être modifiée." }, { status: 400 });
 
-  if (["draft", "review", "correction_requested"].includes(existing.status)) {
-    const nextStatus = existing.status === "correction_requested" ? "review" : built.payload.status;
-    const { data, error } = await context.admin.from("daily_formations").update({
-      ...built.payload,
-      learning_assessment_mode: existing.learning_assessment_mode,
-      learning_assessment_instructions: existing.learning_assessment_instructions,
-      learning_assessment_questions: existing.learning_assessment_questions,
-      status: nextStatus,
-      version: existing.version ?? 1,
-      previous_version_id: existing.previous_version_id ?? null,
-      public_registration_token: existing.public_registration_token ?? registrationToken(),
-      public_registration_enabled: existing.public_registration_enabled ?? true,
-      archived_at: null,
-    }).eq("id", existing.id).eq("organisation_id", context.organisationId).select("*").single();
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    if (context.assisted && context.assistance) await logAgentAssistanceAction({ supabase: context.admin, req, assistance: context.assistance, action: "daily_formation_update", actionLabel: "Formation modifiée par Studio pour le client", oldState: { id: existing.id, status: existing.status, title: existing.title }, newState: { id: data.id, status: data.status, title: data.title } });
-    return NextResponse.json({ formation: data, versioned: false, retainedVersion: true, assistanceMode: context.assisted });
-  }
-
-  const { data: pendingRows, error: pendingError } = await context.admin
-    .from("daily_formations")
-    .select("*")
-    .eq("organisation_id", context.organisationId)
-    .eq("previous_version_id", existing.id)
-    .in("status", ["review", "correction_requested"])
-    .order("version", { ascending: false })
-    .limit(1);
-  if (pendingError) return NextResponse.json({ error: pendingError.message }, { status: 500 });
-  const pendingSuccessor = pendingRows?.[0] ?? null;
-
-  if (pendingSuccessor) {
-    const { data, error } = await context.admin.from("daily_formations").update({
-      ...built.payload,
-      learning_assessment_mode: pendingSuccessor.learning_assessment_mode ?? existing.learning_assessment_mode,
-      learning_assessment_instructions: pendingSuccessor.learning_assessment_instructions ?? existing.learning_assessment_instructions,
-      learning_assessment_questions: pendingSuccessor.learning_assessment_questions ?? existing.learning_assessment_questions,
-      status: "review",
-      version: pendingSuccessor.version,
-      previous_version_id: existing.id,
-      public_registration_token: pendingSuccessor.public_registration_token ?? registrationToken(),
-      public_registration_enabled: false,
-      archived_at: null,
-    }).eq("id", pendingSuccessor.id).eq("organisation_id", context.organisationId).select("*").single();
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    if (context.assisted && context.assistance) await logAgentAssistanceAction({ supabase: context.admin, req, assistance: context.assistance, action: "daily_formation_update_pending", actionLabel: "Version de formation modifiée par Studio pour le client", oldState: { id: pendingSuccessor.id, status: pendingSuccessor.status, title: pendingSuccessor.title }, newState: { id: data.id, status: data.status, title: data.title } });
-    return NextResponse.json({ formation: data, versioned: false, reusedPendingVersion: true, previousValidatedVersionStillPublished: true, assistanceMode: context.assisted });
-  }
-
-  const { data: created, error: insertError } = await context.admin.from("daily_formations").insert({
+  const nextStatus = existing.status === "validated" || existing.status === "correction_requested" ? "review" : built.payload.status;
+  const reviewSignaledAt = nextStatus === "review" ? new Date().toISOString() : existing.agent_review_signaled_at ?? null;
+  const { data, error } = await context.admin.from("daily_formations").update({
     ...built.payload,
     learning_assessment_mode: existing.learning_assessment_mode,
     learning_assessment_instructions: existing.learning_assessment_instructions,
     learning_assessment_questions: existing.learning_assessment_questions,
-    status: "review",
-    version: Number(existing.version ?? 1) + 1,
-    previous_version_id: existing.id,
-    public_registration_token: registrationToken(),
-    public_registration_enabled: false,
-  }).select("*").single();
-  if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
-  if (context.assisted && context.assistance) await logAgentAssistanceAction({ supabase: context.admin, req, assistance: context.assistance, action: "daily_formation_version_create", actionLabel: "Nouvelle version de formation créée par Studio pour le client", oldState: { id: existing.id, status: existing.status, title: existing.title }, newState: { id: created.id, status: created.status, title: created.title } });
+    status: nextStatus,
+    version: existing.version ?? 1,
+    previous_version_id: existing.previous_version_id ?? null,
+    public_registration_token: existing.public_registration_token ?? registrationToken(),
+    public_registration_enabled: existing.public_registration_enabled ?? true,
+    agent_review_signaled_at: reviewSignaledAt,
+    validation_note: nextStatus === "review" ? null : existing.validation_note,
+    archived_at: null,
+  }).eq("id", existing.id).eq("organisation_id", context.organisationId).select("*").single();
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (context.assisted && context.assistance) await logAgentAssistanceAction({
+    supabase: context.admin, req, assistance: context.assistance,
+    action: "daily_formation_update",
+    actionLabel: "Formation modifiée par Studio pour le client",
+    oldState: { id: existing.id, status: existing.status, title: existing.title },
+    newState: { id: data.id, status: data.status, title: data.title },
+  });
+  return NextResponse.json({ formation: data, versioned: false, retainedVersion: true, assistanceMode: context.assisted });
 
-  return NextResponse.json({ formation: created, versioned: true, retainedVersion: true, previousValidatedVersionStillPublished: true, assistanceMode: context.assisted });
 }
 
 export async function DELETE(req: Request) {
