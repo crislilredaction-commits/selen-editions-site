@@ -107,3 +107,16 @@ test("le parcours dédié de création Selen saisit et transmet le contenu déta
   assert.match(newFormationPage, /Contenu détaillé de la formation \*/);
   assert.match(newFormationPage, /detailed_program: text\("detailed_program"\)/);
 });
+
+
+test("modifier une formation validée la renvoie en review sans créer de nouvelle version", async () => {
+  const route = await readFile(new URL("../app/api/client/daily/formations/route.ts", import.meta.url), "utf8");
+  const manager = await readFile(new URL("../components/daily/DailyFormationsManager.tsx", import.meta.url), "utf8");
+  const patch = route.slice(route.indexOf("export async function PATCH"), route.indexOf("export async function DELETE"));
+  assert.match(patch, /existing\.status === "validated".*\? "review"/s);
+  assert.match(patch, /agent_review_signaled_at: reviewSignaledAt/);
+  assert.match(patch, /\.update\(\{/);
+  assert.doesNotMatch(patch, /pendingSuccessor/);
+  assert.doesNotMatch(patch, /daily_formation_version_create/);
+  assert.match(manager, /Formation modifiée et renvoyée à Selen pour validation/);
+});
