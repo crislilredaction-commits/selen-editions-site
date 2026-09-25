@@ -59,8 +59,8 @@ test("la création d'une formation est suivie par la création de sa session dé
   assert.doesNotMatch(formationsManager, /showSessionForm/);
 });
 
-test("une formation non validée est modifiée en place sans recréer son token public", () => {
-  assert.match(formationsRoute, /\["draft", "review", "correction_requested"\]\.includes\(existing\.status\)/);
+test("une formation existante est modifiée en place sans recréer son token public", () => {
+  assert.match(formationsRoute, /existing\.status === "validated" \|\| existing\.status === "correction_requested" \? "review"/);
   assert.match(formationsRoute, /\.from\("daily_formations"\)\.update\(\{/);
   assert.match(formationsRoute, /public_registration_token: existing\.public_registration_token \?\? registrationToken\(\)/);
   assert.match(formationsRoute, /versioned: false/);
@@ -106,4 +106,17 @@ test("le parcours dédié de création Selen saisit et transmet le contenu déta
   assert.match(newFormationPage, /name="detailed_program"/);
   assert.match(newFormationPage, /Contenu détaillé de la formation \*/);
   assert.match(newFormationPage, /detailed_program: text\("detailed_program"\)/);
+});
+
+
+test("modifier une formation validée la renvoie en review sans créer de nouvelle version", async () => {
+  const route = await readFile(new URL("../app/api/client/daily/formations/route.ts", import.meta.url), "utf8");
+  const manager = await readFile(new URL("../components/daily/DailyFormationsManager.tsx", import.meta.url), "utf8");
+  const patch = route.slice(route.indexOf("export async function PATCH"), route.indexOf("export async function DELETE"));
+  assert.match(patch, /existing\.status === "validated".*\? "review"/s);
+  assert.match(patch, /agent_review_signaled_at: reviewSignaledAt/);
+  assert.match(patch, /\.update\(\{/);
+  assert.doesNotMatch(patch, /pendingSuccessor/);
+  assert.doesNotMatch(patch, /daily_formation_version_create/);
+  assert.match(manager, /Formation modifiée et renvoyée à Selen pour validation/);
 });
