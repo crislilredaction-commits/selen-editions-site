@@ -35,6 +35,12 @@ export async function GET(_request:Request,{params}:Params){
  if(access.portal_type==="learner"&&!activeLearnerEnrolment){await supabase.from("daily_portal_access_tokens").update({status:"revoked",updated_at:new Date().toISOString()}).eq("id",access.id);return NextResponse.json({error:"Cette inscription n’est plus active."},{status:403})}
  if(access.status==="pending")await supabase.from("daily_portal_access_tokens").update({status:"viewed",viewed_at:new Date().toISOString()}).eq("id",access.id);
  let learnerDocuments:JsonRecord[]=[];try{learnerDocuments=await loadLearnerDocuments(supabase,access,String(session.organisation_id??"")) as JsonRecord[]}catch(cause){return NextResponse.json({error:cause instanceof Error?cause.message:"Documents indisponibles."},{status:500})}
+ if(access.portal_type==="learner"){
+  const signedForLearner=(conventionsR.data??[]).some(c=>c.recipient_type==="beneficiary"&&((entityEmail&&normalizedEmail(c.recipient_email)===entityEmail)||(entityName&&String(c.recipient_name??"").trim().toLowerCase()===entityName))&&Array.isArray(c.daily_convention_signatures)&&c.daily_convention_signatures.length>0&&c.daily_convention_signatures.every((s:any)=>s.status==="signed"||Boolean(s.signed_at)));
+  if(!signedForLearner){
+   learnerDocuments=learnerDocuments.filter(d=>!["convocation","organisation_shared"].includes(String(d.document_type)));
+  }
+ }
  const responseRows=responsesR.data??[],conventionRows=conventionsR.data??[];const individualLearners=asArray(session.individual_beneficiaries),companyLearners=asArray(session.beneficiaries),companies=asArray(session.companies);const learner=[...individualLearners,...companyLearners].find(p=>{const email=normalizedEmail(p.email),name=fullName(p.first_name,p.last_name).toLowerCase();return(entityEmail&&email===entityEmail)||(entityName&&name===entityName)})??null;const company=companies.find(item=>{const email=normalizedEmail(item.email),name=String(item.name??"").trim().toLowerCase();return(entityEmail&&email===entityEmail)||(entityName&&name===entityName)})??null;
  const companyName=String(company?.name??"").trim().toLowerCase();
  const enterpriseParticipants=access.portal_type==="enterprise"?(enrolmentsR.data??[]).filter(row=>Boolean(companyName)&&String(row.company_name??"").trim().toLowerCase()===companyName).map(row=>{const linked=relatedLearner(row.daily_learners);return{id:row.id,first_name:linked?.first_name??null,last_name:linked?.last_name??null,email:linked?.email??null}}):[];
