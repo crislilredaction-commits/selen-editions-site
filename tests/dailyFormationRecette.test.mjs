@@ -90,3 +90,13 @@ test("P0-D conserve le droit d’écriture de l’assistance Studio", () => {
   assert.match(formationsRoute, /logAgentAssistanceAction/);
   assert.doesNotMatch(formationsRoute, /blockedAgentAssistanceResponse/);
 });
+
+
+test("le contenu détaillé est saisissable en création et modification puis persisté", () => {
+  assert.match(formationsManager, /detailed_program: string/);
+  assert.match(formationsManager, /Contenu détaillé de la formation \*/);
+  assert.match(formationsManager, /value=\{form\.detailed_program\}/);
+  assert.match(formationsManager, /formation\.detailed_program \?\? ""/);
+  assert.match(formationsRoute, /detailed_program: text\(body, "detailed_program"\)/);
+  assert.doesNotMatch(formationsRoute, /detailed_program: ""/);
+});
