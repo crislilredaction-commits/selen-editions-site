@@ -1,0 +1,82 @@
+name: Selen Codex mission
+
+on:
+  push:
+    branches:
+      - "mission/**"
+    paths:
+      - ".selen-mission.md"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: selen-codex-mission-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  execute:
+    runs-on: [self-hosted, Linux, X64, selen-local]
+    timeout-minutes: 45
+    steps:
+      - name: Checkout mission branch
+        uses: actions/checkout@v4
+        with:
+          clean: true
+          fetch-depth: 0
+
+      - name: Validate mission branch and payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${GITHUB_REF_NAME}" in
+            mission/*) ;;
+            *) echo "Refusing non-mission branch"; exit 1 ;;
+          esac
+          test -s .selen-mission.md
+          grep -q '^TARGET_BRANCH: fix/' .selen-mission.md
+          TARGET_BRANCH="$(sed -n 's/^TARGET_BRANCH: //p' .selen-mission.md | head -n1)"
+          test -n "$TARGET_BRANCH"
+          git check-ref-format --branch "$TARGET_BRANCH" >/dev/null
+          echo "TARGET_BRANCH=$TARGET_BRANCH" >> "$GITHUB_ENV"
+
+      - name: Prepare target worktree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin "$TARGET_BRANCH"
+          git checkout -B "$TARGET_BRANCH" "origin/$TARGET_BRANCH"
+          git status --short
+
+      - name: Run Codex mission
+        shell: bash
+        env:
+          PATH: /home/LilBarthaux/.nvm/versions/node/v24.20.0/bin:/usr/local/bin:/usr/bin:/bin
+          CODEX_HOME: /home/LilBarthaux/.codex
+        run: |
+          set -euo pipefail
+          test "$(pwd)" = "$GITHUB_WORKSPACE"
+          codex exec --sandbox workspace-write --ask-for-approval never "$(cat "$GITHUB_WORKSPACE/.selen-mission.md")"
+
+      - name: Validate repository changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          git status --short
+          node --test tests/dailyManualEnrolmentSessionVisibility.test.mjs
+          npm run build
+
+      - name: Commit and push target branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Codex produced no repository change."
+            exit 1
+          fi
+          git config user.name "selen-lenovo"
+          git config user.email "selen-lenovo@users.noreply.github.com"
+          git commit -m "fix(daily): expose manual enrolments in sessions"
+          git push origin "HEAD:$TARGET_BRANCH"
