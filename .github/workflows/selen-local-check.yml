@@ -7,6 +7,10 @@ on:
         description: "Branche ou commit à tester"
         required: true
         default: "fix/daily-manual-enrolment-party-session-20260927"
+  push:
+    branches:
+      - main
+      - "fix/**"
 
 permissions:
   contents: read
@@ -20,7 +24,7 @@ jobs:
       - name: Checkout requested ref
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
           clean: true
 
       - name: Environment
