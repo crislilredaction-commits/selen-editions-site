@@ -73,6 +73,10 @@ jobs:
           git diff --check
           git status --short
           node --test tests/dailyManualEnrolmentSessionVisibility.test.mjs
+          STRIPE_SECRET_KEY=sk_test_build_only \
+          STRIPE_WEBHOOK_SECRET=whsec_build_only \
+          NEXT_PUBLIC_SUPABASE_URL=https://build-only.invalid \
+          SUPABASE_SERVICE_ROLE_KEY=build-only-placeholder \
           npm run build
 
       - name: Commit and push target branch
