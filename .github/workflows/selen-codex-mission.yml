@@ -49,6 +49,12 @@ jobs:
           git checkout -B "$TARGET_BRANCH" "origin/$TARGET_BRANCH"
           git status --short
 
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+
       - name: Run Codex mission
         shell: bash
         env:
