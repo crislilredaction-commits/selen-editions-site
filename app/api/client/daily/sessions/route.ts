@@ -127,7 +127,47 @@ export async function GET(req: Request) {
   if (!context.assisted && !context.capabilities?.sessions) return NextResponse.json({ sessions: [] });
   const { data, error } = await context.admin.from("daily_sessions").select("*, daily_formations(id,title,status,version), daily_registration_recipients(id,recipient_type,recipient_name,recipient_email,status,sent_at,last_error), daily_conventions(id,recipient_type,recipient_key,recipient_name,company_name,version,document_name,status,generated_at,daily_convention_signatures(id,signatory_type,signatory_name,status,signed_at)), daily_convocations(id,recipient_type,recipient_key,recipient_name,company_name,version,document_name,status,sent_at,generated_at), daily_portal_access_tokens(id,portal_type,entity_name,entity_email,token,status,viewed_at)").eq("organisation_id", context.organisationId).order("created_at", { ascending: false });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ sessions: data ?? [] });
+  const sessions = data ?? [];
+  if (sessions.length === 0) return NextResponse.json({ sessions });
+  const { data: enrolments, error: enrolmentsError } = await context.admin.from("daily_session_enrolments")
+    .select("session_id,learner_id,status,daily_learners(id,organisation_id,first_name,last_name,email,phone)")
+    .eq("organisation_id", context.organisationId)
+    .in("session_id", sessions.map((session) => session.id))
+    .not("status", "in", "(declined,cancelled,abandoned)");
+  if (enrolmentsError) return NextResponse.json({ error: enrolmentsError.message }, { status: 500 });
+
+  // Merge into the existing participant shape without changing the stored session.
+  const sessionsById = new Map(sessions.map((session) => [session.id, session]));
+  const identitiesBySession = new Map<string, Set<string>>();
+  function participantIdentities(value: unknown) {
+    if (!value || typeof value !== "object") return [];
+    const row = value as Record<string, unknown>;
+    const learnerId = text(row, "learner_id") || text(row, "id");
+    const email = text(row, "email").toLowerCase();
+    return [learnerId ? `id:${learnerId}` : "", email ? `email:${email}` : ""].filter(Boolean);
+  }
+  for (const session of sessions) {
+    const participants = [
+      ...jsonArray(session.beneficiaries),
+      ...jsonArray(session.individual_beneficiaries),
+      ...jsonArray(session.companies).flatMap((company) => jsonArray(company?.participants)),
+    ];
+    identitiesBySession.set(session.id, new Set(participants.flatMap(participantIdentities)));
+  }
+  for (const enrolment of enrolments ?? []) {
+    const session = sessionsById.get(enrolment.session_id);
+    const learner = Array.isArray(enrolment.daily_learners) ? enrolment.daily_learners[0] : enrolment.daily_learners;
+    if (!session || !learner || learner.id !== enrolment.learner_id || learner.organisation_id !== context.organisationId) continue;
+    const participant = participantRow(learner);
+    if (!participant) continue;
+    const identities = participantIdentities({ ...participant, learner_id: enrolment.learner_id });
+    const seen = identitiesBySession.get(session.id)!;
+    const duplicate = identities.some((identity) => seen.has(identity));
+    identities.forEach((identity) => seen.add(identity));
+    if (duplicate) continue;
+    session.beneficiaries = [...jsonArray(session.beneficiaries), { ...participant, learner_id: enrolment.learner_id }];
+  }
+  return NextResponse.json({ sessions });
 }
 
 export async function POST(req: Request) {
