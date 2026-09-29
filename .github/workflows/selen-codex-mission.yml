@@ -25,7 +25,7 @@ jobs:
           clean: true
           fetch-depth: 0
 
-      - name: Validate mission branch and payload
+      - name: Validate and preserve mission payload
         shell: bash
         run: |
           set -euo pipefail
@@ -38,6 +38,7 @@ jobs:
           TARGET_BRANCH="$(sed -n 's/^TARGET_BRANCH: //p' .selen-mission.md | head -n1)"
           test -n "$TARGET_BRANCH"
           git check-ref-format --branch "$TARGET_BRANCH" >/dev/null
+          cp .selen-mission.md "$RUNNER_TEMP/selen-mission.md"
           echo "TARGET_BRANCH=$TARGET_BRANCH" >> "$GITHUB_ENV"
 
       - name: Prepare target worktree
@@ -56,7 +57,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(pwd)" = "$GITHUB_WORKSPACE"
-          codex exec --sandbox workspace-write --ask-for-approval never "$(cat "$GITHUB_WORKSPACE/.selen-mission.md")"
+          test -s "$RUNNER_TEMP/selen-mission.md"
+          codex exec --sandbox workspace-write "$(cat "$RUNNER_TEMP/selen-mission.md")"
 
       - name: Validate repository changes
         shell: bash
