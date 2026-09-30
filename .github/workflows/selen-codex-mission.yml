@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: selen-codex-mission-${{ github.ref }}
+  group: selen-codex-runner
   cancel-in-progress: false
 
 jobs:
@@ -147,6 +147,31 @@ EOF
             ${{ runner.temp }}/validation-tail.log
           if-no-files-found: ignore
           retention-days: 7
+
+      - name: Write mission result
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "mission_branch=${GITHUB_REF_NAME}"
+            echo "target_branch=$TARGET_BRANCH"
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "run_attempt=${GITHUB_RUN_ATTEMPT}"
+            echo "completed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            if [ "${{ job.status }}" = "success" ]; then
+              echo "state=LIVRE"
+            else
+              echo "state=BLOQUE"
+            fi
+          } > "$RUNNER_TEMP/mission-result.txt"
+
+      - name: Upload mission result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mission-result-${{ github.run_id }}
+          path: ${{ runner.temp }}/mission-result.txt
+          retention-days: 30
 
       - name: Commit and push target branch
         shell: bash
