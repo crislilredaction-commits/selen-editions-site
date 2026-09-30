@@ -111,20 +111,19 @@ jobs:
             fi
 
             tail -n 220 "$RUNNER_TEMP/validation.log" > "$RUNNER_TEMP/validation-tail.log"
-            REPAIR_PROMPT="$(cat <<EOF
-You are repairing the SAME Selen mission. Do not restart the task and do not revert valid existing changes.
-
-Original mission:
-$(cat "$RUNNER_TEMP/selen-mission.md")
-
-The repository validation failed. Diagnose the concrete failure from the log below, make the smallest safe correction, then stop. Do not commit or push. Do not weaken, skip, delete, or bypass tests/build checks merely to make validation green. Do not touch secrets, Auth/RLS, production infrastructure, or destructive migrations.
-
-Validation failure:
-$(cat "$RUNNER_TEMP/validation-tail.log")
-EOF
-)"
+            {
+              echo "You are repairing the SAME Selen mission. Do not restart the task and do not revert valid existing changes."
+              echo
+              echo "Original mission:"
+              cat "$RUNNER_TEMP/selen-mission.md"
+              echo
+              echo "The repository validation failed. Diagnose the concrete failure from the log below, make the smallest safe correction, then stop. Do not commit or push. Do not weaken, skip, delete, or bypass tests/build checks merely to make validation green. Do not touch secrets, Auth/RLS, production infrastructure, or destructive migrations."
+              echo
+              echo "Validation failure:"
+              cat "$RUNNER_TEMP/validation-tail.log"
+            } > "$RUNNER_TEMP/repair-prompt.txt"
             echo "=== Automatic repair after failed validation $attempt ==="
-            if ! codex exec --sandbox workspace-write "$REPAIR_PROMPT"; then
+            if ! codex exec --sandbox workspace-write "$(cat "$RUNNER_TEMP/repair-prompt.txt")"; then
               echo "Codex repair execution failed."
               exit 1
             fi
