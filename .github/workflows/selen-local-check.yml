@@ -42,4 +42,11 @@ jobs:
         run: npm run typecheck --if-present
 
       - name: Build
+        env:
+          # Build-only placeholders: no live Stripe/Supabase service is contacted by the build.
+          STRIPE_SECRET_KEY: sk_test_build_only
+          STRIPE_WEBHOOK_SECRET: whsec_build_only
+          NEXT_PUBLIC_SUPABASE_URL: https://build-only.invalid
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: build-only-placeholder
+          SUPABASE_SERVICE_ROLE_KEY: build-only-placeholder
         run: npm run build
