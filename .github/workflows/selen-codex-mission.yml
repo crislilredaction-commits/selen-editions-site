@@ -148,7 +148,7 @@ EOF
           if-no-files-found: ignore
           retention-days: 7
 
-       - name: Commit and push target branch
+      - name: Commit and push target branch
         shell: bash
         run: |
           set -euo pipefail
