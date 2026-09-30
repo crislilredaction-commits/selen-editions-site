@@ -99,7 +99,7 @@ test('both generators consume canonical enrolment choice and Studio reads it thr
   assert.match(read('app/client/daily/apprenants/page.tsx'),/contracting_party_type:f.get\("contracting_party_type"\)/);
 });
 test('migration is additive, nullable, constrained and does not alter historical data or RLS', () => {
-  const sql=read('supabase/migrations/20260930120000_daily_enrolment_contracting_party_type.sql');
+  const sql=read('supabase/migrations/20260930211806_daily_enrolment_contracting_party_type.sql');
   assert.match(sql,/ADD COLUMN contracting_party_type text/);
   assert.match(sql,/IN \('individual', 'company'\)/);
   assert.match(sql,/NULLIF\(btrim\(company_name\), ''\) IS NOT NULL/);

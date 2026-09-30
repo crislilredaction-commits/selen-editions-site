@@ -19,3 +19,11 @@ Work a reproduit un défaut de réessai (deux conventions courantes après un re
 La validation extérieure Lenovo a exécuté 496 tests sans échec et un build complet réussi. Le typecheck Codex a retourné 0. Le build effectué dans le sandbox Codex ne pouvait pas télécharger les polices Google Fonts ; le build extérieur Lenovo a réellement réussi sans changer les polices ni les garde-fous. Vercel est READY sur 390be295.
 
 À cette rédaction, la migration demeure non exécutée et le contrôle indépendant post-push doit encore être vérifié avant la fusion. Aucun test n’a utilisé un compte réel, un lien personnel ou un véritable envoi d’email.
+
+## Schéma appliqué et vérifié
+
+La migration additive a été appliquée une seule fois le 30 septembre 2026 et inscrite dans l’historique Supabase sous 20260930211806, nom daily_enrolment_contracting_party_type. Le fichier SQL du dépôt est renommé sur cette version réellement appliquée ; son contenu reste le blob canonique initial. Le test conserve ses assertions et lit le nouveau nom de fichier. Cette concordance évite de tenter ultérieurement une seconde application sous l’ancienne version de préparation.
+
+La lecture du schéma confirme une colonne text nullable sans défaut et les deux contraintes CHECK validées. Les 23 inscriptions historiques restent présentes avec la nouvelle colonne NULL. Les indicateurs RLS, les droits et les définitions des politiques correspondent à la photographie précédant cette migration.
+
+Selen local check #34 sur 48f9a3e a terminé avec succès : 496 tests, typecheck et build séparés. Le nouveau commit ne modifie que le nom du fichier de migration, sa référence dans le test et ce diagnostic ; son contrôle post-push et Vercel doivent être suivis avant fusion.
