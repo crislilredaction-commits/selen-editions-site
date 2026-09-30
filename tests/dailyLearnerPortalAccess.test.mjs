@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import vm from "node:vm";
+import ts from "typescript";
 
 const route = fs.readFileSync("app/api/client/daily/registration-requests/route.ts", "utf8");
 const manualRoute = fs.readFileSync("app/api/client/daily/learners/route.ts", "utf8");
@@ -84,4 +86,45 @@ test("an existing manual enrolment can receive a fresh secure access link", () =
   assert.match(manualRoute, /force:true/);
   assert.match(learnerPage, /Renvoyer l’accès sécurisé/);
   assert.match(learnerPage, /action:"send_access"/);
+});
+
+async function authEntryFor(user) {
+  const generated = [];
+  const authAdmin = {
+    listUsers: async () => ({ data: { users: user ? [user] : [] }, error: null }),
+    generateLink: async (input) => {
+      generated.push(input);
+      return { data: { properties: { hashed_token: "test-token-hash" } }, error: null };
+    },
+  };
+  const module = { exports: {} };
+  const compiled = ts.transpileModule(authEntry, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
+  vm.runInNewContext(compiled, {
+    module, exports: module.exports,
+    require: () => ({ createClient: () => ({ auth: { admin: authAdmin } }) }),
+    process: { env: { NEXT_PUBLIC_SITE_URL: "https://selen.example", NEXT_PUBLIC_SUPABASE_URL: "https://test.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "test-only" } },
+  });
+  const url = await module.exports.buildDailyPortalAuthEntryUrl({ email: "learner@example.com", portalType: "learner", token: "personal-portal" });
+  return { url: new URL(url), generated };
+}
+
+test("a resent access for an unconfirmed invited account remains an invitation", async () => {
+  const { url, generated } = await authEntryFor({ email: "learner@example.com", email_confirmed_at: null, user_metadata: {} });
+  assert.equal(generated.length, 1);
+  assert.equal(generated[0].type, "invite");
+  assert.equal(url.searchParams.get("type"), "invite");
+  assert.equal(url.searchParams.get("next"), "/daily/portail/apprenant/personal-portal");
+});
+
+test("a confirmed account that did not finish password creation receives recovery", async () => {
+  const { url, generated } = await authEntryFor({ email: "learner@example.com", email_confirmed_at: "2026-09-29", user_metadata: {} });
+  assert.equal(generated[0].type, "recovery");
+  assert.equal(url.pathname, "/client/activation");
+});
+
+test("an activated learner keeps their password and receives a login destination", async () => {
+  const { url, generated } = await authEntryFor({ email: "learner@example.com", email_confirmed_at: "2026-09-29", user_metadata: { selen_password_configured: true } });
+  assert.equal(generated.length, 0);
+  assert.equal(url.pathname, "/client/login");
+  assert.equal(url.searchParams.get("next"), "/daily/portail/apprenant/personal-portal");
 });
