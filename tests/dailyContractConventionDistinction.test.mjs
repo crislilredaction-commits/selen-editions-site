@@ -22,8 +22,8 @@ test("le générateur n'expose plus de parcours contrat autonome", () => {
   assert.match(legacyContractGenerator, /redirect\("\/client\/daily\/generateur-documents"\)/);
 });
 
-test("le générateur choisit contrat ou convention depuis le SIRET client final", () => {
-  assert.match(generator, /clientSiret/);
+test("le générateur choisit contrat ou convention depuis l’inscription, avec repli historique", () => {
+  assert.match(generator, /resolveContractingPartyType\(enrolment\?\?\{\},clientSiret\)/);
   assert.match(generator, /makeConvention/);
   assert.match(generator, /makeContract/);
   assert.match(generator, /SIRET client/);
