@@ -2,105 +2,138 @@
 
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/app/lib/supabase/client";
 import type { EmailOtpType } from "@supabase/supabase-js";
 
 function sanitizeNextPath(value: string | null) {
-  if (!value || !value.startsWith("/") || value.startsWith("//")) {
+  if (!value || !value.startsWith("/") || value.startsWith("//") || value.includes("\\")) {
     return "/client";
   }
 
   return value;
 }
 
+type ActivationAuthError = { code?: string; status?: number; name?: string };
+
+function isDefinitiveAuthError(error: ActivationAuthError | null) {
+  if (!error || error.name === "AuthRetryableFetchError" || error.status === 429 || (error.status ?? 0) >= 500) return false;
+  return [
+    "otp_expired", "invite_not_found", "bad_jwt",
+    "session_expired", "session_not_found",
+    "refresh_token_not_found", "refresh_token_already_used",
+    "flow_state_not_found", "flow_state_expired",
+  ].includes(error.code ?? "");
+}
+
+function passwordErrorMessage(error: ActivationAuthError) {
+  if (error.name === "AuthRetryableFetchError" || error.status === 429 || (error.status ?? 0) >= 500) {
+    return "Le service est temporairement indisponible. Réessayez sur cette page.";
+  }
+  switch (error.code) {
+    case "weak_password":
+      return "Ce mot de passe est trop faible ou figure dans une liste de mots de passe connus. Choisissez-en un plus long avec majuscules, minuscules, chiffres et symbole, puis réessayez sur cette page.";
+    case "same_password":
+      return "Choisissez un mot de passe différent de l’ancien, puis réessayez sur cette page.";
+    case "reauthentication_needed":
+    case "reauthentication_not_valid":
+    case "session_expired":
+    case "session_not_found":
+    case "refresh_token_not_found":
+    case "refresh_token_already_used":
+      return "Votre session d’activation n’est plus valide. Demandez un nouvel accès sécurisé à votre organisme de formation.";
+    default:
+      return "Le mot de passe n’a pas pu être enregistré. Réessayez sur cette page. Si le problème persiste, contactez Selen.";
+  }
+}
+
+type ActivationCredentials = {
+  tokenHash: string | null;
+  otpType: EmailOtpType | null;
+  code: string | null;
+  accessToken: string | null;
+  refreshToken: string | null;
+};
+
 function ClientActivationContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const supabase = useMemo(() => createSupabaseBrowserClient({ detectSessionInUrl: false, isSingleton: false }), []);
+  const initialized = useRef(false);
+  const verifying = useRef(false);
+  const credentials = useRef<ActivationCredentials | null>(null);
 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
   const [activationReady, setActivationReady] = useState(false);
+  const [confirmationReady, setConfirmationReady] = useState(false);
   const [message, setMessage] = useState("");
 
   const nextPath = sanitizeNextPath(searchParams.get("next"));
+  const isLearner = /^\/daily\/portail\/(apprenant|learner)\//.test(nextPath);
 
   useEffect(() => {
-    async function prepareSession() {
-      setCheckingSession(true);
-      setActivationReady(false);
-      setMessage("");
+    if (initialized.current) return;
+    initialized.current = true;
+    const currentUrl = new URL(window.location.href);
+    const type = currentUrl.searchParams.get("type");
+    const hash = new URLSearchParams(currentUrl.hash.slice(1));
+    const input: ActivationCredentials = {
+      tokenHash: currentUrl.searchParams.get("token_hash"),
+      otpType: type === "invite" || type === "recovery" ? type : null,
+      code: currentUrl.searchParams.get("code"),
+      accessToken: hash.get("access_token"),
+      refreshToken: hash.get("refresh_token"),
+    };
+    credentials.current = input;
+    // L’ouverture du mail ne consomme jamais le lien : la vérification
+    // attend une action explicite, y compris pour les anciens liens.
+    for (const key of ["token_hash", "type", "code"]) currentUrl.searchParams.delete(key);
+    currentUrl.hash = "";
+    window.history.replaceState({}, document.title, `${currentUrl.pathname}${currentUrl.search}`);
+    if ((input.tokenHash && input.otpType) || input.code || (input.accessToken && input.refreshToken)) {
+      setConfirmationReady(true);
+    } else {
+      setMessage("Ce lien d’activation est incomplet. Demandez un nouvel accès sécurisé à votre organisme de formation.");
+    }
+    setCheckingSession(false);
+  }, []);
 
-      const code = searchParams.get("code");
-      const tokenHash = searchParams.get("token_hash");
-      const type = searchParams.get("type");
-      const otpType =
-        type === "invite" || type === "recovery" ? (type as EmailOtpType) : null;
-
-      if (tokenHash && otpType) {
-        const { error } = await supabase.auth.verifyOtp({
-          token_hash: tokenHash,
-          type: otpType,
-        });
-
-        if (error) {
-          setMessage(
-            "Ce lien n’est plus valide ou a expiré. Contactez Selen pour recevoir un nouveau lien.",
-          );
-          setCheckingSession(false);
-          return;
+  async function handleConfirm() {
+    const input = credentials.current;
+    if (!input || verifying.current || activationReady) return;
+    verifying.current = true;
+    setLoading(true);
+    setMessage("");
+    try {
+      const result = input.tokenHash && input.otpType
+        ? await supabase.auth.verifyOtp({ token_hash: input.tokenHash, type: input.otpType })
+        : input.code
+          ? await supabase.auth.exchangeCodeForSession(input.code)
+          : await supabase.auth.setSession({ access_token: input.accessToken!, refresh_token: input.refreshToken! });
+      if (result.error || !result.data.session) {
+        if (isDefinitiveAuthError(result.error)) {
+          credentials.current = null;
+          setConfirmationReady(false);
+          setMessage("Ce lien a expiré ou a déjà été utilisé. Utilisez le dernier mail reçu, ou demandez un nouvel accès sécurisé à votre organisme de formation.");
+        } else {
+          setMessage("La vérification n’a pas abouti. Le service peut être temporairement indisponible. Réessayez sur cette page.");
         }
-      } else if (code) {
-        const { error } = await supabase.auth.exchangeCodeForSession(code);
-
-        if (error) {
-          setMessage(
-            "Ce lien n’est plus valide ou a expiré. Contactez Selen pour recevoir un nouveau lien.",
-          );
-          setCheckingSession(false);
-          return;
-        }
-      } else if (typeof window !== "undefined" && window.location.hash) {
-        const hashParams = new URLSearchParams(window.location.hash.slice(1));
-        const accessToken = hashParams.get("access_token");
-        const refreshToken = hashParams.get("refresh_token");
-
-        if (accessToken && refreshToken) {
-          const { error } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken,
-          });
-
-          if (error) {
-            setMessage(
-              "Ce lien n’est plus valide ou a expiré. Contactez Selen pour recevoir un nouveau lien.",
-            );
-            setCheckingSession(false);
-            return;
-          }
-        }
-      }
-
-      const { data } = await supabase.auth.getSession();
-
-      if (!data.session) {
-        setMessage(
-          "Ce lien n’est plus valide ou a expiré. Contactez Selen pour recevoir un nouveau lien.",
-        );
-        setCheckingSession(false);
         return;
       }
-
+      credentials.current = null;
+      setConfirmationReady(false);
       setActivationReady(true);
-      setCheckingSession(false);
+    } catch {
+      setMessage("La vérification n’a pas abouti. Vérifiez votre connexion et réessayez sur cette page.");
+    } finally {
+      verifying.current = false;
+      setLoading(false);
     }
-
-    prepareSession();
-  }, [searchParams, supabase]);
+  }
 
   async function handlePasswordCreation(event: React.FormEvent) {
     event.preventDefault();
@@ -120,24 +153,35 @@ function ClientActivationContent() {
       return;
     }
 
-    const { error } = await supabase.auth.updateUser({
-      password,
-      data: { selen_password_configured: true },
-    });
+    try {
+      const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError || !refreshed.session) {
+        setMessage(isDefinitiveAuthError(refreshError)
+          ? "Votre session d’activation n’est plus valide. Demandez un nouvel accès sécurisé à votre organisme de formation."
+          : "Le service est temporairement indisponible. Réessayez sur cette page.");
+        return;
+      }
 
-    if (error) {
-      setMessage(
-        "Ce lien n’est plus valide ou a expiré. Contactez Selen pour recevoir un nouveau lien.",
-      );
+      const { error } = await supabase.auth.updateUser({
+        password,
+        data: { selen_password_configured: true },
+      });
+
+      if (error) {
+        setMessage(passwordErrorMessage(error));
+        return;
+      }
+
+      setMessage(isLearner ? "Votre mot de passe est créé. Nous ouvrons votre espace apprenant." : "Votre mot de passe est créé. Nous ouvrons votre Bureau Selen.");
+      window.setTimeout(() => {
+        router.replace(nextPath);
+        router.refresh();
+      }, 900);
+    } catch {
+      setMessage("L’enregistrement n’a pas abouti. Vérifiez votre connexion et réessayez sur cette page.");
+    } finally {
       setLoading(false);
-      return;
     }
-
-    setMessage("Votre mot de passe est créé. Nous ouvrons votre Bureau Selen.");
-    window.setTimeout(() => {
-      router.replace(nextPath);
-      router.refresh();
-    }, 900);
   }
 
   return (
@@ -147,7 +191,7 @@ function ClientActivationContent() {
       <section className="mx-auto max-w-3xl px-4 md:px-6 py-12 md:py-16">
         <div className="gazette-cta px-6 md:px-10 py-10 md:py-14">
           <div style={{ position: "relative", zIndex: 1, textAlign: "center" }}>
-            <p className="gazette-label">Bureau Selen</p>
+            <p className="gazette-label">{isLearner ? "Espace apprenant Selen" : "Bureau Selen"}</p>
 
             <h1
               className="gazette-hero-title"
@@ -156,7 +200,7 @@ function ClientActivationContent() {
                 marginBottom: "0.6rem",
               }}
             >
-              Créez votre mot de passe Bureau Selen
+              {isLearner ? "Activez votre espace apprenant" : "Créez votre mot de passe Bureau Selen"}
             </h1>
 
             <p
@@ -167,8 +211,7 @@ function ClientActivationContent() {
                 margin: "0 auto",
               }}
             >
-              Bienvenue dans votre Bureau Selen. Choisissez un mot de passe
-              pour accéder à vos documents et suivre votre dossier.
+              {isLearner ? "Confirmez votre accès, puis choisissez un mot de passe pour retrouver vos documents et votre formation." : "Confirmez votre accès, puis choisissez un mot de passe pour accéder à vos documents et suivre votre dossier."}
             </p>
           </div>
         </div>
@@ -185,6 +228,13 @@ function ClientActivationContent() {
             <p style={{ color: "var(--ink-soft)", lineHeight: 1.6 }}>
               Vérification du lien d’activation...
             </p>
+          ) : confirmationReady ? (
+            <>
+              <p style={{ color: "var(--ink)", lineHeight: 1.6, marginBottom: "1rem" }}>Cliquez sur le bouton pour ouvrir le formulaire de création de votre mot de passe.</p>
+              <button type="button" onClick={handleConfirm} disabled={loading} className="btn-ink" style={{ width: "100%", opacity: loading ? 0.55 : 1 }}>
+                <span>{loading ? "Vérification…" : "Activer mon accès"}</span>
+              </button>
+            </>
           ) : activationReady ? (
             <form
               onSubmit={handlePasswordCreation}
@@ -194,6 +244,7 @@ function ClientActivationContent() {
                 Nouveau mot de passe
                 <input
                   type="password"
+                  autoComplete="new-password"
                   placeholder="Au moins 8 caractères"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
@@ -213,6 +264,7 @@ function ClientActivationContent() {
                 Confirmer le mot de passe
                 <input
                   type="password"
+                  autoComplete="new-password"
                   placeholder="Retapez votre mot de passe"
                   value={confirmPassword}
                   onChange={(event) => setConfirmPassword(event.target.value)}
@@ -228,6 +280,7 @@ function ClientActivationContent() {
                 />
               </label>
 
+              <p style={{ color: "var(--ink-soft)", lineHeight: 1.5 }}>Conseil : choisissez 12 caractères ou plus avec majuscule, minuscule, chiffre et symbole. Évitez les mots de passe courants.</p>
               <button
                 type="submit"
                 disabled={loading}
