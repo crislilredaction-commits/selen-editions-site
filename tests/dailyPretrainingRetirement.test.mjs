@@ -44,7 +44,7 @@ function fixture({enrolments = [enrolment('one','company')],companies = [{name:'
   }};
   const renderers = Object.fromEntries(['TrainingProgram','TrainingAgreement','TrainingContract','Convocation','RegistrationPositioning','WelcomeBooklet','InternalRegulations'].map(name=>[`build${name}Html`,()=> {if(failure==='render'&&name==='Convocation') throw Error('render failed');return name;}]));
   const route = compile('app/api/client/daily/pretraining-documents/route.ts',{'@/lib/dailyContractingParty':helper,'next/server':{NextResponse:{json:(body,options={})=>({body,status:options.status??200})}},'@/lib/server/dailyOrganisationContext':{getDailyOrganisationContext:async()=>({ok:true,admin,organisationId:'org',user:{id:'user'}})},'@/lib/server/dailyPretrainingDocumentHtml':renderers});
-  return {rows,calls,uploads,post:()=>route.POST({json:async()=>({session_id:'session'})})};
+  return {rows,calls,uploads,clearFailure:()=>{failure=undefined;},post:()=>route.POST({json:async()=>({session_id:'session'})})};
 }
 const current = (f,type) => f.rows.filter(row=>row.is_current&&row.document_type===type);
 
@@ -92,4 +92,32 @@ for(const failure of ['read','upload','late-upload','insert','render']) test(`${
 });
 test('retirement failure propagates without false success',async()=>{
   const f=fixture({failure:'retire'}), response=await f.post();assert.equal(response.status,400);assert.equal(response.body.error,'retire failed');assert.equal(f.rows[0].is_current,true);assert.equal(response.body.documents,undefined);
+});
+
+test('successful retry after agreement retirement failure leaves exactly one current version',async()=>{
+  const f=fixture({documents:[agreement()],failure:'retire'});
+  assert.equal((await f.post()).status,400);
+  f.clearFailure();
+  assert.equal((await f.post()).status,200);
+  assert.equal(current(f,'training_agreement').length,1);
+});
+for(const failure of ['retire','late-upload']) for(const party of ['company','individual']) test(`${party} successful retry after ${failure} retires every replaced version and preserves signed history`,async()=>{
+  const original=party==='company'?agreement():contract();
+  const type=original.document_type;
+  const f=fixture({enrolments:[enrolment('one',party)],documents:[original],failure});
+  assert.equal((await f.post()).status,400);
+  assert.equal(current(f,type).length,2);
+  assert.deepEqual(f.rows[0],original);
+  const previous=structuredClone(current(f,type));
+  f.clearFailure();
+  const response=await f.post();
+  assert.equal(response.status,200);
+  assert.equal(current(f,type).length,1);
+  for(const row of previous) assert.deepEqual(structuredClone(f.rows.find(item=>item.id===row.id)),{...row,is_current:false,updated_by:'user'});
+  const retirement=f.calls.at(-1);
+  assert.equal(retirement.operation,'update');
+  const ids=retirement.filters.find(filter=>filter.key==='id').value;
+  assert.equal(new Set(ids).size,ids.length);
+  assert.ok(response.body.documents.every(document=>!ids.includes(document.id)));
+  assert.equal(f.calls.filter(call=>call.operation==='select'&&call.filters.some(filter=>filter.key==='document_type'&&filter.kind==='in')).length,2);
 });

@@ -21,16 +21,14 @@ async function sha256(value: string) {
 }
 
 async function generateCanonicalDocument(args: {
-  retirePreviousIds?: string[]; admin: any; organisationId: string; userId: string; documentType: DocumentType; linkedObjectType: "session"|"enrolment"; linkedObjectId: string; logicalName: string; filenameBase: string; html: string; metadata: Record<string,unknown>;
+  deferRetirement?: boolean; admin: any; organisationId: string; userId: string; documentType: DocumentType; linkedObjectType: "session"|"enrolment"; linkedObjectId: string; logicalName: string; filenameBase: string; html: string; metadata: Record<string,unknown>;
 }) {
   const { admin, organisationId, userId, documentType, linkedObjectType, linkedObjectId, logicalName, filenameBase, html, metadata } = args;
   const { data: previousRows, error: previousError } = await admin.from("daily_documents").select("id,version,is_current").eq("organisation_id",organisationId).eq("document_type",documentType).eq("linked_object_type",linkedObjectType).eq("linked_object_id",linkedObjectId).eq("logical_name",logicalName).order("version",{ascending:false}).limit(1);
   if (previousError) throw new Error(previousError.message);
   const previous = previousRows?.[0] ?? null;
   const version = Number(previous?.version ?? 0) + 1;
-  if (previous?.is_current && args.retirePreviousIds) {
-    args.retirePreviousIds.push(previous.id);
-  } else if (previous?.is_current) {
+  if (previous?.is_current && !args.deferRetirement) {
     const { error } = await admin.from("daily_documents").update({ is_current:false, updated_by:userId }).eq("id",previous.id);
     if (error) throw new Error(error.message);
   }
@@ -134,7 +132,7 @@ export async function POST(req:Request) {
     created.push(await generateCanonicalDocument({admin:context.admin,organisationId:context.organisationId,userId:context.user.id,documentType:"internal_regulations",linkedObjectType:"session",linkedObjectId:sessionId,logicalName:"reglement-interieur-session",filenameBase:"reglement-interieur",metadata:{session_id:sessionId,formation_id:session.formation_id},html:buildInternalRegulationsHtml(common)}));
     for (const company of applicableCompanies) {
       const learnerNames=enrolments.filter((e:any)=>text(e.company_name)===text(company.name)&&resolveContractingPartyType(e,company.siret)==="company").map((e:any)=>`${text(e.daily_learners?.first_name)} ${text(e.daily_learners?.last_name)}`.trim()).filter(Boolean).join("\n");
-      created.push(await generateCanonicalDocument({admin:context.admin,organisationId:context.organisationId,userId:context.user.id,retirePreviousIds:obsoleteDocumentIds,documentType:"training_agreement",linkedObjectType:"session",linkedObjectId:sessionId,logicalName:`convention-${safe(text(company.name)||text(company.siret))}`,filenameBase:`convention-${text(company.name)||common.formationTitle}`,metadata:{session_id:sessionId,formation_id:session.formation_id,company_name:text(company.name),client_siret:text(company.siret),contractual_kind:"convention"},html:buildTrainingAgreementHtml(common,{clientName:text(company.name),clientAddress:text(company.address),clientSiret:text(company.siret),representative:text(company.contact_name),learnerNames,price:text(formation.price),objective:text(formation.global_objective),prerequisites:text(formation.prerequisites),evaluation:text(formation.evaluation_methods)})}));
+      created.push(await generateCanonicalDocument({admin:context.admin,organisationId:context.organisationId,userId:context.user.id,deferRetirement:true,documentType:"training_agreement",linkedObjectType:"session",linkedObjectId:sessionId,logicalName:`convention-${safe(text(company.name)||text(company.siret))}`,filenameBase:`convention-${text(company.name)||common.formationTitle}`,metadata:{session_id:sessionId,formation_id:session.formation_id,company_name:text(company.name),client_siret:text(company.siret),contractual_kind:"convention"},html:buildTrainingAgreementHtml(common,{clientName:text(company.name),clientAddress:text(company.address),clientSiret:text(company.siret),representative:text(company.contact_name),learnerNames,price:text(formation.price),objective:text(formation.global_objective),prerequisites:text(formation.prerequisites),evaluation:text(formation.evaluation_methods)})}));
     }
     const needsMap = new Map(needs.map((n:any)=>[n.enrolment_id,n]));
     for (const enrolment of enrolments) {
@@ -142,17 +140,26 @@ export async function POST(req:Request) {
       const learnerName = `${text(learner.first_name)} ${text(learner.last_name)}`.trim();
       const need:any = needsMap.get(enrolment.id);
       const company = companies.find((row)=>text(row.name) && text(row.name)===text(enrolment.company_name));
-      if (resolveContractingPartyType(enrolment,company?.siret) === "individual") created.push(await generateCanonicalDocument({admin:context.admin,organisationId:context.organisationId,userId:context.user.id,retirePreviousIds:obsoleteDocumentIds,documentType:"training_contract",linkedObjectType:"enrolment",linkedObjectId:enrolment.id,logicalName:"contrat-formation-apprenant",filenameBase:`contrat-${learnerName}`,metadata:{session_id:sessionId,formation_id:session.formation_id,enrolment_id:enrolment.id,learner_id:enrolment.learner_id,learner_name:learnerName,contractual_kind:"individual_contract"},html:buildTrainingContractHtml(common,{learnerName,learnerEmail:text(learner.email),price:text(formation.price),objective:text(formation.global_objective),prerequisites:text(formation.prerequisites),evaluation:text(formation.evaluation_methods)})}));
+      if (resolveContractingPartyType(enrolment,company?.siret) === "individual") created.push(await generateCanonicalDocument({admin:context.admin,organisationId:context.organisationId,userId:context.user.id,deferRetirement:true,documentType:"training_contract",linkedObjectType:"enrolment",linkedObjectId:enrolment.id,logicalName:"contrat-formation-apprenant",filenameBase:`contrat-${learnerName}`,metadata:{session_id:sessionId,formation_id:session.formation_id,enrolment_id:enrolment.id,learner_id:enrolment.learner_id,learner_name:learnerName,contractual_kind:"individual_contract"},html:buildTrainingContractHtml(common,{learnerName,learnerEmail:text(learner.email),price:text(formation.price),objective:text(formation.global_objective),prerequisites:text(formation.prerequisites),evaluation:text(formation.evaluation_methods)})}));
       created.push(await generateCanonicalDocument({admin:context.admin,organisationId:context.organisationId,userId:context.user.id,documentType:"convocation",linkedObjectType:"enrolment",linkedObjectId:enrolment.id,logicalName:"convocation-apprenant",filenameBase:`convocation-${learnerName}`,metadata:{session_id:sessionId,formation_id:session.formation_id,enrolment_id:enrolment.id,learner_id:enrolment.learner_id,learner_name:learnerName},html:buildConvocationHtml(common,{learnerName,learnerEmail:text(learner.email),trainerNames,usefulInfo:need?.planned_accommodations ? `Adaptation prévue : ${text(need.planned_accommodations)}` : ""})}));
       created.push(await generateCanonicalDocument({admin:context.admin,organisationId:context.organisationId,userId:context.user.id,documentType:"registration_positioning",linkedObjectType:"enrolment",linkedObjectId:enrolment.id,logicalName:"inscription-positionnement",filenameBase:`inscription-positionnement-${learnerName}`,metadata:{session_id:sessionId,formation_id:session.formation_id,enrolment_id:enrolment.id,learner_id:enrolment.learner_id,learner_name:learnerName},html:buildRegistrationPositioningHtml(common,{learnerName,learnerEmail:text(learner.email),companyName:text(enrolment.company_name || learner.company_name),funding:[text(enrolment.funding_type),text(enrolment.funding_organisation)].filter(Boolean).join(" · "),prerequisites:text(formation.prerequisites),positioningStatus:text(enrolment.positioning_status),prerequisiteStatus:text(enrolment.prerequisites_status),supportNeeds:need?.has_specific_needs ? [text(need.needs_description),text(need.planned_accommodations)].filter(Boolean).join("\n") : ""})}));
     }
     // No retirement on validation, rendering, upload or generation failure.
     // Updating currency alone preserves signed content, status and signature evidence.
-    if (obsoleteDocumentIds.length) {
+    // Include every current version from before this attempt, including failed retries.
+    const createdIds = new Set(created.map(document=>document.id));
+    const replacedDocumentIds = (contractualDocuments ?? []).filter((document:any)=>created.some(replacement=>
+      replacement.document_type === document.document_type
+      && replacement.linked_object_type === document.linked_object_type
+      && replacement.linked_object_id === document.linked_object_id
+      && replacement.logical_name === document.logical_name
+    )).map((document:any)=>document.id);
+    const retireDocumentIds = [...new Set([...obsoleteDocumentIds,...replacedDocumentIds])].filter(id=>!createdIds.has(id));
+    if (retireDocumentIds.length) {
       const { error: retirementError } = await context.admin.from("daily_documents")
         .update({is_current:false,updated_by:context.user.id})
         .eq("organisation_id",context.organisationId).eq("session_id",sessionId)
-        .in("document_type",contractualTypes).eq("is_current",true).in("id",obsoleteDocumentIds);
+        .in("document_type",contractualTypes).eq("is_current",true).in("id",retireDocumentIds);
       if (retirementError) throw new Error(retirementError.message);
     }
     return NextResponse.json({documents:created,count:created.length});
