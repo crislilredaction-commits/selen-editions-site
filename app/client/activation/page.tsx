@@ -15,7 +15,22 @@ function sanitizeNextPath(value: string | null) {
   return value;
 }
 
-function passwordErrorMessage(error: { code?: string }) {
+type ActivationAuthError = { code?: string; status?: number; name?: string };
+
+function isDefinitiveAuthError(error: ActivationAuthError | null) {
+  if (!error || error.name === "AuthRetryableFetchError" || error.status === 429 || (error.status ?? 0) >= 500) return false;
+  return [
+    "otp_expired", "invite_not_found", "bad_jwt",
+    "session_expired", "session_not_found",
+    "refresh_token_not_found", "refresh_token_already_used",
+    "flow_state_not_found", "flow_state_expired",
+  ].includes(error.code ?? "");
+}
+
+function passwordErrorMessage(error: ActivationAuthError) {
+  if (error.name === "AuthRetryableFetchError" || error.status === 429 || (error.status ?? 0) >= 500) {
+    return "Le service est temporairement indisponible. Réessayez sur cette page.";
+  }
   switch (error.code) {
     case "weak_password":
       return "Ce mot de passe est trop faible ou figure dans une liste de mots de passe connus. Choisissez-en un plus long avec majuscules, minuscules, chiffres et symbole, puis réessayez sur cette page.";
@@ -100,15 +115,20 @@ function ClientActivationContent() {
           ? await supabase.auth.exchangeCodeForSession(input.code)
           : await supabase.auth.setSession({ access_token: input.accessToken!, refresh_token: input.refreshToken! });
       if (result.error || !result.data.session) {
-        setConfirmationReady(false);
-        setMessage("Ce lien a expiré ou a déjà été utilisé. Utilisez le dernier mail reçu, ou demandez un nouvel accès sécurisé à votre organisme de formation.");
+        if (isDefinitiveAuthError(result.error)) {
+          credentials.current = null;
+          setConfirmationReady(false);
+          setMessage("Ce lien a expiré ou a déjà été utilisé. Utilisez le dernier mail reçu, ou demandez un nouvel accès sécurisé à votre organisme de formation.");
+        } else {
+          setMessage("La vérification n’a pas abouti. Le service peut être temporairement indisponible. Réessayez sur cette page.");
+        }
         return;
       }
       credentials.current = null;
       setConfirmationReady(false);
       setActivationReady(true);
     } catch {
-      setMessage("La vérification n’a pas abouti. Vérifiez votre connexion et réessayez.");
+      setMessage("La vérification n’a pas abouti. Vérifiez votre connexion et réessayez sur cette page.");
     } finally {
       verifying.current = false;
       setLoading(false);
@@ -133,29 +153,35 @@ function ClientActivationContent() {
       return;
     }
 
-    const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
-    if (refreshError || !refreshed.session) {
-      setMessage("Votre session d’activation n’est plus valide. Demandez un nouvel accès sécurisé à votre organisme de formation.");
+    try {
+      const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError || !refreshed.session) {
+        setMessage(isDefinitiveAuthError(refreshError)
+          ? "Votre session d’activation n’est plus valide. Demandez un nouvel accès sécurisé à votre organisme de formation."
+          : "Le service est temporairement indisponible. Réessayez sur cette page.");
+        return;
+      }
+
+      const { error } = await supabase.auth.updateUser({
+        password,
+        data: { selen_password_configured: true },
+      });
+
+      if (error) {
+        setMessage(passwordErrorMessage(error));
+        return;
+      }
+
+      setMessage(isLearner ? "Votre mot de passe est créé. Nous ouvrons votre espace apprenant." : "Votre mot de passe est créé. Nous ouvrons votre Bureau Selen.");
+      window.setTimeout(() => {
+        router.replace(nextPath);
+        router.refresh();
+      }, 900);
+    } catch {
+      setMessage("L’enregistrement n’a pas abouti. Vérifiez votre connexion et réessayez sur cette page.");
+    } finally {
       setLoading(false);
-      return;
     }
-
-    const { error } = await supabase.auth.updateUser({
-      password,
-      data: { selen_password_configured: true },
-    });
-
-    if (error) {
-      setMessage(passwordErrorMessage(error));
-      setLoading(false);
-      return;
-    }
-
-    setMessage(isLearner ? "Votre mot de passe est créé. Nous ouvrons votre espace apprenant." : "Votre mot de passe est créé. Nous ouvrons votre Bureau Selen.");
-    window.setTimeout(() => {
-      router.replace(nextPath);
-      router.refresh();
-    }, 900);
   }
 
   return (

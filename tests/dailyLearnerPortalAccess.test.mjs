@@ -88,12 +88,23 @@ test("an existing manual enrolment can receive a fresh secure access link", () =
   assert.match(learnerPage, /action:"send_access"/);
 });
 
-async function authEntryFor(user) {
+async function authEntryFor(user, providerError = null) {
   const generated = [];
   const authAdmin = {
-    listUsers: async () => ({ data: { users: user ? [user] : [] }, error: null }),
+    listUsers: async (input) => {
+      assert.equal(input.page, 1);
+      assert.equal(input.perPage, 1000);
+      return { data: { users: user ? [user] : [] }, error: null };
+    },
     generateLink: async (input) => {
+      assert.equal(input.email, "learner@example.com");
+      assert.ok(["invite", "recovery"].includes(input.type));
       generated.push(input);
+      // Supabase adminGenerateLink: an existing UNCONFIRMED user can be invited again.
+      const error = providerError
+        ?? (input.type === "invite" && user?.email_confirmed_at ? { message: "User already registered", code: "email_exists" } : null)
+        ?? (input.type === "recovery" && !user ? { message: "User not found", code: "user_not_found" } : null);
+      if (error) return { data: null, error };
       return { data: { properties: { hashed_token: "test-token-hash" } }, error: null };
     },
   };
@@ -101,7 +112,10 @@ async function authEntryFor(user) {
   const compiled = ts.transpileModule(authEntry, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
   vm.runInNewContext(compiled, {
     module, exports: module.exports,
-    require: () => ({ createClient: () => ({ auth: { admin: authAdmin } }) }),
+    require: (name) => {
+      assert.equal(name, "@supabase/supabase-js");
+      return { createClient: () => ({ auth: { admin: authAdmin } }) };
+    },
     process: { env: { NEXT_PUBLIC_SITE_URL: "https://selen.example", NEXT_PUBLIC_SUPABASE_URL: "https://test.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "test-only" } },
   });
   const url = await module.exports.buildDailyPortalAuthEntryUrl({ email: "learner@example.com", portalType: "learner", token: "personal-portal" });
@@ -127,4 +141,48 @@ test("an activated learner keeps their password and receives a login destination
   assert.equal(generated.length, 0);
   assert.equal(url.pathname, "/client/login");
   assert.equal(url.searchParams.get("next"), "/daily/portail/apprenant/personal-portal");
+});
+
+
+test("an absent account receives an invitation", async () => {
+  const { url, generated } = await authEntryFor(null);
+  assert.equal(generated.length, 1);
+  assert.equal(generated[0].type, "invite");
+  assert.equal(url.searchParams.get("type"), "invite");
+});
+
+test("a real provider failure propagates instead of returning an access URL", async () => {
+  await assert.rejects(authEntryFor(null, { code: "email_address_invalid", message: "Email address invalid" }), /Création du lien Auth impossible : Email address invalid/);
+});
+
+test("provider rejection prevents email delivery and any sent announcement", async () => {
+  const module = { exports: {} };
+  const tables = [];
+  let emails = 0;
+  const records = {
+    daily_session_enrolments: { id: 'enrolment', organisation_id: 'org', learner_id: 'learner', daily_learners: { id: 'learner', email: 'learner@example.com' }, daily_sessions: { id: 'session', organisation_id: 'org', user_id: 'owner' } },
+    daily_portal_access_tokens: { id: 'access', token: 'existing', status: 'pending' },
+  };
+  const admin = { from(table) {
+    tables.push(table);
+    assert.ok(Object.hasOwn(records, table), `Unexpected table/write: ${table}`);
+    const query = {
+      select() { return query; },
+      eq() { return query; },
+      async maybeSingle() { return { data: records[table], error: null }; },
+    };
+    return query;
+  } };
+  vm.runInNewContext(ts.transpileModule(helper, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, {
+    module, exports: module.exports, process: { env: { RESEND_API_KEY: 'test-double-only' } },
+    require(name) {
+      if (name === 'node:crypto') return { randomBytes() { throw new Error('Unexpected token mutation'); } };
+      if (name === 'resend') return { Resend: class { emails = { send: async () => { emails++; throw new Error('Unexpected email'); } }; } };
+      if (name === '@/lib/server/dailyPortalAuthEntry') return { buildDailyPortalAuthEntryUrl: () => authEntryFor(null, { code: 'email_address_invalid', message: 'Email address invalid' }) };
+      throw new Error(`Unexpected import: ${name}`);
+    },
+  });
+  await assert.rejects(module.exports.ensureAndSendLearnerPortalAccess(admin, { enrolmentId: 'enrolment', origin: 'https://test.invalid', force: true }), /Création du lien Auth impossible : Email address invalid/);
+  assert.equal(emails, 0);
+  assert.deepEqual(tables, ['daily_session_enrolments', 'daily_portal_access_tokens']);
 });
