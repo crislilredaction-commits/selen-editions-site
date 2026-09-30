@@ -129,12 +129,22 @@ export async function GET(req: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   const sessions = data ?? [];
   if (sessions.length === 0) return NextResponse.json({ sessions });
-  const { data: enrolments, error: enrolmentsError } = await context.admin.from("daily_session_enrolments")
+  const enrolmentPageSize = 1000;
+  const enrolmentQuery = () => context.admin.from("daily_session_enrolments")
     .select("session_id,learner_id,status,daily_learners(id,organisation_id,first_name,last_name,email,phone)")
     .eq("organisation_id", context.organisationId)
     .in("session_id", sessions.map((session) => session.id))
-    .not("status", "in", "(declined,cancelled,abandoned)");
-  if (enrolmentsError) return NextResponse.json({ error: enrolmentsError.message }, { status: 500 });
+    .not("status", "in", "(declined,cancelled,abandoned)")
+    .order("id", { ascending: true });
+  const enrolments: NonNullable<Awaited<ReturnType<typeof enrolmentQuery>>["data"]> = [];
+  // Read every page: the API may cap a response even when no limit was requested.
+  for (let offset = 0; ; ) {
+    const { data: page, error: enrolmentsError } = await enrolmentQuery().range(offset, offset + enrolmentPageSize - 1);
+    if (enrolmentsError) return NextResponse.json({ error: enrolmentsError.message }, { status: 500 });
+    if (!page?.length) break;
+    enrolments.push(...page);
+    offset += page.length;
+  }
 
   // Merge into the existing participant shape without changing the stored session.
   const sessionsById = new Map(sessions.map((session) => [session.id, session]));

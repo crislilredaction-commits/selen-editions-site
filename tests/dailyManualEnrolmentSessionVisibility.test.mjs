@@ -30,7 +30,7 @@ const routeCode = ts.transpileModule(sessionsRoute, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText;
 
-async function getSessions({ sessions = [], enrolments = [], errorTable, context: overrides = {} } = {}) {
+async function getSessions({ sessions = [], enrolments = [], errorTable, errorOffset, context: overrides = {} } = {}) {
   const queries = [];
   const admin = { from(table) {
     assert.ok(["daily_sessions", "daily_session_enrolments"].includes(table));
@@ -41,15 +41,20 @@ async function getSessions({ sessions = [], enrolments = [], errorTable, context
       eq(column, value) { query.filters.push(["eq", column, value]); return this; },
       in(column, values) { query.filters.push(["in", column, values]); return this; },
       not(column, operator, value) { query.filters.push(["not", column, operator, value]); return this; },
-      order() { return this; },
+      order(column) { query.order = column; return this; },
+      range(from, to) { query.range = [from, to]; return this; },
       then(resolve, reject) {
         const rows = structuredClone(table === "daily_sessions" ? sessions : enrolments);
-        const data = rows.filter((row) => query.filters.every(([op, column, value, excluded]) => {
+        let data = rows.filter((row) => query.filters.every(([op, column, value, excluded]) => {
           if (op === "eq") return row[column] === value;
           if (op === "in") return value.includes(row[column]);
           return !excluded.slice(1, -1).split(",").includes(row[column]);
         }));
-        return Promise.resolve({ data, error: table === errorTable ? { message: "database unavailable" } : null }).then(resolve, reject);
+        if (table === "daily_session_enrolments") {
+          const [from, to] = query.range ?? [0, 999];
+          data = data.slice(from, to + 1);
+        }
+        return Promise.resolve({ data, error: table === errorTable && (errorOffset === undefined || query.range?.[0] === errorOffset) ? { message: "database unavailable" } : null }).then(resolve, reject);
       },
     };
     return builder;
@@ -146,4 +151,22 @@ test("GET accepte les anciennes listes nulles et les apprenants sans email", asy
     enrolments: [first, second, first],
   });
   assert.deepEqual(result.body.sessions[0].beneficiaries.map((row) => row.learner_id), ["l1", "l2"]);
+});
+
+
+test("GET restitue toutes les inscriptions au-delà de la première page", async () => {
+  const enrolments = Array.from({ length: 1005 }, (_, index) => enrolment("s1", `l${index}`));
+  const result = await getSessions({ sessions: [session("s1")], enrolments });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.sessions[0].beneficiaries.length, 1005);
+  assert.equal(result.body.sessions[0].beneficiaries[1004].learner_id, "l1004");
+  const queries = result.queries.filter((query) => query.table === "daily_session_enrolments");
+  assert.deepEqual(queries.map((query) => query.range), [[0, 999], [1000, 1999], [1005, 2004]]);
+  for (const query of queries) {
+    assert.equal(query.order, "id");
+    assert.deepEqual(query.filters, queries[0].filters);
+  }
+  const failed = await getSessions({ sessions: [session("s1")], enrolments, errorTable: "daily_session_enrolments", errorOffset: 1000 });
+  assert.equal(failed.status, 500);
+  assert.deepEqual(failed.body, { error: "database unavailable" });
 });
