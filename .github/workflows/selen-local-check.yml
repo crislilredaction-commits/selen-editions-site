@@ -15,6 +15,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: selen-local-check-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-test:
     runs-on: [self-hosted, Linux, X64, selen-local]
@@ -35,11 +39,27 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run tests
-        run: npm test
+      - name: Run repository tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t tests < <(find tests -maxdepth 1 -type f -name '*.test.mjs' -print | sort)
+          if [ "${#tests[@]}" -eq 0 ]; then
+            echo "No tests found."
+            exit 1
+          fi
+          node --test "${tests[@]}"
 
       - name: Typecheck
         run: npm run typecheck --if-present
 
       - name: Build
-        run: npm run build
+        shell: bash
+        run: |
+          set -euo pipefail
+          STRIPE_SECRET_KEY=sk_test_build_only \
+          STRIPE_WEBHOOK_SECRET=whsec_build_only \
+          NEXT_PUBLIC_SUPABASE_URL=https://build-only.invalid \
+          NEXT_PUBLIC_SUPABASE_ANON_KEY=build-only-placeholder \
+          SUPABASE_SERVICE_ROLE_KEY=build-only-placeholder \
+          npm run build
