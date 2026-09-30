@@ -37,7 +37,7 @@
     "test:daily-document-notification": "node --test tests/dailyDocumentNotificationEmail.test.mjs",
     "test:daily-published-documents-dashboard": "node --test tests/dailyPublishedDocumentsDashboard.test.mjs",
     "test:daily-mission-orders": "node --test tests/dailyMissionOrders.test.mjs",
-    "test:daily-contract-convention": "node --test tests/dailyContractConventionDistinction.test.mjs",
+    "test:daily-contract-convention": "node --test tests/dailyContractConventionDistinction.test.mjs tests/dailyManualEnrolmentPartyType.test.mjs",
     "test:daily-individual-early-start": "node --test tests/dailyIndividualEarlyStart.test.mjs",
     "test:daily-pretraining-a10": "node --test tests/dailyPretrainingA10.test.mjs",
     "test:daily-trainer-sessions-a11": "node --test tests/dailyTrainerSessionsA11.test.mjs",
