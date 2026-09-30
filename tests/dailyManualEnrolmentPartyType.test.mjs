@@ -114,7 +114,7 @@ async function generateDocuments(enrolments, companies) {
   const admin={storage:{from:()=>({upload:async()=>({error:null})})},from(table){
     let inserted;
     const result=()=>({data: table==='daily_sessions'?{id:'session',companies,daily_formations:{title:'Formation'}}:table==='daily_session_enrolments'?enrolments:table==='organisations'?{}:table==='daily_documents'&&inserted?inserted:[],error:null});
-    const q={select(){return q},eq(){return q},not(){return q},order(){return q},limit(){return q},insert(row){inserted=row;documents.push(row);return q},single:async()=>result(),then(resolve,reject){return Promise.resolve(result()).then(resolve,reject)}};
+    const q={select(){return q},eq(){return q},in(){return q},not(){return q},order(){return q},limit(){return q},insert(row){inserted=row;documents.push(row);return q},single:async()=>result(),then(resolve,reject){return Promise.resolve(result()).then(resolve,reject)}};
     return q;
   }};
   const route=compile('app/api/client/daily/pretraining-documents/route.ts',{
