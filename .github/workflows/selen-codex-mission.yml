@@ -66,13 +66,33 @@ jobs:
           test -s "$RUNNER_TEMP/selen-mission.md"
           codex exec --sandbox workspace-write "$(cat "$RUNNER_TEMP/selen-mission.md")"
 
+      - name: Preserve Codex patch
+        if: always()
+        shell: bash
+        run: |
+          git diff --binary > "$RUNNER_TEMP/codex.patch"
+
+      - name: Upload Codex patch
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-patch-${{ github.run_id }}
+          path: ${{ runner.temp }}/codex.patch
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Validate repository changes
         shell: bash
         run: |
           set -euo pipefail
           git diff --check
           git status --short
-          node --test tests/dailyManualEnrolmentSessionVisibility.test.mjs
+          mapfile -t tests < <(find tests -maxdepth 1 -type f -name '*.test.mjs' -print | sort)
+          if [ "${#tests[@]}" -eq 0 ]; then
+            echo "No tests found."
+            exit 1
+          fi
+          node --test "${tests[@]}"
           STRIPE_SECRET_KEY=sk_test_build_only \
           STRIPE_WEBHOOK_SECRET=whsec_build_only \
           NEXT_PUBLIC_SUPABASE_URL=https://build-only.invalid \
@@ -91,5 +111,5 @@ jobs:
           fi
           git config user.name "selen-lenovo"
           git config user.email "selen-lenovo@users.noreply.github.com"
-          git commit -m "fix(daily): expose manual enrolments in sessions"
+          git commit -m "chore(selen): apply autonomous mission"
           git push origin "HEAD:$TARGET_BRANCH"
