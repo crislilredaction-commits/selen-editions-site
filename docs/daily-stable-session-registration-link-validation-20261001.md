@@ -61,3 +61,14 @@ Failed to fetch `Playfair Display` from Google Fonts.
 ```
 
 Aucun contournement des polices ou du build appliqué. **Le build externe Lenovo reste obligatoire et n'a pas été exécuté dans cette intervention.**
+
+## Relecture et contrôle indépendant Work
+
+- Commit produit par le workflow : `6c343e8171b0f2b8885c0c2e5bfd2788a56d40df`, comparé au main `0fede224443566afc868db9c5da8f6dd1efda090` livré après la PR #287.
+- Relecture des 8 lignes de correction du PATCH : omission du token pour la même formation, invalidation pour un changement de formation ou un archivage, comparaison de la formation dans l'UPDATE et arrêt sans effets associés lorsque la mutation ne retourne aucune ligne.
+- Les adaptations du double des tests de participants fantômes conservent les assertions de périmètre et les 19 cas ; seule la nouvelle lecture et la comparaison de formation sont ajoutées au contrat du double.
+- Exécution indépendante : **34 tests ciblés réussis** (15 sur le lien public et 19 sur les inscriptions dérivées), aucun échec. Les vrais handlers de session et de résolution publique sont exécutés avec des doubles stricts ; aucun SDK Auth/Resend réel ni aucun email réel.
+- `git diff --check` entre base et correction : code 0.
+- **Selen Codex mission #23** (run 36911132917, job 110533760669) réussi au premier passage de validation externe : **589 tests réussis**, aucun échec, compilation Next.js complète puis `Validation passed`. L'échec de téléchargement des polices observé dans le bac de Codex ne se reproduit pas dans ce build Lenovo.
+
+Cette relecture déclenche le local check post-push indépendant sur le HEAD final. Tests complets, typecheck, build, contrôles GitHub et Vercel doivent être verts avant fusion ; main et production seront vérifiés ensuite.
