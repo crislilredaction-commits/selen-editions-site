@@ -131,5 +131,5 @@ test("le dossier de candidature permet de télécharger le programme validé en 
   assert.match(details, /\/api\/daily-registration\/\$\{token\}\/program-pdf/);
   assert.match(pdfRoute, /formation\.status !== "validated"/);
   assert.match(pdfRoute, /Content-Type":"application\/pdf"/);
-  assert.match(pdfRoute, /Contenu détaillé de la formation/);
+  assert.match(await readFile(new URL("../lib/server/dailyRegistrationProgramPdf.ts", import.meta.url), "utf8"), /Contenu détaillé de la formation/);
 });

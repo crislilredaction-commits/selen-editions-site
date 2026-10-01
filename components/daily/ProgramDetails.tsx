@@ -6,6 +6,7 @@ type FormationProgram = {
   title?: string | null;
   status?: string | null;
   creation_mode?: string | null;
+  learning_objectives?: string[] | null;
   global_objective?: string | null;
   target_audience?: string | null;
   prerequisites?: string | null;
@@ -56,7 +57,8 @@ export default function ProgramDetails({ token }: { token: string }) {
       if (!response.ok) return;
       const data = await response.json().catch(() => null);
       if (!cancelled) {
-        setFormation(data?.session?.daily_formations ?? null);
+        const program = data?.session?.daily_formations;
+        setFormation((Array.isArray(program) ? program[0] : program) ?? null);
         setOrganisation(data?.organisation ?? null);
       }
     }
@@ -105,6 +107,7 @@ export default function ProgramDetails({ token }: { token: string }) {
       {open ? (
         <div style={styles.content}>
           <Value label="Objectif" value={formation.global_objective} />
+          <Value label="Objectifs pédagogiques" value={formation.learning_objectives?.join("\n")} />
           <Value label="Public concerné" value={formation.target_audience} />
           <Value label="Prérequis" value={formation.prerequisites} />
           <Value label="Durée" value={duration} />
@@ -118,7 +121,7 @@ export default function ProgramDetails({ token }: { token: string }) {
           <Value label="Moyens pédagogiques et techniques" value={formation.pedagogical_resources} />
           <Value label="Évaluation" value={formation.evaluation_methods} />
           <Value label="Accessibilité" value={formation.accessibility} />
-          {formation.status === "validated" && formation.creation_mode !== "program_import" ? (
+          {formation.status === "validated" && (formation.creation_mode ?? "selen_form") === "selen_form" ? (
             <div style={styles.downloadBox}>
               <p style={styles.downloadNotice}><strong>Vous envisagez de faire financer votre formation ?</strong> Téléchargez obligatoirement le programme afin de pouvoir le transmettre à votre financeur.</p>
               <a className="btn-ink" href={`/api/daily-registration/${token}/program-pdf`} style={styles.link}>
