@@ -28,7 +28,7 @@ export function harness(options = {}) {
       contains(k,v) { filters.push(r => Object.entries(v).every(([key,value]) => r[k]?.[key] === value)); return query; },
       order() { return query; }, limit(n) { limit=n; return query; },
       insert(value) { assert.ok(['daily_communications','daily_portal_access_tokens'].includes(table), `Forbidden insert ${table}`); mutation='insert'; payload=value; return query; },
-      update(value) { assert.ok(['daily_communications','daily_portal_access_tokens'].includes(table), `Forbidden update ${table}`); mutation='update'; payload=value; return query; },
+      update(value) { assert.ok(['daily_communications','daily_portal_access_tokens'].includes(table) || (options.enterprise && table === 'daily_sessions' && Object.keys(value).every(k => ['companies','updated_at'].includes(k))), `Forbidden update ${table}`); mutation='update'; payload=value; return query; },
       single() { one=true; return query; }, maybeSingle() { one=true; return query; },
       then(resolve,reject) { return Promise.resolve().then(() => {
         calls.push([mutation || 'read', table, payload]);
@@ -39,6 +39,7 @@ export function harness(options = {}) {
         }
         let rows = db[table].filter(r => filters.every(f => f(r)));
         if (mutation === 'update') {
+          if (options.proofThrow && payload.status === 'sent') throw new Error('proof transport failure');
           if ((options.proofFailure || options.proofZeroRows) && payload.status === 'sent') return {data:null,error:options.proofFailure ? {code:'write_failed'} : null};
           rows.forEach(r => Object.assign(r, structuredClone(payload)));
         }
@@ -63,7 +64,7 @@ export function harness(options = {}) {
     const module={exports:{}};
     const source=fs.readFileSync(path,'utf8');
     vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText, {
-      module,exports:module.exports,URL,Date,console:{error(){}},process:{env:{RESEND_API_KEY:'mock-only'}},
+      module,exports:module.exports,URL,Date,console:{error(){}},process:{env:{RESEND_API_KEY:options.missingProvider ? '' : 'mock-only'}},
       fetch() { throw new Error('Network forbidden'); },
       require(name) {
         if(name === 'node:crypto') return crypto;
@@ -78,6 +79,7 @@ export function harness(options = {}) {
         if(['@/lib/server/dailyAcceptanceEmail','@/lib/server/dailyLearnerEmailDelivery','@/lib/server/dailyLearnerPortalAccess'].includes(name)) return load(name.replace('@/','')+'.ts');
         if(name === '@/lib/server/clientNdaAccess') return {getAdminSupabase:() => admin};
         if(name === '@/lib/server/dailyClientWorkspace') return {getDailyClientWorkspace:async () => ({ok:true,user:{id:'owner'},workspace:{membership:{organisation_id:'org',roles:options.nonManager ? [] : ['manager']}}})};
+        if(name === '@/lib/server/dailyEnterprisePortalAccess' && options.enterprise) return load('lib/server/dailyEnterprisePortalAccess.ts');
         if(name === '@/lib/server/dailyEnterprisePortalAccess') return {sendEnterprisePortalAccessForRegistrationRequest:async () => []};
         if(name === 'next/server') return {NextResponse:{json:(data,init) => ({status:init?.status || 200, json:async () => data})}};
         throw new Error(`Unexpected import / network SDK: ${name}`);
@@ -86,7 +88,7 @@ export function harness(options = {}) {
   }
   const helper=load('lib/server/dailyLearnerPortalAccess.ts');
   const input={registrationRequestId:'request',organisationId:'org',origin:'https://site.test',createdBy:'owner'};
-  return {db,formation,session,learner,request,enrolment,calls,sends,auth,load,helper,input,setProvider:p => {provider=p;},send:() => helper.sendLearnerPortalAccessForRegistrationRequest(admin,input),ensure:(extra={}) => helper.ensureAndSendLearnerPortalAccess(admin,{...input,enrolmentId:'enrolment',...extra}),post:async body => {
+  return {admin,db,formation,session,learner,request,enrolment,calls,sends,auth,load,helper,input,setProvider:p => {provider=p;},send:() => helper.sendLearnerPortalAccessForRegistrationRequest(admin,input),ensure:(extra={}) => helper.ensureAndSendLearnerPortalAccess(admin,{...input,enrolmentId:'enrolment',...extra}),post:async body => {
     const response=await load('app/api/client/daily/registration-requests/route.ts').POST({url:'https://site.test/api/client/daily/registration-requests',json:async () => ({request_id:'request',...body})}); return {status:response.status,...await response.json()};
   }};
 }
