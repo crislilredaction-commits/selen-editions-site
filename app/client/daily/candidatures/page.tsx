@@ -43,7 +43,12 @@ type RegistrationRequest = {
   can_materialize?: boolean;
   decisions: DecisionRow[];
 };
-type ResponseBody = { requests?: RegistrationRequest[]; sessions?: SessionRow[]; actor_types?: ActorType[]; materialized?: boolean; error?: string };
+type ResponseBody = { learner_access?: { status: string; email?: string }[]; materialization_error?: string; requests?: RegistrationRequest[]; sessions?: SessionRow[]; actor_types?: ActorType[]; materialized?: boolean; error?: string };
+
+function emailFeedback(body: ResponseBody) {
+  const labels: Record<string, string> = { sent: "email envoyé", already_sent: "email déjà envoyé", pending: "email en attente de confirmation", missing_email: "adresse apprenant manquante", send_failed: "échec de l’email", invalid_scope: "email non envoyé : périmètre incompatible", not_found: "email non envoyé : inscription introuvable" };
+  return ` Emails apprenants : ${(body.learner_access?.length ? body.learner_access.map(item => `${item.email ? `${item.email} : ` : ""}${labels[item.status] || "envoi non confirmé"}`) : ["envoi non confirmé"]).join(" ; ")}.`;
+}
 
 function statusLabel(status: DecisionStatus) {
   if (status === "accepted") return "Acceptée";
@@ -124,9 +129,7 @@ export default function RegistrationRequestsPage() {
       const body = await response.json().catch(() => ({})) as ResponseBody;
       if (!response.ok) throw new Error(body.error ?? "Décision impossible.");
       if (decision === "accepted") {
-        if (body.materialized) setMessage("Candidature acceptée et inscription créée automatiquement dans la session.");
-        else if (isManager) setMessage("Candidature acceptée. Choisissez maintenant la session pour créer l'inscription sans ressaisie.");
-        else setMessage("Candidature acceptée. L'organisme choisira la session pour finaliser l'inscription.");
+        setMessage((body.materialized ? "Candidature acceptée et inscription créée automatiquement dans la session." : body.materialization_error ? "Candidature acceptée. La création de l’inscription reste à finaliser." : "Candidature acceptée. Choisissez maintenant la session pour créer l'inscription sans ressaisie.") + emailFeedback(body));
       } else {
         setMessage("Candidature refusée par l’organisme. La décision finale est enregistrée.");
       }
@@ -152,13 +155,24 @@ export default function RegistrationRequestsPage() {
       });
       const body = await response.json().catch(() => ({})) as ResponseBody;
       if (!response.ok) throw new Error(body.error ?? "Inscription impossible.");
-      setMessage("Inscription créée dans la session. Les données du candidat sont maintenant rangées dans Apprenants et dans le dossier de session.");
+      setMessage("Inscription créée dans la session. Les données du candidat sont maintenant rangées dans Apprenants et dans le dossier de session." + emailFeedback(body));
       await load();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Inscription impossible.");
     } finally {
       setBusyId("");
     }
+  }
+
+  async function retryEmail(request: RegistrationRequest) {
+    setBusyId(request.id); setError(""); setMessage("");
+    try {
+      const response = await fetch("/api/client/daily/registration-requests", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "send_learner_access", request_id: request.id }) });
+      const body = await response.json() as ResponseBody;
+      if (!response.ok) throw new Error(body.error || "Envoi impossible.");
+      setMessage(emailFeedback(body));
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Envoi impossible."); }
+    finally { setBusyId(""); }
   }
 
   if (loading) return <LoadingMascot message="Sélion rassemble les candidatures…" />;
@@ -237,6 +251,7 @@ export default function RegistrationRequestsPage() {
                     <p style={s.muted}>Candidature acceptée. L'organisme choisira la session avant création de l'inscription.</p>
                   ) : null}
                   {request.agent_analysis_summary ? <p style={s.comment}><strong>Synthèse Selen :</strong> {String(request.agent_analysis_summary.observations ?? request.agent_analysis_summary.motivation_summary ?? "Analyse disponible")}</p> : null}
+                  {isManager && request.decision_status === "accepted" ? <button type="button" disabled={busyId === request.id} style={s.accept} onClick={() => void retryEmail(request)}>Vérifier / réessayer l’email apprenant</button> : null}
                   {request.decisions[0]?.comment ? <p style={s.comment}>« {request.decisions[0].comment} »</p> : null}
                 </article>
               );

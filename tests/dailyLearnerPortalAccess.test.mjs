@@ -7,6 +7,7 @@ import ts from "typescript";
 const route = fs.readFileSync("app/api/client/daily/registration-requests/route.ts", "utf8");
 const manualRoute = fs.readFileSync("app/api/client/daily/learners/route.ts", "utf8");
 const helper = fs.readFileSync("lib/server/dailyLearnerPortalAccess.ts", "utf8");
+const delivery = fs.readFileSync("lib/server/dailyLearnerEmailDelivery.ts", "utf8");
 const authEntry = fs.readFileSync("lib/server/dailyPortalAuthEntry.ts", "utf8");
 const learnerPage = fs.readFileSync("app/client/daily/apprenants/page.tsx", "utf8");
 
@@ -48,7 +49,7 @@ test("the learner does not need a Supabase account before opening the portal", (
 test("portal access email is traceable and idempotent", () => {
   assert.match(helper, /communication_type: "learner_portal_access"/);
   assert.match(helper, /contains\("metadata", \{ portal_access_id: access\.id, enrolment_id: enrolment\.id \}\)/);
-  assert.match(helper, /status: "already_sent"/);
+  assert.match(delivery, /return "already_sent"/);
   assert.match(helper, /provider_message_id/);
 });
 
@@ -156,33 +157,12 @@ test("a real provider failure propagates instead of returning an access URL", as
 });
 
 test("provider rejection prevents email delivery and any sent announcement", async () => {
-  const module = { exports: {} };
-  const tables = [];
-  let emails = 0;
-  const records = {
-    daily_session_enrolments: { id: 'enrolment', organisation_id: 'org', learner_id: 'learner', daily_learners: { id: 'learner', email: 'learner@example.com' }, daily_sessions: { id: 'session', organisation_id: 'org', user_id: 'owner' } },
-    daily_portal_access_tokens: { id: 'access', token: 'existing', status: 'pending' },
-  };
-  const admin = { from(table) {
-    tables.push(table);
-    assert.ok(Object.hasOwn(records, table), `Unexpected table/write: ${table}`);
-    const query = {
-      select() { return query; },
-      eq() { return query; },
-      async maybeSingle() { return { data: records[table], error: null }; },
-    };
-    return query;
-  } };
-  vm.runInNewContext(ts.transpileModule(helper, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, {
-    module, exports: module.exports, process: { env: { RESEND_API_KEY: 'test-double-only' } },
-    require(name) {
-      if (name === 'node:crypto') return { randomBytes() { throw new Error('Unexpected token mutation'); } };
-      if (name === 'resend') return { Resend: class { emails = { send: async () => { emails++; throw new Error('Unexpected email'); } }; } };
-      if (name === '@/lib/server/dailyPortalAuthEntry') return { buildDailyPortalAuthEntryUrl: () => authEntryFor(null, { code: 'email_address_invalid', message: 'Email address invalid' }) };
-      throw new Error(`Unexpected import: ${name}`);
-    },
-  });
-  await assert.rejects(module.exports.ensureAndSendLearnerPortalAccess(admin, { enrolmentId: 'enrolment', origin: 'https://test.invalid', force: true }), /Création du lien Auth impossible : Email address invalid/);
-  assert.equal(emails, 0);
-  assert.deepEqual(tables, ['daily_session_enrolments', 'daily_portal_access_tokens']);
+  const { harness } = await import('./helpers/dailyAcceptanceHarness.mjs');
+  const h = harness({ materialized: true, authFailure: true });
+  const results = await h.send();
+  assert.equal(results[0].status, 'send_failed');
+  assert.equal(h.sends.length, 0);
+  assert.equal(h.auth.length, 1);
+  assert.equal(h.db.daily_communications[0].status, 'failed');
+  assert.equal(h.db.daily_communications[0].sent_at, undefined);
 });
