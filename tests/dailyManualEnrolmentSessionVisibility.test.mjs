@@ -30,11 +30,6 @@ const routeCode = ts.transpileModule(sessionsRoute, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText;
 
-const participantExports = {};
-new Function("exports", ts.transpileModule(await readFile(new URL("../lib/dailySessionParticipants.ts", import.meta.url), "utf8"), {
-  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-}).outputText)(participantExports);
-
 async function getSessions({ sessions = [], enrolments = [], errorTable, errorOffset, context: overrides = {} } = {}) {
   const queries = [];
   const admin = { from(table) {
@@ -69,7 +64,6 @@ async function getSessions({ sessions = [], enrolments = [], errorTable, errorOf
   const unexpected = () => { throw new Error("Unexpected write or email"); };
   new Function("require", "exports", routeCode)((name) => {
     if (name === "next/server") return require(name);
-    if (name.endsWith("dailySessionParticipants")) return participantExports;
     if (name.endsWith("dailyOrganisationContext")) return { getDailyOrganisationReadContext: async () => context };
     return new Proxy({}, { get: () => unexpected });
   }, exports);
@@ -89,7 +83,7 @@ test("GET rattache les apprenants actifs à leur session et conserve les autres 
   const second = session("s2");
   const result = await getSessions({ sessions: [first, second], enrolments: [enrolment("s2", "l2"), enrolment("s1", "l1", { status: "pending" })] });
   assert.equal(result.status, 200);
-  assert.deepEqual(result.body.sessions[0], { ...first, beneficiaries: [{ participant_source: "daily_session_enrolments", learner_id: "l1", first_name: "Marie", last_name: "Dupont", email: "l1@example.test", phone: "0102030405" }] });
+  assert.deepEqual(result.body.sessions[0], { ...first, beneficiaries: [{ learner_id: "l1", first_name: "Marie", last_name: "Dupont", email: "l1@example.test", phone: "0102030405" }] });
   assert.equal(result.body.sessions[1].beneficiaries[0].learner_id, "l2");
   assert.deepEqual(first.beneficiaries, []);
   assert.deepEqual(result.queries[1].filters, [["eq", "organisation_id", "of-a"], ["in", "session_id", ["s1", "s2"]], ["not", "status", "in", "(declined,cancelled,abandoned)"]]);
@@ -175,171 +169,4 @@ test("GET restitue toutes les inscriptions au-delà de la première page", async
   const failed = await getSessions({ sessions: [session("s1")], enrolments, errorTable: "daily_session_enrolments", errorOffset: 1000 });
   assert.equal(failed.status, 500);
   assert.deepEqual(failed.body, { error: "database unavailable" });
-});
-
-// Real POST/PATCH handlers, with only explicitly allowed in-memory mutations and effects.
-function writer(sessions) {
-  const effects = [];
-  const writes = [];
-  const admin = {
-    from(table) {
-      assert.ok(["daily_sessions", "daily_formations"].includes(table), `Unexpected table ${table}`);
-      const filters = [];
-      let payload;
-      let operation;
-      const builder = {
-        select() { return this; },
-        eq(key, value) { filters.push([key, value, false]); return this; },
-        neq(key, value) { filters.push([key, value, true]); return this; },
-        update(value) { assert.equal(table, "daily_sessions"); operation = "update"; payload = structuredClone(value); return this; },
-        insert(value) { assert.equal(table, "daily_sessions"); operation = "insert"; payload = structuredClone(value); return this; },
-        async maybeSingle() {
-          if (table === "daily_sessions") {
-            if (operation === "update") return this.single();
-            assert.deepEqual(filters.map(([key]) => key), ["id", "organisation_id"]);
-            return { data: structuredClone(sessions.find((item) => filters.every(([key, value]) => item[key] === value)) ?? null), error: null };
-          }
-          assert.equal(table, "daily_formations");
-          assert.deepEqual(filters, [["id", "f1", false], ["organisation_id", "of-a", false], ["status", "archived", true]]);
-          const formation = { id: "f1", organisation_id: "of-a", status: "validated" };
-          return { data: filters.every(([key, value, neq]) => neq ? formation[key] !== value : formation[key] === value) ? formation : null, error: null };
-        },
-        async single() {
-          assert.equal(table, "daily_sessions");
-          assert.ok(payload);
-          let row;
-          if (operation === "update") {
-            assert.deepEqual(filters.map(([key]) => key), ["id", "organisation_id", "formation_id"]);
-            row = sessions.find((item) => filters.every(([key, value]) => item[key] === value));
-            assert.ok(row, "Update must target an existing session in the organisation");
-            Object.assign(row, payload);
-          } else {
-            assert.equal(operation, "insert");
-            row = { id: "created", ...payload };
-            sessions.push(row);
-          }
-          writes.push(structuredClone(payload));
-          return { data: structuredClone(row), error: null };
-        },
-      };
-      return builder;
-    },
-    async rpc(name, args) {
-      assert.equal(name, "daily_prepare_upper_tier_if_needed");
-      assert.deepEqual(args, { p_user_id: "billing-u1" });
-      effects.push("tier");
-      return { data: 3, error: null };
-    },
-  };
-  const context = { ok: true, organisationId: "of-a", user: { id: "u1" }, admin };
-  const exports = {};
-  new Function("require", "exports", routeCode)((name) => {
-    if (name === "next/server") return require(name);
-    if (name.endsWith("dailySessionParticipants")) return participantExports;
-    if (name.endsWith("dailyOrganisationContext")) return {
-      async getDailyOrganisationContext(req, capability, options) {
-        assert.equal(capability, "sessions");
-        assert.deepEqual(options, { allowAssistanceWrite: true });
-        return context;
-      },
-      async getDailyOrganisationBillingUserId(org, user) {
-        assert.equal(org, "of-a"); assert.equal(user, "u1");
-        return "billing-u1";
-      },
-    };
-    if (name.endsWith("dailyEnterprisePortalAccess")) return {
-      async sendEnterprisePortalAccessForSessionCompanies(client, args) {
-        assert.equal(client, admin);
-        assert.deepEqual(args, { sessionId: sessions.at(-1).id, origin: "https://selen.test", createdBy: "u1", source: "manual_company" });
-        effects.push("company");
-        return [];
-      },
-    };
-    if (name.endsWith("agentAssistance")) return { logAgentAssistanceAction() { assert.fail("Unexpected assistance write"); } };
-    assert.fail(`Unexpected dependency ${name}`);
-  }, exports);
-  return {
-    writes, effects,
-    async save(body, method = "PATCH") {
-      const response = await exports[method](new Request("https://selen.test/api/client/daily/sessions", {
-        method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-      }));
-      assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
-      return response.json();
-    },
-  };
-}
-
-const editable = {
-  formation_id: "f1", start_date: "2060-01-01", end_date: "2060-01-01", modality: "presentiel",
-  location_address: "Salle de test", schedule_blocks: [{ date: "2060-01-01", start: "09:00", end: "10:00" }],
-};
-const participantCount = (row) => row.beneficiaries.length + row.individual_beneficiaries.length
-  + row.companies.reduce((count, company) => count + company.participants.length, 0);
-
-for (const removal of ["cancelled", "declined", "abandoned", "removed"]) {
-  for (const historical of [false, true]) {
-    test(`GET → PATCH → GET garde les inscrits calculés hors stockage : ${removal}, historique=${historical}`, async () => {
-      const person = (id) => ({ first_name: "Marie", last_name: "Dupont", email: `${id}@example.test`, phone: "0102030405" });
-      const old = historical ? {
-        beneficiaries: [person("legacy")], individual_beneficiaries: [person("individual")],
-        companies: [{ name: "Entreprise", address: "Paris", siret: "", email: "", participants: [person("company")] }],
-      } : {};
-      const sessions = [session("s1", { ...editable, ...old })];
-      const enrolments = [enrolment("s1", "l1"), enrolment("s1", "l1"),
-        ...(historical ? ["legacy", "individual", "company"].map((id) => enrolment("s1", id)) : [])];
-      const before = structuredClone(sessions[0]);
-      const write = writer(sessions);
-      for (let iteration = 0; iteration < 3; iteration++) {
-        const read = await getSessions({ sessions, enrolments });
-        assert.equal(participantCount(read.body.sessions[0]), historical ? 4 : 1);
-        assert.equal(read.body.sessions[0].beneficiaries.at(-1).participant_source, "daily_session_enrolments");
-        await write.save({ ...read.body.sessions[0], internal_reference: `modification-${iteration}` });
-        assert.equal(sessions[0].internal_reference, `modification-${iteration}`);
-        for (const key of ["beneficiaries", "individual_beneficiaries", "companies"]) {
-          assert.deepEqual(sessions[0][key], before[key]);
-          assert.deepEqual(write.writes.at(-1)[key], before[key]);
-        }
-        const after = await getSessions({ sessions, enrolments });
-        assert.equal(participantCount(after.body.sessions[0]), historical ? 4 : 1);
-      }
-      assert.equal(write.effects.filter((effect) => effect === "tier").length, 3);
-      assert.equal(write.effects.filter((effect) => effect === "company").length, 3);
-      if (removal === "removed") enrolments.length = 0;
-      else enrolments.forEach((row) => { row.status = removal; });
-      const final = await getSessions({ sessions, enrolments });
-      assert.deepEqual(final.body.sessions[0].beneficiaries, before.beneficiaries);
-      assert.equal(participantCount(final.body.sessions[0]), historical ? 3 : 0);
-    });
-  }
-}
-
-test("le helper du formulaire conserve les anciens identifiants et ne retire que la provenance explicite", async () => {
-  const rows = [{ name: "Historique" }, { learner_id: "old", email: "old@example.test" },
-    { participant_source: "manual", email: "manual@example.test" },
-    { participant_source: "daily_session_enrolments", learner_id: "new", email: "new@example.test" }];
-  const snapshot = structuredClone(rows);
-  assert.deepEqual(participantExports.storedSessionParticipants(rows), rows.slice(0, 3));
-  assert.deepEqual(rows, snapshot);
-  assert.deepEqual(participantExports.storedSessionParticipants(null), []);
-  const manager = await readFile(new URL("../components/daily/DailySessionsManager.tsx", import.meta.url), "utf8");
-  assert.match(manager, /beneficiaries: storedSessionParticipants\(session.beneficiaries\)/);
-  assert.match(manager, /individual_beneficiaries: storedSessionParticipants\(session.individual_beneficiaries\)/);
-  assert.match(manager, /participants: storedSessionParticipants\(company.participants\)/);
-});
-
-test("POST et PATCH filtrent aussi les lignes dérivées dans les listes particuliers et entreprises", async () => {
-  for (const method of ["POST", "PATCH"]) {
-    const sessions = method === "PATCH" ? [session("s1", { formation_id: "f1" })] : [];
-    const write = writer(sessions);
-    const legacy = { learner_id: "old", first_name: "Ancien", last_name: "Participant", email: "old@example.test", phone: "" };
-    const derived = { ...legacy, learner_id: "new", participant_source: "daily_session_enrolments" };
-    const rows = [legacy, derived];
-    await write.save({ ...editable, id: "s1", beneficiaries: rows, individual_beneficiaries: rows,
-      companies: [{ name: "Entreprise", participants: rows }] }, method);
-    const normalized = { first_name: "Ancien", last_name: "Participant", email: "old@example.test", phone: "" };
-    assert.deepEqual(sessions[0].beneficiaries, [normalized]);
-    assert.deepEqual(sessions[0].individual_beneficiaries, [normalized]);
-    assert.deepEqual(sessions[0].companies[0].participants, [normalized]);
-  }
 });

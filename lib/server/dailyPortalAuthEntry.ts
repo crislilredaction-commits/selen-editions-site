@@ -63,9 +63,7 @@ export async function buildDailyPortalAuthEntryUrl(input: BuildDailyPortalAuthEn
     return `${base}/client/login?next=${encodeURIComponent(nextPath)}`;
   }
 
-  // Un compte invité mais jamais confirmé doit recevoir une nouvelle
-  // invitation. La récupération concerne les comptes déjà confirmés.
-  const linkType = user?.email_confirmed_at ? "recovery" as const : "invite" as const;
+  const linkType = user ? "recovery" as const : "invite" as const;
   const { data, error } = await admin.auth.admin.generateLink({
     type: linkType,
     email,

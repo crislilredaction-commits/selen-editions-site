@@ -1,4 +1,3 @@
-import { ENROLMENT_PARTICIPANT_SOURCE, isStoredSessionParticipant } from "@/lib/dailySessionParticipants";
 import { NextResponse } from "next/server";
 import { logAgentAssistanceAction } from "@/lib/server/agentAssistance";
 import {
@@ -22,7 +21,7 @@ function positiveInteger(value: unknown) {
   return Number.isInteger(number) && number > 0 ? number : null;
 }
 function participantRow(value: unknown) {
-  if (!value || typeof value !== "object" || !isStoredSessionParticipant(value)) return null;
+  if (!value || typeof value !== "object") return null;
   const row = value as Record<string, unknown>;
   const legacyName = text(row, "name");
   const firstName = text(row, "first_name") || legacyName.split(" ").slice(0, -1).join(" ");
@@ -176,7 +175,7 @@ export async function GET(req: Request) {
     const duplicate = identities.some((identity) => seen.has(identity));
     identities.forEach((identity) => seen.add(identity));
     if (duplicate) continue;
-    session.beneficiaries = [...jsonArray(session.beneficiaries), { ...participant, learner_id: enrolment.learner_id, participant_source: ENROLMENT_PARTICIPANT_SOURCE }];
+    session.beneficiaries = [...jsonArray(session.beneficiaries), { ...participant, learner_id: enrolment.learner_id }];
   }
   return NextResponse.json({ sessions });
 }
@@ -219,19 +218,13 @@ export async function PATCH(req: Request) {
   if (!id) return NextResponse.json({ error: "Identifiant session requis." }, { status: 400 });
   const built = buildPayload(body, context.user.id, context.organisationId);
   if ("error" in built) return NextResponse.json({ error: built.error }, { status: 400 });
-  const { data: existing, error: existingError } = await context.admin.from("daily_sessions").select("id,formation_id").eq("id", id).eq("organisation_id", context.organisationId).maybeSingle();
-  if (existingError) return NextResponse.json({ error: existingError.message }, { status: 500 });
-  if (!existing) return NextResponse.json({ error: "Session introuvable." }, { status: 404 });
   const { data: formation, error: formationError } = await context.admin.from("daily_formations").select("id").eq("id", built.payload.formation_id).eq("organisation_id", context.organisationId).neq("status", "archived").maybeSingle();
   if (formationError) return NextResponse.json({ error: formationError.message }, { status: 500 });
   if (!formation) return NextResponse.json({ error: "Formation introuvable ou archivée." }, { status: 404 });
   const trainerError = await validateTrainerIds(context.organisationId, built.payload.trainer_ids, context.admin);
   if (trainerError) return NextResponse.json({ error: trainerError }, { status: 400 });
-  // Omit the token on ordinary edits, including one prepared after our read.
-  const invalidateRegistration = existing.formation_id !== built.payload.formation_id || built.payload.status === "archived";
-  const { data, error } = await context.admin.from("daily_sessions").update({ ...built.payload, ...(invalidateRegistration ? { registration_token: null } : {}) }).eq("id", id).eq("organisation_id", context.organisationId).eq("formation_id", existing.formation_id).select("*, daily_formations(id,title,status,version)").maybeSingle();
+  const { data, error } = await context.admin.from("daily_sessions").update({ ...built.payload, registration_token: null }).eq("id", id).eq("organisation_id", context.organisationId).select("*, daily_formations(id,title,status,version)").single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  if (!data) return NextResponse.json({ error: "La session a été modifiée ou supprimée entre-temps. Rechargez-la avant de réessayer." }, { status: 409 });
   const [learnerCount, enterpriseAccess] = await Promise.all([refreshLearnerTier(context.organisationId, context.user.id, context.admin), provisionManualCompanyAccess(context, data.id, req)]);
   if (context.assisted && context.assistance) await logAgentAssistanceAction({ supabase: context.admin, req, assistance: context.assistance, action: "daily_session_update", actionLabel: "Session modifiée par Studio pour le client", newState: { session_id: data.id, status: data.status, formation_id: data.formation_id } });
   return NextResponse.json({ session: data, annualLearnerCount: learnerCount, enterprise_access: enterpriseAccess, assistanceMode: context.assisted });

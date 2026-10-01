@@ -1,0 +1,162 @@
+name: Selen Codex mission
+
+on:
+  push:
+    branches:
+      - "mission/**"
+    paths:
+      - ".selen-mission.md"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: selen-codex-runner
+  cancel-in-progress: false
+
+jobs:
+  execute:
+    runs-on: [self-hosted, Linux, X64, selen-local]
+    timeout-minutes: 60
+    steps:
+      - name: Checkout mission branch
+        uses: actions/checkout@v4
+        with:
+          clean: true
+          fetch-depth: 0
+
+      - name: Validate and preserve mission payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${GITHUB_REF_NAME}" in
+            mission/*) ;;
+            *) echo "Refusing non-mission branch"; exit 1 ;;
+          esac
+          test -s .selen-mission.md
+          grep -q '^TARGET_BRANCH: fix/' .selen-mission.md
+          TARGET_BRANCH="$(sed -n 's/^TARGET_BRANCH: //p' .selen-mission.md | head -n1)"
+          test -n "$TARGET_BRANCH"
+          git check-ref-format --branch "$TARGET_BRANCH" >/dev/null
+          cp .selen-mission.md "$RUNNER_TEMP/selen-mission.md"
+          echo "TARGET_BRANCH=$TARGET_BRANCH" >> "$GITHUB_ENV"
+
+      - name: Prepare target worktree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin "$TARGET_BRANCH"
+          git checkout -B "$TARGET_BRANCH" "origin/$TARGET_BRANCH"
+          git status --short
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+
+      - name: Run mission with automatic repair
+        shell: bash
+        env:
+          PATH: /home/LilBarthaux/.nvm/versions/node/v24.20.0/bin:/usr/local/bin:/usr/bin:/bin
+          CODEX_HOME: /home/LilBarthaux/.codex
+        run: |
+          set -uo pipefail
+          test "$(pwd)" = "$GITHUB_WORKSPACE"
+          test -s "$RUNNER_TEMP/selen-mission.md"
+
+          validate() {
+            : > "$RUNNER_TEMP/validation.log"
+            {
+              echo "=== git diff --check ==="
+              git diff --check
+              echo "=== git status ==="
+              git status --short
+              echo "=== tests ==="
+              mapfile -t tests < <(find tests -maxdepth 1 -type f -name '*.test.mjs' -print | sort)
+              if [ "${#tests[@]}" -eq 0 ]; then
+                echo "No tests found."
+                return 1
+              fi
+              node --test "${tests[@]}"
+              echo "=== build ==="
+              STRIPE_SECRET_KEY=sk_test_build_only \
+              STRIPE_WEBHOOK_SECRET=whsec_build_only \
+              NEXT_PUBLIC_SUPABASE_URL=https://build-only.invalid \
+              NEXT_PUBLIC_SUPABASE_ANON_KEY=build-only-placeholder \
+              SUPABASE_SERVICE_ROLE_KEY=build-only-placeholder \
+              npm run build
+            } 2>&1 | tee "$RUNNER_TEMP/validation.log"
+            return ${PIPESTATUS[0]}
+          }
+
+          echo "=== Initial Codex mission ==="
+          if ! codex exec --sandbox workspace-write "$(cat "$RUNNER_TEMP/selen-mission.md")"; then
+            echo "Initial Codex execution failed."
+            exit 1
+          fi
+
+          for attempt in 1 2 3; do
+            echo "=== Validation attempt $attempt/3 ==="
+            if validate; then
+              echo "Validation passed."
+              exit 0
+            fi
+
+            git diff --binary > "$RUNNER_TEMP/codex.patch"
+
+            if [ "$attempt" -eq 3 ]; then
+              echo "Validation still failing after 3 attempts."
+              exit 1
+            fi
+
+            tail -n 220 "$RUNNER_TEMP/validation.log" > "$RUNNER_TEMP/validation-tail.log"
+            {
+              echo "You are repairing the SAME Selen mission. Do not restart the task and do not revert valid existing changes."
+              echo
+              echo "Original mission:"
+              cat "$RUNNER_TEMP/selen-mission.md"
+              echo
+              echo "The repository validation failed. Diagnose the concrete failure from the log below, make the smallest safe correction, then stop. Do not commit or push. Do not weaken, skip, delete, or bypass tests/build checks merely to make validation green. Do not touch secrets, Auth/RLS, production infrastructure, or destructive migrations."
+              echo
+              echo "Validation failure:"
+              cat "$RUNNER_TEMP/validation-tail.log"
+            } > "$RUNNER_TEMP/repair-prompt.txt"
+            echo "=== Automatic repair after failed validation $attempt ==="
+            if ! codex exec --sandbox workspace-write "$(cat "$RUNNER_TEMP/repair-prompt.txt")"; then
+              echo "Codex repair execution failed."
+              exit 1
+            fi
+          done
+
+      - name: Preserve Codex patch
+        if: always()
+        shell: bash
+        run: |
+          git diff --binary > "$RUNNER_TEMP/codex.patch"
+
+      - name: Upload Codex diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-diagnostics-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/codex.patch
+            ${{ runner.temp }}/validation.log
+            ${{ runner.temp }}/validation-tail.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Commit and push target branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Codex produced no repository change."
+            exit 1
+          fi
+          git config user.name "selen-lenovo"
+          git config user.email "selen-lenovo@users.noreply.github.com"
+          git commit -m "chore(selen): apply autonomous mission"
+          git push origin "HEAD:$TARGET_BRANCH"
