@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { storedSessionParticipants } from "@/lib/dailySessionParticipants";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -247,9 +248,9 @@ export default function DailySessionsManager() {
       schedule_blocks: session.schedule_blocks?.length ? session.schedule_blocks : [{ date: session.start_date ?? "", start: "09:00", end: "17:00", note: "" }],
       location_address: session.location_address ?? "",
       remote_url: session.remote_url ?? "",
-      companies: session.companies?.length ? session.companies : [{ name: "", address: "", siret: "", email: "", participants: [] }],
-      beneficiaries: session.beneficiaries ?? [],
-      individual_beneficiaries: session.individual_beneficiaries ?? [],
+      companies: session.companies?.length ? session.companies.map((company) => ({ ...company, participants: storedSessionParticipants(company.participants) })) : [{ name: "", address: "", siret: "", email: "", participants: [] }],
+      beneficiaries: storedSessionParticipants(session.beneficiaries),
+      individual_beneficiaries: storedSessionParticipants(session.individual_beneficiaries),
       trainer_ids: session.trainer_ids ?? [],
       status: session.status,
     });
