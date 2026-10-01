@@ -27,3 +27,18 @@ Cas exercés : acceptation avec/sans session, matérialisation ultérieure, refu
 Le shell initial ne trouvait pas `npm` (code 127). Les validations utilisent le Node déjà installé, via `PATH=/home/LilBarthaux/.nvm/versions/node/v24.20.0/bin:$PATH`.
 
 Aucun changement de migration, Auth, RLS, signatures, cron, dépendances ou infrastructure. Aucun envoi réel ni accès aux données de production. Aucun commit/push/PR.
+
+## Relecture et contrôle indépendant Work — 2026-10-01
+
+Commit fonctionnel relu : `2bec064c32a6b215baa171910eae722eed315dc5`, comparé à `main` `93962e2a82b81000c1596b949811a58d1efb6689`.
+
+- Les 9 fichiers modifiés correspondent au rendu, à la remise et au retour d'état des emails apprenants ; aucune migration ni modification du mécanisme Auth, des politiques RLS ou du workflow.
+- Relecture de la réservation durable et de sa reprise conditionnelle : un email incertain ou sans preuve fournisseur ne devient pas `already_sent` et n'est pas automatiquement réexpédié. Une reprise après rejet certain conserve le même contenu et la même clé fournisseur.
+- Les destinataires entreprise sont les bénéficiaires, jamais le contact commanditaire ; les inscriptions liées sont vérifiées dans le dossier, l'OF et la session concernés. Les choix contrat/convention proviennent de l'inscription, avec texte neutre pour les anciens dossiers sans choix.
+- Exécution indépendante des vrais helpers et de la route avec doubles stricts : **65 tests ciblés réussis**, aucun échec et aucun envoi réel.
+- Exécution indépendante de `npm test` : **574 tests réussis**, aucun échec. `git diff --check` : code 0.
+- Le typecheck dans l'espace Work utilisant temporairement les dépendances Studio rencontre uniquement l'absence du module Stripe (7 erreurs TS2307 dans des fichiers inchangés). L'installation hors réseau depuis le verrou du site ne peut pas se terminer car un paquet n'est pas en cache. Cette vérification locale n'est donc pas annoncée verte ; le contrôle indépendant Lenovo doit fournir le résultat avec les dépendances exactes du site.
+- Le **second essai du même Selen Codex mission #22** (run 36839323839, job 110378656577) a réussi : validation externe de 574 tests, compilation Next.js complète et fin `Validation passed`. Le problème de téléchargement des polices du premier bac n'y est plus présent. Aucune nouvelle mission doublonnée.
+- Preview Vercel du commit fonctionnel : `dpl_GBhbe6iUQFK2JKntL9QqrszbrrE4`, état READY constaté.
+
+Cette note déclenche le `Selen local check` post-push requis pour vérifier séparément tests, typecheck et build sur le HEAD final. La fusion et la vérification de production restent conditionnées à ces résultats.
