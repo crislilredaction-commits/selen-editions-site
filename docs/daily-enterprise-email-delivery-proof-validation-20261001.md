@@ -33,3 +33,15 @@ Les tests couvrent les preuves complètes/incomplètes, queued, rejet certain, t
 ## Contrôles externes obligatoires
 
 Le build externe Lenovo et le workflow indépendant **Selen local check** restent obligatoires sur le résultat final repris par le workflow. Ils ne sont pas attestés par les tests du bac. Le local check checkout une ref publiée ; le worktree non commité de cette intervention n'y est pas disponible. Aucun déclenchement sur l'ancien HEAD n'est présenté comme une validation de cette correction. Aucun workflow n'a été modifié.
+
+## Relecture et validation indépendante Work
+
+- Commit fonctionnel relu : `5b38121c9d8e2a06ea77ca2c6ec83f105f623553`, comparé au main `1664b2134ac19a7d6a323de1efee4e01d59f8077` livré après #288.
+- Les trois défauts ont été reproduits avant correction dans le vrai helper avec doubles stricts : ancien `queued → already_sent`, réponse fournisseur sans ID annoncée `sent`, écriture de preuve en erreur annoncée `sent`. Aucun email réel ni mutation de token pendant cette reproduction.
+- Relecture de la réservation et des clés séparées entreprise/apprenant, du traitement conservateur de l'historique sans clé stable et des reprises concurrentes. Les instructions de création et renouvellement d'accès, URLs, périmètres et destinataires restent identiques ; le calcul des identifiants apprenants garde exactement le même algorithme.
+- Les adaptations du banc d'essai autorisent uniquement les colonnes `companies,updated_at` de la synchronisation de session existante dans les scénarios entreprise. Les SDK, tables et mutations inattendus restent interdits.
+- Exécution indépendante des six fichiers ciblés : **142 tests réussis**, aucun échec (32 livraison entreprise, 11 garde-fous entreprise, 65 acceptation/accès apprenant, 19 participants dérivés, 15 liens stables). Aucun SDK Auth/Resend réel ni aucun envoi client.
+- `git diff --check` entre base et correction : code 0.
+- **Selen Codex mission #24** (run 36914200702, job 110544025117) réussi au premier passage externe : **621 tests réussis** dans le runner avec isolation, aucun échec, compilation Next.js complète puis `Validation passed`. Ce nombre provient du contrôle externe ; le nombre 615 ci-dessus concerne l'exécution supplémentaire sans isolation dans le bac et ne remplace pas le contrôle externe.
+
+Cette note déclenche le local check post-push indépendant sur le HEAD final. Tests, typecheck, build, contrôles GitHub et preview Vercel doivent être verts avant fusion ; main et production seront ensuite vérifiés.
