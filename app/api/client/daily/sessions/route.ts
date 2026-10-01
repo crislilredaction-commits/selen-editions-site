@@ -1,3 +1,4 @@
+import { ENROLMENT_PARTICIPANT_SOURCE, isStoredSessionParticipant } from "@/lib/dailySessionParticipants";
 import { NextResponse } from "next/server";
 import { logAgentAssistanceAction } from "@/lib/server/agentAssistance";
 import {
@@ -21,7 +22,7 @@ function positiveInteger(value: unknown) {
   return Number.isInteger(number) && number > 0 ? number : null;
 }
 function participantRow(value: unknown) {
-  if (!value || typeof value !== "object") return null;
+  if (!value || typeof value !== "object" || !isStoredSessionParticipant(value)) return null;
   const row = value as Record<string, unknown>;
   const legacyName = text(row, "name");
   const firstName = text(row, "first_name") || legacyName.split(" ").slice(0, -1).join(" ");
@@ -175,7 +176,7 @@ export async function GET(req: Request) {
     const duplicate = identities.some((identity) => seen.has(identity));
     identities.forEach((identity) => seen.add(identity));
     if (duplicate) continue;
-    session.beneficiaries = [...jsonArray(session.beneficiaries), { ...participant, learner_id: enrolment.learner_id }];
+    session.beneficiaries = [...jsonArray(session.beneficiaries), { ...participant, learner_id: enrolment.learner_id, participant_source: ENROLMENT_PARTICIPANT_SOURCE }];
   }
   return NextResponse.json({ sessions });
 }
