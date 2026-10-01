@@ -25,9 +25,9 @@ type PublicSession = {
   max_participants: number | null;
 };
 
-const FORMATION_FIELDS = "id,user_id,title,status,global_objective,target_audience,prerequisites,duration_hours,duration_days,modality,modality_details,access_delays,registration_methods,price,detailed_program,detailed_program_document_url,accessibility,pedagogical_resources,pedagogical_methods,evaluation_methods,positioning_mode,positioning_questions,contact_phone,contact_email,contact_website" as const;
+const FORMATION_FIELDS = "id,user_id,title,status,creation_mode,global_objective,learning_objectives,target_audience,prerequisites,duration_hours,duration_days,modality,modality_details,access_delays,registration_methods,price,detailed_program,detailed_program_document_url,accessibility,pedagogical_resources,pedagogical_methods,evaluation_methods,positioning_mode,positioning_questions,contact_phone,contact_email,contact_website" as const;
 const SESSION_SELECT = `id,user_id,formation_id,start_date,end_date,modality,distance_mode,status,schedule_blocks,registration_token,registration_status,adaptation_needed,companies,beneficiaries,individual_beneficiaries,daily_formations(${FORMATION_FIELDS})` as const;
-const FORMATION_SELECT = `id,user_id,public_registration_token,public_registration_enabled,title,status,global_objective,target_audience,prerequisites,duration_hours,duration_days,modality,modality_details,access_delays,registration_methods,price,detailed_program,detailed_program_document_url,accessibility,pedagogical_resources,pedagogical_methods,evaluation_methods,positioning_mode,positioning_questions,contact_phone,contact_email,contact_website` as const;
+const FORMATION_SELECT = `id,user_id,public_registration_token,public_registration_enabled,title,status,creation_mode,global_objective,learning_objectives,target_audience,prerequisites,duration_hours,duration_days,modality,modality_details,access_delays,registration_methods,price,detailed_program,detailed_program_document_url,accessibility,pedagogical_resources,pedagogical_methods,evaluation_methods,positioning_mode,positioning_questions,contact_phone,contact_email,contact_website` as const;
 const APPLICATION_CONSENT_TEXT =
   "Je certifie l'exactitude des informations renseignées dans ce dossier de candidature et confirme ma demande d'inscription à cette formation.";
 const MAX_SIGNATURE_LENGTH = 500_000;
