@@ -194,6 +194,11 @@ function writer(sessions) {
         update(value) { assert.equal(table, "daily_sessions"); operation = "update"; payload = structuredClone(value); return this; },
         insert(value) { assert.equal(table, "daily_sessions"); operation = "insert"; payload = structuredClone(value); return this; },
         async maybeSingle() {
+          if (table === "daily_sessions") {
+            if (operation === "update") return this.single();
+            assert.deepEqual(filters.map(([key]) => key), ["id", "organisation_id"]);
+            return { data: structuredClone(sessions.find((item) => filters.every(([key, value]) => item[key] === value)) ?? null), error: null };
+          }
           assert.equal(table, "daily_formations");
           assert.deepEqual(filters, [["id", "f1", false], ["organisation_id", "of-a", false], ["status", "archived", true]]);
           const formation = { id: "f1", organisation_id: "of-a", status: "validated" };
@@ -204,7 +209,7 @@ function writer(sessions) {
           assert.ok(payload);
           let row;
           if (operation === "update") {
-            assert.deepEqual(filters.map(([key]) => key), ["id", "organisation_id"]);
+            assert.deepEqual(filters.map(([key]) => key), ["id", "organisation_id", "formation_id"]);
             row = sessions.find((item) => filters.every(([key, value]) => item[key] === value));
             assert.ok(row, "Update must target an existing session in the organisation");
             Object.assign(row, payload);
@@ -325,7 +330,7 @@ test("le helper du formulaire conserve les anciens identifiants et ne retire que
 
 test("POST et PATCH filtrent aussi les lignes dérivées dans les listes particuliers et entreprises", async () => {
   for (const method of ["POST", "PATCH"]) {
-    const sessions = method === "PATCH" ? [session("s1")] : [];
+    const sessions = method === "PATCH" ? [session("s1", { formation_id: "f1" })] : [];
     const write = writer(sessions);
     const legacy = { learner_id: "old", first_name: "Ancien", last_name: "Participant", email: "old@example.test", phone: "" };
     const derived = { ...legacy, learner_id: "new", participant_source: "daily_session_enrolments" };
