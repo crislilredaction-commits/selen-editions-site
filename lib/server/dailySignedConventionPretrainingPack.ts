@@ -166,5 +166,15 @@ export async function dispatchPretrainingPackAfterConventionSigned(
     .eq("status", "generated");
   if (updateError) throw new Error(updateError.message);
 
+  // Les documents canoniques de session deviennent visibles dans l'espace apprenant
+  // uniquement après signature complète du contrat/convention.
+  const { error: publishError } = await supabase.from("daily_documents")
+    .update({ status: "published" })
+    .eq("session_id", convention.session_id)
+    .eq("is_current", true)
+    .in("document_type", ["convocation","welcome_booklet","internal_regulations"])
+    .in("status", ["to_check","validated","active"]);
+  if (publishError) throw new Error(publishError.message);
+
   return { status: "sent", convocationId: convocation.id };
 }

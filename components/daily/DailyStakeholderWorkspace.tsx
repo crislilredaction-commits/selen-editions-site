@@ -11,6 +11,8 @@ const text = (value: unknown) => String(value ?? "").trim();
 const positioningDone = (value: unknown) => ["completed", "validated", "done"].includes(text(value));
 const docLabel = (doc: Json) =>
   doc.document_type === "convocation" ? "Ma convocation" :
+  doc.document_type === "welcome_booklet" ? "Livret d’accueil" :
+  doc.document_type === "internal_regulations" ? "Règlement intérieur" :
   doc.document_type === "registration_positioning" ? "Mon dossier d'inscription / positionnement" :
   doc.document_type === "training_program" ? "Programme de formation" :
   doc.document_type === "completion_certificate" ? "Certificat de réalisation" :

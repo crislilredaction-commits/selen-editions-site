@@ -24,7 +24,7 @@ type DailyConvocationEmailInput = {
 };
 
 export function prepareDailyConvocationEmail(input: DailyConvocationEmailInput) {
-  const subject = `Votre convocation et livret d'accueil · ${input.formationTitle}`;
+  const subject = `Vos documents avant formation sont disponibles · ${input.formationTitle}`;
   const period = input.endDate && input.endDate !== input.startDate
     ? `du ${formatDate(input.startDate)} au ${formatDate(input.endDate)}`
     : `le ${formatDate(input.startDate)}`;
@@ -34,7 +34,7 @@ export function prepareDailyConvocationEmail(input: DailyConvocationEmailInput) 
     `Vous trouverez en pièce jointe votre convocation et votre livret d'accueil pour la formation « ${input.formationTitle} » ${period}.`,
     input.sessionReference ? `Référence de session : ${input.sessionReference}` : "",
     "",
-    "Conservez ce document : il reprend les informations pratiques et les repères utiles pour votre participation.",
+    "La convocation est également jointe à cet email. Connectez-vous à votre espace apprenant pour retrouver l’ensemble des documents avant formation.",
     "",
     "Selen Editions",
   ].filter((line) => line !== "").join("\n");
@@ -42,7 +42,7 @@ export function prepareDailyConvocationEmail(input: DailyConvocationEmailInput) 
       <p>Bonjour ${escapeHtml(input.learnerName)},</p>
       <p>Vous trouverez en pièce jointe votre convocation et votre livret d'accueil pour la formation <strong>${escapeHtml(input.formationTitle)}</strong> ${escapeHtml(period)}.</p>
       ${input.sessionReference ? `<p>Référence de session : ${escapeHtml(input.sessionReference)}</p>` : ""}
-      <p>Conservez ce document : il reprend les informations pratiques et les repères utiles pour votre participation.</p>
+      <p>La convocation est également jointe à cet email. Connectez-vous à votre espace apprenant pour retrouver l’ensemble des documents avant formation.</p>
       <p>Selen Editions</p>
     </div>`;
   return { subject, text, html };

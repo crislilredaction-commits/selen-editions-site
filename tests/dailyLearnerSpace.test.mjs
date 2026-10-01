@@ -12,6 +12,8 @@ test("l’espace apprenant expose les documents utiles avant formation", async (
     assert.match(source, /registration_positioning/);
     assert.match(source, /training_program/);
     assert.match(source, /organisation_shared/);
+    assert.match(source, /welcome_booklet/);
+    assert.match(source, /internal_regulations/);
   }
 });
 
@@ -84,4 +86,16 @@ test("le positionnement interactif ouvre la route dédiée sans stockage parall�
   assert.match(workspace, /\/positionnement/);
   assert.match(workspace, /positioning_status/);
   assert.doesNotMatch(workspace, /positioning_answers\s*:/);
+});
+
+test("les éléments préformation du portail sont bloqués avant signature", async () => {
+  const resources = await read("app/api/daily-portal/[token]/resources/route.ts");
+  const route = await read("app/api/daily-portal/[token]/route.ts");
+  const pack = await read("lib/server/dailySignedConventionPretrainingPack.ts");
+  assert.match(resources,/signedConvention/);
+  assert.match(resources,/if \(!signedConvention\) return resources/);
+  assert.match(route,/welcome_booklet/);
+  assert.match(route,/internal_regulations/);
+  assert.match(pack,/\["convocation","welcome_booklet","internal_regulations"\]/);
+  assert.match(pack,/status: "published"/);
 });

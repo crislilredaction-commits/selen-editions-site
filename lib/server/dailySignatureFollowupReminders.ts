@@ -2,10 +2,13 @@ type AdminClient = any;
 
 export const DAILY_SIGNATURE_REMINDER_TYPE = "daily_signature_pending_72h";
 export const DAILY_SIGNATURE_J3_STAGE = "automatic_email_j3";
-export const DAILY_SIGNATURE_J6_STAGE = "phone_call_j6";
+export const DAILY_SIGNATURE_J6_STAGE = "automatic_email_j6";
+export const DAILY_SIGNATURE_URGENT_STAGE = "agent_urgent_before_start";
+export const DAILY_SIGNATURE_J9_STAGE = "phone_call_j9";
 const ACTIVE_STATUSES = ["draft", "ready", "postponed"];
 const J3_MS = 3 * 24 * 60 * 60 * 1000;
 const J6_MS = 6 * 24 * 60 * 60 * 1000;
+const J9_MS = 9 * 24 * 60 * 60 * 1000;
 
 function clean(value: unknown) {
   return String(value ?? "").trim();
@@ -61,7 +64,7 @@ export async function ensureDailySignatureFollowupReminder(admin: AdminClient, i
     prestation_type: "daily_signature",
     prestation_id: input.signatureId,
     stage_label: "Relance email automatique J+3",
-    expected_action: "Attendre la relance automatique ou la signature",
+    expected_action: "Aucune action agent sauf si le début de formation intervient avant la prochaine relance",
     metadata: {
       source: "daily",
       organisation_id: input.organisationId,
@@ -89,35 +92,85 @@ export async function ensureDailySignatureFollowupReminder(admin: AdminClient, i
   return { created: true, reminder };
 }
 
-export async function moveDailySignatureReminderToPhoneCall(admin: AdminClient, input: {
+export async function moveDailySignatureReminderToJ6Email(admin: AdminClient, input: {
   reminderId: string;
   initialSentAt: string;
   documentName?: string | null;
-  automaticEmailSentAt: string;
+  j3EmailSentAt: string;
   metadata?: Record<string, unknown> | null;
 }) {
   const initial = new Date(input.initialSentAt);
   const dueAt = new Date(initial.getTime() + J6_MS).toISOString();
   const document = clean(input.documentName) || "document de formation";
-  const bodyText = `La relance email automatique J+3 a été envoyée. Si ${document} reste non signé à J+6, un agent doit appeler le client.`;
+  const bodyText = `La relance email automatique J+3 a été effectuée. Si ${document} reste non signé à J+6, une seconde relance email automatique est prévue.`;
   const { error } = await admin.from("client_reminders").update({
     status: "postponed",
     due_at: dueAt,
-    subject: `Appel à effectuer à J+6 — ${document}`,
+    subject: `Deuxième relance email à J+6 — ${document}`,
     body_html: `<p>${escapeHtml(bodyText)}</p>`,
     body_text: bodyText,
-    stage_label: "Appel téléphonique agent J+6",
-    expected_action: "Appeler le client si la signature est toujours absente",
+    stage_label: "Deuxième relance email automatique J+6",
+    expected_action: "Aucune action agent sauf si le début de formation intervient avant J+9",
     metadata: {
       ...(input.metadata ?? {}),
       followup_stage: DAILY_SIGNATURE_J6_STAGE,
       initial_sent_at: input.initialSentAt,
-      automatic_email_sent_at: input.automaticEmailSentAt,
+      j3_email_sent_at: input.j3EmailSentAt,
+      reason: `Deuxième relance email à effectuer si ${document} reste non signé`,
+    },
+  }).eq("id", input.reminderId).eq("status", "postponed");
+  if (error) throw new Error(error.message);
+  return { dueAt };
+}
+
+export async function moveDailySignatureReminderToJ9PhoneCall(admin: AdminClient, input: {
+  reminderId: string;
+  initialSentAt: string;
+  documentName?: string | null;
+  j6EmailSentAt: string;
+  metadata?: Record<string, unknown> | null;
+}) {
+  const initial = new Date(input.initialSentAt);
+  const dueAt = new Date(initial.getTime() + J9_MS).toISOString();
+  const document = clean(input.documentName) || "document de formation";
+  const bodyText = `Les relances email J+3 et J+6 ont été effectuées. Si ${document} reste non signé à J+9, l’agent doit appeler le client.`;
+  const { error } = await admin.from("client_reminders").update({
+    status: "postponed",
+    due_at: dueAt,
+    subject: `Appel à effectuer à J+9 — ${document}`,
+    body_html: `<p>${escapeHtml(bodyText)}</p>`,
+    body_text: bodyText,
+    stage_label: "Appel téléphonique agent J+9",
+    expected_action: "Appeler le client si la signature est toujours absente",
+    metadata: {
+      ...(input.metadata ?? {}),
+      followup_stage: DAILY_SIGNATURE_J9_STAGE,
+      initial_sent_at: input.initialSentAt,
+      j6_email_sent_at: input.j6EmailSentAt,
       reason: `Appel téléphonique à effectuer si ${document} reste non signé`,
     },
   }).eq("id", input.reminderId).eq("status", "postponed");
   if (error) throw new Error(error.message);
   return { dueAt };
+}
+
+export async function escalateDailySignatureReminderBeforeStart(admin: AdminClient, input: {
+  reminderId: string;
+  trainingStartAt: string;
+  metadata?: Record<string, unknown> | null;
+}) {
+  const bodyText = `La formation débute le ${input.trainingStartAt} avant la prochaine échéance automatique alors que la signature est toujours absente. Intervention agent requise.`;
+  const { error } = await admin.from("client_reminders").update({
+    status: "ready",
+    due_at: new Date().toISOString(),
+    subject: "URGENT — signature manquante avant début de formation",
+    body_html: `<p>${escapeHtml(bodyText)}</p>`,
+    body_text: bodyText,
+    stage_label: "Signature urgente avant début de formation",
+    expected_action: "Contacter immédiatement le signataire et sécuriser la signature avant le début de formation",
+    metadata: { ...(input.metadata ?? {}), followup_stage: DAILY_SIGNATURE_URGENT_STAGE, training_start_at: input.trainingStartAt, reason: bodyText },
+  }).eq("id", input.reminderId).in("status", ACTIVE_STATUSES);
+  if (error) throw new Error(error.message);
 }
 
 export async function resolveDailySignatureFollowupReminder(admin: AdminClient, signatureId: string, resolvedAt = new Date().toISOString()) {
