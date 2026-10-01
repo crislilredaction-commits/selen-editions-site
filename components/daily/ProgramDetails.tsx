@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 type FormationProgram = {
   title?: string | null;
   status?: string | null;
+  creation_mode?: string | null;
   global_objective?: string | null;
   target_audience?: string | null;
   prerequisites?: string | null;
@@ -117,7 +118,7 @@ export default function ProgramDetails({ token }: { token: string }) {
           <Value label="Moyens pédagogiques et techniques" value={formation.pedagogical_resources} />
           <Value label="Évaluation" value={formation.evaluation_methods} />
           <Value label="Accessibilité" value={formation.accessibility} />
-          {formation.status === "validated" ? (
+          {formation.status === "validated" && formation.creation_mode !== "program_import" ? (
             <div style={styles.downloadBox}>
               <p style={styles.downloadNotice}><strong>Vous envisagez de faire financer votre formation ?</strong> Téléchargez obligatoirement le programme afin de pouvoir le transmettre à votre financeur.</p>
               <a className="btn-ink" href={`/api/daily-registration/${token}/program-pdf`} style={styles.link}>
