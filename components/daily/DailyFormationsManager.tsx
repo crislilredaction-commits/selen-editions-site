@@ -115,7 +115,7 @@ export default function DailyFormationsManager() {
       const assessmentData = await assessmentRes.json().catch(() => ({})); if (!assessmentRes.ok) throw new Error(assessmentData.error ?? "La formation est enregistrée, mais l’évaluation finale n’a pas pu être attachée.");
       if (!editingId) { router.push(`/client/daily/sessions/new?formation=${encodeURIComponent(formationId)}`); return; }
       const wasValidated = editingOriginalStatus === "validated";
-      resetForm(true); setMessage(wasValidated ? "Nouvelle version envoyée à Selen. La version validée actuelle reste publiée jusqu’à validation." : "Formation mise à jour et renvoyée à Selen pour vérification.");
+      resetForm(true); setMessage(wasValidated ? "Formation modifiée et renvoyée à Selen pour validation." : "Formation mise à jour et renvoyée à Selen pour vérification.");
       await load();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Enregistrement impossible."); }
     finally { setSaving(false); }
@@ -140,7 +140,7 @@ export default function DailyFormationsManager() {
     <section style={s.accordion}>
       <button type="button" onClick={() => formOpen ? resetForm(true) : startNew()} style={s.accordionButton} aria-expanded={formOpen}><span><b>{editingId ? "Modifier la formation" : "Créer une nouvelle formation"}</b><small>{formOpen ? "Refermer le formulaire" : "Ouvrir le formulaire de création"}</small></span><span style={s.chevron}>{formOpen ? "−" : "+"}</span></button>
       {formOpen ? <form onSubmit={save} style={s.formPanel}>
-        {editingOriginalStatus === "validated" ? <InfoBox>La version actuellement validée reste publiée et conserve son lien d’inscription jusqu’à ce que Selen valide vos modifications.</InfoBox> : null}
+        {editingOriginalStatus === "validated" ? <InfoBox>Vos modifications seront enregistrées sur cette formation puis renvoyées à Selen pour validation.</InfoBox> : null}
         {editingOriginalStatus === "correction_requested" ? <InfoBox><b>Retour Selen :</b> {editingFormation?.validation_note || "Des corrections sont demandées."}<br />Vos corrections repartent en validation sans créer une version supplémentaire.</InfoBox> : null}
 
         <SectionTitle title="Le programme" subtitle="Les informations utilisées dans le programme officiel et les documents de formation." />
