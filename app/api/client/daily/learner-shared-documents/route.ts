@@ -29,7 +29,7 @@ export async function GET(req:Request){
   const[docsR,sessionsR,enrolmentsR]=await Promise.all([
     context.admin.from("daily_documents").select("id,logical_name,status,created_at,metadata,mime_type,size_bytes").eq("organisation_id",context.organisationId).eq("document_type","organisation_shared").eq("is_current",true).neq("status","archived").order("created_at",{ascending:false}),
     context.admin.from("daily_sessions").select("id,internal_reference,start_date,daily_formations(title)").eq("organisation_id",context.organisationId).neq("status","archived").order("start_date",{ascending:false}),
-    context.admin.from("daily_session_enrolments").select("id,session_id,learner_id,status,contracting_party_type,company_name,daily_learners(id,first_name,last_name,email)").eq("organisation_id",context.organisationId).not("status","in","(cancelled,declined,abandoned)"),
+    context.admin.from("daily_session_enrolments").select("id,session_id,learner_id,status,daily_learners(id,first_name,last_name,email)").eq("organisation_id",context.organisationId).not("status","in","(cancelled,declined,abandoned)"),
   ]);
   const error=docsR.error??sessionsR.error??enrolmentsR.error;if(error)return NextResponse.json({error:error.message},{status:500});return NextResponse.json({documents:docsR.data??[],sessions:sessionsR.data??[],enrolments:enrolmentsR.data??[]});
 }

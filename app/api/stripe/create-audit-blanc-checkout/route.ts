@@ -7,16 +7,17 @@ import {
 import { fulfillFreeAuditBlanc } from "@/lib/server/paymentFulfillment";
 import { recordSelenPayment } from "@/lib/server/selenPayments";
 
-const stripeSecretKey = process.env.STRIPE_SECRET_KEY?.trim();
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
-if (!stripeSecretKey) {
-  throw new Error(
-    "STRIPE_SECRET_KEY est manquante dans les variables d’environnement.",
-  );
+function getStripe() {
+  const stripeSecretKey = process.env.STRIPE_SECRET_KEY?.trim();
+  if (!stripeSecretKey) {
+    throw new Error(
+      "STRIPE_SECRET_KEY est manquante dans les variables d’environnement.",
+    );
+  }
+  return new Stripe(stripeSecretKey);
 }
-
-const stripe = new Stripe(stripeSecretKey);
 
 type AuditBlancOffer = "direct" | "reserved_after_auto_audit";
 
@@ -110,6 +111,7 @@ export async function POST(request: Request) {
       });
     }
 
+    const stripe = getStripe();
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],

@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 
-const stripeSecretKey = process.env.STRIPE_SECRET_KEY?.trim();
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
-if (!stripeSecretKey) {
-  throw new Error("STRIPE_SECRET_KEY est manquante dans les variables d'environnement.");
+function getStripe() {
+  const stripeSecretKey = process.env.STRIPE_SECRET_KEY?.trim();
+  if (!stripeSecretKey) {
+    throw new Error("STRIPE_SECRET_KEY est manquante dans les variables d’environnement.");
+  }
+  return new Stripe(stripeSecretKey);
 }
-
-const stripe = new Stripe(stripeSecretKey);
 const DAILY_BASE_AMOUNT_CENTS = 6900;
 const DAILY_UPPER_AMOUNT_CENTS = 14900;
 const DAILY_ANNUAL_LIMIT = 150;
@@ -49,6 +50,7 @@ export async function POST(request: Request) {
       },
     };
 
+    const stripe = getStripe();
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       payment_method_types: ["card"],

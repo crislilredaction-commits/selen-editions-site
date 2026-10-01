@@ -23,14 +23,12 @@ function portalEmail(input: { learnerName: string; formationTitle: string; porta
   const subject = `Votre espace apprenant · ${input.formationTitle}`;
   const greeting = input.learnerName ? `Bonjour ${input.learnerName},` : "Bonjour,";
   const body = `Votre inscription à la formation « ${input.formationTitle} » est enregistrée. Vous pouvez désormais accéder à votre espace apprenant Selen Daily.`;
-  const instructions = "À la première connexion, cliquez sur « Activer mon accès », puis choisissez votre mot de passe. Utilisez de préférence 12 caractères ou plus avec majuscule, minuscule, chiffre et symbole. Si le mot de passe est refusé, choisissez-en un autre sur la même page.";
-  const textBody = [greeting, "", body, "", `Accéder à mon espace : ${input.portalUrl}`, "", instructions, "", "Si vous avez reçu plusieurs messages, utilisez le dernier. Conservez ce lien personnel et ne le transmettez pas.", "", "Selen Editions"].join("\n");
+  const textBody = [greeting, "", body, "", `Accéder à mon espace : ${input.portalUrl}`, "", "Conservez ce lien personnel et ne le transmettez pas.", "", "Selen Editions"].join("\n");
   const htmlBody = `<div style="font-family:Arial,sans-serif;color:#3e2a1f;line-height:1.6;max-width:640px">
     <p>${escapeHtml(greeting)}</p>
     <p>${escapeHtml(body)}</p>
     <p><a href="${escapeHtml(input.portalUrl)}" style="display:inline-block;padding:12px 18px;background:#4f392d;color:#fff;text-decoration:none;border-radius:6px;font-weight:700">Accéder à mon espace apprenant</a></p>
-    <p>${escapeHtml(instructions)}</p>
-    <p style="font-size:13px;color:#70503b">Si vous avez reçu plusieurs messages, utilisez le dernier. Ce lien est personnel. Ne le transmettez pas.</p>
+    <p style="font-size:13px;color:#70503b">Ce lien est personnel. Ne le transmettez pas.</p>
     <p>Selen Editions</p>
   </div>`;
   return { subject, text: textBody, html: htmlBody };
