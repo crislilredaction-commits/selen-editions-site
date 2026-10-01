@@ -62,12 +62,13 @@ async function provisionLearnerAccess(access: Awaited<ReturnType<typeof getAcces
   try {
     return await sendLearnerPortalAccessForRegistrationRequest(access.admin, {
       registrationRequestId: requestId,
+      organisationId: access.organisationId,
       origin: new URL(req.url).origin,
       createdBy: access.user.id,
     });
   } catch (cause) {
     console.error("Daily : inscription créée mais accès apprenant non finalisé", cause);
-    return [];
+    return [{ enrolmentId: "", status: "send_failed" as const }];
   }
 }
 
@@ -194,6 +195,8 @@ export async function POST(req: Request) {
       const { data: formation, error: formationError } = await access.admin.from("daily_formations").select("organisation_id").eq("id", requestRow.formation_id).single();
       if (formationError || formation?.organisation_id !== access.organisationId) return NextResponse.json({ error: "Candidature hors de votre organisme." }, { status: 403 });
       if (requestRow.decision_status !== "accepted") return NextResponse.json({ error: "La candidature doit d'abord être acceptée." }, { status: 409 });
+      const { data: sessionScope, error: scopeError } = await access.admin.from("daily_sessions").select("id,organisation_id,formation_id").eq("id", sessionId).eq("organisation_id", access.organisationId).eq("formation_id", requestRow.formation_id).maybeSingle();
+      if (scopeError || !sessionScope) return NextResponse.json({ error: "Session hors du périmètre de cette candidature." }, { status: 403 });
       const { data, error } = await access.admin.rpc("daily_materialize_registration_request", { p_request_id: requestId, p_session_id: sessionId });
       if (error) return NextResponse.json({ error: error.message }, { status: 409 });
       const { learnerAccess, enterpriseAccess } = await provisionAcceptedAccesses(access, requestId, sessionId, req);
@@ -234,15 +237,18 @@ export async function POST(req: Request) {
 
     if (decision === "accepted") {
       const { data: acceptedRequest, error: acceptedRequestError } = await access.admin.from("daily_formation_registration_requests").select("attached_session_id").eq("id", requestId).single();
-      if (acceptedRequestError) throw new Error(acceptedRequestError.message);
+      if (acceptedRequestError) return NextResponse.json({ ok: true, result: data, materialized: false, learner_access: [{ status: "send_failed" }] });
       if (acceptedRequest?.attached_session_id) {
         const { data: materialized, error: materializedError } = await access.admin.rpc("daily_materialize_registration_request", { p_request_id: requestId, p_session_id: acceptedRequest.attached_session_id });
         if (!materializedError) {
           const { learnerAccess, enterpriseAccess } = await provisionAcceptedAccesses(access, requestId, acceptedRequest.attached_session_id, req);
           return NextResponse.json({ ok: true, result: data, materialized: true, materialization: materialized, learner_access: learnerAccess, enterprise_access: enterpriseAccess });
         }
-        return NextResponse.json({ ok: true, result: data, materialized: false, materialization_error: materializedError.message });
+        const learnerAccess = await provisionLearnerAccess(access, requestId, req);
+        return NextResponse.json({ ok: true, result: data, materialized: false, materialization_error: materializedError.message, learner_access: learnerAccess });
       }
+      const learnerAccess = await provisionLearnerAccess(access, requestId, req);
+      return NextResponse.json({ ok: true, result: data, materialized: false, learner_access: learnerAccess });
     }
     return NextResponse.json({ ok: true, result: data, materialized: false });
   } catch (cause) {
