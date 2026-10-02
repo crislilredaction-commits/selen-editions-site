@@ -1,0 +1,15 @@
+# Daily — ouvrir la fiche apprenant depuis une session
+
+Le cahier maître consolidé Selen actuel demande que les apprenants affichés dans une session ouvrent leur fiche canonique. Main réel vérifié : `d27b3269bb8d9478d40e687de525c37eb942892e`, après #292 et #293. Le panneau « Preuves apprenants » de chaque session affichait les identités issues de l'API autorisée sans accès direct à la fiche du répertoire.
+
+Le panneau conserve sa source et ajoute « Ouvrir la fiche apprenant » pour chaque apprenant effectivement joint à l'inscription. Il accepte les deux formes objet/tableau de la relation canonique ; aucune fiche fictive n'est proposée lorsque la relation est absente. La destination est le répertoire existant `/client/daily/apprenants?learner=...`, avec l'identifiant encodé.
+
+Le répertoire charge ses mêmes API via assistanceFetch, puis n'ouvre que la fiche trouvée dans les apprenants retournés par le périmètre autorisé. L'identifiant d'URL n'est pas utilisé pour obtenir d'autres données ou des privilèges. Le changement de paramètre ouvre la nouvelle fiche ; une fermeture manuelle n'est pas annulée par un rendu ; une fiche inconnue affiche un message et n'ouvre aucun dossier ; le retour à un identifiant connu fonctionne. Le défilement vise l'article déjà rendu. Un Suspense explicite entoure useSearchParams pour le pré-rendu Next.js.
+
+Les deux composants réutilisent les mêmes contrôles serveur, l'assistance, les listes et historiques, les preuves et les règles d'abandon. Aucun fichier API, Auth, RLS, migration, secret ou workflow n'est changé ; aucun accès privé ou token n'est généré. Ce lot ferme le lien côté page session OF ; il ne prétend pas fermer les volets distincts Studio, formateur ou accès délégué sensible du cahier maître.
+
+Vérifications Work : 85 tests existants réussis, 0 échec, 0 ignoré (dailyCollapsedFlows, dailyManualEnrolmentSessionVisibility, dailyManualEnrolmentPartyType, dailySessionDossierWorkspace, dailyPretrainingA10, dailyLearnerPortalAccess, dailyBoundedDeletion, dailyTrainerRecordEnhancements). Aucun test existant modifié. `git diff --check` vert.
+
+Recette contrôlée de 11 scénarios sur les vrais composants TSX transpilés en VM avec hooks et DOM contrôlés : sélection et défilement après les deux GET existants ; fermeture manuelle ; changement de paramètre sans requête supplémentaire ; fiche absente ; retour à une fiche connue ; arrivée normale sans sélection ; refus de chargement ; lien issu de la relation objet puis tableau ; relation absente ; historique d'abandon conservé. Les imports sont fermés, seuls deux GET de fixtures sont autorisés et toute mutation ou requête réseau réelle est interdite. Aucun email réel, aucune mutation DB. Cette recette n'est pas présentée comme une session navigateur authentifiée de production.
+
+La correction est bornée aux deux composants, préparée par Work pendant l'indisponibilité de Codex sur quota et validée par le workflow Lenovo existant. Suite complète, typecheck, build, GitHub, preview Vercel et production après fusion doivent être contrôlés sur les SHA réellement publiés avant livraison.
