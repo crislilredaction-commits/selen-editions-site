@@ -29,6 +29,7 @@ type RequestRow = {
   agent_review_requested_at?: string | null;
   agent_analysis_completed_at?: string | null;
   agent_analysis_summary?: Record<string, unknown> | null;
+  positioning_answers?: unknown;
 };
 
 function jsonArray(value: unknown): string[] {
@@ -130,7 +131,7 @@ export async function GET() {
 
     const [{ data: requests, error: requestError }, { data: sessions, error: sessionError }] = await Promise.all([
       access.admin.from("daily_formation_registration_requests")
-        .select("id,formation_id,response_type,respondent_first_name,respondent_last_name,respondent_email,company_name,participants,adaptation_needed,submitted_at,attached_session_id,materialized_at,status,decision_status,accepted_at,agent_review_requested_at,agent_analysis_completed_at,agent_analysis_summary")
+        .select("id,formation_id,response_type,respondent_first_name,respondent_last_name,respondent_email,company_name,participants,adaptation_needed,submitted_at,attached_session_id,materialized_at,status,decision_status,accepted_at,agent_review_requested_at,agent_analysis_completed_at,agent_analysis_summary,positioning_answers")
         .in("formation_id", formationIds).neq("status", "archived").order("submitted_at", { ascending: false }),
       access.isManager
         ? access.admin.from("daily_sessions").select("id,formation_id,internal_reference,start_date,end_date,status").eq("organisation_id", access.organisationId).in("formation_id", formationIds).neq("status", "archived").order("start_date", { ascending: true })
@@ -158,20 +159,50 @@ export async function GET() {
     const materializedCount = new Map<string, number>();
     for (const row of materializations ?? []) materializedCount.set(row.registration_request_id, (materializedCount.get(row.registration_request_id) ?? 0) + 1);
 
+    // Return verified file descriptors, never the raw answers or storage paths.
+    const proofsFor = (row: RequestRow) => {
+      const answers = row.positioning_answers as Record<string, unknown> | null;
+      return answers?.mode === "off_platform" && Array.isArray(answers.external_documents)
+        ? answers.external_documents.filter((proof): proof is Record<string, unknown> => Boolean(proof && typeof proof === "object" && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(String(proof.document_id ?? "")))) : [];
+    };
+    const proofIds = [...new Set(requestRows.flatMap(row => proofsFor(row).map(proof => String(proof.document_id))))];
+    const { data: proofDocuments, error: proofError } = proofIds.length
+      ? await access.admin.from("daily_documents").select("id,organisation_id,formation_id,document_type,linked_object_type,linked_object_id,enrolment_id,bucket,storage_path,sha256,metadata")
+          .eq("organisation_id", access.organisationId).in("formation_id", formationIds).in("id", proofIds).neq("status", "archived")
+      : { data: [], error: null };
+    if (proofError) throw new Error("Lecture des documents de positionnement impossible.");
+    const documentsById = new Map((proofDocuments ?? []).map(document => [document.id, document]));
+
     const actorTypes: ActorType[] = [];
     if (access.isManager) actorTypes.push("organisation");
     return NextResponse.json({
       actor_types: actorTypes,
       sessions: (sessions ?? []) as SessionRow[],
-      requests: requestRows.map((row) => ({
-        ...row,
+      requests: requestRows.map((row) => {
+        const { positioning_answers, ...visible } = row;
+        const answers = positioning_answers as Record<string, unknown> | null;
+        const positioning_documents = proofsFor(row).flatMap(proof => {
+          const document = documentsById.get(String(proof.document_id));
+          const metadata = document?.metadata as Record<string, unknown> | null;
+          const scopeMatches = document?.document_type === "positioning_application_evidence"
+            ? document.linked_object_type === "registration_request" && document.linked_object_id === row.id
+            : document?.document_type === "positioning_evidence" && metadata?.source_request_id === row.id && metadata?.source_request_kind === "formation"
+              && document.linked_object_type === "enrolment" && document.linked_object_id === document.enrolment_id
+              && (materializations ?? []).some(mapping => mapping.registration_request_id === row.id && mapping.enrolment_id === document.enrolment_id);
+          if (!document || !scopeMatches || document.formation_id !== row.formation_id || document.bucket !== "documents" || !document.storage_path.startsWith(`daily/${access.organisationId}/`)
+            || document.sha256 !== proof.sha256 || metadata?.source !== "daily_own_positioning" || metadata?.source_document_id !== answers?.source_document_id || metadata?.submission_fingerprint !== answers?.submission_fingerprint) return [];
+          return [{ id: document.id, name: String(metadata.original_filename || "Positionnement rempli") }];
+        });
+        return {
+        ...visible,
+        positioning_documents,
         applicant_label: applicantLabel(row),
         formation_title: formationById.get(row.formation_id)?.title ?? "Formation",
         decisions: decisionsByRequest.get(row.id) ?? [],
         can_decide: row.decision_status === "ready_for_of",
         can_materialize: access.isManager && row.decision_status === "accepted" && !row.materialized_at,
         materialized_count: materializedCount.get(row.id) ?? 0,
-      })),
+      }; }),
     });
   } catch (cause) {
     return NextResponse.json({ error: cause instanceof Error ? cause.message : "Chargement des candidatures impossible." }, { status: 500 });

@@ -1,3 +1,4 @@
+import { loadOwnPositioning } from "./helpers/loadOwnPositioning.mjs";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -78,6 +79,7 @@ function fixture(options = {}) {
   const publicHandlers = compile(publicSource, {
     'next/server': require('next/server'), crypto: require('node:crypto'),
     '@/lib/server/clientNdaAccess': { getAdminSupabase: () => admin },
+    '@/lib/server/dailyOwnPositioning': loadOwnPositioning(),
     '@/lib/server/dailyRegistrationEmails': { sendDailyRegistrationConfirmation() { assert.fail('Email forbidden'); } },
     '@/lib/dailyBeneficiarySiret': {}, '@/lib/dailyRegistration': {},
   });

@@ -1,3 +1,4 @@
+import { loadOwnPositioning } from "./helpers/loadOwnPositioning.mjs";
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
@@ -109,7 +110,8 @@ test('public API selects and returns actual import mode and objectives in both c
     const db = database({ session, program: { ...formation, creation_mode: 'program_import' } });
     const { GET } = load('app/api/daily-registration/[token]/route.ts', {
       crypto: {}, 'next/server': { NextResponse: Response }, '@/lib/server/clientNdaAccess': { getAdminSupabase: () => db },
-      '@/lib/server/dailyRegistrationEmails': {}, '@/lib/dailyBeneficiarySiret': {}, '@/lib/dailyRegistration': {},
+      '@/lib/server/dailyOwnPositioning': loadOwnPositioning(),
+    '@/lib/server/dailyRegistrationEmails': {}, '@/lib/dailyBeneficiarySiret': {}, '@/lib/dailyRegistration': {},
     });
     const data = await (await GET(null, { params: Promise.resolve({ token: 'token' }) })).json();
     assert.equal(data.session.daily_formations.creation_mode, 'program_import');
