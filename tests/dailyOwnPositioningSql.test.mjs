@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
 
-const migration = await fs.readFile(new URL('../supabase/migrations/20261002151639_daily_own_positioning_evidence.sql', import.meta.url), 'utf8');
+const migration = await fs.readFile(new URL('../supabase/migrations/20261002160230_daily_own_positioning_evidence.sql', import.meta.url), 'utf8');
 const schema = await fs.readFile(new URL('./fixtures/dailyOwnPositioningSchema.sql', import.meta.url), 'utf8');
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const ORG=id(1), USER=id(2), FORM=id(3), SESSION=id(4), SOURCE=id(5), REQUEST=id(6), DOC=id(7);
