@@ -1,0 +1,11 @@
+# Daily — aide sur la partie contractante de l'inscription
+
+Base réelle vérifiée : main `081a6b15239bacbb8cee6b59d75f65a7787e41bd`, après fusion de #292. Le cahier maître consolidé et son complément de recette actuel ont été relus dans Drive. La règle canonique donnée par Lil prime sur les anciens paragraphes SIRET de l'historique : le choix particulier/entreprise appartient à chaque inscription à une session, distinct du financement et de l'identité de l'apprenant.
+
+Deux textes encore affichés comme règles générales contredisaient le générateur actuel : le layout de génération et l'écran des documents avant formation. Ils indiquaient que la seule présence d'un SIRET déterminait contrat ou convention. Ils expliquent maintenant le choix de l'inscription : Particulier → contrat individuel ; Entreprise → convention avec l'entreprise commanditaire. La compatibilité des anciennes inscriptions sans type renseigné est indiquée séparément.
+
+Le helper, le générateur, les formulaires, l'API, les données et le schéma ne changent pas. La mention spécifique du contrôle SIRET historique dans le générateur reste intacte ; aucun test existant n'a été modifié. Cette correction de texte ne clôt pas le blocage distinct de l'inscription publique et de l'accès entreprise.
+
+Vérification Work : rendu des deux véritables composants TSX dans une VM aux imports fermés, avec effets, réseau et mutations interdits. Les deux textes affichent les choix de chaque inscription, le commanditaire, la distinction financement/SIRET personnel et la compatibilité historique ; les deux anciennes règles générales ne sont plus affichées. `git diff --check` réussi. Les tests existants dailyManualEnrolmentPartyType, dailyContractConventionDistinction et dailyPretrainingA10 sont verts. Aucun nouveau test reprenant simplement le texte n'a été ajouté.
+
+Codex est indisponible sur quota après la mission #29. Cette correction bornée de deux paragraphes est préparée par Work puis soumise au workflow Lenovo Selen local check existant ; aucun nouveau workflow, secret, appel Codex, email ou changement d'infrastructure. La suite complète, le typecheck, le build, les contrôles GitHub, la preview et la production après fusion restent à vérifier sur les commits réels.

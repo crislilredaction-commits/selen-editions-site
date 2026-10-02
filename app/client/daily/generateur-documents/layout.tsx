@@ -9,7 +9,7 @@ export default function DailyDocumentGeneratorLayout({children}:{children:React.
       </div>
       <div style={info}>
         <strong>Contrat ou convention ?</strong>
-        <p style={{margin:".35rem 0 0"}}>Daily choisit automatiquement le document contractuel à générer à partir du SIRET renseigné pour le client : avec SIRET, convention ; sans SIRET, contrat de formation professionnelle.</p>
+        <p style={{margin:".35rem 0 0"}}>Daily utilise le choix de partie contractante de chaque inscription à une session : « Particulier » donne un contrat individuel ; « Entreprise » donne une convention avec l’entreprise commanditaire. Ce choix est indépendant du financement et du SIRET personnel de l’apprenant. Les anciennes inscriptions sans type renseigné conservent la règle historique.</p>
       </div>
       <div style={info}>
         <strong>À quoi sert la génération de dossier ?</strong>
