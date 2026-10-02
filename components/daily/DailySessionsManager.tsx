@@ -472,13 +472,14 @@ function SessionColumn(props: {
 function EvidencePanel({ session, loading, context, upload, confirmAbandonment, uploadingKey, abandoningKey }: { session: Session; loading: boolean; context: EvidenceContext | null; upload: (sessionId: string, enrolmentId: string, kind: "positioning" | "learning_assessment", file: File | null) => Promise<void>; confirmAbandonment: (sessionId: string, enrolmentId: string, occurredAt: string, reason: string) => Promise<void>; uploadingKey: string; abandoningKey: string }) {
   if (loading) return <div style={styles.evidencePanel}><LoadingMascot fullScreen={false} message="Sélion classe les dossiers apprenants…" /></div>;
   if (!context || context.enrolments.length === 0) return <div style={styles.evidencePanel}><p style={styles.muted}>Aucun apprenant rattaché à cette session pour le moment.</p></div>;
-  return <div style={styles.evidencePanel}><div><b>Documents et preuves par apprenant</b><p style={styles.muted}>Les preuves déjà acquises restent conservées même si une inscription est abandonnée.</p></div>{context.enrolments.map((enrolment) => {
+  return <div style={styles.evidencePanel}><div><b>Apprenants de la session · fiches et preuves</b><p style={styles.muted}>Les preuves déjà acquises restent conservées même si une inscription est abandonnée.</p></div>{context.enrolments.map((enrolment) => {
     const positioningDocs = context.documents.filter((doc) => doc.enrolment_id === enrolment.id && doc.document_type === "positioning_evidence");
     const assessmentDocs = context.documents.filter((doc) => doc.enrolment_id === enrolment.id && doc.document_type === "learning_assessment_evidence");
     const hasAssessmentForm = context.assessmentResponses.some((response) => response.enrolment_id === enrolment.id);
     const abandoned = enrolment.status === "abandoned";
+    const learner = learnerOf(enrolment);
     return <div key={enrolment.id} style={{ ...styles.learnerRow, ...(abandoned ? styles.learnerAbandoned : {}) }}>
-      <div><b>{learnerName(enrolment)}</b><small>{learnerOf(enrolment)?.email ?? ""}</small>{abandoned ? <span style={styles.abandonedBadge}>Abandon confirmé</span> : null}</div>
+      <div><b>{learnerName(enrolment)}</b><small>{learner?.email ?? ""}</small>{learner?.id ? <Link style={styles.secondary} href={`/client/daily/apprenants?learner=${encodeURIComponent(learner.id)}`}>Ouvrir la fiche apprenant →</Link> : null}{abandoned ? <span style={styles.abandonedBadge}>Abandon confirmé</span> : null}</div>
       <UploadCell label="Test de positionnement" done={positioningDocs.length > 0 || ["completed", "validated", "done"].includes(String(enrolment.positioning_status ?? ""))} busy={uploadingKey === `${enrolment.id}:positioning`} disabled={abandoned} onFile={(file) => void upload(session.id, enrolment.id, "positioning", file)} />
       <UploadCell label="Évaluation finale" done={assessmentDocs.length > 0 || hasAssessmentForm} busy={uploadingKey === `${enrolment.id}:learning_assessment`} disabled={abandoned} onFile={(file) => void upload(session.id, enrolment.id, "learning_assessment", file)} />
       <AbandonmentControl enrolment={enrolment} sessionId={session.id} busy={abandoningKey === `${enrolment.id}:abandonment`} onConfirm={confirmAbandonment} />
