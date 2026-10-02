@@ -1,3 +1,4 @@
+import { projectCommunicationMetadata } from "@/lib/daily/communicationMetadata";
 import { NextResponse } from "next/server";
 import { blockedAgentAssistanceResponse, getAssistanceTokenFromRequest } from "@/lib/server/agentAssistance";
 import { getDailyOrganisationReadContext } from "@/lib/server/dailyOrganisationContext";
@@ -89,7 +90,10 @@ export async function GET(req: Request) {
     dossiers: dossiers ?? [],
     checklist: checklist ?? [],
     formations: formations ?? [],
-    communications: communications ?? [],
+    communications: (communications ?? []).map((row) => ({
+      ...row,
+      metadata: projectCommunicationMetadata(row.communication_type, row.metadata),
+    })),
     communicationDocuments: communicationDocuments ?? [],
     documents: documents ?? [],
     signatures: signatures ?? [],

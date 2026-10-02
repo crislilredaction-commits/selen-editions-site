@@ -1,5 +1,6 @@
 import { sendDailyConvocation } from "@/lib/server/dailyPretrainingEmails";
-import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
+import { deliverConvocationWithProof } from "@/lib/server/dailyConvocationEmailProof";
+import type { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 
 type AdminSupabase = ReturnType<typeof getAdminSupabase>;
 
@@ -10,10 +11,13 @@ type DispatchResult =
   | { status: "missing_recipient_email" }
   | { status: "already_sent"; convocationId: string }
   | { status: "sent"; convocationId: string }
+  | { status: "pending"; convocationId: string; reason: string }
   | { status: "send_failed"; convocationId: string; reason: string };
 
 type FormationRelation = { title?: unknown };
 type SessionRelation = {
+  organisation_id?: unknown;
+  status?: unknown;
   internal_reference?: unknown;
   start_date?: unknown;
   end_date?: unknown;
@@ -40,8 +44,7 @@ function firstRelation<T>(value: T | T[] | null | undefined): T | null {
  * attendues pour une convention sont effectivement enregistrées.
  *
  * V1 : le livret d'accueil est annexé à la convocation générée par Daily.
- * Le statut `sent` de la convocation sert de garde-fou de réémission lors
- * des relectures/requêtes ultérieures du lien de signature.
+ * La communication durable réserve l’envoi ; un statut legacy seul reste incertain.
  */
 export async function dispatchPretrainingPackAfterConventionSigned(
   supabase: AdminSupabase,
@@ -99,6 +102,8 @@ export async function dispatchPretrainingPackAfterConventionSigned(
       status,
       sent_at,
       daily_sessions(
+        organisation_id,
+        status,
         internal_reference,
         start_date,
         end_date,
@@ -115,56 +120,51 @@ export async function dispatchPretrainingPackAfterConventionSigned(
 
   if (convocationError) throw new Error(convocationError.message);
   if (!convocation) return { status: "missing_convocation" };
-  if (convocation.status === "sent" || convocation.sent_at) {
-    return { status: "already_sent", convocationId: convocation.id };
+  const session = firstRelation(convocation.daily_sessions as SessionRelation | SessionRelation[] | null);
+  if (!session || session.status === "archived" || !clean(session.organisation_id)) {
+    return { status: "pending", convocationId: convocation.id, reason: "session_unavailable" };
   }
-
   const recipientEmail = clean(convocation.recipient_email || convention.recipient_email);
   if (!recipientEmail) return { status: "missing_recipient_email" };
-
-  const { data: file, error: fileError } = await supabase.storage
-    .from("documents")
-    .download(convocation.storage_path);
-  if (fileError || !file) {
-    const reason = fileError?.message || "Document de convocation introuvable.";
-    await supabase
-      .from("daily_convocations")
-      .update({ last_error: reason })
-      .eq("id", convocation.id);
-    return { status: "send_failed", convocationId: convocation.id, reason };
-  }
-
-  const session = firstRelation(convocation.daily_sessions as SessionRelation | SessionRelation[] | null);
-  const formation = firstRelation(session?.daily_formations);
-  const attachmentBase64 = Buffer.from(await file.arrayBuffer()).toString("base64");
-  const result = await sendDailyConvocation({
-    email: recipientEmail,
-    learnerName: clean(convocation.recipient_name || convention.recipient_name || convention.company_name),
-    formationTitle: clean(formation?.title) || "Formation",
-    sessionReference: clean(session?.internal_reference),
-    startDate: clean(session?.start_date),
-    endDate: clean(session?.end_date),
-    documentVersion: Number(convocation.version ?? 1),
-    attachmentFilename: clean(convocation.document_name) || "convocation-livret-accueil.doc",
-    attachmentBase64,
+  const formation = firstRelation(session.daily_formations);
+  const result = await deliverConvocationWithProof(supabase, {
+    organisationId: clean(session.organisation_id), sessionId: convocation.session_id,
+    source: "daily_convocations", documentId: convocation.id, version: Number(convocation.version ?? 1),
+    email: recipientEmail, storagePath: convocation.storage_path, bucket: "documents",
+    historical: ["sent", "viewed"].includes(convocation.status) || !!convocation.sent_at,
+    send: (input) => sendDailyConvocation({ ...input }),
+    load: async () => {
+      const { data: file, error } = await supabase.storage.from("documents").download(convocation.storage_path);
+      if (error || !file) throw new Error("Document de convocation introuvable.");
+      return {
+        email: recipientEmail,
+        learnerName: clean(convocation.recipient_name || convention.recipient_name || convention.company_name),
+        formationTitle: clean(formation?.title) || "Formation",
+        sessionReference: clean(session.internal_reference), startDate: clean(session.start_date), endDate: clean(session.end_date),
+        documentVersion: Number(convocation.version ?? 1),
+        attachmentFilename: clean(convocation.document_name) || "convocation-livret-accueil.doc",
+        attachmentBase64: Buffer.from(await file.arrayBuffer()).toString("base64"),
+      };
+    },
   });
-
-  if (!result.sent) {
-    const reason = result.reason;
-    await supabase
-      .from("daily_convocations")
-      .update({ last_error: reason })
-      .eq("id", convocation.id);
-    return { status: "send_failed", convocationId: convocation.id, reason };
+  if (result.status === "pending" || result.status === "rejected") {
+    return { status: result.status === "pending" ? "pending" : "send_failed", convocationId: convocation.id, reason: result.reason || "confirmation_required" };
   }
-
-  const sentAt = new Date().toISOString();
-  const { error: updateError } = await supabase
-    .from("daily_convocations")
-    .update({ status: "sent", sent_at: sentAt, last_error: null })
-    .eq("id", convocation.id)
-    .eq("status", "generated");
-  if (updateError) throw new Error(updateError.message);
-
-  return { status: "sent", convocationId: convocation.id };
+  // A durable provider proof can repair a failed projection without sending again.
+  try {
+    if (convocation.status === "generated") {
+      const { data, error } = await supabase.from("daily_convocations")
+        .update({ status: "sent", sent_at: result.sentAt, last_error: null })
+        .eq("id", convocation.id).eq("status", "generated").select("id").maybeSingle();
+      if (error || !data) return { status: "pending", convocationId: convocation.id, reason: "convocation_not_finalized" };
+    }
+    const { data: stored, error } = await supabase.from("daily_convocations").select("id,status,sent_at")
+      .eq("id", convocation.id).maybeSingle();
+    if (error || !stored || !["sent", "viewed"].includes(stored.status) || Date.parse(stored.sent_at) !== Date.parse(result.sentAt ?? "")) {
+      return { status: "pending", convocationId: convocation.id, reason: "convocation_not_finalized" };
+    }
+    return { status: result.status, convocationId: convocation.id };
+  } catch {
+    return { status: "pending", convocationId: convocation.id, reason: "convocation_not_finalized" };
+  }
 }

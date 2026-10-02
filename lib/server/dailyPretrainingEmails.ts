@@ -11,7 +11,9 @@ export type DailyPretrainingEmailSnapshot = {
   providerMessageId: string | null;
 };
 
-type DailyConvocationEmailInput = {
+export type DailyConvocationEmailInput = {
+  idempotencyKey?: string;
+  prepared?: { subject: string; text: string; html: string; from: string };
   email: string;
   learnerName: string;
   formationTitle: string;
@@ -45,43 +47,50 @@ export function prepareDailyConvocationEmail(input: DailyConvocationEmailInput) 
       <p>Conservez ce document : il reprend les informations pratiques et les repères utiles pour votre participation.</p>
       <p>Selen Editions</p>
     </div>`;
-  return { subject, text, html };
+  return { subject, text, html, from: resendFromEmail };
 }
 
 export async function sendDailyConvocation(input: DailyConvocationEmailInput) {
   if (!resend) {
     console.warn("RESEND_API_KEY absente : convocation Daily non envoyée.");
-    return { sent: false as const, reason: "missing_resend_api_key" as const };
+    return { sent: false as const, reason: "missing_resend_api_key" as const, definitive: true };
   }
 
-  const message = prepareDailyConvocationEmail(input);
-  const { data, error } = await resend.emails.send({
-    from: resendFromEmail,
-    to: input.email,
-    subject: message.subject,
-    text: message.text,
-    html: message.html,
-    replyTo: "hello@selen-editions.fr",
-    attachments: [
-      {
-        content: input.attachmentBase64,
-        filename: input.attachmentFilename,
-      },
-    ],
-  });
+  const message = input.prepared ?? prepareDailyConvocationEmail(input);
+  try {
+    const { data, error } = await resend.emails.send({
+      from: message.from,
+      to: input.email,
+      subject: message.subject,
+      text: message.text,
+      html: message.html,
+      replyTo: "hello@selen-editions.fr",
+      attachments: [
+        {
+          content: input.attachmentBase64,
+          filename: input.attachmentFilename,
+        },
+      ],
+    }, input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : undefined);
 
-  if (error) {
-    console.error("Daily : envoi de la convocation impossible", error);
-    return { sent: false as const, reason: "send_failed" as const };
+    if (error) {
+      console.error("Daily : envoi de la convocation impossible", error);
+      return { sent: false as const, reason: "send_failed" as const, definitive: error.name === "validation_error" };
+    }
+
+    if (typeof data?.id !== "string" || !data.id.trim()) {
+      return { sent: false as const, reason: "provider_confirmation_missing", definitive: false };
+    }
+    return {
+      sent: true as const,
+      message: {
+        ...message,
+        providerMessageId: data.id,
+      } satisfies DailyPretrainingEmailSnapshot,
+    };
+  } catch {
+    return { sent: false as const, reason: "provider_transport_uncertain", definitive: false };
   }
-
-  return {
-    sent: true as const,
-    message: {
-      ...message,
-      providerMessageId: data?.id ?? null,
-    } satisfies DailyPretrainingEmailSnapshot,
-  };
 }
 
 function formatDate(value: string) {
