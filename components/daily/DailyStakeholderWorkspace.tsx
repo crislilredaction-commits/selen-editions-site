@@ -40,7 +40,7 @@ export default function DailyStakeholderWorkspace({ role, token }: Props) {
     try {
       const requests = [
         fetch(`/api/daily-portal/${token}`, { cache: "no-store" }),
-        fetch(`/api/daily-portal/${token}/resources`, { cache: "no-store" }),
+        fetch(`/api/daily-portal/${token}/resources`, { cache: "no-store" }).catch(() => ({ ok: false, json: async () => ({}) })),
       ];
       if (normalizedRole === "trainer") requests.push(fetch(`/api/daily-portal/${token}/followup`, { cache: "no-store" }));
       const responses = await Promise.all(requests);
@@ -64,6 +64,7 @@ export default function DailyStakeholderWorkspace({ role, token }: Props) {
   const participantProgress = data?.participantProgress ?? [];
   const currentPhase = phase(data?.session);
   const isLearner = normalizedRole === "learner";
+  const publicProgramPdfUrl = isLearner && currentPhase === "before" && data?.access?.portalType === "learner" ? data.publicProgramPdfUrl : undefined;
   const isEnterprise = normalizedRole === "enterprise";
 
   const learnerActions = useMemo(() => {
@@ -169,7 +170,8 @@ export default function DailyStakeholderWorkspace({ role, token }: Props) {
 
       <section style={{ ...s.card, ...(polished ? s.polishedCard : {}), ...s.fullWidth }}>
         <div>{polished ? <span style={s.sectionKicker}>{isEnterprise ? "Dossier partagé" : "Ressources"}</span> : null}<h2 style={s.h2}>Mes documents</h2>{polished ? <p style={s.muted}>{isEnterprise ? "Retrouvez les documents autorisés pour votre organisation et cette session, sans mélange avec les dossiers des autres parties prenantes." : "Les documents applicables à votre inscription restent regroupés ici."}</p> : null}</div>
-        {resources.length ? <div style={s.documents}>{resources.map((doc: Json) => <a style={{ ...s.documentLink, ...(polished ? s.polishedDocumentLink : {}) }} key={doc.id} href={`/api/daily-portal/${token}/document?id=${doc.id}`} target="_blank" rel="noreferrer"><strong>{docLabel(doc)}</strong><span>{doc.version ? `Version ${doc.version}` : "Ouvrir le document"}</span></a>)}</div> : <p style={s.muted}>Aucun document n’est disponible pour le moment.</p>}
+        {publicProgramPdfUrl ? <a style={s.documentLink} href={publicProgramPdfUrl} target="_blank" rel="noreferrer">Télécharger le programme complet (PDF)</a> : null}
+        {resources.length ? <div style={s.documents}>{resources.map((doc: Json) => <a style={{ ...s.documentLink, ...(polished ? s.polishedDocumentLink : {}) }} key={doc.id} href={`/api/daily-portal/${token}/document?id=${doc.id}`} target="_blank" rel="noreferrer"><strong>{docLabel(doc)}</strong><span>{doc.version ? `Version ${doc.version}` : "Ouvrir le document"}</span></a>)}</div> : !publicProgramPdfUrl ? <p style={s.muted}>Aucun document n’est disponible pour le moment.</p> : null}
       </section>
 
       {normalizedRole === "trainer" ? <section style={{ ...s.card, ...s.fullWidth }}><h2 style={s.h2}>Fiche de suivi de session</h2><form onSubmit={addFollowup} style={s.form}><select name="entry_type" defaultValue="incident"><option value="incident">Incident / difficulté</option><option value="adaptation">Adaptation</option></select><select name="level" defaultValue="info"><option value="info">Information</option><option value="attention">À suivre</option><option value="critical">Critique</option></select><input name="summary" required placeholder="Constat" /><textarea name="description" placeholder="Détails utiles" /><textarea name="action_taken" placeholder="Action engagée" /><button type="submit">Ajouter au suivi</button></form><div style={s.stack}>{followup.map((entry) => <article key={entry.id} style={s.followup}><strong>{entry.summary}</strong><span>{entry.entry_type} · {entry.level} · {entry.status === "resolved" ? "traité" : "ouvert"}</span>{entry.description ? <p>{entry.description}</p> : null}{entry.action_taken ? <p>Suite : {entry.action_taken}</p> : null}</article>)}</div></section> : null}

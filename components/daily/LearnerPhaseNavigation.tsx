@@ -41,7 +41,7 @@ export default function LearnerPhaseNavigation({ role, token }: Props) {
   useEffect(() => {
     Promise.all([
       fetch(`/api/daily-portal/${token}`, { cache: "no-store" }),
-      fetch(`/api/daily-portal/${token}/resources`, { cache: "no-store" }),
+      fetch(`/api/daily-portal/${token}/resources`, { cache: "no-store" }).catch(() => ({ ok: false, json: async () => ({}) })),
     ]).then(async ([portalResponse, resourcesResponse]) => {
       const portal = await portalResponse.json().catch(() => ({}));
       const docs = await resourcesResponse.json().catch(() => ({}));
@@ -90,6 +90,7 @@ export default function LearnerPhaseNavigation({ role, token }: Props) {
       <div role="tabpanel" style={{ marginTop: 12, display: "grid", gap: 8 }}>
         {actions.map((action) => <div key={action.label} style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", padding: ".8rem", border: "1px solid var(--sepia-mid)", flexWrap: "wrap" }}><div><strong>{action.label}</strong><p style={{ margin: ".25rem 0 0", color: "var(--ink-soft)", fontSize: 14 }}>{action.detail}</p></div>{action.href ? <a href={action.href} target={action.href.startsWith("/api/") ? "_blank" : undefined} rel={action.href.startsWith("/api/") ? "noreferrer" : undefined} style={{ fontWeight: 800, color: "var(--rust)" }}>Ouvrir</a> : action.done ? <span style={{ fontWeight: 800 }}>Fait</span> : null}</div>)}
       </div>
+      {selected === "before" && ["learner", "apprenant"].includes(role) && data?.access?.portalType === "learner" && data.publicProgramPdfUrl ? <p><a href={data.publicProgramPdfUrl} target="_blank" rel="noreferrer" style={{ color: "var(--rust)", fontWeight: 800 }}>Télécharger le programme complet (PDF)</a></p> : null}
       {resources.length ? <details style={{ marginTop: 12 }}><summary style={{ cursor: "pointer", fontWeight: 800 }}>Documents de cette session ({resources.length})</summary><div style={{ display: "grid", gap: 6, marginTop: 8 }}>{resources.map((doc) => <a key={doc.id} href={`/api/daily-portal/${token}/document?id=${doc.id}`} target="_blank" rel="noreferrer" style={{ color: "var(--rust)", fontWeight: 700 }}>{docLabel(doc)}</a>)}</div></details> : null}
     </div>
   </section>;
