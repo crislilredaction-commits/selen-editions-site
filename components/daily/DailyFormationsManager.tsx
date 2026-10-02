@@ -108,7 +108,8 @@ export default function DailyFormationsManager() {
     event.preventDefault(); setSaving(true); setError(""); setMessage("");
     try {
       if (assessmentMode === "selen_quiz" && assessmentQuestions.length === 0) throw new Error("Ajoutez au moins une question à l’évaluation finale ou choisissez le scan après la session.");
-      const response = await assistanceFetch("/api/client/daily/formations", { method: editingId ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, id: editingId, status: editingId ? form.status : "draft" }) });
+      if (form.positioning_mode === "off_platform" && !form.positioning_questionnaire_document_url) throw new Error("Importez votre questionnaire de positionnement avant d’enregistrer la formation.");
+      const response = await assistanceFetch("/api/client/daily/formations", { method: editingId ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, positioning_choice_confirmed: true, id: editingId, status: editingId ? form.status : "draft" }) });
       const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error ?? "Enregistrement impossible.");
       const formationId = data.formation?.id as string | undefined; if (!formationId) throw new Error("La formation a été enregistrée mais son identifiant n’a pas été retourné.");
       const assessmentRes = await assistanceFetch("/api/client/daily/formations/assessment-inline", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: formationId, mode: assessmentMode, instructions: assessmentInstructions, questions: assessmentQuestions }) });

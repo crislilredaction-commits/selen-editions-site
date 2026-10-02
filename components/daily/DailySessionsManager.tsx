@@ -480,11 +480,31 @@ function EvidencePanel({ session, loading, context, upload, confirmAbandonment, 
     const learner = learnerOf(enrolment);
     return <div key={enrolment.id} style={{ ...styles.learnerRow, ...(abandoned ? styles.learnerAbandoned : {}) }}>
       <div><b>{learnerName(enrolment)}</b><small>{learner?.email ?? ""}</small>{learner?.id ? <Link style={styles.secondary} href={`/client/daily/apprenants?learner=${encodeURIComponent(learner.id)}`}>Ouvrir la fiche apprenant →</Link> : null}{abandoned ? <span style={styles.abandonedBadge}>Abandon confirmé</span> : null}</div>
-      <UploadCell label="Test de positionnement" done={positioningDocs.length > 0 || ["completed", "validated", "done"].includes(String(enrolment.positioning_status ?? ""))} busy={uploadingKey === `${enrolment.id}:positioning`} disabled={abandoned} onFile={(file) => void upload(session.id, enrolment.id, "positioning", file)} />
+      <div><UploadCell label="Test de positionnement" done={positioningDocs.length > 0 || ["completed", "validated", "done"].includes(String(enrolment.positioning_status ?? ""))} busy={uploadingKey === `${enrolment.id}:positioning`} disabled={abandoned} onFile={(file) => void upload(session.id, enrolment.id, "positioning", file)} />{positioningDocs.map(document => <PositioningDownload key={document.id} id={document.id} name={document.logical_name} />)}</div>
       <UploadCell label="Évaluation finale" done={assessmentDocs.length > 0 || hasAssessmentForm} busy={uploadingKey === `${enrolment.id}:learning_assessment`} disabled={abandoned} onFile={(file) => void upload(session.id, enrolment.id, "learning_assessment", file)} />
       <AbandonmentControl enrolment={enrolment} sessionId={session.id} busy={abandoningKey === `${enrolment.id}:abandonment`} onConfirm={confirmAbandonment} />
     </div>;
   })}</div>;
+}
+
+function PositioningDownload({ id, name }: { id: string; name: string }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  async function download() {
+    setBusy(true); setError("");
+    let objectUrl: string | undefined;
+    try {
+      const response = await assistanceFetch(`/api/client/daily/uploads?id=${encodeURIComponent(id)}`, { cache: "no-store" });
+      if (!response.ok) throw new Error("Téléchargement du positionnement indisponible.");
+      const file = await response.blob();
+      objectUrl = URL.createObjectURL(file);
+      const link = document.createElement("a");
+      const extension = file.type === "application/msword" ? "doc" : file.type.includes("wordprocessingml") ? "docx" : "pdf";
+      link.href = objectUrl; link.download = `positionnement.${extension}`; link.click();
+    } catch { setError("Téléchargement du positionnement indisponible. Réessayez."); }
+    finally { if (objectUrl) { const url = objectUrl; window.setTimeout(() => URL.revokeObjectURL(url), 1000); } setBusy(false); }
+  }
+  return <div><button type="button" disabled={busy} style={styles.secondary} onClick={() => void download()}>{busy ? "Téléchargement…" : `Télécharger ${name || "le positionnement rempli"}`}</button>{error ? <small role="alert">{error}</small> : null}</div>;
 }
 
 function UploadCell({ label, done, busy, disabled = false, onFile }: { label: string; done: boolean; busy: boolean; disabled?: boolean; onFile: (file: File | null) => void }) {

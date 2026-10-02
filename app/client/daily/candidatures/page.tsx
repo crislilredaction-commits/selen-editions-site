@@ -40,6 +40,7 @@ type RegistrationRequest = {
   agent_review_requested_at?: string | null;
   agent_analysis_completed_at?: string | null;
   agent_analysis_summary?: Record<string, unknown> | null;
+  positioning_documents?: Array<{ id: string; name: string }>;
   can_decide: boolean;
   can_materialize?: boolean;
   decisions: DecisionRow[];
@@ -207,6 +208,7 @@ export default function RegistrationRequestsPage() {
     const summary = projectCandidatureSummary(request);
     return <section aria-label="Synthèse Selen" style={{ marginTop: 16, minWidth: 0, overflowWrap: "anywhere" }}>
       <h3>Synthèse Selen</h3>
+      {request.positioning_documents?.length ? <div><strong>Positionnements remplis</strong><ul>{request.positioning_documents.map(file => <li key={file.id}><a href={`/api/client/daily/uploads?id=${encodeURIComponent(file.id)}`} download rel="noreferrer">{file.name}</a></li>)}</ul></div> : null}
       <p>Date de synthèse : {summary.analyzedAt}</p>
       {!summary.available ? <p>Synthèse indisponible.</p> : null}
       <dl>{summary.sections.map(section => <div key={section.key} style={{ marginBottom: 12 }}>

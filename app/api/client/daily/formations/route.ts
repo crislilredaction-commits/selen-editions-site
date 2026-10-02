@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { loadOriginalPositioning, OwnPositioningError } from "@/lib/server/dailyOwnPositioning";
 import { logAgentAssistanceAction } from "@/lib/server/agentAssistance";
 import { getDailyOrganisationContext, getDailyOrganisationReadContext } from "@/lib/server/dailyOrganisationContext";
 import {
@@ -169,6 +170,9 @@ export async function POST(req: Request) {
 
   const built = buildPayload(body, context.user.id, context.organisationId);
   if ("error" in built) return NextResponse.json({ error: built.error }, { status: 400 });
+  if (built.payload.positioning_mode === "off_platform" && !built.payload.positioning_questionnaire_document_url) return NextResponse.json({ error: "Importez votre questionnaire de positionnement avant d’enregistrer la formation." }, { status: 400 });
+  try { await loadOriginalPositioning(context.admin, built.payload, false); }
+  catch (cause) { return NextResponse.json({ error: cause instanceof OwnPositioningError ? cause.message : "Vérification du questionnaire indisponible." }, { status: cause instanceof OwnPositioningError ? cause.status : 500 }); }
   const trainerError = await validateAllowedTrainers(context.organisationId, built.payload.allowed_trainer_ids, context.admin);
   if (trainerError) return NextResponse.json({ error: trainerError }, { status: 400 });
   const { data, error } = await context.admin.from("daily_formations").insert({ ...built.payload, public_registration_token: registrationToken(), public_registration_enabled: true }).select("*").single();
@@ -191,6 +195,12 @@ export async function PATCH(req: Request) {
   if (existingError) return NextResponse.json({ error: existingError.message }, { status: 500 });
   if (!existing) return NextResponse.json({ error: "Formation introuvable." }, { status: 404 });
   if (existing.status === "archived") return NextResponse.json({ error: "Une ancienne version archivée ne peut pas être modifiée." }, { status: 400 });
+  // An unchanged historical, unconfigured mode remains editable. A new choice
+  // of the OF's own questionnaire, or removal of its file, requires the import.
+  const unchangedLegacyPositioning = body.positioning_choice_confirmed !== true && existing.positioning_mode === "off_platform" && !existing.positioning_questionnaire_document_url && built.payload.positioning_mode === "off_platform" && !built.payload.positioning_questionnaire_document_url;
+  if (built.payload.positioning_mode === "off_platform" && !built.payload.positioning_questionnaire_document_url && !unchangedLegacyPositioning) return NextResponse.json({ error: "Importez votre questionnaire de positionnement avant d’enregistrer la formation." }, { status: 400 });
+  try { await loadOriginalPositioning(context.admin, { ...built.payload, id: existing.id }, false); }
+  catch (cause) { return NextResponse.json({ error: cause instanceof OwnPositioningError ? cause.message : "Vérification du questionnaire indisponible." }, { status: cause instanceof OwnPositioningError ? cause.status : 500 }); }
 
   const nextStatus = existing.status === "validated" || existing.status === "correction_requested" ? "review" : built.payload.status;
   const reviewSignaledAt = nextStatus === "review" ? new Date().toISOString() : existing.agent_review_signaled_at ?? null;

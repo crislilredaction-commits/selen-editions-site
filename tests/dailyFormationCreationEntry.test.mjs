@@ -4,6 +4,7 @@ import { loadTypeScript } from "./helpers/loadTypeScript.mjs";
 
 const descriptive = ["global_objective", "learning_objectives", "detailed_program", "target_audience", "access_delays", "price", "pedagogical_resources", "evaluation_methods"];
 const original = "https://storage.invalid/programme-original.docx";
+const positioningOriginal = "/api/client/daily/uploads?id=00000000-0000-4000-8000-000000000005";
 function harness() {
   const state = [], requests = [], navigation = [];
   let cursor = 0, tree;
@@ -40,7 +41,7 @@ function harness() {
   return {
     requests, navigation, nodes, find,
     radio(index) { nodes().filter(n => n.props?.type === "radio")[index].props.onChange(); render(); },
-    upload() { find(n => n.type === Upload).props.onUploaded(original); render(); assert.equal(find(n => n.type === Upload).props.value, original); },
+    upload(kind = "training_program_source") { const url = kind === "positioning_questionnaire_source" ? positioningOriginal : original; find(n => n.type === Upload && n.props.kind === kind).props.onUploaded(url); render(); assert.equal(find(n => n.type === Upload && n.props.kind === kind).props.value, url); },
     change(node, value) { node.props.onChange({ target: { value } }); render(); },
     click(label) { find(n => n.type === "button" && n.props.children === label).props.onClick(); render(); },
     async submit(values = {}) {
@@ -64,6 +65,7 @@ for (const mode of ["program_import", "selen_form"]) {
       if (fields.length) assert.equal(fields[0].props.required, true, name);
     }
     if (mode === "program_import") h.upload();
+    h.upload("positioning_questionnaire_source");
     const values = { title: " Formation ", ...Object.fromEntries(mode === "selen_form" ? descriptive.map(name => [name, ` ${name} value `]) : []) };
     await h.submit(values);
     assert.equal(h.requests.length, 1);
@@ -78,6 +80,7 @@ for (const mode of ["program_import", "selen_form"]) {
     assert.equal(payload.status, "draft");
     assert.equal(payload.results_pending, true);
     assert.equal(payload.positioning_mode, "off_platform");
+    assert.equal(payload.positioning_questionnaire_document_url, positioningOriginal);
     assert.deepEqual(h.navigation, ["/client/daily/sessions/new?formation=formation%2Ftest"]);
   });
 }
@@ -90,6 +93,7 @@ test("missing original blocks transport and navigation", async () => {
 
 for (const mode of [0, 1]) test(`prerequisites are independent and require explicit evidence in mode ${mode}`, async () => {
   const h = harness(); h.radio(mode); if (mode === 0) h.upload();
+  h.upload("positioning_questionnaire_source");
   h.radio(3); await h.submit();
   assert.equal(h.requests.length, 0);
   h.click("+ Ajouter un justificatif");
@@ -110,4 +114,13 @@ for (const mode of [0, 1]) test(`prerequisites are independent and require expli
   assert.deepEqual(h.requests[1].prerequisite_requirements, []);
   h.radio(3); await h.submit();
   assert.equal(h.requests.length, 2, "returning to required must not resurrect cleared evidence");
+});
+
+
+test("own positioning requires its separate original before creation", async () => {
+ const h = harness(); h.radio(1); await h.submit();
+ assert.equal(h.requests.length, 0); assert.equal(h.navigation.length, 0);
+ assert.match(h.find(n => n.props?.role === "alert").props.children, /questionnaire de positionnement/);
+ h.upload("positioning_questionnaire_source"); await h.submit();
+ assert.equal(h.requests.length, 1); assert.equal(h.requests[0].positioning_questionnaire_document_url, positioningOriginal);
 });
