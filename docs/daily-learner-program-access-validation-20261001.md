@@ -40,3 +40,15 @@ Node disponible via `/home/LilBarthaux/.nvm/versions/node/v24.20.0/bin` ajouté 
 Les programmes importés, privés ou non publiés restent hors de cette disponibilité publique. Aucun nouveau droit de fichier n’est accordé. La présence du programme ne vaut pas publication, envoi ou signature du contrat, convention, convocation, livret ou règlement. Les erreurs de lecture internes au GET conservent leur comportement bloquant existant ; la tolérance UI concerne la requête séparée `/resources`.
 
 Cette livraison ne termine pas Avant globalement et ne reprend pas la mission publique individual/company #25. Le Selen local check sur le futur commit réel et la validation Vercel restent nécessaires ; aucune exécution sur l’ancien HEAD ne vaut validation de ce worktree non commité.
+
+## Vérification indépendante Work — 2 octobre 2026
+
+- GitHub réel vérifié : `main` = `3f823e1856720df2a0e46180667b3eff0b0691ab`, cible = `28a5c4cce210595594220f24a24c004090e6fd7f`, parent direct de la correction = ce main. Diff ciblé : trois fichiers applicatifs, un nouveau fichier de tests et cette trace ; aucun ancien test supprimé ou modifié.
+- Selen Codex mission #26, run `36921181360`, tentative 2, job `110641033756` : tous les steps réussis. Validation externe du worktree corrigé : **661 tests, 0 échec**, puis véritable compilation Next réussie en 26,4 secondes et fin `Validation passed.`. Cette validation externe lève la limite Google Fonts du bac Codex ; le typecheck dédié post-push reste exigé.
+- Revue des modifications : URL de la formation exacte et du même OF, validation/publication explicites, mode Selen ou historique null ; aucune URL de fichier importé ou privé. DTO formation existant conservé. Droits, résolution de l'inscription, types de documents et mutations de tokens existants inchangés. Les documents privés restent indépendants du bouton public.
+- Work a exécuté les sept fichiers ciblés depuis un worktree détaché au SHA fonctionnel exact : **152 tests, 152 réussis, 0 échec, 0 ignoré**, isolation normale de Node. Les tests exécutent les vrais handlers, composants et renderer sur fixtures, avec les SDK et le réseau strictement doublés. Les dépendances de test réutilisées viennent du worktree Studio ; aucun typecheck/build local avec cet assortiment n'est présenté comme celui du site.
+- `git diff --check` entre main et le SHA fonctionnel : code 0 ; arbre de revue propre.
+- Vercel preview `dpl_2ASfumcPBFSZ8vxb8W8rfigFw83j` : READY au SHA fonctionnel exact ; statut GitHub Vercel et commentaire de preview verts.
+- Cette mise à jour consigne la revue et déclenche le **Selen local check sur le nouveau HEAD**. Tests complets, typecheck dédié, build, contrôles GitHub et preview de ce HEAD seront encore vérifiés avant PR/fusion. Aucun contrôle sur l'ancien main ne leur est substitué.
+
+Aucun email client, accès Auth, migration ni donnée de production n'a été utilisé pour cette vérification. Le parcours Avant global, les programmes importés/privés et le couplage commanditaire/droits de portail restent à traiter séparément.
