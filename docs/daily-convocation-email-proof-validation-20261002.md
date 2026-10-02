@@ -53,3 +53,40 @@ Le build Next.js/Turbopack réel échoue lors des requêtes `fonts.googleapis.co
 Logs locaux : `/tmp/convocation-targeted-final.log`, `/tmp/convocation-behavior-details.log`, `/tmp/convocation-npm-test-final.log`, `/tmp/convocation-typecheck-final.log`, `/tmp/convocation-build.log`. Ils ne sont pas versionnés.
 
 Après le commit/push assuré par le workflow externe, Selen local check puis les vérifications Work/GitHub/Vercel restent nécessaires. La validation locale ne vaut pas validation CI ou production.
+
+## Correction bornée avant fusion : projection des DTO clients
+
+Base de cette intervention : branche `fix/daily-convocation-email-proof-20261002`, HEAD local vérifié `57114eace7155ab84781a7c2cd2d3d8389379031`, arbre initial propre. Main réel communiqué par Work : `4a04bdac7ef3b3a0240dc15d7b42bbabc52da2db`. Work rapporte 773 tests verts, un build externe réussi et une relecture des six fichiers avec 215 tests ciblés indépendants ; ces résultats externes ne sont pas revendiqués comme exécutés par cette intervention.
+
+Constat Work accepté : les GET `communications` et `session-dossiers` sérialisaient intégralement `metadata.email_input`, y compris `attachmentBase64` et `prepared`. Avec le vrai contexte d’organisation et les capacités `trainings:true / sessions:false`, le dossier retournait HTTP 200 avec les octets privés alors que le téléchargement retournait HTTP 403. Le script temporaire externe n’a pas été recherché ; le cas utile est reproduit dans les tests du dépôt.
+
+Le helper pur partagé `lib/daily/communicationMetadata.ts` retire uniquement la propriété de premier niveau `email_input` lorsque `communication_type === "convocation"`, pour les circuits canonique et legacy et indépendamment du statut. Les deux GET l’appliquent au dernier moment, dans leur DTO. La déstructuration produit un nouvel objet sans mutation de la ligne, de metadata ou du snapshot. Les autres familles restent inchangées. Une metadata absente reste absente dans le JSON ; null, tableaux et scalaires conservent leur valeur, sans objet de remplacement inventé.
+
+Les métadonnées métier (version, fichier, SHA, références et tentative), les champs existants de chaque SELECT (notamment subject, text_body et provider_message_id dans Communications), statuts, horodatages, documents liés et canonicalStates sont conservés. Aucun SELECT, filtre, garde ou droit n’a changé. Le dossier continue de respecter son contrat existant : aucun champ supplémentaire de Communications ne lui a été ajouté.
+
+Le snapshot complet reste en base pour les reprises. Les quatre modules de preuve/d’envoi #28, clés, CAS, historiques pending, reprises bornées et statuts confirmés ne sont pas modifiés. Aucun changement du PDF de preuve, de Studio, d’Auth/organisation, de téléchargement, de politique de conservation, de SQL ou de migration.
+
+### Validation de la projection
+
+`tests/dailyCommunicationMetadata.test.mjs` ajoute 22 tests comportementaux. La VM transpile et exécute les deux vraies routes, le vrai helper de projection, le vrai `dailyOrganisationContext` et la vraie route de téléchargement pour son refus. Une liste fermée interdit tout import de SDK réseau/Auth ; workspace, assistance et admin sont des doubles stricts. Les opérations DB disponibles sont exclusivement de lecture ; les métadonnées retournées conservent la référence gelée de la fixture DB. Les réponses passent par une véritable sérialisation JSON (`Response.json`).
+
+Couverture : convocations canoniques et legacy queued/sent/pending ; absence d’email_input, attachmentBase64 et de sentinelle privée dans le JSON ; conservation exacte des autres metadata et des champs existants ; autres familles intactes ; DB et snapshot inchangés après GET ; contexte trainings seul autorisé au dossier mais refusé au téléchargement et à Communications ; refus du workspace et des capacités avant toute requête ; périmètres OF/session et exclusion des communications/liens étrangers ; documents liés et canonicalStates ; metadata absentes/null/tableaux/scalaires. Le helper est aussi exécuté directement avec contrôles d’identité et de non-mutation.
+
+Commandes exécutées avec le même PATH Node v24.20.0 que ci-dessus, avec codes de retour observés séparément :
+
+| Commande | Retour | Résultat |
+| --- | --- | --- |
+| `node tests/dailyCommunicationMetadata.test.mjs` | 0 | 22 tests réussis, aucun ignoré |
+| `node tests/dailyConvocationEmailProof.test.mjs` | 0 | 93 tests #28 réussis, aucun ignoré |
+| `node --test tests/dailyCommunicationMetadata.test.mjs tests/dailyConvocationEmailProof.test.mjs tests/dailyAbandonedDocumentSends.test.mjs tests/dailySessionDossierWorkspace.test.mjs tests/dailySessionFollowupProvenance.test.mjs tests/dailySignatureFollowupVisibility.test.mjs tests/dailySignatureSendEvidence.test.mjs tests/dailyPretrainingA10.test.mjs` | 0 | 8 fichiers verts |
+| `npm test` | 0 | 84 fichiers verts, aucun échec ni fichier ignoré |
+
+## Reprise Work après interruption de Codex
+
+Le 2 octobre 2026, Work a relu le cahier maître Selen actuel et vérifié GitHub : main est `4a04bdac7ef3b3a0240dc15d7b42bbabc52da2db`, la branche cible reste `57114eace7155ab84781a7c2cd2d3d8389379031`, aucune PR de ce lot n'est ouverte. La mission #29 (`36995646603`, job `110801627670`) a échoué le 2 octobre à 10:35 UTC sur « You've hit your usage limit », avant la validation externe et le commit/push. Ce résultat ne constitue pas une livraison ; le build lancé dans la session Codex n'a pas de résultat final confirmé.
+
+Récupération bornée du travail déjà produit, sans nouvel appel Codex ni modification du workflow Lenovo : patch de l'artifact `11221647320` (SHA256 du ZIP `c6605446e5742a45893749ddee8dd515c60cd8da7c4253bb8c9ed645d4e3bf04`), helper et tests créés par Codex récupérés depuis les commandes et sorties complètes des logs du même job. Le patch ne contenait pas ces deux fichiers encore non suivis : ils ont été récupérés explicitement. Aucun script de shell provenant du journal n'a été exécuté ; seules les sources récupérées ont été relues puis testées.
+
+Contrôle Work indépendant sur une copie détachée de la branche cible avec Node v24.19.0 et dépendances locales réutilisées : `node --test` sur dailyCommunicationMetadata, dailyConvocationEmailProof, dailyAbandonedDocumentSends, dailySessionDossierWorkspace, dailySessionFollowupProvenance, dailySignatureFollowupVisibility, dailySignatureSendEvidence, dailyPretrainingA10, dailyPretrainingRetirement, dailyAcceptanceEmail et dailyEnterpriseEmailDelivery : 270 tests réussis, 0 échec, 0 ignoré. Cela inclut les 22 cas de confidentialité et les 93 cas de preuve de convocation. Les fixtures interdisent réseau, SDK Auth et mutations DB pour les GET ; les envois des autres cas sont des doubles, aucun email réel n'a été envoyé.
+
+`git diff --check` est vert. Les quatre modules d'envoi/preuve de #28, les tests existants, les autorisations, les filtres et le schéma restent identiques à `57114ea`. Cette récupération ne vaut pas validation du typecheck/build avec ces dépendances réutilisées, ni publication en production. Work publie le résultat récupéré sur la même branche `fix/**` pour que le workflow existant Selen local check exécute séparément la suite complète, le typecheck et le build. Fusion seulement après ces résultats, contrôles GitHub et preview Vercel verts sur le SHA final ; contrôle de main et production après fusion.
