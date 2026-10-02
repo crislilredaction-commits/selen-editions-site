@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { projectCandidatureSummary, candidatureSummaryFilename } from "@/lib/daily/candidatureSummary";
 import LoadingMascot from "@/components/ui/LoadingMascot";
 
 type ActorType = "organisation";
@@ -73,6 +74,8 @@ export default function RegistrationRequestsPage() {
   const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [pdfBusy, setPdfBusy] = useState<Record<string, boolean>>({});
+  const [pdfErrors, setPdfErrors] = useState<Record<string, string>>({});
   const isManager = actorTypes.includes("organisation");
 
   const load = useCallback(async () => {
@@ -175,6 +178,49 @@ export default function RegistrationRequestsPage() {
     finally { setBusyId(""); }
   }
 
+  async function downloadSummary(request: RegistrationRequest) {
+    setPdfBusy(current => ({ ...current, [request.id]: true }));
+    setPdfErrors(current => ({ ...current, [request.id]: "" }));
+    let objectUrl: string | undefined;
+    let link: HTMLAnchorElement | undefined;
+    try {
+      const { renderCandidatureSummaryPdf } = await import("@/lib/daily/candidatureSummaryPdf");
+      const bytes = renderCandidatureSummaryPdf(request);
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      objectUrl = URL.createObjectURL(blob);
+      link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = candidatureSummaryFilename(projectCandidatureSummary(request).applicant);
+      document.body.appendChild(link);
+      link.click();
+    } catch {
+      setPdfErrors(current => ({ ...current, [request.id]: "Téléchargement impossible. Réessayez la génération du PDF." }));
+    } finally {
+      link?.remove();
+      // Give the browser time to consume the URL before releasing it.
+      if (objectUrl) { const url = objectUrl; window.setTimeout(() => URL.revokeObjectURL(url), 1000); }
+      setPdfBusy(current => ({ ...current, [request.id]: false }));
+    }
+  }
+
+  function summaryDetails(request: RegistrationRequest) {
+    const summary = projectCandidatureSummary(request);
+    return <section aria-label="Synthèse Selen" style={{ marginTop: 16, minWidth: 0, overflowWrap: "anywhere" }}>
+      <h3>Synthèse Selen</h3>
+      <p>Date de synthèse : {summary.analyzedAt}</p>
+      {!summary.available ? <p>Synthèse indisponible.</p> : null}
+      <dl>{summary.sections.map(section => <div key={section.key} style={{ marginBottom: 12 }}>
+        <dt style={{ fontWeight: 800 }}>{section.label}</dt>
+        <dd style={{ margin: "4px 0 0", whiteSpace: "pre-wrap", lineHeight: 1.55 }}>{section.value}</dd>
+      </div>)}</dl>
+      {summary.available ? <button type="button" disabled={pdfBusy[request.id]} style={{ ...s.refuse, maxWidth: "100%", whiteSpace: "normal" }} onClick={() => void downloadSummary(request)}>
+        {pdfBusy[request.id] ? "Génération du PDF…" : "Télécharger la synthèse de candidature (PDF)"}
+      </button> : null}
+      {pdfBusy[request.id] ? <p role="status">Génération de la synthèse en cours…</p> : null}
+      {pdfErrors[request.id] ? <p role="alert" style={s.error}>{pdfErrors[request.id]}</p> : null}
+    </section>;
+  }
+
   if (loading) return <LoadingMascot message="Sélion rassemble les candidatures…" />;
 
   return (
@@ -208,6 +254,7 @@ export default function RegistrationRequestsPage() {
                 <span><strong>Session :</strong> {request.attached_session_id ? "déjà ciblée" : "à définir après accord"}</span>
                 {request.adaptation_needed ? <span style={s.attention}><strong>Attention :</strong> besoin d'adaptation signalé</span> : null}
               </div>
+              {summaryDetails(request)}
               <div style={s.actions}>
                 <button type="button" disabled={busyId === request.id} style={s.accept} onClick={() => void decide(request, "accepted")}>{busyId === request.id ? "Enregistrement…" : "Accepter la candidature"}</button>
                 <button type="button" disabled={busyId === request.id} style={s.refuse} onClick={() => void decide(request, "refused")}>Refuser la candidature</button>
@@ -250,7 +297,7 @@ export default function RegistrationRequestsPage() {
                   ) : request.decision_status === "accepted" ? (
                     <p style={s.muted}>Candidature acceptée. L'organisme choisira la session avant création de l'inscription.</p>
                   ) : null}
-                  {request.agent_analysis_summary ? <p style={s.comment}><strong>Synthèse Selen :</strong> {String(request.agent_analysis_summary.observations ?? request.agent_analysis_summary.motivation_summary ?? "Analyse disponible")}</p> : null}
+                  {summaryDetails(request)}
                   {isManager && request.decision_status === "accepted" ? <button type="button" disabled={busyId === request.id} style={s.accept} onClick={() => void retryEmail(request)}>Vérifier / réessayer l’email apprenant</button> : null}
                   {request.decisions[0]?.comment ? <p style={s.comment}>« {request.decisions[0].comment} »</p> : null}
                 </article>
