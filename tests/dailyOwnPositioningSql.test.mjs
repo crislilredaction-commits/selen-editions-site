@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
+import { harness } from './helpers/dailyOwnPositioningHarness.mjs';
 
 const migration = await fs.readFile(new URL('../supabase/migrations/20261002160230_daily_own_positioning_evidence.sql', import.meta.url), 'utf8');
 const schema = await fs.readFile(new URL('./fixtures/dailyOwnPositioningSchema.sql', import.meta.url), 'utf8');
@@ -100,6 +101,14 @@ test('real PostgreSQL positioning migration: candidature, enrolment, versions an
     const old=await one('daily_documents',DOC);assert.equal(old.sha256,prior.sha256);assert.equal(old.storage_path,prior.storage_path);assert.equal(old.is_current,signed);assert.equal(old.status,signed?'signed':'to_check');
     assert.equal((await one('daily_session_enrolments',prior.enrolment_id)).positioning_status,'not_started');assert.equal((await one('daily_session_enrolments',closed.id)).positioning_status,'completed');
     assert.equal((await db.query('select count(*)::int n from public.daily_documents')).rows[0].n,3);
+    // Read the actual PostgreSQL state through the same consumer used by both OF views.
+    const h=harness();h.db.daily_documents=(await db.query('select * from public.daily_documents')).rows;
+    const currentDocuments=await h.load('lib/server/dailyCurrentPositioningEvidence.ts').filterCurrentOwnPositioningEvidence({
+      admin:h.admin,organisationId:ORG,formations:[await one('daily_formations',FORM)],documents:[old],
+    });
+    assert.equal(currentDocuments.length,0,'the retained signed copy must not count for the new questionnaire');
+    const stats=h.load('lib/server/dailySessionCompletion.ts').calculateDailySessionCompletion({sessionId:SESSION,checklist:[],enrolments:[await one('daily_session_enrolments',prior.enrolment_id)],documents:currentDocuments,assessmentResponses:[],recordedAssessments:[]});
+    assert.equal(stats.completed,0);assert.equal(stats.expected,2);assert.equal(h.writes.length,0);
   });
   await t.test('all new helpers remain security invoker and inaccessible as public RPCs',async()=>{
     const functions=(await db.query("select proname,prosecdef,has_function_privilege('anon',oid,'EXECUTE') a,has_function_privilege('authenticated',oid,'EXECUTE') u,has_function_privilege('service_role',oid,'EXECUTE') s from pg_proc where proname like 'daily_own_positioning_%' or proname='daily_attach_own_positioning_candidate'")).rows;

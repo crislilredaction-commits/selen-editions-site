@@ -1,3 +1,5 @@
+import { filterCurrentOwnPositioningEvidence } from "@/lib/server/dailyCurrentPositioningEvidence";
+
 export const ACTIVE_ENROLMENT_STATUSES = new Set(["pending", "confirmed", "active", "completed"]);
 export const DONE_CHECKLIST_STATUSES = new Set(["validated", "not_applicable"]);
 export const DONE_POSITIONING_STATUSES = new Set(["reviewed", "completed", "validated", "done"]);
@@ -130,10 +132,10 @@ export async function reconcileDailySessionDossier(args: {
     { data: recordedAssessments, error: recordedAssessmentsError },
     { data: dossier, error: dossierError },
   ] = await Promise.all([
-    admin.from("daily_sessions").select("id,end_date,status").eq("id", sessionId).eq("organisation_id", organisationId).neq("status", "archived").maybeSingle(),
+    admin.from("daily_sessions").select("id,end_date,status,daily_formations(id,organisation_id,positioning_mode,positioning_questionnaire_document_url)").eq("id", sessionId).eq("organisation_id", organisationId).neq("status", "archived").maybeSingle(),
     admin.from("daily_session_checklist_items").select("session_id,status,responsibility").eq("session_id", sessionId).eq("organisation_id", organisationId).neq("responsibility", "selen"),
     admin.from("daily_session_enrolments").select("id,session_id,status,positioning_status").eq("session_id", sessionId).eq("organisation_id", organisationId),
-    admin.from("daily_documents").select("session_id,enrolment_id,document_type,status,is_current").eq("session_id", sessionId).eq("organisation_id", organisationId).eq("is_current", true).in("document_type", ["positioning_evidence", "learning_assessment_evidence"]),
+    admin.from("daily_documents").select("formation_id,session_id,enrolment_id,document_type,status,is_current,metadata").eq("session_id", sessionId).eq("organisation_id", organisationId).eq("is_current", true).in("document_type", ["positioning_evidence", "learning_assessment_evidence"]),
     admin.from("daily_learning_assessment_responses").select("session_id,enrolment_id").eq("session_id", sessionId).eq("organisation_id", organisationId),
     admin.from("daily_learning_assessments").select("session_id,enrolment_id,outcome").eq("session_id", sessionId).eq("organisation_id", organisationId),
     admin.from("daily_session_dossiers").select("session_id,status,completed_at").eq("session_id", sessionId).eq("organisation_id", organisationId).maybeSingle(),
@@ -143,11 +145,14 @@ export async function reconcileDailySessionDossier(args: {
   if (firstError) throw new Error(firstError.message);
   if (!session) return null;
 
+  const currentDocuments = await filterCurrentOwnPositioningEvidence({
+    admin, organisationId, formations: [session.daily_formations], documents: documents ?? [],
+  });
   const stats = calculateDailySessionCompletion({
     sessionId,
     checklist: checklist ?? [],
     enrolments: enrolments ?? [],
-    documents: documents ?? [],
+    documents: currentDocuments,
     assessmentResponses: assessmentResponses ?? [],
     recordedAssessments: recordedAssessments ?? [],
   });
