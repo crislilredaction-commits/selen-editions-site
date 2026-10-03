@@ -187,14 +187,25 @@ export async function PATCH(req: Request) {
   const body = await req.json().catch(() => ({})) as Record<string, unknown>;
   const id = text(body, "id");
   if (!id) return NextResponse.json({ error: "Identifiant formation requis." }, { status: 400 });
-  const built = buildPayload(body, context.user.id, context.organisationId);
-  if ("error" in built) return NextResponse.json({ error: built.error }, { status: 400 });
-  const trainerError = await validateAllowedTrainers(context.organisationId, built.payload.allowed_trainer_ids, context.admin);
-  if (trainerError) return NextResponse.json({ error: trainerError }, { status: 400 });
   const { data: existing, error: existingError } = await context.admin.from("daily_formations").select("*").eq("id", id).eq("organisation_id", context.organisationId).maybeSingle();
   if (existingError) return NextResponse.json({ error: existingError.message }, { status: 500 });
   if (!existing) return NextResponse.json({ error: "Formation introuvable." }, { status: 404 });
   if (existing.status === "archived") return NextResponse.json({ error: "Une ancienne version archivée ne peut pas être modifiée." }, { status: 400 });
+  // Forms opened before these controls existed omit their metadata. Preserve
+  // that declaration, while an explicit "none" choice clears its evidence list.
+  const prerequisiteMode = Object.hasOwn(body, "prerequisite_mode") ? body.prerequisite_mode : existing.prerequisite_mode;
+  const editBody = {
+    ...body,
+    creation_mode: Object.hasOwn(body, "creation_mode") ? body.creation_mode : existing.creation_mode,
+    detailed_program_document_url: Object.hasOwn(body, "detailed_program_document_url") ? body.detailed_program_document_url : existing.detailed_program_document_url,
+    prerequisite_mode: prerequisiteMode,
+    prerequisite_requirements: Object.hasOwn(body, "prerequisite_requirements") ? body.prerequisite_requirements : parseDailyPrerequisiteMode(prerequisiteMode) === "none" ? [] : existing.prerequisite_requirements,
+    prerequisites: Object.hasOwn(body, "prerequisites") ? body.prerequisites : existing.prerequisites,
+  };
+  const built = buildPayload(editBody, context.user.id, context.organisationId);
+  if ("error" in built) return NextResponse.json({ error: built.error }, { status: 400 });
+  const trainerError = await validateAllowedTrainers(context.organisationId, built.payload.allowed_trainer_ids, context.admin);
+  if (trainerError) return NextResponse.json({ error: trainerError }, { status: 400 });
   // An unchanged historical, unconfigured mode remains editable. A new choice
   // of the OF's own questionnaire, or removal of its file, requires the import.
   const unchangedLegacyPositioning = body.positioning_choice_confirmed !== true && existing.positioning_mode === "off_platform" && !existing.positioning_questionnaire_document_url && built.payload.positioning_mode === "off_platform" && !built.payload.positioning_questionnaire_document_url;
@@ -218,7 +229,7 @@ export async function PATCH(req: Request) {
     validation_note: nextStatus === "review" ? null : existing.validation_note,
     archived_at: null,
   }).eq("id", existing.id).eq("organisation_id", context.organisationId).select("*").single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return NextResponse.json({ error: error.message }, { status: error.code === "PSE01" ? 409 : 500 });
   if (context.assisted && context.assistance) await logAgentAssistanceAction({
     supabase: context.admin, req, assistance: context.assistance,
     action: "daily_formation_update",
