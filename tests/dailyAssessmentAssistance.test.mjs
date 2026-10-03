@@ -167,6 +167,7 @@ async function uiFixture(options = {}) {
     "@/components/daily/FormationSourceUpload": { default: "Upload" },
     "@/components/ui/LoadingMascot": { default: "Loading" },
     "@/lib/daily/formationGuidance": loadTypeScript("lib/daily/formationGuidance.ts"),
+    "@/lib/dailyFormationCreationPolicy": loadTypeScript("lib/dailyFormationCreationPolicy.ts"),
   }, { Response, Date, Error, window: { scrollTo() {} }, crypto: { randomUUID: () => "isolated-question" }, fetch: networkForbidden }).default;
   const render = () => { cursor = 0; tree = component(); firstRender = false; };
   function nodes(node) { if (!node || typeof node !== "object") return []; if (Array.isArray(node)) return node.flatMap(nodes); return [node, ...nodes(node.props?.children ?? null)]; }
