@@ -102,6 +102,15 @@ test("le contenu détaillé est saisissable en création et modification puis pe
 });
 
 
+test("le mode assistance Studio peut enregistrer l’évaluation métier de la formation", async () => {
+  const source = await readFile(new URL("../app/api/client/daily/formations/assessment-inline/route.ts", import.meta.url), "utf8");
+  assert.match(source, /allowAssistanceWrite: true/);
+  assert.doesNotMatch(source, /assistance agent est en lecture seule/);
+  assert.match(source, /daily_formation_assessment_update/);
+  assert.match(source, /assistanceMode: context\.assisted/);
+});
+
+
 test("le parcours dédié de création Selen saisit et transmet le contenu détaillé", () => {
   assert.match(newFormationPage, /name="detailed_program"/);
   assert.match(newFormationPage, /Contenu détaillé de la formation \*/);

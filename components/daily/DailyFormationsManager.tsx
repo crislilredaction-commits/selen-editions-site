@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { assistanceFetch } from "@/components/AgentAssistanceBanner";
 import FormationSourceUpload from "@/components/daily/FormationSourceUpload";
@@ -60,6 +60,7 @@ export default function DailyFormationsManager() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const saveInProgress = useRef(false);
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -105,21 +106,24 @@ export default function DailyFormationsManager() {
   }
 
   async function save(event: FormEvent) {
-    event.preventDefault(); setSaving(true); setError(""); setMessage("");
+    event.preventDefault();
+    if (saveInProgress.current) return;
+    saveInProgress.current = true;
+    setSaving(true); setError(""); setMessage("");
     try {
       if (assessmentMode === "selen_quiz" && assessmentQuestions.length === 0) throw new Error("Ajoutez au moins une question à l’évaluation finale ou choisissez le scan après la session.");
       if (form.positioning_mode === "off_platform" && !form.positioning_questionnaire_document_url) throw new Error("Importez votre questionnaire de positionnement avant d’enregistrer la formation.");
       const response = await assistanceFetch("/api/client/daily/formations", { method: editingId ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, positioning_choice_confirmed: true, id: editingId, status: editingId ? form.status : "draft" }) });
       const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error ?? "Enregistrement impossible.");
       const formationId = data.formation?.id as string | undefined; if (!formationId) throw new Error("La formation a été enregistrée mais son identifiant n’a pas été retourné.");
-      const assessmentRes = await assistanceFetch("/api/client/daily/formations/assessment-inline", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: formationId, mode: assessmentMode, instructions: assessmentInstructions, questions: assessmentQuestions }) });
+      const assessmentRes = await assistanceFetch("/api/client/daily/formations/assessment-inline", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: formationId, expected_updated_at: data.formation.updated_at, mode: assessmentMode, instructions: assessmentInstructions, questions: assessmentQuestions }) });
       const assessmentData = await assessmentRes.json().catch(() => ({})); if (!assessmentRes.ok) throw new Error(assessmentData.error ?? "La formation est enregistrée, mais l’évaluation finale n’a pas pu être attachée.");
       if (!editingId) { router.push(`/client/daily/sessions/new?formation=${encodeURIComponent(formationId)}`); return; }
       const wasValidated = editingOriginalStatus === "validated";
       resetForm(true); setMessage(wasValidated ? "Formation modifiée et renvoyée à Selen pour validation." : "Formation mise à jour et renvoyée à Selen pour vérification.");
       await load();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Enregistrement impossible."); }
-    finally { setSaving(false); }
+    finally { saveInProgress.current = false; setSaving(false); }
   }
 
   async function action(actionName: "duplicate" | "archive" | "delete", id: string) {
@@ -136,11 +140,11 @@ export default function DailyFormationsManager() {
 
   return <main style={s.main}>
     <header style={s.hero}><div><p style={s.eyebrow}>Selen Daily · Catalogue</p><h1 style={s.h1}>Formations</h1><p style={s.lead}>Créez vos programmes, transmettez-les à Selen pour validation et conservez automatiquement leurs versions.</p></div><div style={s.stat}><strong>{visibleFormations.length}</strong><span>formations actives</span></div></header>
-    {error ? <div style={s.error}>{error}</div> : null}{message ? <div style={s.success}>{message}</div> : null}
+    {error ? <div role="alert" style={s.error}>{error}</div> : null}{message ? <div role="status" style={s.success}>{message}</div> : null}
 
     <section style={s.accordion}>
-      <button type="button" onClick={() => formOpen ? resetForm(true) : startNew()} style={s.accordionButton} aria-expanded={formOpen}><span><b>{editingId ? "Modifier la formation" : "Créer une nouvelle formation"}</b><small>{formOpen ? "Refermer le formulaire" : "Ouvrir le formulaire de création"}</small></span><span style={s.chevron}>{formOpen ? "−" : "+"}</span></button>
-      {formOpen ? <form onSubmit={save} style={s.formPanel}>
+      <button type="button" disabled={saving} onClick={() => formOpen ? resetForm(true) : startNew()} style={s.accordionButton} aria-expanded={formOpen}><span><b>{editingId ? "Modifier la formation" : "Créer une nouvelle formation"}</b><small>{formOpen ? "Refermer le formulaire" : "Ouvrir le formulaire de création"}</small></span><span style={s.chevron}>{formOpen ? "−" : "+"}</span></button>
+      {formOpen ? <form onSubmit={save} aria-busy={saving} style={s.formPanel}>
         {editingOriginalStatus === "validated" ? <InfoBox>Vos modifications seront enregistrées sur cette formation puis renvoyées à Selen pour validation.</InfoBox> : null}
         {editingOriginalStatus === "correction_requested" ? <InfoBox><b>Retour Selen :</b> {editingFormation?.validation_note || "Des corrections sont demandées."}<br />Vos corrections repartent en validation sans créer une version supplémentaire.</InfoBox> : null}
 
@@ -180,7 +184,7 @@ export default function DailyFormationsManager() {
           <Field label="Site internet"><input value={form.contact_website} onChange={(e) => setForm({ ...form, contact_website: e.target.value })} style={s.input} /></Field>
           <div style={s.full}><label style={s.label}>Formateurs autorisés</label><div style={s.checkboxGrid}>{activeTrainers.map((trainer) => <label key={trainer.id} style={s.check}><input type="checkbox" checked={form.allowed_trainer_ids.includes(trainer.id)} onChange={(e) => setForm((current) => ({ ...current, allowed_trainer_ids: e.target.checked ? [...current.allowed_trainer_ids, trainer.id] : current.allowed_trainer_ids.filter((id) => id !== trainer.id) }))} />{trainer.display_name}</label>)}{activeTrainers.length === 0 ? <span style={s.muted}>Aucun formateur actif enregistré.</span> : null}</div></div>
         </div>
-        <div style={s.formActions}><button type="submit" disabled={saving} style={s.primary}>{saving ? "Enregistrement…" : editingOriginalStatus === "validated" ? "Envoyer la nouvelle version à Selen" : editingId ? "Enregistrer les modifications" : "Créer la formation"}</button><button type="button" style={s.secondary} onClick={() => resetForm(true)}>Annuler</button></div>
+        <div style={s.formActions}><button type="submit" disabled={saving} style={s.primary}>{saving ? "Enregistrement…" : editingOriginalStatus === "validated" ? "Envoyer la nouvelle version à Selen" : editingId ? "Enregistrer les modifications" : "Créer la formation"}</button><button type="button" disabled={saving} style={s.secondary} onClick={() => resetForm(true)}>Annuler</button></div>
       </form> : null}
     </section>
 
@@ -206,7 +210,7 @@ export default function DailyFormationsManager() {
             </div>
             <div style={s.qrWrap}><img src={qrUrl(formation.public_registration_token)} width={132} height={132} alt={`QR code d'inscription pour ${formation.title}`} /><span>Scannez pour tester</span></div>
           </div> : null}
-          <div style={s.actions}><button type="button" style={s.secondary} onClick={() => editFormation(formation)}>Modifier</button><button type="button" style={s.secondary} onClick={() => void action("duplicate", formation.id)}>Dupliquer</button><button type="button" style={s.danger} onClick={() => void action("archive", formation.id)}>Archiver</button><button type="button" style={s.secondary} onClick={() => void action("delete", formation.id)}>Supprimer</button></div>
+          <div style={s.actions}><button type="button" disabled={saving} style={s.secondary} onClick={() => editFormation(formation)}>Modifier</button><button type="button" disabled={saving} style={s.secondary} onClick={() => void action("duplicate", formation.id)}>Dupliquer</button><button type="button" disabled={saving} style={s.danger} onClick={() => void action("archive", formation.id)}>Archiver</button><button type="button" disabled={saving} style={s.secondary} onClick={() => void action("delete", formation.id)}>Supprimer</button></div>
         </article>;
       })}</div>}
     </section>
