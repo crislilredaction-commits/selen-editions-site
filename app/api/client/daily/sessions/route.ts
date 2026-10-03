@@ -1,3 +1,4 @@
+import { ENROLMENT_PARTICIPANT_SOURCE, isStoredSessionParticipant } from "@/lib/dailySessionParticipants";
 import { NextResponse } from "next/server";
 import { logAgentAssistanceAction } from "@/lib/server/agentAssistance";
 import {
@@ -21,7 +22,7 @@ function positiveInteger(value: unknown) {
   return Number.isInteger(number) && number > 0 ? number : null;
 }
 function participantRow(value: unknown) {
-  if (!value || typeof value !== "object") return null;
+  if (!value || typeof value !== "object" || !isStoredSessionParticipant(value)) return null;
   const row = value as Record<string, unknown>;
   const legacyName = text(row, "name");
   const firstName = text(row, "first_name") || legacyName.split(" ").slice(0, -1).join(" ");
@@ -127,7 +128,57 @@ export async function GET(req: Request) {
   if (!context.assisted && !context.capabilities?.sessions) return NextResponse.json({ sessions: [] });
   const { data, error } = await context.admin.from("daily_sessions").select("*, daily_formations(id,title,status,version), daily_registration_recipients(id,recipient_type,recipient_name,recipient_email,status,sent_at,last_error), daily_conventions(id,recipient_type,recipient_key,recipient_name,company_name,version,document_name,status,generated_at,daily_convention_signatures(id,signatory_type,signatory_name,status,signed_at)), daily_convocations(id,recipient_type,recipient_key,recipient_name,company_name,version,document_name,status,sent_at,generated_at), daily_portal_access_tokens(id,portal_type,entity_name,entity_email,token,status,viewed_at)").eq("organisation_id", context.organisationId).order("created_at", { ascending: false });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ sessions: data ?? [] });
+  const sessions = data ?? [];
+  if (sessions.length === 0) return NextResponse.json({ sessions });
+  const enrolmentPageSize = 1000;
+  const enrolmentQuery = () => context.admin.from("daily_session_enrolments")
+    .select("session_id,learner_id,status,daily_learners(id,organisation_id,first_name,last_name,email,phone)")
+    .eq("organisation_id", context.organisationId)
+    .in("session_id", sessions.map((session) => session.id))
+    .not("status", "in", "(declined,cancelled,abandoned)")
+    .order("id", { ascending: true });
+  const enrolments: NonNullable<Awaited<ReturnType<typeof enrolmentQuery>>["data"]> = [];
+  // Read every page: the API may cap a response even when no limit was requested.
+  for (let offset = 0; ; ) {
+    const { data: page, error: enrolmentsError } = await enrolmentQuery().range(offset, offset + enrolmentPageSize - 1);
+    if (enrolmentsError) return NextResponse.json({ error: enrolmentsError.message }, { status: 500 });
+    if (!page?.length) break;
+    enrolments.push(...page);
+    offset += page.length;
+  }
+
+  // Merge into the existing participant shape without changing the stored session.
+  const sessionsById = new Map(sessions.map((session) => [session.id, session]));
+  const identitiesBySession = new Map<string, Set<string>>();
+  function participantIdentities(value: unknown) {
+    if (!value || typeof value !== "object") return [];
+    const row = value as Record<string, unknown>;
+    const learnerId = text(row, "learner_id") || text(row, "id");
+    const email = text(row, "email").toLowerCase();
+    return [learnerId ? `id:${learnerId}` : "", email ? `email:${email}` : ""].filter(Boolean);
+  }
+  for (const session of sessions) {
+    const participants = [
+      ...jsonArray(session.beneficiaries),
+      ...jsonArray(session.individual_beneficiaries),
+      ...jsonArray(session.companies).flatMap((company) => jsonArray(company?.participants)),
+    ];
+    identitiesBySession.set(session.id, new Set(participants.flatMap(participantIdentities)));
+  }
+  for (const enrolment of enrolments ?? []) {
+    const session = sessionsById.get(enrolment.session_id);
+    const learner = Array.isArray(enrolment.daily_learners) ? enrolment.daily_learners[0] : enrolment.daily_learners;
+    if (!session || !learner || learner.id !== enrolment.learner_id || learner.organisation_id !== context.organisationId) continue;
+    const participant = participantRow(learner);
+    if (!participant) continue;
+    const identities = participantIdentities({ ...participant, learner_id: enrolment.learner_id });
+    const seen = identitiesBySession.get(session.id)!;
+    const duplicate = identities.some((identity) => seen.has(identity));
+    identities.forEach((identity) => seen.add(identity));
+    if (duplicate) continue;
+    session.beneficiaries = [...jsonArray(session.beneficiaries), { ...participant, learner_id: enrolment.learner_id, participant_source: ENROLMENT_PARTICIPANT_SOURCE }];
+  }
+  return NextResponse.json({ sessions });
 }
 
 export async function POST(req: Request) {
@@ -168,13 +219,19 @@ export async function PATCH(req: Request) {
   if (!id) return NextResponse.json({ error: "Identifiant session requis." }, { status: 400 });
   const built = buildPayload(body, context.user.id, context.organisationId);
   if ("error" in built) return NextResponse.json({ error: built.error }, { status: 400 });
+  const { data: existing, error: existingError } = await context.admin.from("daily_sessions").select("id,formation_id").eq("id", id).eq("organisation_id", context.organisationId).maybeSingle();
+  if (existingError) return NextResponse.json({ error: existingError.message }, { status: 500 });
+  if (!existing) return NextResponse.json({ error: "Session introuvable." }, { status: 404 });
   const { data: formation, error: formationError } = await context.admin.from("daily_formations").select("id").eq("id", built.payload.formation_id).eq("organisation_id", context.organisationId).neq("status", "archived").maybeSingle();
   if (formationError) return NextResponse.json({ error: formationError.message }, { status: 500 });
   if (!formation) return NextResponse.json({ error: "Formation introuvable ou archivée." }, { status: 404 });
   const trainerError = await validateTrainerIds(context.organisationId, built.payload.trainer_ids, context.admin);
   if (trainerError) return NextResponse.json({ error: trainerError }, { status: 400 });
-  const { data, error } = await context.admin.from("daily_sessions").update({ ...built.payload, registration_token: null }).eq("id", id).eq("organisation_id", context.organisationId).select("*, daily_formations(id,title,status,version)").single();
+  // Omit the token on ordinary edits, including one prepared after our read.
+  const invalidateRegistration = existing.formation_id !== built.payload.formation_id || built.payload.status === "archived";
+  const { data, error } = await context.admin.from("daily_sessions").update({ ...built.payload, ...(invalidateRegistration ? { registration_token: null } : {}) }).eq("id", id).eq("organisation_id", context.organisationId).eq("formation_id", existing.formation_id).select("*, daily_formations(id,title,status,version)").maybeSingle();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (!data) return NextResponse.json({ error: "La session a été modifiée ou supprimée entre-temps. Rechargez-la avant de réessayer." }, { status: 409 });
   const [learnerCount, enterpriseAccess] = await Promise.all([refreshLearnerTier(context.organisationId, context.user.id, context.admin), provisionManualCompanyAccess(context, data.id, req)]);
   if (context.assisted && context.assistance) await logAgentAssistanceAction({ supabase: context.admin, req, assistance: context.assistance, action: "daily_session_update", actionLabel: "Session modifiée par Studio pour le client", newState: { session_id: data.id, status: data.status, formation_id: data.formation_id } });
   return NextResponse.json({ session: data, annualLearnerCount: learnerCount, enterprise_access: enterpriseAccess, assistanceMode: context.assisted });

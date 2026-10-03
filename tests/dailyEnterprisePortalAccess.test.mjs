@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const helper = fs.readFileSync("lib/server/dailyEnterprisePortalAccess.ts", "utf8");
+const delivery = fs.readFileSync("lib/server/dailyLearnerEmailDelivery.ts", "utf8");
 const registrationRoute = fs.readFileSync("app/api/client/daily/registration-requests/route.ts", "utf8");
 const sessionsRoute = fs.readFileSync("app/api/client/daily/sessions/route.ts", "utf8");
 const portalRoute = fs.readFileSync("app/api/daily-portal/[token]/route.ts", "utf8");
@@ -64,7 +65,8 @@ test("manual retry is scoped to the current organisation and matching formation"
 test("enterprise access email is traceable and idempotent", () => {
   assert.match(helper, /communication_type: "enterprise_portal_access"/);
   assert.match(helper, /contains\("metadata", \{ portal_access_id: access\.id \}\)/);
-  assert.match(helper, /status: "already_sent"/);
+  assert.match(helper, /provenDelivery\(previous\)/);
+  assert.match(delivery, /return "already_sent"/);
   assert.match(helper, /provider_message_id/);
 });
 
@@ -76,7 +78,7 @@ test("expired or revoked enterprise links are renewed instead of duplicated", ()
 
 test("missing email or provider failure does not roll back the validated registration or session", () => {
   assert.match(helper, /status: "missing_email"/);
-  assert.match(helper, /status: "send_failed"/);
+  assert.match(delivery, /result\("send_failed"\)/);
   assert.doesNotMatch(helper, /daily_sessions"\)\.delete/);
   assert.doesNotMatch(helper, /daily_session_enrolments"\)\.delete/);
 });

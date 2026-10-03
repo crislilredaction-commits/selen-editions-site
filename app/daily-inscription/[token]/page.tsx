@@ -4,6 +4,8 @@ import { use, useEffect, useMemo, useState } from "react";
 import ApplicationSignature from "@/components/daily/ApplicationSignature";
 import BeneficiaryProfessionalSiretFields from "@/components/daily/BeneficiaryProfessionalSiretFields";
 import ProgramDetails from "@/components/daily/ProgramDetails";
+import OwnPositioningFiles from "@/components/daily/OwnPositioningFiles";
+import { positioningSubjectKey, OWN_POSITIONING_MAX_BYTES, type OwnPositioningSource } from "@/lib/daily/ownPositioning";
 import { normalizeBeneficiarySiret, validateOptionalBeneficiarySiret } from "@/lib/dailyBeneficiarySiret";
 
 type RegistrationMode = "beneficiary" | "company";
@@ -77,6 +79,12 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
   const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>("date_to_plan");
   const [organisationName, setOrganisationName] = useState("votre organisme de formation");
   const [submissionNextStep, setSubmissionNextStep] = useState<DeliveryMode>("date_to_plan");
+  const [ownPositioning, setOwnPositioning] = useState<OwnPositioningSource | null>(null);
+  const [filledDocuments, setFilledDocuments] = useState<Record<string, File>>({});
+  const [submissionId, setSubmissionId] = useState(() => crypto.randomUUID());
+  const positioningSubjects = mode === "beneficiary" ? [{ first_name: form.first_name ?? "", last_name: form.last_name ?? "", email: form.email ?? "" }] : participants.filter(participant => participant.first_name || participant.last_name || participant.email);
+  const filledRows = positioningSubjects.map(subject => ({ key: positioningSubjectKey(subject), subject, file: filledDocuments[positioningSubjectKey(subject)] }));
+  const ownPositioningReady = !ownPositioning || (filledRows.length > 0 && filledRows.every(row => row.file) && filledRows.reduce((size, row) => size + (row.file?.size ?? 0), 0) <= OWN_POSITIONING_MAX_BYTES);
 
   const positioningQuestions = useMemo(() => {
     const questions = session?.daily_formations?.positioning_questions;
@@ -96,6 +104,7 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
         return;
       }
       setSession(data.session);
+      setOwnPositioning(data.ownPositioning?.id ? data.ownPositioning : null);
       setRegistrationKind(data.registrationKind === "session" ? "session" : "formation");
       setAvailableSessions(Array.isArray(data.availableSessions) ? data.availableSessions : []);
       setDeliveryMode(data.deliveryMode === "asynchronous" ? "asynchronous" : data.deliveryMode === "scheduled" ? "scheduled" : "date_to_plan");
@@ -104,7 +113,8 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
       try {
         const draft = window.localStorage.getItem(`selen-daily-registration-${token}`);
         if (!draft) return;
-        const parsed = JSON.parse(draft) as { mode?: RegistrationMode; step?: number; form?: Record<string, string>; participants?: Participant[] };
+        const parsed = JSON.parse(draft) as { mode?: RegistrationMode; step?: number; form?: Record<string, string>; participants?: Participant[]; submissionId?: string };
+        if (parsed.submissionId && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(parsed.submissionId)) setSubmissionId(parsed.submissionId);
         setMode(parsed.mode ?? initialMode());
         setStep(parsed.step ?? 0);
         setForm(parsed.form ?? {});
@@ -122,14 +132,14 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
     window.queueMicrotask(() => setAutosaveStatus("saving"));
     const timer = window.setTimeout(() => {
       try {
-        window.localStorage.setItem(`selen-daily-registration-${token}`, JSON.stringify({ mode, step, form, participants }));
+        window.localStorage.setItem(`selen-daily-registration-${token}`, JSON.stringify({ mode, step, form, participants, submissionId }));
         setAutosaveStatus("saved");
       } catch {
         setAutosaveStatus("error");
       }
     }, 600);
     return () => window.clearTimeout(timer);
-  }, [token, mode, step, form, participants, saved]);
+  }, [token, mode, step, form, participants, saved, submissionId]);
 
   const progress = useMemo(() => Math.round(((step + 1) / totalSteps) * 100), [step, totalSteps]);
 
@@ -207,6 +217,10 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
   }
 
   function validatePositioning() {
+    if (!ownPositioningReady) {
+      setError("Réimportez le document de positionnement rempli pour chaque apprenant avant d’envoyer le dossier (3 Mo au total maximum).");
+      return false;
+    }
     if (!hasSelenPositioning) return true;
     const missing = positioningQuestions.some((question) => question.required && !String(form[`positioning_${question.id}`] ?? "").trim());
     if (missing) {
@@ -251,10 +265,8 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
     if (!validateContactDetails() || !validatePositioning() || !validateSignature()) return;
     setSaving(true);
     setError("");
-    const res = await fetch(`/api/daily-registration/${token}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    try {
+      const payload = {
         response_type: mode,
         respondent_first_name: mode === "beneficiary" ? form.first_name : form.admin_contact_name,
         respondent_last_name: mode === "beneficiary" ? form.last_name : "",
@@ -266,8 +278,11 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
         positioning_answers: buildPositioningAnswers(),
         signature_consent: signatureConsent,
         signature_data: signatureData,
-      }),
-    });
+        ...(ownPositioning ? { positioning_source_id: ownPositioning.id, submission_id: submissionId } : {}),
+      };
+      const multipart = new FormData();
+      if (ownPositioning) { multipart.append("payload", JSON.stringify(payload)); filledRows.forEach((row, index) => { if (row.file) multipart.append(`positioning_file_${index}`, row.file); }); }
+      const res = await fetch(`/api/daily-registration/${token}`, ownPositioning ? { method: "POST", body: multipart } : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     const data = await res.json().catch(() => null);
     setSaving(false);
     if (!res.ok) {
@@ -278,6 +293,8 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
     setSubmissionNextStep(data?.nextStep === "asynchronous" ? "asynchronous" : data?.nextStep === "scheduled" ? "scheduled" : "date_to_plan");
     window.localStorage.removeItem(`selen-daily-registration-${token}`);
     setSaved(true);
+    } catch { setError("La transmission a été interrompue. Réessayez avec le même document rempli."); }
+    finally { setSaving(false); }
   }
 
   if (loading) return <main className="gazette-paper" style={s.page}>Ouverture de votre dossier d&apos;inscription...</main>;
@@ -338,12 +355,12 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
           )}
 
           {step === totalSteps - 1 ? (
-            <ApplicationSignature consentText={signatureConsentText} consent={signatureConsent} onConsentChange={setSignatureConsent} onSignatureChange={setSignatureData} />
+            <>{ownPositioning ? <OwnPositioningFiles downloadUrl={`/api/daily-registration/${encodeURIComponent(token)}/positioning-document`} name={ownPositioning.name} rows={filledRows} onChange={(key, file) => setFilledDocuments(current => { const next = { ...current }; if (file) next[key] = file; else delete next[key]; return next; })} /> : null}<ApplicationSignature consentText={signatureConsentText} consent={signatureConsent} onConsentChange={setSignatureConsent} onSignatureChange={setSignatureData} /></>
           ) : null}
 
           <div style={s.actions}>
             {step > 0 ? <button type="button" className="btn-ghost" onClick={() => { if (step === totalSteps - 1) { setSignatureConsent(false); setSignatureData(""); } setStep(step - 1); }}><span>Retour</span></button> : null}
-            {step < totalSteps - 1 ? <button type="button" className="btn-ink" onClick={() => setStep(step + 1)}><span>Continuer</span></button> : <button type="button" className="btn-ink" disabled={saving} onClick={() => void submit()}><span>{saving ? "Transmission..." : "Signer et envoyer mon dossier"}</span></button>}
+            {step < totalSteps - 1 ? <button type="button" className="btn-ink" onClick={() => setStep(step + 1)}><span>Continuer</span></button> : <button type="button" className="btn-ink" disabled={saving || !ownPositioningReady} onClick={() => void submit()}><span>{saving ? "Transmission..." : "Signer et envoyer mon dossier"}</span></button>}
           </div>
         </article>
         <p style={s.powered}>Dossier sécurisé avec Selen Daily</p>

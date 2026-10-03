@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getDailyOrganisationReadContext } from "@/lib/server/dailyOrganisationContext";
+import { filterCurrentOwnPositioningEvidence } from "@/lib/server/dailyCurrentPositioningEvidence";
 import {
   calculateDailySessionCompletion,
   closeDailySessionDossierIfReady,
@@ -11,10 +12,10 @@ export async function GET(request: Request) {
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
 
   const [{ data: sessions, error: sessionsError }, { data: checklist, error: checklistError }, { data: enrolments, error: enrolmentsError }, { data: documents, error: documentsError }, { data: assessments, error: assessmentsError }, { data: recordedAssessments, error: recordedAssessmentsError }, { data: dossiers, error: dossiersError }] = await Promise.all([
-    context.admin.from("daily_sessions").select("id,formation_id,end_date").eq("organisation_id", context.organisationId).neq("status", "archived"),
+    context.admin.from("daily_sessions").select("id,formation_id,end_date,daily_formations(id,organisation_id,positioning_mode,positioning_questionnaire_document_url)").eq("organisation_id", context.organisationId).neq("status", "archived"),
     context.admin.from("daily_session_checklist_items").select("session_id,status,responsibility").eq("organisation_id", context.organisationId).neq("responsibility", "selen"),
     context.admin.from("daily_session_enrolments").select("id,session_id,learner_id,status,positioning_status").eq("organisation_id", context.organisationId),
-    context.admin.from("daily_documents").select("session_id,enrolment_id,document_type,status,is_current").eq("organisation_id", context.organisationId).eq("is_current", true).in("document_type", ["positioning_evidence", "learning_assessment_evidence"]),
+    context.admin.from("daily_documents").select("formation_id,session_id,enrolment_id,document_type,status,is_current,metadata").eq("organisation_id", context.organisationId).eq("is_current", true).in("document_type", ["positioning_evidence", "learning_assessment_evidence"]),
     context.admin.from("daily_learning_assessment_responses").select("session_id,enrolment_id").eq("organisation_id", context.organisationId),
     context.admin.from("daily_learning_assessments").select("session_id,enrolment_id,outcome").eq("organisation_id", context.organisationId),
     context.admin.from("daily_session_dossiers").select("session_id,status,completed_at").eq("organisation_id", context.organisationId),
@@ -27,12 +28,16 @@ export async function GET(request: Request) {
   const completion: Record<string, { percentage: number; completed: number; expected: number; dossierStatus: string | null; completedAt: string | null }> = {};
 
   try {
+    const currentDocuments = await filterCurrentOwnPositioningEvidence({
+      admin: context.admin, organisationId: context.organisationId,
+      formations: (sessions ?? []).map(session => session.daily_formations), documents: documents ?? [],
+    });
     for (const session of sessions ?? []) {
       const stats = calculateDailySessionCompletion({
         sessionId: session.id,
         checklist: checklist ?? [],
         enrolments: enrolments ?? [],
-        documents: documents ?? [],
+        documents: currentDocuments,
         assessmentResponses: assessments ?? [],
         recordedAssessments: recordedAssessments ?? [],
       });

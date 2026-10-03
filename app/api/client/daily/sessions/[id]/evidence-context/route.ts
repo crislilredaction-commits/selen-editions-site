@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getDailyOrganisationReadContext } from "@/lib/server/dailyOrganisationContext";
+import { filterCurrentOwnPositioningEvidence } from "@/lib/server/dailyCurrentPositioningEvidence";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -14,7 +15,7 @@ export async function GET(request: Request, { params }: Params) {
 
   const { data: session, error: sessionError } = await context.admin
     .from("daily_sessions")
-    .select("id,formation_id,status,daily_formations(id,title,positioning_mode,learning_assessment_mode)")
+    .select("id,formation_id,status,daily_formations(id,organisation_id,title,positioning_mode,positioning_questionnaire_document_url,learning_assessment_mode)")
     .eq("organisation_id", context.organisationId)
     .eq("id", sessionId)
     .maybeSingle();
@@ -31,7 +32,7 @@ export async function GET(request: Request, { params }: Params) {
       .order("created_at", { ascending: true }),
     context.admin
       .from("daily_documents")
-      .select("id,enrolment_id,document_type,status,logical_name,created_at")
+      .select("id,formation_id,enrolment_id,document_type,status,logical_name,created_at,metadata")
       .eq("organisation_id", context.organisationId)
       .eq("session_id", sessionId)
       .eq("is_current", true)
@@ -47,5 +48,15 @@ export async function GET(request: Request, { params }: Params) {
   const firstError = enrolmentsError ?? documentsError ?? responsesError;
   if (firstError) return NextResponse.json({ error: firstError.message }, { status: 500 });
 
-  return NextResponse.json({ session, enrolments: enrolments ?? [], documents: documents ?? [], assessmentResponses: assessmentResponses ?? [] });
+  try {
+    const currentDocuments = await filterCurrentOwnPositioningEvidence({
+      admin: context.admin, organisationId: context.organisationId,
+      formations: [session.daily_formations], documents: documents ?? [],
+    });
+    return NextResponse.json({ session, enrolments: enrolments ?? [],
+      documents: currentDocuments.map(({ metadata: _metadata, formation_id: _formationId, ...document }) => document),
+      assessmentResponses: assessmentResponses ?? [] });
+  } catch {
+    return NextResponse.json({ error: "Vérification de la version du positionnement indisponible." }, { status: 500 });
+  }
 }

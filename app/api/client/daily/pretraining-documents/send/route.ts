@@ -1,7 +1,9 @@
 import { Buffer } from "node:buffer";
 import { NextResponse } from "next/server";
 import { getDailyOrganisationContext } from "@/lib/server/dailyOrganisationContext";
-import { prepareDailyConvocationEmail, sendDailyConvocation } from "@/lib/server/dailyPretrainingEmails";
+import { sendDailyConvocation } from "@/lib/server/dailyPretrainingEmails";
+
+import { deliverConvocationWithProof } from "@/lib/server/dailyConvocationEmailProof";
 
 const sendableStatuses = ["validated", "published", "active"];
 
@@ -83,104 +85,32 @@ export async function POST(req: Request) {
   const formation = one(session.daily_formations as { title?: string | null } | { title?: string | null }[] | null);
   const formationTitle = text(formation?.title) || "Formation Selen Daily";
 
-  const { data: file, error: downloadError } = await context.admin.storage
-    .from(document.bucket)
-    .download(document.storage_path);
-  if (downloadError || !file) {
-    return NextResponse.json({ error: "La version validée de la convocation est introuvable dans le stockage." }, { status: 500 });
-  }
-
-  const attachmentBase64 = Buffer.from(await file.arrayBuffer()).toString("base64");
-  const attachmentFilename = `${safeFilename(`convocation-${learnerName || "apprenant"}`)}-v${document.version}.doc`;
-  const emailInput = {
-    email,
-    learnerName,
-    formationTitle,
-    sessionReference: text(session.internal_reference),
-    startDate: text(session.start_date),
-    endDate: text(session.end_date),
-    documentVersion: document.version,
-    attachmentFilename,
-    attachmentBase64,
-  };
-  const prepared = prepareDailyConvocationEmail(emailInput);
-
-  const { data: communication, error: evidenceError } = await context.admin
-    .from("daily_communications")
-    .insert({
-      organisation_id: context.organisationId,
-      session_id: session.id,
-      enrolment_id: enrolment.id,
-      communication_type: "convocation",
-      channel: "email",
-      recipient_email: email,
-      recipient_name: learnerName || null,
-      subject: prepared.subject,
-      text_body: prepared.text,
-      html_body: prepared.html,
-      provider: "resend",
-      status: "queued",
-      created_by: context.user.id,
-      metadata: {
-        document_id: document.id,
-        document_type: document.document_type,
-        document_version: document.version,
-        attachment_filename: attachmentFilename,
-      },
-    })
-    .select("id")
-    .single();
-
-  if (evidenceError || !communication) {
-    return NextResponse.json({ error: "La preuve d’envoi n’a pas pu être réservée. La convocation n’a pas été envoyée." }, { status: 500 });
-  }
-
-  const { error: linkError } = await context.admin
-    .from("daily_communication_documents")
-    .insert({
-      communication_id: communication.id,
-      document_id: document.id,
-      document_type: document.document_type,
-      logical_name: document.logical_name,
-      document_version: document.version,
-      sha256: document.sha256,
-      storage_path: document.storage_path,
-    });
-
-  if (linkError) {
-    const failedAt = new Date().toISOString();
-    await context.admin.from("daily_communications").update({ status: "failed", failed_at: failedAt, failure_reason: "document_snapshot_failed" }).eq("id", communication.id);
-    return NextResponse.json({ error: "La version exacte du document n’a pas pu être figée. La convocation n’a pas été envoyée." }, { status: 500 });
-  }
-
-  const sent = await sendDailyConvocation(emailInput);
-  if (!sent.sent) {
-    const failedAt = new Date().toISOString();
-    await context.admin.from("daily_communications").update({ status: "failed", failed_at: failedAt, failure_reason: sent.reason }).eq("id", communication.id);
-    return NextResponse.json({ error: "La convocation n’a pas pu être envoyée. La tentative est conservée dans l’historique." }, { status: 503 });
-  }
-
-  const sentAt = new Date().toISOString();
-  const { error: finalizeError } = await context.admin
-    .from("daily_communications")
-    .update({
-      provider_message_id: sent.message.providerMessageId,
-      status: "sent",
-      sent_at: sentAt,
-      failed_at: null,
-      failure_reason: null,
-    })
-    .eq("id", communication.id);
-
-  if (finalizeError) {
-    console.error("Daily : convocation envoyée mais finalisation de la preuve impossible", finalizeError);
-  }
-
-  return NextResponse.json({
-    ok: true,
-    sentTo: email,
-    sentAt,
-    evidenceRecorded: !finalizeError,
-    communicationId: communication.id,
+  const result = await deliverConvocationWithProof(context.admin, {
+    organisationId: context.organisationId, sessionId: session.id, enrolmentId: enrolment.id,
+    createdBy: context.user.id, source: "daily_documents", documentId: document.id,
+    version: document.version, email, storagePath: document.storage_path, bucket: document.bucket,
+    snapshot: { document_id: document.id, document_type: document.document_type,
+      logical_name: document.logical_name, document_version: document.version,
+      sha256: document.sha256, storage_path: document.storage_path },
+    send: sendDailyConvocation,
+    load: async () => {
+      const { data: file, error } = await context.admin.storage.from(document.bucket).download(document.storage_path);
+      if (error || !file) throw new Error("Document introuvable");
+      return {
+        email, learnerName, formationTitle, sessionReference: text(session.internal_reference),
+        startDate: text(session.start_date), endDate: text(session.end_date), documentVersion: document.version,
+        attachmentFilename: `${safeFilename(`convocation-${learnerName || "apprenant"}`)}-v${document.version}.doc`,
+        attachmentBase64: Buffer.from(await file.arrayBuffer()).toString("base64"),
+      };
+    },
   });
+  const confirmed = result.status === "sent" || result.status === "already_sent";
+  return NextResponse.json({
+    ok: confirmed, status: result.status, evidenceRecorded: confirmed,
+    communicationId: result.communicationId,
+    ...(confirmed ? { sentAt: result.sentAt, sentTo: result.sentTo } : {
+      reason: result.reason,
+      error: result.status === "pending" ? "En attente de confirmation. Aucun nouvel envoi automatique." : "Envoi rejeté avant acceptation confirmée.",
+    }),
+  }, { status: confirmed ? 200 : result.status === "pending" ? 202 : 503 });
 }

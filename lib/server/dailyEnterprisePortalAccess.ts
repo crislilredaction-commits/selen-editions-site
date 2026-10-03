@@ -1,9 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { Resend } from "resend";
-
-const resendApiKey = process.env.RESEND_API_KEY?.trim();
-const resendFromEmail = process.env.RESEND_FROM_EMAIL || "Selen Editions <hello@selen-editions.fr>";
-const resend = resendApiKey ? new Resend(resendApiKey) : null;
+import { deliverLearnerEmail, emailDeliveryId, provenDelivery } from "@/lib/server/dailyLearnerEmailDelivery";
 
 const text = (value: unknown) => typeof value === "string" ? value.trim() : "";
 const normalizedEmail = (value: unknown) => text(value).toLowerCase();
@@ -29,7 +25,7 @@ export type EnterprisePortalAccessResult = {
   portalAccessId?: string;
   communicationId?: string;
   portalUrl?: string;
-  status: "sent" | "already_sent" | "missing_email" | "send_failed" | "not_found" | "invalid_scope";
+  status: "sent" | "already_sent" | "pending" | "missing_email" | "send_failed" | "not_found" | "invalid_scope";
 };
 
 function accessEmail(input: { companyName: string; formationTitle: string; portalUrl: string }) {
@@ -77,40 +73,32 @@ export async function ensureAndSendEnterprisePortalAccess(admin: AdminClient, in
   }
 
   const portalUrl = `${input.origin}/daily/portail/enterprise/${encodeURIComponent(access.token)}`;
-  const { data: previous, error: previousError } = await admin.from("daily_communications").select("id,status,sent_at").eq("organisation_id", session.organisation_id).eq("session_id", session.id).eq("communication_type", "enterprise_portal_access").eq("recipient_email", email).contains("metadata", { portal_access_id: access.id }).in("status", ["queued", "sent", "delivered"]).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  const key = JSON.stringify(["enterprise_portal_access", session.organisation_id, session.id, entityKey, access.id]);
+  const { data: previous, error: previousError } = await admin.from("daily_communications").select("id,status,sent_at,provider_message_id").eq("organisation_id", session.organisation_id).eq("session_id", session.id).eq("communication_type", "enterprise_portal_access").eq("recipient_email", email).contains("metadata", { portal_access_id: access.id }).order("created_at", { ascending: false }).limit(1).maybeSingle();
   if (previousError) throw previousError;
-  if (previous) return { sessionId: session.id, email, portalAccessId: access.id, status: "already_sent", communicationId: previous.id, portalUrl };
-
-  const message = accessEmail({ companyName, formationTitle: text(formation?.title) || "Formation Selen Daily", portalUrl });
-  const { data: communication, error: communicationError } = await admin.from("daily_communications").insert({
-    organisation_id: session.organisation_id,
-    session_id: session.id,
-    communication_type: "enterprise_portal_access",
-    channel: "email",
-    recipient_email: email,
-    recipient_name: companyName || null,
-    subject: message.subject,
-    text_body: message.text,
-    html_body: message.html,
-    provider: "resend",
-    status: "queued",
-    created_by: input.createdBy ?? session.user_id,
-    metadata: { portal_access_id: access.id, entity_key: entityKey, registration_request_id: input.registrationRequestId ?? null, source: input.source },
-  }).select("id").single();
-  if (communicationError || !communication) throw communicationError ?? new Error("enterprise portal communication evidence missing");
-
-  if (!resend) {
-    await admin.from("daily_communications").update({ status: "failed", failed_at: new Date().toISOString(), failure_reason: "missing_resend_api_key" }).eq("id", communication.id);
-    return { sessionId: session.id, email, portalAccessId: access.id, status: "send_failed", communicationId: communication.id, portalUrl };
+  // Legacy attempts have no stable provider key: never automatically resend them.
+  if (previous && (previous.id !== emailDeliveryId(key) || previous.status !== "failed")) {
+    const status = provenDelivery(previous) === "already_sent" ? "already_sent" : "pending";
+    return { sessionId: session.id, email, portalAccessId: access.id, status, communicationId: previous.id, portalUrl };
   }
-  const { data: sent, error: sendError } = await resend.emails.send({ from: resendFromEmail, to: email, subject: message.subject, text: message.text, html: message.html, replyTo: "hello@selen-editions.fr" });
-  if (sendError) {
-    console.error("Daily : envoi de l’accès entreprise impossible", sendError);
-    await admin.from("daily_communications").update({ status: "failed", failed_at: new Date().toISOString(), failure_reason: "send_failed" }).eq("id", communication.id);
-    return { sessionId: session.id, email, portalAccessId: access.id, status: "send_failed", communicationId: communication.id, portalUrl };
-  }
-  await admin.from("daily_communications").update({ provider_message_id: sent?.id ?? null, status: "sent", sent_at: new Date().toISOString(), failed_at: null, failure_reason: null }).eq("id", communication.id);
-  return { sessionId: session.id, email, portalAccessId: access.id, status: "sent", communicationId: communication.id, portalUrl };
+  const delivery = await deliverLearnerEmail(admin, {
+    key,
+    pendingOnAmbiguousError: true,
+    preparationSubject: "Accès entreprise en préparation",
+    row: {
+      organisation_id: session.organisation_id,
+      session_id: session.id,
+      communication_type: "enterprise_portal_access",
+      channel: "email",
+      recipient_email: email,
+      recipient_name: companyName || null,
+      provider: "resend",
+      created_by: input.createdBy ?? session.user_id,
+      metadata: { portal_access_id: access.id, entity_key: entityKey, registration_request_id: input.registrationRequestId ?? null, source: input.source },
+    },
+    message: async () => accessEmail({ companyName, formationTitle: text(formation?.title) || "Formation Selen Daily", portalUrl }),
+  });
+  return { sessionId: session.id, email, portalAccessId: access.id, ...delivery, portalUrl };
 }
 
 export async function sendEnterprisePortalAccessForSessionCompanies(admin: AdminClient, input: { sessionId: string; origin: string; createdBy?: string | null; source?: EnterpriseAccessSource }) {
