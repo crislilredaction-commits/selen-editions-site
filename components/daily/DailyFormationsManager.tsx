@@ -68,6 +68,7 @@ export default function DailyFormationsManager() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const saveInProgress = useRef(false);
+  const editingRevision = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -92,11 +93,13 @@ export default function DailyFormationsManager() {
   const structuredProgram = form.creation_mode === "selen_form";
 
   function resetForm(close = true) {
+    editingRevision.current = null;
     setEditingId(null); setEditingOriginalStatus(null); setForm({ ...emptyForm, learning_objectives: [""], allowed_trainer_ids: [], positioning_questions: [], prerequisite_requirements: [] });
     setAssessmentMode("external"); setAssessmentInstructions(""); setAssessmentQuestions([]); if (close) setFormOpen(false); setError("");
   }
   function startNew() { resetForm(false); setMessage(""); setFormOpen(true); }
   function editFormation(formation: Formation) {
+    editingRevision.current = formation.updated_at;
     setMessage(""); setEditingId(formation.id); setEditingOriginalStatus(formation.status);
     setForm({
       creation_mode: parseDailyFormationCreationMode(formation.creation_mode), prerequisite_mode: parseDailyPrerequisiteMode(formation.prerequisite_mode),
@@ -128,9 +131,10 @@ export default function DailyFormationsManager() {
       if (form.creation_mode === "program_import" && !form.detailed_program_document_url) throw new Error("Importez le programme original avant d’enregistrer la formation.");
       if (assessmentMode === "selen_quiz" && assessmentQuestions.length === 0) throw new Error("Ajoutez au moins une question à l’évaluation finale ou choisissez le scan après la session.");
       if (form.positioning_mode === "off_platform" && !form.positioning_questionnaire_document_url) throw new Error("Importez votre questionnaire de positionnement avant d’enregistrer la formation.");
-      const response = await assistanceFetch("/api/client/daily/formations", { method: editingId ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, prerequisite_requirements: prerequisiteRequirements, prerequisites: form.prerequisite_mode === "none" ? "Aucun prérequis" : form.prerequisites, positioning_choice_confirmed: true, id: editingId, status: editingId ? form.status : "draft" }) });
+      const response = await assistanceFetch("/api/client/daily/formations", { method: editingId ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, expected_updated_at: editingId ? editingRevision.current : undefined, prerequisite_requirements: prerequisiteRequirements, prerequisites: form.prerequisite_mode === "none" ? "Aucun prérequis" : form.prerequisites, positioning_choice_confirmed: true, id: editingId, status: editingId ? form.status : "draft" }) });
       const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error ?? "Enregistrement impossible.");
       const formationId = data.formation?.id as string | undefined; if (!formationId) throw new Error("La formation a été enregistrée mais son identifiant n’a pas été retourné.");
+      if (editingId && typeof data.formation.updated_at === "string") editingRevision.current = data.formation.updated_at;
       const assessmentRes = await assistanceFetch("/api/client/daily/formations/assessment-inline", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: formationId, expected_updated_at: data.formation.updated_at, mode: assessmentMode, instructions: assessmentInstructions, questions: assessmentQuestions }) });
       const assessmentData = await assessmentRes.json().catch(() => ({})); if (!assessmentRes.ok) throw new Error(assessmentData.error ?? "La formation est enregistrée, mais l’évaluation finale n’a pas pu être attachée.");
       if (!editingId) { router.push(`/client/daily/sessions/new?formation=${encodeURIComponent(formationId)}`); return; }

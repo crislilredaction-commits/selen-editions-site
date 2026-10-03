@@ -187,10 +187,13 @@ export async function PATCH(req: Request) {
   const body = await req.json().catch(() => ({})) as Record<string, unknown>;
   const id = text(body, "id");
   if (!id) return NextResponse.json({ error: "Identifiant formation requis." }, { status: 400 });
+  const expectedUpdatedAt = typeof body.expected_updated_at === "string" ? body.expected_updated_at.trim() : "";
+  if (!expectedUpdatedAt || !Number.isFinite(Date.parse(expectedUpdatedAt))) return NextResponse.json({ error: "La version de la formation est requise. Rechargez le catalogue puis rouvrez la formation." }, { status: 400 });
   const { data: existing, error: existingError } = await context.admin.from("daily_formations").select("*").eq("id", id).eq("organisation_id", context.organisationId).maybeSingle();
   if (existingError) return NextResponse.json({ error: existingError.message }, { status: 500 });
   if (!existing) return NextResponse.json({ error: "Formation introuvable." }, { status: 404 });
   if (existing.status === "archived") return NextResponse.json({ error: "Une ancienne version archivée ne peut pas être modifiée." }, { status: 400 });
+  if (existing.updated_at !== expectedUpdatedAt) return NextResponse.json({ error: "Cette formation a été modifiée depuis l’ouverture du formulaire. Rechargez le catalogue pour reprendre la version actuelle." }, { status: 409 });
   // Forms opened before these controls existed omit their metadata. Preserve
   // that declaration, while an explicit "none" choice clears its evidence list.
   const prerequisiteMode = Object.hasOwn(body, "prerequisite_mode") ? body.prerequisite_mode : existing.prerequisite_mode;
@@ -228,8 +231,9 @@ export async function PATCH(req: Request) {
     agent_review_signaled_at: reviewSignaledAt,
     validation_note: nextStatus === "review" ? null : existing.validation_note,
     archived_at: null,
-  }).eq("id", existing.id).eq("organisation_id", context.organisationId).select("*").single();
+  }).eq("id", existing.id).eq("organisation_id", context.organisationId).eq("status", existing.status).eq("updated_at", expectedUpdatedAt).neq("status", "archived").select("*").maybeSingle();
   if (error) return NextResponse.json({ error: error.message }, { status: error.code === "PSE01" ? 409 : 500 });
+  if (!data) return NextResponse.json({ error: "Cette formation a été modifiée pendant l’enregistrement. Rechargez le catalogue pour reprendre la version actuelle." }, { status: 409 });
   if (context.assisted && context.assistance) await logAgentAssistanceAction({
     supabase: context.admin, req, assistance: context.assistance,
     action: "daily_formation_update",
