@@ -20,7 +20,7 @@ function fixture(options = {}) {
     learning_assessment_mode: "external", learning_assessment_questions: [], updated_at: "2026-10-03T21:00:00.000Z",
     validation_note: "Ancienne validation", ...options.row,
   });
-  const base = { ...structuredClone(h.formation), status: "review", positioning_choice_confirmed: true };
+  const base = { ...structuredClone(h.formation), expected_updated_at: h.formation.updated_at, status: "review", positioning_choice_confirmed: true };
   for (const key of ["creation_mode", "prerequisite_mode", "prerequisite_requirements"]) delete base[key];
   if (options.prerequisiteConflict) {
     const from = h.admin.from.bind(h.admin);
@@ -28,7 +28,7 @@ function fixture(options = {}) {
       const query = from(table);
       if (table === "daily_formations") {
         const update = query.update.bind(query);
-        query.update = payload => { update(payload); query.single = async () => ({ data: null, error: { code: "PSE01", message: "Les prérequis sont utilisés par des candidatures en cours." } }); return query; };
+        query.update = payload => { update(payload); query.single = query.maybeSingle = async () => ({ data: null, error: { code: "PSE01", message: "Les prérequis sont utilisés par des candidatures en cours." } }); return query; };
       }
       return query;
     };

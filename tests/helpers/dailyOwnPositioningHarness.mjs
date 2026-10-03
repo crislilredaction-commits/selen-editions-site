@@ -6,7 +6,7 @@ export const uuid=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 export const ids={org:uuid(1),user:uuid(2),formation:uuid(3),session:uuid(4),source:uuid(5),submission:uuid(6),learner:uuid(7),enrolment:uuid(8)};
 export const blank=Buffer.from('%PDF-1.7\nquestionnaire vierge'),filled=Buffer.from('%PDF-1.7\nquestionnaire rempli par Alice');
 export function harness(options={}) {
- const formation={id:ids.formation,user_id:ids.user,organisation_id:ids.org,title:'Formation QA',status:'validated',positioning_mode:'off_platform',positioning_questionnaire_document_url:`/api/client/daily/uploads?id=${ids.source}`,public_registration_token:'candidate-token',public_registration_enabled:true};
+ const formation={id:ids.formation,user_id:ids.user,organisation_id:ids.org,title:'Formation QA',status:'validated',updated_at:'2026-10-03T21:00:00.000Z',positioning_mode:'off_platform',positioning_questionnaire_document_url:`/api/client/daily/uploads?id=${ids.source}`,public_registration_token:'candidate-token',public_registration_enabled:true};
  const session={id:ids.session,user_id:ids.user,organisation_id:ids.org,formation_id:ids.formation,status:'ready',registration_token:options.legacy?'candidate-token':'session-token',start_date:'2099-01-01',end_date:'2099-01-02',modality:'presentiel',distance_mode:null,schedule_blocks:[],daily_formations:formation};
  const subject={first_name:'Alice',last_name:'Martin',email:'alice@example.test'};
  const learner={id:ids.learner,organisation_id:ids.org,...subject};
@@ -30,7 +30,8 @@ export function harness(options={}) {
     if(options.unknownRequestResult&&table==='daily_formation_registration_requests')return{data:null,error:{code:'transport_failed'}};
     return{data:project(row),error:null};
    }
-   let rows=db[table].filter(r=>filters.every(f=>f(r)));if(mutation==='update'){rows.forEach(row=>Object.assign(row,structuredClone(payload)));writes.push({table,payload});}
+   if(mutation==='update'&&table==='daily_formations')options.beforeFormationUpdate?.(db[table]);
+   let rows=db[table].filter(r=>filters.every(f=>f(r)));if(mutation==='update'){rows.forEach(row=>{Object.assign(row,structuredClone(payload));if(table==='daily_formations')row.updated_at=new Date(Date.parse(row.updated_at)+1000).toISOString();});if(rows.length||table!=='daily_formations')writes.push({table,payload});}
    if(limit)rows=rows.slice(0,limit);return{data:one?project(rows[0]??null):rows.map(project),error:null};
   }).then(resolve,reject);}};return query;
  },storage:{from(bucket){assert.equal(bucket,'documents','Only private documents storage is permitted');return{async upload(path,bytes,opts){assert.equal(opts.upsert,false);uploads.push(path);if(options.failUpload)return{error:{message:'mock failure'}};if(storage.has(path))return{error:{message:'already exists'}};storage.set(path,Buffer.from(bytes));return{error:null};},async download(path){downloads.push(path);if(options.failDownload||!storage.has(path))return{data:null,error:{message:'unavailable'}};return{data:new Blob([storage.get(path)]),error:null};}};}}};
