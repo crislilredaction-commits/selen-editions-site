@@ -25,7 +25,7 @@ jobs:
       matrix:
         include:
           - pr: 249
-            commit: "0c728870508cf4f7d1ddb407e0a97e3cb11fa0a3"
+            commit: "fe6059ee17692e252968bda11dec6077a2c99ec2"
     steps:
       - name: Checkout exact Studio commit
         uses: actions/checkout@v4
