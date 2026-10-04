@@ -24,7 +24,7 @@ function fixture(options={}) {
       insert(){throw Error("No document insert outside atomic RPC");}
     };return q;},
     async rpc(name,args){assert.equal(name,"daily_register_client_formation_source");writes.push(structuredClone(args));if(options.commitError)return{data:null,error:{message:"isolated commit failure"}};
-      return{data:{id:args.p_source.id},error:null};},
+      const result={id:options.rpcId??args.p_source.id};return{data:options.rpcArray?[result]:result,error:null};},
     storage:{from(bucket){assert.equal(bucket,"documents");return{
       async createSignedUploadUrl(path,opts){assert.equal(opts.upsert,false);tickets.push(path);return{data:{token:"private-upload-token"},error:null};},
       async upload(path,bytes,opts){assert.equal(opts.upsert,false);assert.equal(opts.cacheControl,"0");files.set(path,new Blob([bytes],{type:opts.contentType}));options.onUpload?.({workspace});return{data:{path},error:null};},
@@ -76,6 +76,10 @@ for(const options of [{info:{size:11*1024*1024}},{info:{contentType:"text/html"}
 test("une empreinte différente bloque l’attachement et conserve l’original",async()=>{const f=fixture(),before=structuredClone(f.documents),ticket=await f.prepare();f.files.set(ticket.path,new Blob([Buffer.alloc(f.bytes.length,13)],{type:mime}));assert.equal((await f.complete(ticket.authorization)).status,409);assert.deepEqual(f.documents,before);assert.equal(f.writes.length,0);});
 test("les droits sont revérifiés après la lecture complète du fichier",async()=>{const f=fixture({assisted:true,onDownload:({assistance})=>assistance.status="revoked"}),ticket=await f.prepare();f.files.set(ticket.path,new Blob([f.bytes],{type:mime}));assert.equal((await f.complete(ticket.authorization)).status,401);assert.equal(f.writes.length,0);});
 test("un échec de confirmation garde le fichier privé pour un réessai, sans supprimer l’original",async()=>{const f=fixture({commitError:true}),ticket=await f.prepare();f.files.set(ticket.path,new Blob([f.bytes],{type:mime}));assert.equal((await f.complete(ticket.authorization)).status,409);assert.ok(f.files.has(ticket.path));assert.equal(f.documents.length,1);});
+for(const options of [{rpcArray:true},{rpcId:id(99)}])test("la réponse PostgREST doit confirmer exactement le document attendu",async()=>{
+  const f=fixture(options),ticket=await f.prepare();f.files.set(ticket.path,new Blob([f.bytes],{type:mime}));
+  assert.equal((await f.complete(ticket.authorization)).status,options.rpcId?409:200);
+});
 test("une page Daily déjà ouverte peut encore importer un Word, en conservant son original signé",async()=>{
   const f=fixture();const before=structuredClone(f.documents[0]);const response=await f.legacyUpload(new File(["Word original"],"Original.docx",{type:""}));
   assert.equal(response.status,200);assert.equal(f.writes.length,1);assert.equal(f.writes[0].p_source.previous_document_id,old);

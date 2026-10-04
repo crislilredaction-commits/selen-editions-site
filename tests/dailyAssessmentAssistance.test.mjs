@@ -43,7 +43,7 @@ function fixture(options = {}) {
         if (table === "daily_formations" && operation === "update" && !raced) { raced = true; options.race?.(rows); }
         const matches = pools[table].filter(row => filters.every(([op, key, value]) => op === "eq" ? row[key] === value : op === "neq" ? row[key] !== value : op === "gt" ? row[key] > value : op === "or" ? value.split(",").some(part => { const [key, , expected] = part.split("."); return row[key] === expected; }) : true));
         if (operation === "update") {
-          if (table === "daily_formations" && options.writeError) return { data: null, error: { message: "write failed" } };
+          if (table === "daily_formations" && options.writeError) return { data: null, error: { message: "write failed", code: options.writeCode } };
           if (matches[0]) {
             Object.assign(matches[0], structuredClone(payload));
             if (table === "daily_formations") { matches[0].updated_at = options.writeRevision ?? newerRevision; writes.push(structuredClone(payload)); }
@@ -272,7 +272,7 @@ for (const change of ["questionnaire", "validated", "archived", "deleted"]) test
 });
 
 for (const [options, body, status] of [
-  [{ readError: true }, {}, 500], [{ writeError: true }, {}, 500],
+  [{ readError: true }, {}, 500], [{ writeError: true }, {}, 500], [{ writeError: true, writeCode: "PSE01" }, {}, 409],
   [{}, { mode: "forged" }, 400], [{}, { questions: [] }, 400],
   [{}, { questions: [{ ...quiz[0], options: ["A", "A"], correct_answers: ["A"] }] }, 400],
   [{}, { questions: [{ ...quiz[0], correct_answers: ["X"] }] }, 400],

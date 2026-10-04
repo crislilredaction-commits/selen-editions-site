@@ -50,8 +50,9 @@ async function register(context: Context, source: Source) {
   const { data, error } = await context.admin.rpc("daily_register_client_formation_source", {
     p_organisation_id: context.organisationId, p_actor: context.user.id, p_source: sourcePayload(source),
   });
-  if (error || !data?.id) throw new DailySourceUploadError("Le document n’a pas pu être confirmé. Réessayez la vérification.", 409);
-  return { id: data.id as string, url: `/api/client/daily/uploads?id=${data.id}`, name: source.name };
+  const document = Array.isArray(data) ? data.length === 1 ? data[0] : null : data;
+  if (error || document?.id !== source.id) throw new DailySourceUploadError("Le document n’a pas pu être confirmé. Réessayez la vérification.", 409);
+  return { id: document.id as string, url: `/api/client/daily/uploads?id=${document.id}`, name: source.name };
 }
 async function previousSource(context: Context, kind: DailyFormationSourceKind, reference: unknown) {
   if (reference === undefined || reference === null || reference === "") return null;

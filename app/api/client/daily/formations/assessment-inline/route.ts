@@ -96,7 +96,7 @@ export async function PATCH(request: Request) {
     .select("id,status,updated_at,learning_assessment_mode,learning_assessment_instructions,learning_assessment_questions,learning_assessment_document_url")
     .maybeSingle();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return NextResponse.json({ error: error.message }, { status: error.code === "PSE01" ? 409 : 500 });
   if (!data) return conflict();
   if (context.assisted && context.assistance) await logAgentAssistanceAction({
     supabase: context.admin, req: request, assistance: context.assistance,

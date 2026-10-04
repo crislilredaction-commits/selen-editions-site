@@ -4,16 +4,18 @@ import fs from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 const schema = await fs.readFile(new URL("./fixtures/dailyOwnPositioningSchema.sql", import.meta.url), "utf8");
 const migration = await fs.readFile(new URL("../supabase/migrations/20261004190747_daily_client_source_registration.sql", import.meta.url), "utf8");
+const sources = await fs.readFile(new URL("../supabase/migrations/20261004103428_daily_studio_questionnaire_sources.sql", import.meta.url), "utf8");
+const retirement = await fs.readFile(new URL("../supabase/migrations/20261004194234_daily_client_source_retirement.sql", import.meta.url), "utf8");
 const id = n => "00000000-0000-4000-8000-" + String(n).padStart(12,"0");
 const org=id(1), actor=id(2), old=id(3), next=id(4), kind="positioning_questionnaire_source";
 const source = (extra={}) => ({id:next,kind,name:"Nouveau.docx",mime_type:"application/vnd.openxmlformats-officedocument.wordprocessingml.document",size_bytes:10*1024*1024,sha256:"a".repeat(64),previous_document_id:old,slot:id(8),storage_path:`daily/${org}/catalogue-sources/${kind}/${next}`,...extra});
 test("PostgreSQL réel : import privé atomique, relecture, original intact et privilèges", async t => {
-  const db=new PGlite(); t.after(()=>db.close()); await db.exec(schema); await db.exec(migration);
+  const db=new PGlite(); t.after(()=>db.close()); await db.exec(schema); await db.exec(sources); await db.exec(migration); await db.exec(retirement);
   await db.exec("create unique index qa_source_current on daily_documents(organisation_id,document_type,linked_object_type,linked_object_id,logical_name) nulls not distinct where is_current; create unique index qa_source_version on daily_documents(organisation_id,document_type,linked_object_type,linked_object_id,logical_name,version) nulls not distinct;");
   const row=async key=>(await db.query("select * from daily_documents where id=$1",[key])).rows[0];
   const save=async (payload=source(),of=org,user=actor)=>(await db.query("select * from daily_register_client_formation_source($1,$2,$3)",[of,user,JSON.stringify(payload)])).rows[0];
   async function seed() {
-    await db.exec("truncate daily_documents");
+    await db.exec("truncate daily_formations,daily_documents");
     await db.query("insert into daily_documents(id,organisation_id,document_type,linked_object_type,linked_object_id,logical_name,version,bucket,storage_path,status,created_by,sha256,mime_type,size_bytes) values ($1,$2,$3,'organisation',$2,'ancien-original',3,'documents',$4,'to_check',$5,$6,'application/pdf',25)",[old,org,kind,`daily/${org}/old.pdf`,actor,"b".repeat(64)]);
   }
   await t.test("l’import n’altère pas l’original et une confirmation répétée renvoie la même version",async()=>{
@@ -21,6 +23,37 @@ test("PostgreSQL réel : import privé atomique, relecture, original intact et p
     assert.equal(created.version,4); assert.equal(created.previous_document_id,old); assert.equal(created.is_current,true);
     assert.deepEqual(await row(old),before); assert.deepEqual(await save(),created);
     assert.equal((await db.query("select count(*)::int n from daily_documents")).rows[0].n,2);
+  });
+  async function formation(key=id(20),field="positioning_questionnaire_document_url",reference=old) {
+    return db.query("insert into daily_formations(id,user_id,organisation_id,title,global_objective,target_audience,prerequisites,duration_hours,duration_days,modality,modality_details,access_delays,registration_methods,price,detailed_program,pedagogical_resources,evaluation_methods,accessibility,contact_phone,contact_email,status,"+field+") values($1,$2,$3,'Programme','Objectif','Public','Aucun',7,1,'presentiel','presentiel','Deux jours','Inscription','100','Programme','Supports','Quiz','Accessible','0102030405','of@example.invalid','review',$4)",[key,actor,org,`/api/client/daily/uploads?id=${reference}`]);
+  }
+  for(const [type,field]of[["training_program_source","detailed_program_document_url"],[kind,"positioning_questionnaire_document_url"],["learning_assessment_source","learning_assessment_document_url"]]) {
+    await t.test(`${type} : l’original ne passe dans l’historique qu’au moment de l’enregistrement`,async()=>{
+      await seed();await db.query("update daily_documents set document_type=$1 where id=$2",[type,old]);await formation(id(20),field);
+      const created=await save(source({kind:type,storage_path:`daily/${org}/catalogue-sources/${type}/${next}`}));assert.equal((await row(old)).is_current,true);
+      await db.query("update daily_formations set "+field+"=$1 where id=$2",[`/api/client/daily/uploads?id=${created.id}`,id(20)]);
+      assert.equal((await row(old)).is_current,false);assert.equal((await row(next)).is_current,true);
+      await assert.rejects(db.query("update daily_formations set "+field+"=$1 where id=$2",[`/api/client/daily/uploads?id=${old}`,id(20)]),/document original a changé/);
+    });
+  }
+  await t.test("une copie conserve l’original partagé jusqu’au remplacement de sa dernière référence",async()=>{
+    await seed();await formation();await formation(id(21));await save();
+    await db.query("update daily_formations set positioning_questionnaire_document_url=$1 where id=$2",[`/api/client/daily/uploads?id=${next}`,id(20)]);assert.equal((await row(old)).is_current,true);
+    await db.query("update daily_formations set positioning_questionnaire_document_url=$1 where id=$2",[`/api/client/daily/uploads?id=${next}`,id(21)]);assert.equal((await row(old)).is_current,false);
+  });
+  await t.test("un original signé reste intact après l’enregistrement du remplacement",async()=>{
+    await seed();await formation();await db.query("update daily_documents set status='signed',signed_at=now() where id=$1",[old]);const before=await row(old);await save();
+    await db.query("update daily_formations set positioning_questionnaire_document_url=$1 where id=$2",[`/api/client/daily/uploads?id=${next}`,id(20)]);assert.deepEqual(await row(old),before);
+  });
+  await t.test("une transaction annulée conserve l’ancien lien et l’original courant",async()=>{
+    await seed();await formation();await save();await db.exec("begin");
+    await db.query("update daily_formations set positioning_questionnaire_document_url=$1 where id=$2",[`/api/client/daily/uploads?id=${next}`,id(20)]);await db.exec("rollback");
+    assert.equal((await row(old)).is_current,true);assert.equal((await db.query("select positioning_questionnaire_document_url url from daily_formations where id=$1",[id(20)])).rows[0].url,`/api/client/daily/uploads?id=${old}`);
+  });
+  await t.test("une autre OF, un autre type ou un original retiré ne peut être attaché au catalogue",async()=>{
+    await seed();await formation();await save();await db.query("update daily_documents set organisation_id=$1 where id=$2",[id(99),next]);
+    await assert.rejects(db.query("update daily_formations set positioning_questionnaire_document_url=$1 where id=$2",[`/api/client/daily/uploads?id=${next}`,id(20)]),/document original a changé/);
+    assert.equal((await row(old)).is_current,true);
   });
   await t.test("l’original signé et ses preuves restent strictement identiques",async()=>{
     await seed();await db.query("update daily_documents set status='signed',signed_at=now() where id=$1",[old]);
