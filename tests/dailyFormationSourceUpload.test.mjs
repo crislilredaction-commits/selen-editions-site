@@ -11,12 +11,13 @@ function fixture(options={}) {
   const documents=[{id:old,organisation_id:org,document_type:kind,linked_object_type:"organisation",linked_object_id:org,bucket:"documents",storage_path:`daily/${org}/old.pdf`,formation_id:null,is_current:true,status:"signed",archived_at:null}];
   const assistance={id:id(8),agent_user_id:id(9),agent_email:"agent@example.invalid",organisation_id:org,dossier_id:null,status:"active",expires_at:"2099-01-01T00:00:00Z",token_hash:crypto.createHash("sha256").update(token).digest("hex")};
   const workspace={ok:true,user:{id:user},workspace:{membership:{organisation_id:org},capabilities:{trainings:true}}};
-  const pools={daily_documents:documents,selen_agent_assistance_tokens:[assistance],agent_profiles:[{id:id(10),user_id:id(9),email:assistance.agent_email,is_active:true}],selen_admin_users:[],organisations:[{id:org,email:"client@example.invalid"}]};
+  const formations=[{id:id(20),organisation_id:org,status:"review",positioning_questionnaire_document_url:`/api/client/daily/uploads?id=${old}`}];
+  const pools={daily_documents:documents,daily_formations:formations,selen_agent_assistance_tokens:[assistance],agent_profiles:[{id:id(10),user_id:id(9),email:assistance.agent_email,is_active:true}],selen_admin_users:[],organisations:[{id:org,email:"client@example.invalid"}]};
   const files=new Map(),writes=[],tickets=[],downloads=[],infos=[];let timeOffset=0;
   const admin={
     auth:{admin:{listUsers:async()=>({data:{users:[{id:user,email:"client@example.invalid"}]},error:null})}},
     from(table){assert.ok(table in pools,table);const filters=[];const q={
-      select(){return q;},eq(k,v){filters.push(row=>row[k]===v);return q;},gt(k,v){filters.push(row=>row[k]>v);return q;},limit(){return q;},order(){return q;},
+      select(){return q;},eq(k,v){filters.push(row=>row[k]===v);return q;},neq(k,v){filters.push(row=>row[k]!==v);return q;},gt(k,v){filters.push(row=>row[k]>v);return q;},limit(){return q;},order(){return q;},
       or(v){filters.push(row=>v.split(",").some(part=>{const[k,,val]=part.split(".");return row[k]===val;}));return q;},
       async maybeSingle(){return{data:structuredClone(pools[table].find(row=>filters.every(f=>f(row)))??null),error:null};},
       update(){assert.equal(table,"selen_agent_assistance_tokens");return q;},
@@ -43,8 +44,8 @@ function fixture(options={}) {
   const route=loadTypeScript("app/api/client/daily/uploads/sources/route.ts",{"next/server":{NextResponse:Response},"@/lib/server/dailyOrganisationContext":context,"@/lib/server/dailyFormationSourceUpload":helper},globals);
   const legacy=loadTypeScript("app/api/client/daily/uploads/route.ts",{"node:crypto":crypto,"next/server":{NextResponse:Response},"@/lib/server/dailyOrganisationContext":context,"@/lib/server/dailyFormationSourceUpload":helper,"@/lib/daily/formationSourceUpload":shared},{...globals,File});
   const call=body=>route.POST(new Request("https://selen.invalid/api/client/daily/uploads/sources",{method:"POST",headers:{"Content-Type":"application/json",...(options.assisted?{"x-selen-agent-assistance":token}:{})},body:JSON.stringify(body)}));
-  const bytes=Buffer.alloc(options.size??5*1024*1024,12), body={action:"prepare",kind,slot,name:"Original.pdf",mime_type:mime,size_bytes:bytes.length,sha256:crypto.createHash("sha256").update(bytes).digest("hex"),previous_document_url:`/api/client/daily/uploads?id=${old}`};
-  return{call,body,bytes,files,writes,tickets,downloads,infos,documents,assistance,workspace,advance:ms=>timeOffset+=ms,
+  const bytes=Buffer.alloc(options.size??5*1024*1024,12), body={action:"prepare",kind,slot,formation_id:id(20),name:"Original.pdf",mime_type:mime,size_bytes:bytes.length,sha256:crypto.createHash("sha256").update(bytes).digest("hex"),previous_document_url:`/api/client/daily/uploads?id=${old}`};
+  return{call,body,bytes,files,writes,tickets,downloads,infos,documents,formations,assistance,workspace,advance:ms=>timeOffset+=ms,
     async prepare(extra={}){const response=await call({...body,...extra});assert.equal(response.status,200);assert.equal(response.headers.get("cache-control"),"private, no-store");return response.json();},
     complete:authorization=>call({action:"complete",authorization}),
     async legacyUpload(file){documents[0].logical_name=`${kind}-${slot}`;const body=new FormData();body.set("file",file);body.set("kind",kind);body.set("slot",slot);return legacy.POST(new Request("https://selen.invalid/api/client/daily/uploads",{method:"POST",body}));}
@@ -65,6 +66,21 @@ for(const[reason,patch]of[
   ["copie apprenant",{kind:"learning_assessment_evidence"}],["original d’un autre type",{kind:"training_program_source"}],["URL publique",{previous_document_url:"https://example.invalid/source.pdf"}],
 ])test(`ticket refusé (${reason}) sans création`,async()=>{const f=fixture();assert.ok((await f.call({...f.body,...patch})).status>=400);assert.equal(f.tickets.length,0);assert.equal(f.writes.length,0);});
 test("un Word sans MIME est normalisé côté serveur et 10 Mo exacts sont acceptés",async()=>{const f=fixture({size:10*1024*1024});await f.prepare({name:"Original.DOCX",mime_type:""});assert.equal(f.tickets.length,1);});
+test("un original Studio de la formation ouverte peut être remplacé dans Daily",async()=>{
+  const f=fixture();f.documents[0].metadata={source:"daily_studio",slot:"autre"};f.documents[0].formation_id=id(20);await f.prepare();assert.equal(f.tickets.length,1);
+});
+test("un original d’une autre formation du même OF ne peut être utilisé comme prédécesseur",async()=>{
+  const f=fixture();f.formations[0].positioning_questionnaire_document_url=null;
+  assert.equal((await f.call(f.body)).status,409);assert.equal(f.tickets.length,0);
+});
+for(const match of [true,false])test(`un import non enregistré reste lié à son formulaire (même emplacement=${match})`,async()=>{
+  const f=fixture();f.formations.splice(0);Object.assign(f.documents[0],{status:"to_check",created_by:user,metadata:{source:"daily_client",slot:match?slot:id(99)}});
+  assert.equal((await f.call({...f.body,formation_id:null})).status,match?200:409);
+});
+test("un emplacement déjà utilisé dans le catalogue ne peut être présenté comme un import provisoire",async()=>{
+  const f=fixture();Object.assign(f.documents[0],{status:"to_check",created_by:user,metadata:{source:"daily_client",slot}});
+  assert.equal((await f.call({...f.body,formation_id:null})).status,409);assert.equal(f.tickets.length,0);
+});
 for(const[reason,setup]of[
   ["capacité révoquée",f=>f.workspace.workspace.capabilities.trainings=false],
   ["OF modifié",f=>f.workspace.workspace.membership.organisation_id=id(99)],
@@ -82,7 +98,7 @@ for(const options of [{rpcArray:true},{rpcId:id(99)}])test("la réponse PostgRES
 });
 test("une page Daily déjà ouverte peut encore importer un Word, en conservant son original signé",async()=>{
   const f=fixture();const before=structuredClone(f.documents[0]);const response=await f.legacyUpload(new File(["Word original"],"Original.docx",{type:""}));
-  assert.equal(response.status,200);assert.equal(f.writes.length,1);assert.equal(f.writes[0].p_source.previous_document_id,old);
+  assert.equal(response.status,200);assert.equal(f.writes.length,1);assert.equal(f.writes[0].p_source.previous_document_id,null);
   assert.equal(f.documents[0].is_current,before.is_current);assert.equal(f.documents[0].status,"signed");
 });
 test("une page Daily déjà ouverte ne confirme pas un import après révocation des droits",async()=>{
@@ -115,7 +131,7 @@ function uploadUi(f,options={}) {
       if(options.transfer)await options.transfer();f.files.set(path,blob);return{error:options.transferError??null};
     }})}})}
   },{crypto:crypto.webcrypto,Blob,File,Uint8Array,Error}).default;
-  const render=()=>{cursor=0;tree=Page({kind,label:"Original",value:`/api/client/daily/uploads?id=${old}`,onUploaded:value=>uploaded.push(value),onStateChange:value=>statuses.push(value)});first=false;};
+  const render=()=>{cursor=0;tree=Page({kind,label:"Original",formationId:id(20),value:`/api/client/daily/uploads?id=${old}`,onUploaded:value=>uploaded.push(value),onStateChange:value=>statuses.push(value)});first=false;};
   const nodes=node=>!node||typeof node!=="object"?[]:Array.isArray(node)?node.flatMap(nodes):[node,...nodes(node.props?.children)];
   const find=predicate=>{const matches=nodes(tree).filter(predicate);assert.equal(matches.length,1);return matches[0];};
   render();const cleanups=effects.map(effect=>effect());

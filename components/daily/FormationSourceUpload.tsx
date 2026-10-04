@@ -7,9 +7,9 @@ import { PROGRAMME_ACCEPT_ATTRIBUTE } from "@/lib/daily/formationGuidance";
 import { createSupabaseBrowserClient } from "@/app/lib/supabase/client";
 import { DAILY_SOURCE_MAX_BYTES, dailyFormationSourceMime, prepareDailyFormationSourceUpload, type DailyFormationSourceKind, type DailySourceUploadState } from "@/lib/daily/formationSourceUpload";
 
-type Props = { kind: DailyFormationSourceKind; label: string; value?: string | null; onUploaded: (url: string) => void; onStateChange: (state: DailySourceUploadState) => void; help?: string; disabled?: boolean };
+type Props = { kind: DailyFormationSourceKind; label: string; value?: string | null; formationId?: string | null; onUploaded: (url: string) => void; onStateChange: (state: DailySourceUploadState) => void; help?: string; disabled?: boolean };
 
-export default function FormationSourceUpload({ kind, label, value, onUploaded, onStateChange, help, disabled = false }: Props) {
+export default function FormationSourceUpload({ kind, label, value, formationId, onUploaded, onStateChange, help, disabled = false }: Props) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
   const [fileName, setFileName] = useState("");
@@ -46,7 +46,7 @@ export default function FormationSourceUpload({ kind, label, value, onUploaded, 
       if (!mime || file.size < 1 || file.size > DAILY_SOURCE_MAX_BYTES) throw new Error("Choisissez un fichier PDF, DOC ou DOCX de 10 Mo maximum.");
       const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
       const sha256 = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
-      const ticket = await request({ action: "prepare", kind, slot, name: file.name, mime_type: mime, size_bytes: file.size, sha256, previous_document_url: value || null });
+      const ticket = await request({ action: "prepare", kind, slot, name: file.name, mime_type: mime, size_bytes: file.size, sha256, formation_id: formationId || null, previous_document_url: value || null });
       if (!ticket.authorization || !ticket.path || !ticket.token) throw new Error("Import indisponible.");
       if (!active.current) return;
       authorization.current = ticket.authorization;
