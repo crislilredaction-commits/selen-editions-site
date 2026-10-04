@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getDailyOrganisationContext, getDailyOrganisationReadContext } from "@/lib/server/dailyOrganisationContext";
+import { DAILY_FORMATION_SOURCE_KINDS, type DailyFormationSourceKind } from "@/lib/daily/formationSourceUpload";
+import { uploadLegacyDailySource, DailySourceUploadError } from "@/lib/server/dailyFormationSourceUpload";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const PDF_TYPES = new Set(["application/pdf"]);
@@ -37,6 +39,10 @@ export async function POST(req: Request) {
   const config = KINDS[kind];
 
   if (!(file instanceof File) || !config) return NextResponse.json({ error: "Fichier ou type de document invalide." }, { status: 400 });
+  if ((DAILY_FORMATION_SOURCE_KINDS as readonly string[]).includes(kind)) {
+    try { return NextResponse.json(await uploadLegacyDailySource(req, context, file, kind as DailyFormationSourceKind, slot)); }
+    catch (cause) { return NextResponse.json({ error: cause instanceof DailySourceUploadError ? cause.message : "Import indisponible." }, { status: cause instanceof DailySourceUploadError ? cause.status : 503 }); }
+  }
   if (file.size <= 0 || file.size > MAX_FILE_SIZE) return NextResponse.json({ error: "Le fichier doit peser moins de 10 Mo." }, { status: 400 });
   if (!config.accepted.has(file.type as never)) return NextResponse.json({ error: "Ce format de fichier n’est pas accepté pour ce document." }, { status: 400 });
 

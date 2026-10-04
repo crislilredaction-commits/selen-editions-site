@@ -163,7 +163,7 @@ export async function POST(req: Request) {
       validation_note: null, previous_version_id: null, archived_at: null, spontaneous_registration_task_status: "none",
       public_registration_token: registrationToken(), public_registration_enabled: true, updated_visible_at: new Date().toISOString().slice(0, 10),
     }).select("*").single();
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return NextResponse.json({ error: error.message }, { status: error.code === "PSE01" ? 409 : 500 });
     if (context.assisted && context.assistance) await logAgentAssistanceAction({ supabase: context.admin, req, assistance: context.assistance, action: "daily_formation_duplicate", actionLabel: "Formation dupliquée par Studio pour le client", newState: { formation_id: data.id, title: data.title } });
     return NextResponse.json({ formation: data, duplicated: true, assistanceMode: context.assisted });
   }
@@ -176,7 +176,7 @@ export async function POST(req: Request) {
   const trainerError = await validateAllowedTrainers(context.organisationId, built.payload.allowed_trainer_ids, context.admin);
   if (trainerError) return NextResponse.json({ error: trainerError }, { status: 400 });
   const { data, error } = await context.admin.from("daily_formations").insert({ ...built.payload, public_registration_token: registrationToken(), public_registration_enabled: true }).select("*").single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return NextResponse.json({ error: error.message }, { status: error.code === "PSE01" ? 409 : 500 });
   if (context.assisted && context.assistance) await logAgentAssistanceAction({ supabase: context.admin, req, assistance: context.assistance, action: "daily_formation_create", actionLabel: "Formation créée par Studio pour le client", newState: { formation_id: data.id, title: data.title, status: data.status } });
   return NextResponse.json({ formation: data, assistanceMode: context.assisted });
 }
