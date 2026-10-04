@@ -21,12 +21,17 @@ function fixture(options = {}) {
   let raced = false;
   const assistance = { id: "assistance-a", agent_user_id: "agent-a", agent_email: "agent@example.invalid", organisation_id: "of-a", dossier_id: null, status: options.revoked ? "revoked" : "active", expires_at: options.expired ? "2000-01-01T00:00:00Z" : "2099-01-01T00:00:00Z", token_hash: crypto.createHash("sha256").update(token).digest("hex") };
   const pools = {
+    daily_documents: options.document ? [structuredClone(options.document)] : [],
     daily_formations: rows,
     selen_agent_assistance_tokens: [assistance],
     agent_profiles: options.inactive ? [] : [{ id: "profile-a", user_id: "agent-a", email: "agent@example.invalid", is_active: true }],
     selen_admin_users: [], organisations: [{ id: "of-a", email: "client@example.invalid" }],
   };
   const admin = {
+    storage: { from(bucket) { assert.equal(bucket, "documents"); return { download: async path => {
+      assert.equal(path, options.document?.storage_path);
+      return {data: new Blob([options.bytes || ""]),error:null};
+    }}; }},
     auth: { admin: { listUsers: async () => ({ data: { users: [{ id: "client-a", email: "client@example.invalid" }] }, error: null }) } },
     from(table) {
       assert.ok(table in pools || table === "selen_agent_assistance_logs", table);
@@ -71,6 +76,10 @@ function fixture(options = {}) {
       : { ok: false, status: 401, error: "Connexion requise." } },
   }, globals);
   const { PATCH } = loadTypeScript("app/api/client/daily/formations/assessment-inline/route.ts", {
+    "@/lib/server/dailyAssessmentSource": loadTypeScript("lib/server/dailyAssessmentSource.ts", {
+      "node:crypto": crypto,
+      "@/lib/daily/ownPositioning": loadTypeScript("lib/daily/ownPositioning.ts", {}, globals),
+    }, globals),
     "next/server": { NextResponse: Response },
     "@/lib/server/dailyOrganisationContext": context,
     "@/lib/server/agentAssistance": assistanceModule,
@@ -122,6 +131,27 @@ test("le mode externe efface le questionnaire sans déplacer les autres données
   assert.equal(f.rows[0].status, "draft");
   assert.equal(f.rows[0].learning_assessment_instructions, null);
   assert.deepEqual(f.rows[0].learning_assessment_questions, []);
+});
+
+const assessmentId="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const assessmentBytes=Buffer.from("%PDF-évaluation-final-source");
+const assessmentDocument={id:assessmentId,organisation_id:"of-a",formation_id:null,document_type:"learning_assessment_source",linked_object_type:"organisation",linked_object_id:"of-a",bucket:"documents",storage_path:"daily/of-a/final.pdf",mime_type:"application/pdf",sha256:crypto.createHash("sha256").update(assessmentBytes).digest("hex"),is_current:true,status:"to_check"};
+test("le document final importé est vérifié puis rattaché à la même formation",async()=>{
+  const f=fixture({assisted:false,document:assessmentDocument,bytes:assessmentBytes});
+  const response=await f.call({mode:"external",source_document_url:"/api/client/daily/uploads?id="+assessmentId});
+  assert.equal(response.status,200);assert.equal(f.rows[0].learning_assessment_document_url,"/api/client/daily/uploads?id="+assessmentId);
+  assert.equal(f.rows[0].public_registration_token,"canonical-link");assert.equal(f.rows[0].version,3);
+});
+for(const [label,change,bytes] of [
+  ["autre OF",{organisation_id:"of-b"},assessmentBytes],
+  ["mauvais type",{document_type:"learning_assessment_evidence"},assessmentBytes],
+  ["archive",{archived_at:"2026-10-04T09:00:00Z"},assessmentBytes],
+  ["ancienne version",{is_current:false},assessmentBytes],
+  ["bucket public",{bucket:"public-documents"},assessmentBytes],
+  ["fichier altéré",{},Buffer.from("%PDF-altéré")],
+])test("source finale "+label+" : refus sans modifier la formation",async()=>{
+  const f=fixture({assisted:false,document:{...assessmentDocument,...change},bytes});
+  assert.equal((await f.call({mode:"external",source_document_url:"/api/client/daily/uploads?id="+assessmentId})).status,409);assert.equal(f.writes.length,0);assert.equal(f.audit.length,0);
 });
 
 for (const options of [{ forged: true }, { expired: true }, { revoked: true }, { inactive: true }, { assisted: false, forbidden: true }]) test(`autorisation refusée sans écriture métier: ${JSON.stringify(options)}`, async () => {

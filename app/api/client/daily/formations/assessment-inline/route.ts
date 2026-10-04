@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getDailyOrganisationContext } from "@/lib/server/dailyOrganisationContext";
 import { logAgentAssistanceAction } from "@/lib/server/agentAssistance";
+import { verifyDailyAssessmentSource } from "@/lib/server/dailyAssessmentSource";
 
 const MODES = new Set(["external", "selen_quiz"]);
 const QUESTION_TYPES = new Set(["single_choice", "multiple_choice", "free_text"]);
@@ -62,11 +63,21 @@ export async function PATCH(request: Request) {
   if (!existing) return NextResponse.json({ error: "Formation introuvable." }, { status: 404 });
   const conflict = () => NextResponse.json({ error: "La formation a changé. Rechargez-la et relisez l’évaluation avant de réessayer." }, { status: 409 });
   if (existing.updated_at !== expectedUpdatedAt) return conflict();
+  const sourcePatch: Record<string, unknown> = {};
+  if (Object.hasOwn(body, "source_document_url")) {
+    const reference = typeof body.source_document_url === "string" ? body.source_document_url.trim() : "";
+    if (mode === "external" && reference) {
+      try { await verifyDailyAssessmentSource(context.admin, context.organisationId, id, reference); }
+      catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Questionnaire privé indisponible." }, { status: 409 }); }
+    }
+    sourcePatch.learning_assessment_document_url = mode === "external" ? reference || null : null;
+  }
 
   const nextStatus = existing.status === "validated" || existing.status === "correction_requested" ? "review" : existing.status;
   const { data, error } = await context.admin
     .from("daily_formations")
     .update({
+      ...sourcePatch,
       learning_assessment_mode: mode,
       learning_assessment_instructions: mode === "selen_quiz" ? instructions || null : null,
       learning_assessment_questions: mode === "selen_quiz" ? questions : [],
@@ -82,7 +93,7 @@ export async function PATCH(request: Request) {
     .eq("status", existing.status)
     .eq("updated_at", expectedUpdatedAt)
     .neq("status", "archived")
-    .select("id,status,updated_at,learning_assessment_mode,learning_assessment_instructions,learning_assessment_questions")
+    .select("id,status,updated_at,learning_assessment_mode,learning_assessment_instructions,learning_assessment_questions,learning_assessment_document_url")
     .maybeSingle();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
