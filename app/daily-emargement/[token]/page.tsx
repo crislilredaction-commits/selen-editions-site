@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 
 type Data = {
   accessType: "shared" | "individual";
@@ -15,8 +15,8 @@ type Data = {
 
 const SIGNATURE_HEIGHT = 220;
 
-export default function DailyAttendancePage({ params }: { params: { token: string } }) {
-  const token = params.token;
+export default function DailyAttendancePage({ params }: { params: Promise<{ token: string }> }) {
+  const token = use(params).token;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const drawing = useRef(false);
   const drawn = useRef(false);

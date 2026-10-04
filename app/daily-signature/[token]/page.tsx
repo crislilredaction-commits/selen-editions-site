@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import Header from "@/components/Header";
 
 type SignaturePayload = {
@@ -23,8 +23,8 @@ type SignaturePayload = {
   } | null;
 };
 
-export default function DailySignaturePage({ params }: { params: { token: string } }) {
-  const token = params.token;
+export default function DailySignaturePage({ params }: { params: Promise<{ token: string }> }) {
+  const token = use(params).token;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const drawingRef = useRef(false);
   const hasDrawnRef = useRef(false);

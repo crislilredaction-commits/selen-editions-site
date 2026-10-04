@@ -19,6 +19,7 @@ const KINDS = {
   trainer_cv: { documentType: "trainer_cv", accepted: DOCUMENT_TYPES },
   training_program_source: { documentType: "training_program_source", accepted: DOCUMENT_TYPES },
   positioning_questionnaire_source: { documentType: "positioning_questionnaire_source", accepted: DOCUMENT_TYPES },
+  learning_assessment_source: { documentType: "learning_assessment_source", accepted: DOCUMENT_TYPES },
 } as const;
 
 function safePart(value: string) {

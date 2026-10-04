@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { use, useEffect, useState } from "react";
 
 type Data = {
   session: { title: string; startDate?: string | null; endDate?: string | null };
@@ -18,8 +18,8 @@ const QUESTIONS = [
   ["pace_rating", "Le rythme de la formation"],
 ] as const;
 
-export default function DailySatisfactionPage({ params }: { params: { token: string } }) {
-  const token = params.token;
+export default function DailySatisfactionPage({ params }: { params: Promise<{ token: string }> }) {
+  const token = use(params).token;
   const [data, setData] = useState<Data | null>(null);
   const [ratings, setRatings] = useState<Record<string, number>>({});
   const [wouldRecommend, setWouldRecommend] = useState<boolean | null>(null);

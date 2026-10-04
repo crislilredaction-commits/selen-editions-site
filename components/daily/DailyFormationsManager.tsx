@@ -21,7 +21,7 @@ type Formation = {
   detailed_program: string; detailed_program_document_url?: string | null; positioning_questionnaire_document_url?: string | null; accessibility: string; disability_referent?: string | null;
   pedagogical_methods: string; pedagogical_resources: string; evaluation_methods: string; contact_phone: string; contact_email: string; contact_website?: string | null;
   positioning_mode: "off_platform" | "selen"; positioning_questions: PositioningQuestion[]; learning_assessment_mode?: "external" | "selen_quiz";
-  learning_assessment_instructions?: string | null; learning_assessment_questions?: AssessmentQuestion[] | null; results_pending: boolean; result_beneficiary_count?: number | null;
+  learning_assessment_instructions?: string | null; learning_assessment_questions?: AssessmentQuestion[] | null; learning_assessment_document_url?: string | null; results_pending: boolean; result_beneficiary_count?: number | null;
   result_satisfaction_rate?: number | null; result_success_rate?: number | null; status: string; version: number; validation_note?: string | null; updated_at: string;
   public_registration_token?: string | null; public_registration_enabled?: boolean | null;
 };
@@ -60,6 +60,7 @@ export default function DailyFormationsManager() {
   const [assessmentMode, setAssessmentMode] = useState<"external" | "selen_quiz">("external");
   const [assessmentInstructions, setAssessmentInstructions] = useState("");
   const [assessmentQuestions, setAssessmentQuestions] = useState<AssessmentQuestion[]>([]);
+  const [assessmentSource, setAssessmentSource] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingOriginalStatus, setEditingOriginalStatus] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -95,7 +96,7 @@ export default function DailyFormationsManager() {
   function resetForm(close = true) {
     editingRevision.current = null;
     setEditingId(null); setEditingOriginalStatus(null); setForm({ ...emptyForm, learning_objectives: [""], allowed_trainer_ids: [], positioning_questions: [], prerequisite_requirements: [] });
-    setAssessmentMode("external"); setAssessmentInstructions(""); setAssessmentQuestions([]); if (close) setFormOpen(false); setError("");
+    setAssessmentMode("external"); setAssessmentInstructions(""); setAssessmentQuestions([]); setAssessmentSource(""); if (close) setFormOpen(false); setError("");
   }
   function startNew() { resetForm(false); setMessage(""); setFormOpen(true); }
   function editFormation(formation: Formation) {
@@ -115,6 +116,7 @@ export default function DailyFormationsManager() {
       status: formation.status === "validated" ? "review" : formation.status,
     });
     setAssessmentMode(formation.learning_assessment_mode ?? "external"); setAssessmentInstructions(formation.learning_assessment_instructions ?? ""); setAssessmentQuestions(formation.learning_assessment_questions ?? []);
+    setAssessmentSource(formation.learning_assessment_document_url ?? "");
     setFormOpen(true); window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -135,7 +137,7 @@ export default function DailyFormationsManager() {
       const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error ?? "Enregistrement impossible.");
       const formationId = data.formation?.id as string | undefined; if (!formationId) throw new Error("La formation a été enregistrée mais son identifiant n’a pas été retourné.");
       if (editingId && typeof data.formation.updated_at === "string") editingRevision.current = data.formation.updated_at;
-      const assessmentRes = await assistanceFetch("/api/client/daily/formations/assessment-inline", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: formationId, expected_updated_at: data.formation.updated_at, mode: assessmentMode, instructions: assessmentInstructions, questions: assessmentQuestions }) });
+      const assessmentRes = await assistanceFetch("/api/client/daily/formations/assessment-inline", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: formationId, expected_updated_at: data.formation.updated_at, mode: assessmentMode, instructions: assessmentInstructions, questions: assessmentQuestions, source_document_url: assessmentMode === "external" ? assessmentSource : null }) });
       const assessmentData = await assessmentRes.json().catch(() => ({})); if (!assessmentRes.ok) throw new Error(assessmentData.error ?? "La formation est enregistrée, mais l’évaluation finale n’a pas pu être attachée.");
       if (!editingId) { router.push(`/client/daily/sessions/new?formation=${encodeURIComponent(formationId)}`); return; }
       const wasValidated = editingOriginalStatus === "validated";
@@ -206,6 +208,7 @@ export default function DailyFormationsManager() {
         <SectionTitle title="Évaluation finale des acquis" subtitle="Choisissez un questionnaire Selen ou une évaluation externe à classer après la session." />
         <ChoiceRow value={assessmentMode} onChange={(value) => setAssessmentMode(value as "external" | "selen_quiz")} choices={[{ value: "external", title: "Hors Selen / scan", detail: "La copie sera importée dans le dossier de chaque apprenant." }, { value: "selen_quiz", title: "Questionnaire Selen", detail: "L’évaluation est réalisée directement dans le parcours." }]} />
         {assessmentMode === "selen_quiz" ? <div style={s.stack}><Field full label="Consignes"><textarea value={assessmentInstructions} onChange={(e) => setAssessmentInstructions(e.target.value)} style={s.textarea} /></Field><QuestionBuilder questions={assessmentQuestions} add={() => setAssessmentQuestions((current) => [...current, newAssessmentQuestion(current.length)])} remove={(index) => setAssessmentQuestions((current) => current.filter((_, i) => i !== index))} render={(q, i) => <AssessmentEditor question={q} index={i} update={(index, patch) => setAssessmentQuestions((current) => current.map((item, j) => j === index ? { ...item, ...patch, order: j + 1 } : item))} />} /></div> : null}
+        {assessmentMode === "external" ? <FormationSourceUpload kind="learning_assessment_source" label="Questionnaire d’évaluation finale Word ou PDF" value={assessmentSource} onUploaded={setAssessmentSource} help="Importez le questionnaire vierge si vous en disposez. Les copies remplies après la session sont déposées séparément pour chaque apprenant." /> : null}
 
         <SectionTitle title="Informations complémentaires" subtitle={FORMATION_GUIDANCE.contact} />
         <div style={s.formGrid}>
