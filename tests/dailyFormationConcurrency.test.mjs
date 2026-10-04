@@ -105,7 +105,7 @@ async function uiFixture(options = {}) {
   const find = predicate => { const matches = nodes(tree).filter(predicate); assert.equal(matches.length, 1); return matches[0]; };
   render(); effects.forEach(effect => effect()); await new Promise(resolve => setImmediate(resolve)); render();
   find(node => node.type === "button" && node.props.children === "Modifier").props.onClick(); render();
-  return { ...f, requests, find, nodes: () => nodes(tree), async submit() { await find(node => node.type === "form").props.onSubmit({ preventDefault() {} }); render(); } };
+  return { ...f, requests, find, render, nodes: () => nodes(tree), async submit() { await find(node => node.type === "form").props.onSubmit({ preventDefault() {} }); render(); } };
 }
 
 test("le formulaire réel transmet la date capturée à son ouverture", async () => {
@@ -141,4 +141,23 @@ test("un enregistrement à résultat réseau inconnu ne fabrique pas une version
   await h.submit(); assert.equal(h.requests.length, 2); assert.equal(h.writes.length, 1);
   assert.equal(h.requests[1].body.expected_updated_at, revision); assert.deepEqual(h.formation, saved);
   assert.equal(h.nodes().filter(node => node.props?.role === "status").length, 0);
+});
+
+for (const kind of ["training_program_source", "positioning_questionnaire_source", "learning_assessment_source"]) {
+  test(`le formulaire réel attend la fin de l’import ${kind}, même avant un nouveau rendu`, async () => {
+    const h = await uiFixture(); const upload = h.find(n => n.type === "Upload" && n.props.kind === kind);
+    upload.props.onStateChange?.("pending"); await h.submit();
+    assert.equal(h.requests.length, 0); assert.equal(h.writes.length, 0);
+    assert.equal(h.find(n => n.type === "button" && n.props.type === "submit").props.disabled, true);
+    upload.props.onStateChange("failed"); await h.submit(); assert.equal(h.requests.length, 0);
+    upload.props.onStateChange("idle"); await h.submit(); assert.equal(h.requests.length, 2);
+  });
+}
+test("un import en cours empêche aussi l’annulation et l’ouverture d’une autre formation", async () => {
+  const h = await uiFixture(); const form = h.find(n => n.type === "form");
+  h.find(n => n.type === "Upload" && n.props.kind === "learning_assessment_source").props.onStateChange?.("pending");
+  h.find(n => n.type === "button" && n.props.children === "Annuler").props.onClick();
+  h.render(); assert.ok(h.find(n => n.type === "form"));
+  assert.equal(h.find(n => n.type === "button" && n.props.children === "Modifier").props.disabled, true);
+  await form.props.onSubmit({ preventDefault() {} }); assert.equal(h.requests.length, 0);
 });

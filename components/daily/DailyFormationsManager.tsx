@@ -6,6 +6,7 @@ import { assistanceFetch } from "@/components/AgentAssistanceBanner";
 import FormationSourceUpload from "@/components/daily/FormationSourceUpload";
 import LoadingMascot from "@/components/ui/LoadingMascot";
 import { FORMATION_GUIDANCE } from "@/lib/daily/formationGuidance";
+import type { DailyFormationSourceKind, DailySourceUploadState } from "@/lib/daily/formationSourceUpload";
 import {
   cleanPrerequisiteRequirements, parseDailyFormationCreationMode, parseDailyPrerequisiteMode, validatePrerequisiteDeclaration,
   type DailyFormationCreationMode, type DailyPrerequisiteMode, type DailyPrerequisiteRequirement,
@@ -70,6 +71,20 @@ export default function DailyFormationsManager() {
   const [message, setMessage] = useState("");
   const saveInProgress = useRef(false);
   const editingRevision = useRef<string | null>(null);
+  const uploads = useRef<Partial<Record<DailyFormationSourceKind, DailySourceUploadState>>>({});
+  const [uploadStates, setUploadStates] = useState<Partial<Record<DailyFormationSourceKind, DailySourceUploadState>>>({});
+  const [formKey, setFormKey] = useState(0);
+  const uploadPending = Object.values(uploadStates).includes("pending");
+  const uploadBlocked = Object.values(uploadStates).some(state => state !== "idle");
+  function sourceState(kind: DailyFormationSourceKind, state: DailySourceUploadState) {
+    uploads.current = { ...uploads.current, [kind]: state }; setUploadStates(uploads.current);
+  }
+  function pendingImport() { return Object.values(uploads.current).includes("pending"); }
+  function blockedImport() { return Object.values(uploads.current).some(state => state !== "idle"); }
+  function changeSourceMode(kind: DailyFormationSourceKind, change: () => void) {
+    if (uploads.current[kind] && uploads.current[kind] !== "idle") { setError("Terminez ou abandonnez l’import de ce document avant de changer son mode."); return; }
+    change();
+  }
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -94,12 +109,16 @@ export default function DailyFormationsManager() {
   const structuredProgram = form.creation_mode === "selen_form";
 
   function resetForm(close = true) {
+    if (pendingImport()) return;
+    uploads.current = {}; setUploadStates({}); setFormKey(key => key + 1);
     editingRevision.current = null;
     setEditingId(null); setEditingOriginalStatus(null); setForm({ ...emptyForm, learning_objectives: [""], allowed_trainer_ids: [], positioning_questions: [], prerequisite_requirements: [] });
     setAssessmentMode("external"); setAssessmentInstructions(""); setAssessmentQuestions([]); setAssessmentSource(""); if (close) setFormOpen(false); setError("");
   }
-  function startNew() { resetForm(false); setMessage(""); setFormOpen(true); }
+  function startNew() { if (blockedImport()) return; resetForm(false); setMessage(""); setFormOpen(true); }
   function editFormation(formation: Formation) {
+    if (blockedImport()) return;
+    uploads.current = {}; setUploadStates({}); setFormKey(key => key + 1);
     editingRevision.current = formation.updated_at;
     setMessage(""); setEditingId(formation.id); setEditingOriginalStatus(formation.status);
     setForm({
@@ -123,6 +142,7 @@ export default function DailyFormationsManager() {
   async function save(event: FormEvent) {
     event.preventDefault();
     if (saveInProgress.current) return;
+    if (blockedImport()) { setError("Terminez ou abandonnez les imports en cours avant d’enregistrer la formation."); return; }
     saveInProgress.current = true;
     setSaving(true); setError(""); setMessage("");
     try {
@@ -148,6 +168,7 @@ export default function DailyFormationsManager() {
   }
 
   async function action(actionName: "duplicate" | "archive" | "delete", id: string) {
+    if (saveInProgress.current || blockedImport()) return;
     setError(""); setMessage("");
     if (actionName === "delete" && !window.confirm("Supprimer définitivement cette formation vierge ? Cette action est impossible dès qu’un historique métier existe.")) return;
     const response = await assistanceFetch("/api/client/daily/formations", { method: actionName === "duplicate" ? "POST" : "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify(actionName === "duplicate" ? { action: "duplicate", id } : actionName === "delete" ? { id, hardDelete: true } : { id }) });
@@ -164,8 +185,9 @@ export default function DailyFormationsManager() {
     {error ? <div role="alert" style={s.error}>{error}</div> : null}{message ? <div role="status" style={s.success}>{message}</div> : null}
 
     <section style={s.accordion}>
-      <button type="button" disabled={saving} onClick={() => formOpen ? resetForm(true) : startNew()} style={s.accordionButton} aria-expanded={formOpen}><span><b>{editingId ? "Modifier la formation" : "Créer une nouvelle formation"}</b><small>{formOpen ? "Refermer le formulaire" : "Ouvrir le formulaire de création"}</small></span><span style={s.chevron}>{formOpen ? "−" : "+"}</span></button>
-      {formOpen ? <form onSubmit={save} aria-busy={saving} style={s.formPanel}>
+      <button type="button" disabled={saving || uploadPending} onClick={() => formOpen ? resetForm(true) : startNew()} style={s.accordionButton} aria-expanded={formOpen}><span><b>{editingId ? "Modifier la formation" : "Créer une nouvelle formation"}</b><small>{formOpen ? "Refermer le formulaire" : "Ouvrir le formulaire de création"}</small></span><span style={s.chevron}>{formOpen ? "−" : "+"}</span></button>
+      {formOpen ? <form onSubmit={save} aria-busy={saving || uploadPending} style={s.formPanel}>
+        <fieldset key={formKey} disabled={saving || uploadPending} style={{ display: "contents" }}>
         {editingOriginalStatus === "validated" ? <InfoBox>Vos modifications seront enregistrées sur cette formation puis renvoyées à Selen pour validation.</InfoBox> : null}
         {editingOriginalStatus === "correction_requested" ? <InfoBox><b>Retour Selen :</b> {editingFormation?.validation_note || "Des corrections sont demandées."}<br />Vos corrections repartent en validation sans créer une version supplémentaire.</InfoBox> : null}
 
@@ -182,7 +204,7 @@ export default function DailyFormationsManager() {
           <Field label={`Délais d'accès${structuredProgram ? " *" : ""}`}><input required={structuredProgram} value={form.access_delays} onChange={(e) => setForm({ ...form, access_delays: e.target.value })} style={s.input} /></Field>
           <Field label={`Tarif${structuredProgram ? " *" : ""}`}><div style={s.money}><input type="number" min="0" step="0.01" required={structuredProgram} value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} style={s.input} /><strong>€ TTC</strong></div></Field>
           <Field full label={structuredProgram ? "Contenu détaillé de la formation *" : "Contenu détaillé de la formation"}><textarea required={structuredProgram} rows={10} value={form.detailed_program} onChange={(e) => setForm({ ...form, detailed_program: e.target.value })} style={s.textarea} placeholder="Décrivez ici le contenu détaillé de la formation : modules, séquences, thèmes et progression pédagogique." /></Field>
-          <div style={s.full}><FormationSourceUpload kind="training_program_source" label="Programme détaillé Word ou PDF" value={form.detailed_program_document_url} onUploaded={(url) => setForm((current) => ({ ...current, detailed_program_document_url: url }))} help="Importez votre programme en PDF, DOC ou DOCX. Selen utilise ce document comme contenu détaillé de référence." /><a href="/templates/modele-programme-formation-selen.docx" style={s.link}>Télécharger le modèle de programme Selen (facultatif)</a></div>
+          <div style={s.full}><FormationSourceUpload kind="training_program_source" label="Programme détaillé Word ou PDF" value={form.detailed_program_document_url} disabled={saving} onStateChange={state => sourceState("training_program_source", state)} onUploaded={(url) => setForm((current) => ({ ...current, detailed_program_document_url: url }))} help="Importez votre programme en PDF, DOC ou DOCX (10 Mo maximum). Selen utilise ce document comme contenu détaillé de référence." /><a href="/templates/modele-programme-formation-selen.docx" style={s.link}>Télécharger le modèle de programme Selen (facultatif)</a></div>
           <Field full label="Méthodes pédagogiques"><textarea value={form.pedagogical_methods} onChange={(e) => setForm({ ...form, pedagogical_methods: e.target.value })} style={s.textarea} /></Field>
           <Field full label={`Moyens pédagogiques et techniques${structuredProgram ? " *" : ""}`} help={FORMATION_GUIDANCE.pedagogicalResources}><textarea required={structuredProgram} value={form.pedagogical_resources} onChange={(e) => setForm({ ...form, pedagogical_resources: e.target.value })} style={s.textarea} /></Field>
           <Field full label={`Modalités d’évaluation${structuredProgram ? " *" : ""}`}><textarea required={structuredProgram} value={form.evaluation_methods} onChange={(e) => setForm({ ...form, evaluation_methods: e.target.value })} style={s.textarea} /></Field>
@@ -202,13 +224,13 @@ export default function DailyFormationsManager() {
         </div> : null}
 
         <SectionTitle title="Test de positionnement" subtitle={FORMATION_GUIDANCE.positioning} />
-        <ChoiceRow value={form.positioning_mode} onChange={(value) => setForm({ ...form, positioning_mode: value as "off_platform" | "selen" })} choices={[{ value: "off_platform", title: "Votre questionnaire Word/PDF", detail: "Importez votre propre questionnaire ; les réponses pourront ensuite être classées par apprenant." }, { value: "selen", title: "Questionnaire Selen", detail: "Les apprenants répondent directement dans leur parcours." }]} />
-        {form.positioning_mode === "off_platform" ? <FormationSourceUpload kind="positioning_questionnaire_source" label="Questionnaire de positionnement Word ou PDF" value={form.positioning_questionnaire_document_url} onUploaded={(url) => setForm((current) => ({ ...current, positioning_questionnaire_document_url: url }))} /> : <QuestionBuilder questions={form.positioning_questions} add={() => setForm((current) => ({ ...current, positioning_questions: [...current.positioning_questions, newPositioningQuestion(current.positioning_questions.length)] }))} remove={(index) => setForm((current) => ({ ...current, positioning_questions: current.positioning_questions.filter((_, i) => i !== index) }))} render={(q, i) => <PositioningEditor question={q} index={i} update={(index, patch) => setForm((current) => ({ ...current, positioning_questions: current.positioning_questions.map((item, j) => j === index ? { ...item, ...patch, order: j + 1 } : item) }))} />} />}
+        <ChoiceRow value={form.positioning_mode} onChange={(value) => changeSourceMode("positioning_questionnaire_source", () => setForm(current => ({ ...current, positioning_mode: value as "off_platform" | "selen" })))} choices={[{ value: "off_platform", title: "Votre questionnaire Word/PDF", detail: "Importez votre propre questionnaire ; les réponses pourront ensuite être classées par apprenant." }, { value: "selen", title: "Questionnaire Selen", detail: "Les apprenants répondent directement dans leur parcours." }]} />
+        {form.positioning_mode === "off_platform" ? <FormationSourceUpload kind="positioning_questionnaire_source" label="Questionnaire de positionnement Word ou PDF" value={form.positioning_questionnaire_document_url} disabled={saving} onStateChange={state => sourceState("positioning_questionnaire_source", state)} onUploaded={(url) => setForm((current) => ({ ...current, positioning_questionnaire_document_url: url }))} /> : <QuestionBuilder questions={form.positioning_questions} add={() => setForm((current) => ({ ...current, positioning_questions: [...current.positioning_questions, newPositioningQuestion(current.positioning_questions.length)] }))} remove={(index) => setForm((current) => ({ ...current, positioning_questions: current.positioning_questions.filter((_, i) => i !== index) }))} render={(q, i) => <PositioningEditor question={q} index={i} update={(index, patch) => setForm((current) => ({ ...current, positioning_questions: current.positioning_questions.map((item, j) => j === index ? { ...item, ...patch, order: j + 1 } : item) }))} />} />}
 
         <SectionTitle title="Évaluation finale des acquis" subtitle="Choisissez un questionnaire Selen ou une évaluation externe à classer après la session." />
-        <ChoiceRow value={assessmentMode} onChange={(value) => setAssessmentMode(value as "external" | "selen_quiz")} choices={[{ value: "external", title: "Hors Selen / scan", detail: "La copie sera importée dans le dossier de chaque apprenant." }, { value: "selen_quiz", title: "Questionnaire Selen", detail: "L’évaluation est réalisée directement dans le parcours." }]} />
+        <ChoiceRow value={assessmentMode} onChange={(value) => changeSourceMode("learning_assessment_source", () => setAssessmentMode(value as "external" | "selen_quiz"))} choices={[{ value: "external", title: "Hors Selen / scan", detail: "La copie sera importée dans le dossier de chaque apprenant." }, { value: "selen_quiz", title: "Questionnaire Selen", detail: "L’évaluation est réalisée directement dans le parcours." }]} />
         {assessmentMode === "selen_quiz" ? <div style={s.stack}><Field full label="Consignes"><textarea value={assessmentInstructions} onChange={(e) => setAssessmentInstructions(e.target.value)} style={s.textarea} /></Field><QuestionBuilder questions={assessmentQuestions} add={() => setAssessmentQuestions((current) => [...current, newAssessmentQuestion(current.length)])} remove={(index) => setAssessmentQuestions((current) => current.filter((_, i) => i !== index))} render={(q, i) => <AssessmentEditor question={q} index={i} update={(index, patch) => setAssessmentQuestions((current) => current.map((item, j) => j === index ? { ...item, ...patch, order: j + 1 } : item))} />} /></div> : null}
-        {assessmentMode === "external" ? <FormationSourceUpload kind="learning_assessment_source" label="Questionnaire d’évaluation finale Word ou PDF" value={assessmentSource} onUploaded={setAssessmentSource} help="Importez le questionnaire vierge si vous en disposez. Les copies remplies après la session sont déposées séparément pour chaque apprenant." /> : null}
+        {assessmentMode === "external" ? <FormationSourceUpload kind="learning_assessment_source" label="Questionnaire d’évaluation finale Word ou PDF" value={assessmentSource} disabled={saving} onStateChange={state => sourceState("learning_assessment_source", state)} onUploaded={setAssessmentSource} help="Importez le questionnaire vierge si vous en disposez (10 Mo maximum). Les copies remplies après la session sont déposées séparément pour chaque apprenant." /> : null}
 
         <SectionTitle title="Informations complémentaires" subtitle={FORMATION_GUIDANCE.contact} />
         <div style={s.formGrid}>
@@ -219,7 +241,9 @@ export default function DailyFormationsManager() {
           <Field label="Site internet"><input value={form.contact_website} onChange={(e) => setForm({ ...form, contact_website: e.target.value })} style={s.input} /></Field>
           <div style={s.full}><label style={s.label}>Formateurs autorisés</label><div style={s.checkboxGrid}>{activeTrainers.map((trainer) => <label key={trainer.id} style={s.check}><input type="checkbox" checked={form.allowed_trainer_ids.includes(trainer.id)} onChange={(e) => setForm((current) => ({ ...current, allowed_trainer_ids: e.target.checked ? [...current.allowed_trainer_ids, trainer.id] : current.allowed_trainer_ids.filter((id) => id !== trainer.id) }))} />{trainer.display_name}</label>)}{activeTrainers.length === 0 ? <span style={s.muted}>Aucun formateur actif enregistré.</span> : null}</div></div>
         </div>
-        <div style={s.formActions}><button type="submit" disabled={saving} style={s.primary}>{saving ? "Enregistrement…" : editingOriginalStatus === "validated" ? "Envoyer la nouvelle version à Selen" : editingId ? "Enregistrer les modifications" : "Créer la formation"}</button><button type="button" disabled={saving} style={s.secondary} onClick={() => resetForm(true)}>Annuler</button></div>
+        </fieldset>
+        {uploadBlocked ? <p role="status" style={s.muted}>Terminez ou abandonnez les imports avant d’enregistrer la formation.</p> : null}
+        <div style={s.formActions}><button type="submit" disabled={saving || uploadBlocked} style={s.primary}>{saving ? "Enregistrement…" : editingOriginalStatus === "validated" ? "Envoyer la nouvelle version à Selen" : editingId ? "Enregistrer les modifications" : "Créer la formation"}</button><button type="button" disabled={saving || uploadPending} style={s.secondary} onClick={() => resetForm(true)}>Annuler</button></div>
       </form> : null}
     </section>
 
@@ -245,7 +269,7 @@ export default function DailyFormationsManager() {
             </div>
             <div style={s.qrWrap}><img src={qrUrl(formation.public_registration_token)} width={132} height={132} alt={`QR code d'inscription pour ${formation.title}`} /><span>Scannez pour tester</span></div>
           </div> : null}
-          <div style={s.actions}><button type="button" disabled={saving} style={s.secondary} onClick={() => editFormation(formation)}>Modifier</button><button type="button" disabled={saving} style={s.secondary} onClick={() => void action("duplicate", formation.id)}>Dupliquer</button><button type="button" disabled={saving} style={s.danger} onClick={() => void action("archive", formation.id)}>Archiver</button><button type="button" disabled={saving} style={s.secondary} onClick={() => void action("delete", formation.id)}>Supprimer</button></div>
+          <div style={s.actions}><button type="button" disabled={saving || uploadBlocked} style={s.secondary} onClick={() => editFormation(formation)}>Modifier</button><button type="button" disabled={saving || uploadBlocked} style={s.secondary} onClick={() => void action("duplicate", formation.id)}>Dupliquer</button><button type="button" disabled={saving || uploadBlocked} style={s.danger} onClick={() => void action("archive", formation.id)}>Archiver</button><button type="button" disabled={saving || uploadBlocked} style={s.secondary} onClick={() => void action("delete", formation.id)}>Supprimer</button></div>
         </article>;
       })}</div>}
     </section>
