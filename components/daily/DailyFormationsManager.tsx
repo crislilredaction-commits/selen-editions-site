@@ -1,16 +1,21 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { assistanceFetch } from "@/components/AgentAssistanceBanner";
 import FormationSourceUpload from "@/components/daily/FormationSourceUpload";
 import LoadingMascot from "@/components/ui/LoadingMascot";
 import { FORMATION_GUIDANCE } from "@/lib/daily/formationGuidance";
+import {
+  cleanPrerequisiteRequirements, parseDailyFormationCreationMode, parseDailyPrerequisiteMode, validatePrerequisiteDeclaration,
+  type DailyFormationCreationMode, type DailyPrerequisiteMode, type DailyPrerequisiteRequirement,
+} from "@/lib/dailyFormationCreationPolicy";
 
 type PositioningQuestion = { id: string; label: string; help_text: string; required: boolean; type: "single_choice" | "multiple_choice" | "free_text" | "scale_1_5"; options: string[]; order: number };
 type AssessmentQuestion = { id: string; label: string; type: "single_choice" | "multiple_choice" | "free_text"; options: string[]; correct_answers: string[]; points: number; required: boolean; order: number };
 type Trainer = { id: string; display_name: string; status: string };
 type Formation = {
+  creation_mode?: DailyFormationCreationMode; prerequisite_mode?: DailyPrerequisiteMode; prerequisite_requirements?: DailyPrerequisiteRequirement[];
   id: string; title: string; global_objective: string; learning_objectives: string[]; allowed_trainer_ids: string[]; target_audience: string; prerequisites: string;
   duration_hours: number | string; duration_days: number | string; modality: string; access_delays: string; registration_methods: string; price: string;
   detailed_program: string; detailed_program_document_url?: string | null; positioning_questionnaire_document_url?: string | null; accessibility: string; disability_referent?: string | null;
@@ -22,6 +27,7 @@ type Formation = {
 };
 type Workspace = { capabilities?: { trainings?: boolean }; trainers?: Trainer[] };
 type FormState = {
+  creation_mode: DailyFormationCreationMode; prerequisite_mode: DailyPrerequisiteMode; prerequisite_requirements: DailyPrerequisiteRequirement[];
   title: string; global_objective: string; learning_objectives: string[]; allowed_trainer_ids: string[]; target_audience: string; prerequisites: string;
   duration_hours: string; duration_days: string; modality: string; access_delays: string; registration_methods: string; price: string;
   detailed_program: string; detailed_program_document_url: string; positioning_questionnaire_document_url: string; accessibility: string; disability_referent: string; pedagogical_methods: string;
@@ -30,6 +36,7 @@ type FormState = {
 };
 
 const emptyForm: FormState = {
+  creation_mode: "selen_form", prerequisite_mode: "none", prerequisite_requirements: [],
   title: "", global_objective: "", learning_objectives: [""], allowed_trainer_ids: [], target_audience: "", prerequisites: "", duration_hours: "", duration_days: "",
   modality: "presentiel", access_delays: "", registration_methods: "Les modalités d'inscription sont préparées et suivies par Selen Daily.", price: "", detailed_program: "", detailed_program_document_url: "",
   positioning_questionnaire_document_url: "", accessibility: "La formation est accessible aux personnes en situation de handicap. Les besoins d'adaptation sont analysés dans le dossier d'inscription et suivis par Selen.",
@@ -60,6 +67,8 @@ export default function DailyFormationsManager() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const saveInProgress = useRef(false);
+  const editingRevision = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -81,15 +90,20 @@ export default function DailyFormationsManager() {
   const activeTrainers = useMemo(() => (workspace?.trainers ?? []).filter((trainer) => !["rejected", "archived"].includes(trainer.status)), [workspace]);
   const visibleFormations = useMemo(() => formations.filter((formation) => formation.status !== "archived").sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()), [formations]);
   const editingFormation = useMemo(() => formations.find((f) => f.id === editingId) ?? null, [formations, editingId]);
+  const structuredProgram = form.creation_mode === "selen_form";
 
   function resetForm(close = true) {
-    setEditingId(null); setEditingOriginalStatus(null); setForm({ ...emptyForm, learning_objectives: [""], allowed_trainer_ids: [], positioning_questions: [] });
+    editingRevision.current = null;
+    setEditingId(null); setEditingOriginalStatus(null); setForm({ ...emptyForm, learning_objectives: [""], allowed_trainer_ids: [], positioning_questions: [], prerequisite_requirements: [] });
     setAssessmentMode("external"); setAssessmentInstructions(""); setAssessmentQuestions([]); if (close) setFormOpen(false); setError("");
   }
   function startNew() { resetForm(false); setMessage(""); setFormOpen(true); }
   function editFormation(formation: Formation) {
+    editingRevision.current = formation.updated_at;
     setMessage(""); setEditingId(formation.id); setEditingOriginalStatus(formation.status);
     setForm({
+      creation_mode: parseDailyFormationCreationMode(formation.creation_mode), prerequisite_mode: parseDailyPrerequisiteMode(formation.prerequisite_mode),
+      prerequisite_requirements: cleanPrerequisiteRequirements(formation.prerequisite_requirements),
       title: formation.title ?? "", global_objective: formation.global_objective ?? "", learning_objectives: formation.learning_objectives?.length ? formation.learning_objectives : [""],
       allowed_trainer_ids: formation.allowed_trainer_ids ?? [], target_audience: formation.target_audience ?? "", prerequisites: formation.prerequisites ?? "", duration_hours: String(formation.duration_hours ?? ""),
       duration_days: String(formation.duration_days ?? ""), modality: formation.modality ?? "presentiel", access_delays: formation.access_delays ?? "", registration_methods: formation.registration_methods ?? emptyForm.registration_methods,
@@ -105,21 +119,30 @@ export default function DailyFormationsManager() {
   }
 
   async function save(event: FormEvent) {
-    event.preventDefault(); setSaving(true); setError(""); setMessage("");
+    event.preventDefault();
+    if (saveInProgress.current) return;
+    saveInProgress.current = true;
+    setSaving(true); setError(""); setMessage("");
     try {
+      const prerequisiteRequirements = form.prerequisite_mode === "none" ? [] : cleanPrerequisiteRequirements(form.prerequisite_requirements);
+      const prerequisiteError = validatePrerequisiteDeclaration(form.prerequisite_mode, prerequisiteRequirements);
+      if (prerequisiteError) throw new Error(prerequisiteError);
+      if (form.prerequisite_mode === "required" && !form.prerequisites.trim()) throw new Error("Décrivez les prérequis à satisfaire.");
+      if (form.creation_mode === "program_import" && !form.detailed_program_document_url) throw new Error("Importez le programme original avant d’enregistrer la formation.");
       if (assessmentMode === "selen_quiz" && assessmentQuestions.length === 0) throw new Error("Ajoutez au moins une question à l’évaluation finale ou choisissez le scan après la session.");
       if (form.positioning_mode === "off_platform" && !form.positioning_questionnaire_document_url) throw new Error("Importez votre questionnaire de positionnement avant d’enregistrer la formation.");
-      const response = await assistanceFetch("/api/client/daily/formations", { method: editingId ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, positioning_choice_confirmed: true, id: editingId, status: editingId ? form.status : "draft" }) });
+      const response = await assistanceFetch("/api/client/daily/formations", { method: editingId ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, expected_updated_at: editingId ? editingRevision.current : undefined, prerequisite_requirements: prerequisiteRequirements, prerequisites: form.prerequisite_mode === "none" ? "Aucun prérequis" : form.prerequisites, positioning_choice_confirmed: true, id: editingId, status: editingId ? form.status : "draft" }) });
       const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error ?? "Enregistrement impossible.");
       const formationId = data.formation?.id as string | undefined; if (!formationId) throw new Error("La formation a été enregistrée mais son identifiant n’a pas été retourné.");
-      const assessmentRes = await assistanceFetch("/api/client/daily/formations/assessment-inline", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: formationId, mode: assessmentMode, instructions: assessmentInstructions, questions: assessmentQuestions }) });
+      if (editingId && typeof data.formation.updated_at === "string") editingRevision.current = data.formation.updated_at;
+      const assessmentRes = await assistanceFetch("/api/client/daily/formations/assessment-inline", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: formationId, expected_updated_at: data.formation.updated_at, mode: assessmentMode, instructions: assessmentInstructions, questions: assessmentQuestions }) });
       const assessmentData = await assessmentRes.json().catch(() => ({})); if (!assessmentRes.ok) throw new Error(assessmentData.error ?? "La formation est enregistrée, mais l’évaluation finale n’a pas pu être attachée.");
       if (!editingId) { router.push(`/client/daily/sessions/new?formation=${encodeURIComponent(formationId)}`); return; }
       const wasValidated = editingOriginalStatus === "validated";
       resetForm(true); setMessage(wasValidated ? "Formation modifiée et renvoyée à Selen pour validation." : "Formation mise à jour et renvoyée à Selen pour vérification.");
       await load();
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Enregistrement impossible."); }
-    finally { setSaving(false); }
+    finally { saveInProgress.current = false; setSaving(false); }
   }
 
   async function action(actionName: "duplicate" | "archive" | "delete", id: string) {
@@ -136,32 +159,45 @@ export default function DailyFormationsManager() {
 
   return <main style={s.main}>
     <header style={s.hero}><div><p style={s.eyebrow}>Selen Daily · Catalogue</p><h1 style={s.h1}>Formations</h1><p style={s.lead}>Créez vos programmes, transmettez-les à Selen pour validation et conservez automatiquement leurs versions.</p></div><div style={s.stat}><strong>{visibleFormations.length}</strong><span>formations actives</span></div></header>
-    {error ? <div style={s.error}>{error}</div> : null}{message ? <div style={s.success}>{message}</div> : null}
+    {error ? <div role="alert" style={s.error}>{error}</div> : null}{message ? <div role="status" style={s.success}>{message}</div> : null}
 
     <section style={s.accordion}>
-      <button type="button" onClick={() => formOpen ? resetForm(true) : startNew()} style={s.accordionButton} aria-expanded={formOpen}><span><b>{editingId ? "Modifier la formation" : "Créer une nouvelle formation"}</b><small>{formOpen ? "Refermer le formulaire" : "Ouvrir le formulaire de création"}</small></span><span style={s.chevron}>{formOpen ? "−" : "+"}</span></button>
-      {formOpen ? <form onSubmit={save} style={s.formPanel}>
+      <button type="button" disabled={saving} onClick={() => formOpen ? resetForm(true) : startNew()} style={s.accordionButton} aria-expanded={formOpen}><span><b>{editingId ? "Modifier la formation" : "Créer une nouvelle formation"}</b><small>{formOpen ? "Refermer le formulaire" : "Ouvrir le formulaire de création"}</small></span><span style={s.chevron}>{formOpen ? "−" : "+"}</span></button>
+      {formOpen ? <form onSubmit={save} aria-busy={saving} style={s.formPanel}>
         {editingOriginalStatus === "validated" ? <InfoBox>Vos modifications seront enregistrées sur cette formation puis renvoyées à Selen pour validation.</InfoBox> : null}
         {editingOriginalStatus === "correction_requested" ? <InfoBox><b>Retour Selen :</b> {editingFormation?.validation_note || "Des corrections sont demandées."}<br />Vos corrections repartent en validation sans créer une version supplémentaire.</InfoBox> : null}
 
         <SectionTitle title="Le programme" subtitle="Les informations utilisées dans le programme officiel et les documents de formation." />
+        {!structuredProgram ? <InfoBox>Programme importé : le document original reste la référence. Les champs descriptifs ci-dessous sont facultatifs ; vous pouvez les compléter sans ressaisir le programme.</InfoBox> : null}
         <div style={s.formGrid}>
           <Field label="Intitulé *"><input required value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} style={s.input} /></Field>
-          <Field label="Objectif principal *" help={FORMATION_GUIDANCE.globalObjective}><textarea required value={form.global_objective} onChange={(e) => setForm({ ...form, global_objective: e.target.value })} style={s.textarea} /></Field>
-          <div style={s.full}><label style={s.label}>Objectifs pédagogiques *</label>{form.learning_objectives.map((objective, index) => <div key={index} style={s.row}><input required value={objective} onChange={(e) => setForm((current) => ({ ...current, learning_objectives: current.learning_objectives.map((item, i) => i === index ? e.target.value : item) }))} placeholder={`Objectif ${index + 1}`} style={{ ...s.input, flex: 1 }} />{form.learning_objectives.length > 1 ? <button type="button" style={s.smallButton} onClick={() => setForm((current) => ({ ...current, learning_objectives: current.learning_objectives.filter((_, i) => i !== index) }))}>Retirer</button> : null}</div>)}<button type="button" style={s.secondary} onClick={() => setForm((current) => ({ ...current, learning_objectives: [...current.learning_objectives, ""] }))}>+ Ajouter un objectif</button></div>
-          <Field label="Public visé *"><textarea required value={form.target_audience} onChange={(e) => setForm({ ...form, target_audience: e.target.value })} style={s.textarea} /></Field>
-          <Field label="Prérequis *" help={FORMATION_GUIDANCE.prerequisites}><textarea required value={form.prerequisites} onChange={(e) => setForm({ ...form, prerequisites: e.target.value })} style={s.textarea} /></Field>
+          <Field label={`Objectif principal${structuredProgram ? " *" : ""}`} help={FORMATION_GUIDANCE.globalObjective}><textarea required={structuredProgram} value={form.global_objective} onChange={(e) => setForm({ ...form, global_objective: e.target.value })} style={s.textarea} /></Field>
+          <div style={s.full}><label style={s.label}>Objectifs pédagogiques{structuredProgram ? " *" : ""}</label>{form.learning_objectives.map((objective, index) => <div key={index} style={s.row}><input required={structuredProgram} value={objective} onChange={(e) => setForm((current) => ({ ...current, learning_objectives: current.learning_objectives.map((item, i) => i === index ? e.target.value : item) }))} placeholder={`Objectif ${index + 1}`} style={{ ...s.input, flex: 1 }} />{form.learning_objectives.length > 1 ? <button type="button" style={s.smallButton} onClick={() => setForm((current) => ({ ...current, learning_objectives: current.learning_objectives.filter((_, i) => i !== index) }))}>Retirer</button> : null}</div>)}<button type="button" style={s.secondary} onClick={() => setForm((current) => ({ ...current, learning_objectives: [...current.learning_objectives, ""] }))}>+ Ajouter un objectif</button></div>
+          <Field label={`Public visé${structuredProgram ? " *" : ""}`}><textarea required={structuredProgram} value={form.target_audience} onChange={(e) => setForm({ ...form, target_audience: e.target.value })} style={s.textarea} /></Field>
           <Field label="Durée en heures *"><input type="number" min="0.5" step="0.5" required value={form.duration_hours} onChange={(e) => setForm({ ...form, duration_hours: e.target.value })} style={s.input} /></Field>
           <Field label="Durée en jours *"><input type="number" min="0.5" step="0.5" required value={form.duration_days} onChange={(e) => setForm({ ...form, duration_days: e.target.value })} style={s.input} /></Field>
           <Field label="Modalité *"><select value={form.modality} onChange={(e) => setForm({ ...form, modality: e.target.value })} style={s.input}><option value="presentiel">Présentiel</option><option value="distanciel">Distanciel</option><option value="mixte">Mixte</option></select></Field>
-          <Field label="Délais d'accès *"><input required value={form.access_delays} onChange={(e) => setForm({ ...form, access_delays: e.target.value })} style={s.input} /></Field>
-          <Field label="Tarif *"><div style={s.money}><input type="number" min="0" step="0.01" required value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} style={s.input} /><strong>€ TTC</strong></div></Field>
-          <Field full label="Contenu détaillé de la formation *"><textarea required rows={10} value={form.detailed_program} onChange={(e) => setForm({ ...form, detailed_program: e.target.value })} style={s.textarea} placeholder="Décrivez ici le contenu détaillé de la formation : modules, séquences, thèmes et progression pédagogique." /></Field>
+          <Field label={`Délais d'accès${structuredProgram ? " *" : ""}`}><input required={structuredProgram} value={form.access_delays} onChange={(e) => setForm({ ...form, access_delays: e.target.value })} style={s.input} /></Field>
+          <Field label={`Tarif${structuredProgram ? " *" : ""}`}><div style={s.money}><input type="number" min="0" step="0.01" required={structuredProgram} value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} style={s.input} /><strong>€ TTC</strong></div></Field>
+          <Field full label={structuredProgram ? "Contenu détaillé de la formation *" : "Contenu détaillé de la formation"}><textarea required={structuredProgram} rows={10} value={form.detailed_program} onChange={(e) => setForm({ ...form, detailed_program: e.target.value })} style={s.textarea} placeholder="Décrivez ici le contenu détaillé de la formation : modules, séquences, thèmes et progression pédagogique." /></Field>
           <div style={s.full}><FormationSourceUpload kind="training_program_source" label="Programme détaillé Word ou PDF" value={form.detailed_program_document_url} onUploaded={(url) => setForm((current) => ({ ...current, detailed_program_document_url: url }))} help="Importez votre programme en PDF, DOC ou DOCX. Selen utilise ce document comme contenu détaillé de référence." /><a href="/templates/modele-programme-formation-selen.docx" style={s.link}>Télécharger le modèle de programme Selen (facultatif)</a></div>
           <Field full label="Méthodes pédagogiques"><textarea value={form.pedagogical_methods} onChange={(e) => setForm({ ...form, pedagogical_methods: e.target.value })} style={s.textarea} /></Field>
-          <Field full label="Moyens pédagogiques et techniques *" help={FORMATION_GUIDANCE.pedagogicalResources}><textarea required value={form.pedagogical_resources} onChange={(e) => setForm({ ...form, pedagogical_resources: e.target.value })} style={s.textarea} /></Field>
-          <Field full label="Modalités d’évaluation *"><textarea required value={form.evaluation_methods} onChange={(e) => setForm({ ...form, evaluation_methods: e.target.value })} style={s.textarea} /></Field>
+          <Field full label={`Moyens pédagogiques et techniques${structuredProgram ? " *" : ""}`} help={FORMATION_GUIDANCE.pedagogicalResources}><textarea required={structuredProgram} value={form.pedagogical_resources} onChange={(e) => setForm({ ...form, pedagogical_resources: e.target.value })} style={s.textarea} /></Field>
+          <Field full label={`Modalités d’évaluation${structuredProgram ? " *" : ""}`}><textarea required={structuredProgram} value={form.evaluation_methods} onChange={(e) => setForm({ ...form, evaluation_methods: e.target.value })} style={s.textarea} /></Field>
         </div>
+
+        <SectionTitle title="Prérequis" subtitle="Indiquez les conditions à satisfaire et les justificatifs à fournir dans la candidature." />
+        <ChoiceRow value={form.prerequisite_mode} onChange={(value) => setForm((current) => ({ ...current, prerequisite_mode: value as DailyPrerequisiteMode, prerequisite_requirements: value === "none" ? [] : current.prerequisite_requirements, prerequisites: value === "none" ? "Aucun prérequis" : current.prerequisite_mode === "none" ? "" : current.prerequisites }))} choices={[{ value: "none", title: "Aucun prérequis", detail: "Aucun justificatif de prérequis ne sera demandé." }, { value: "required", title: "Prérequis obligatoires", detail: "Les justificatifs sont vérifiés avant la décision d’inscription." }]} />
+        {form.prerequisite_mode === "required" ? <div style={s.stack}>
+          <Field full label="Prérequis à satisfaire *" help={FORMATION_GUIDANCE.prerequisites}><textarea aria-label="Prérequis à satisfaire" required value={form.prerequisites} onChange={(e) => setForm({ ...form, prerequisites: e.target.value })} style={s.textarea} /></Field>
+          <p style={s.muted}>Déposer un fichier ne vaut jamais validation. Les justificatifs attendus restent soumis à une vérification humaine.</p>
+          {form.prerequisite_requirements.map((requirement, index) => <article key={requirement.id} style={s.questionCard}>
+            <div style={s.questionHead}><b>Justificatif {index + 1}</b><button type="button" style={s.smallButton} onClick={() => setForm((current) => ({ ...current, prerequisite_requirements: current.prerequisite_requirements.filter((_, i) => i !== index) }))}>Retirer le justificatif {index + 1}</button></div>
+            <Field label="Justificatif attendu *"><input aria-label={`Justificatif ${index + 1}`} required value={requirement.label} onChange={(e) => setForm((current) => ({ ...current, prerequisite_requirements: current.prerequisite_requirements.map((item, i) => i === index ? { ...item, label: e.target.value } : item) }))} style={s.input} /></Field>
+            <Field label="Précision"><textarea aria-label={`Précision du justificatif ${index + 1}`} value={requirement.description} onChange={(e) => setForm((current) => ({ ...current, prerequisite_requirements: current.prerequisite_requirements.map((item, i) => i === index ? { ...item, description: e.target.value } : item) }))} style={s.textarea} /></Field>
+          </article>)}
+          <button type="button" style={s.secondary} onClick={() => setForm((current) => ({ ...current, prerequisite_requirements: [...current.prerequisite_requirements, { id: crypto.randomUUID(), label: "", description: "", required: true }] }))}>+ Ajouter un justificatif</button>
+        </div> : null}
 
         <SectionTitle title="Test de positionnement" subtitle={FORMATION_GUIDANCE.positioning} />
         <ChoiceRow value={form.positioning_mode} onChange={(value) => setForm({ ...form, positioning_mode: value as "off_platform" | "selen" })} choices={[{ value: "off_platform", title: "Votre questionnaire Word/PDF", detail: "Importez votre propre questionnaire ; les réponses pourront ensuite être classées par apprenant." }, { value: "selen", title: "Questionnaire Selen", detail: "Les apprenants répondent directement dans leur parcours." }]} />
@@ -180,7 +216,7 @@ export default function DailyFormationsManager() {
           <Field label="Site internet"><input value={form.contact_website} onChange={(e) => setForm({ ...form, contact_website: e.target.value })} style={s.input} /></Field>
           <div style={s.full}><label style={s.label}>Formateurs autorisés</label><div style={s.checkboxGrid}>{activeTrainers.map((trainer) => <label key={trainer.id} style={s.check}><input type="checkbox" checked={form.allowed_trainer_ids.includes(trainer.id)} onChange={(e) => setForm((current) => ({ ...current, allowed_trainer_ids: e.target.checked ? [...current.allowed_trainer_ids, trainer.id] : current.allowed_trainer_ids.filter((id) => id !== trainer.id) }))} />{trainer.display_name}</label>)}{activeTrainers.length === 0 ? <span style={s.muted}>Aucun formateur actif enregistré.</span> : null}</div></div>
         </div>
-        <div style={s.formActions}><button type="submit" disabled={saving} style={s.primary}>{saving ? "Enregistrement…" : editingOriginalStatus === "validated" ? "Envoyer la nouvelle version à Selen" : editingId ? "Enregistrer les modifications" : "Créer la formation"}</button><button type="button" style={s.secondary} onClick={() => resetForm(true)}>Annuler</button></div>
+        <div style={s.formActions}><button type="submit" disabled={saving} style={s.primary}>{saving ? "Enregistrement…" : editingOriginalStatus === "validated" ? "Envoyer la nouvelle version à Selen" : editingId ? "Enregistrer les modifications" : "Créer la formation"}</button><button type="button" disabled={saving} style={s.secondary} onClick={() => resetForm(true)}>Annuler</button></div>
       </form> : null}
     </section>
 
@@ -206,7 +242,7 @@ export default function DailyFormationsManager() {
             </div>
             <div style={s.qrWrap}><img src={qrUrl(formation.public_registration_token)} width={132} height={132} alt={`QR code d'inscription pour ${formation.title}`} /><span>Scannez pour tester</span></div>
           </div> : null}
-          <div style={s.actions}><button type="button" style={s.secondary} onClick={() => editFormation(formation)}>Modifier</button><button type="button" style={s.secondary} onClick={() => void action("duplicate", formation.id)}>Dupliquer</button><button type="button" style={s.danger} onClick={() => void action("archive", formation.id)}>Archiver</button><button type="button" style={s.secondary} onClick={() => void action("delete", formation.id)}>Supprimer</button></div>
+          <div style={s.actions}><button type="button" disabled={saving} style={s.secondary} onClick={() => editFormation(formation)}>Modifier</button><button type="button" disabled={saving} style={s.secondary} onClick={() => void action("duplicate", formation.id)}>Dupliquer</button><button type="button" disabled={saving} style={s.danger} onClick={() => void action("archive", formation.id)}>Archiver</button><button type="button" disabled={saving} style={s.secondary} onClick={() => void action("delete", formation.id)}>Supprimer</button></div>
         </article>;
       })}</div>}
     </section>
