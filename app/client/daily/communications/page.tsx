@@ -31,6 +31,7 @@ type Communication = {
 };
 
 const typeLabels: Record<string, string> = {
+  agent_task: "Notification Studio",
   attendance_reminder: "Relance d’émargement",
   convocation: "Envoi de convocation",
   satisfaction_request: "Questionnaire de satisfaction",
@@ -130,7 +131,7 @@ export default function DailyCommunicationsPage() {
                 ) : null}
               </div>
               <div style={{ textAlign: "right", fontSize: 13 }}>
-                <strong>{statusLabels[item.status] ?? item.status}</strong>
+                <strong>{item.communication_type === "agent_task" && item.status === "queued" ? "Envoi à contrôler" : statusLabels[item.status] ?? item.status}</strong>
                 <div>{formatDate(item.sent_at ?? item.failed_at)}</div>
                 {item.delivered_at ? <div>Livré : {formatDate(item.delivered_at)}</div> : null}
               </div>
