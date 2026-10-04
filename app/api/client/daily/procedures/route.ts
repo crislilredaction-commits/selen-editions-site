@@ -67,8 +67,7 @@ const definitions = [
 ] as const;
 const allowedTypes = new Set(definitions.map((item) => item.procedure_type));
 
-export const SELEN_PROCEDURE_MODEL_VERSION = 1;
-export const SELEN_PROCEDURE_DEFINITIONS = definitions;
+const SELEN_PROCEDURE_MODEL_VERSION = 1;
 
 async function ensureProcedures(organisationId: string) {
   const admin = getAdminSupabase();

@@ -5,7 +5,7 @@ import type { ChangeEvent } from "react";
 import { assistanceFetch } from "@/components/AgentAssistanceBanner";
 import { PROGRAMME_ACCEPT_ATTRIBUTE } from "@/lib/daily/formationGuidance";
 
-type UploadKind = "training_program_source" | "positioning_questionnaire_source";
+type UploadKind = "training_program_source" | "positioning_questionnaire_source" | "learning_assessment_source";
 type Props = { kind: UploadKind; label: string; value?: string | null; onUploaded: (url: string) => void; help?: string };
 
 export default function FormationSourceUpload({ kind, label, value, onUploaded, help }: Props) {
