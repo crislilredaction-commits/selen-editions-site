@@ -24,8 +24,8 @@ jobs:
       max-parallel: 1
       matrix:
         include:
-          - pr: 252
-            commit: "e5973f9cb0b0753c71b71da1c3aed6c0e2f766a5"
+          - pr: 253
+            commit: "eaaffa8d830e41a746be5c65f5a0d17fdadaa4c3"
     steps:
       - name: Checkout exact Studio commit
         uses: actions/checkout@v4
