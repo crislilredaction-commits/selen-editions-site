@@ -16,7 +16,7 @@ function harness() {
       const index = cursor++;
       if (!(index in state)) state[index] = initial;
       return [state[index], value => { state[index] = typeof value === "function" ? value(state[index]) : value; }];
-    } },
+    }, useRef(initial) { const index=cursor++;if(!(index in state))state[index]={current:initial};return state[index]; } },
     "next/navigation": { useRouter: () => ({ push: value => navigation.push(value) }) },
     "@/components/daily/FormationSourceUpload": { default: Upload },
     "@/components/AgentAssistanceBanner": { assistanceFetch: async (url, options) => {
@@ -39,7 +39,7 @@ function harness() {
   const find = predicate => { const matches = nodes().filter(predicate); assert.equal(matches.length, 1); return matches[0]; };
   render();
   return {
-    requests, navigation, nodes, find,
+    requests, navigation, nodes, find, render,
     radio(index) { nodes().filter(n => n.props?.type === "radio")[index].props.onChange(); render(); },
     upload(kind = "training_program_source") { const url = kind === "positioning_questionnaire_source" ? positioningOriginal : original; find(n => n.type === Upload && n.props.kind === kind).props.onUploaded(url); render(); assert.equal(find(n => n.type === Upload && n.props.kind === kind).props.value, url); },
     change(node, value) { node.props.onChange({ target: { value } }); render(); },
@@ -89,6 +89,17 @@ test("missing original blocks transport and navigation", async () => {
   const h = harness(); await h.submit();
   assert.equal(h.requests.length, 0); assert.equal(h.navigation.length, 0);
   assert.ok(h.find(n => n.props?.role === "alert").props.children);
+});
+
+for(const kind of ["training_program_source","positioning_questionnaire_source"])test(`création : l’import ${kind} bloque l’envoi et le changement de mode`,async()=>{
+  const h=harness();h.upload();h.upload("positioning_questionnaire_source");
+  h.find(n=>n.props?.kind===kind).props.onStateChange("pending");
+  await h.find(n=>n.type==="form").props.onSubmit({preventDefault(){},currentTarget:{title:"Formation"}});
+  assert.equal(h.requests.length,0);h.render();assert.equal(h.find(n=>n.props?.type==="submit").props.disabled,true);
+  h.radio(kind==="training_program_source"?1:5);assert.ok(h.find(n=>n.props?.kind===kind));
+  h.find(n=>n.props?.kind===kind).props.onStateChange("failed");h.render();
+  await h.find(n=>n.type==="form").props.onSubmit({preventDefault(){},currentTarget:{title:"Formation"}});assert.equal(h.requests.length,0);
+  h.find(n=>n.props?.kind===kind).props.onStateChange("idle");await h.submit({title:"Formation"});assert.equal(h.requests.length,1);
 });
 
 for (const mode of [0, 1]) test(`prerequisites are independent and require explicit evidence in mode ${mode}`, async () => {
