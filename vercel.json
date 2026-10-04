@@ -7,7 +7,7 @@
     },
     {
       "path": "/api/cron/daily-agent-task-notifications",
-      "schedule": "*/10 * * * *"
+      "schedule": "0 8 * * *"
     }
   ]
 }

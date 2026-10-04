@@ -30,5 +30,6 @@ test("A6 déduplique les emails par notification", () => {
 
 test("A6 est exécuté périodiquement", () => {
   assert.match(vercel, /daily-agent-task-notifications/);
-  assert.match(vercel, /\*\/10 \* \* \* \*/);
+  const crons = JSON.parse(vercel).crons;
+  assert.deepEqual(crons.find(entry => entry.path === "/api/cron/daily-agent-task-notifications"), { path: "/api/cron/daily-agent-task-notifications", schedule: "0 8 * * *" });
 });

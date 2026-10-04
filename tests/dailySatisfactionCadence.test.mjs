@@ -42,7 +42,7 @@ test("Vercel déclenche quotidiennement le lot satisfaction complet", () => {
     schedule: "0 7 * * *",
   }, {
     path: "/api/cron/daily-agent-task-notifications",
-    schedule: "*/10 * * * *",
+    schedule: "0 8 * * *",
   }]);
   assert.match(cronRoute, /runLearnerSatisfactionAutomation/);
   assert.match(cronRoute, /runStakeholderSatisfactionAutomation/);

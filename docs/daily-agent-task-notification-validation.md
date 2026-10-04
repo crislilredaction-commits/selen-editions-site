@@ -9,7 +9,7 @@ Le lot suit le critère révisé du cahier maître : routage vers l’agent affe
 - L’affectation courante est relue. Un agent inactif, absent ou sans email utilisable donne le secours admin. Chaque destinataire distinct reçoit un envoi séparé.
 - `daily_communications` réserve l’opération par clé primaire avant l’appel Resend. La clé représente OF, notification, signal métier et destinataire. Le contenu est conservé, la clé fournisseur reste stable et la confirmation exige identifiant fournisseur + date dans le bon périmètre.
 - Une réservation `queued` dont l’issue est inconnue reste à contrôler sans relance automatique. Seul un refus certain permet une reprise. Un échec du marqueur `email_sent_at` se répare depuis la preuve sans renvoi. Un ancien marqueur sans preuve reste un historique incertain, jamais une permission de rejouer l’email.
-- La file est parcourue par pages ; 100 anciennes lignes sans destinataire ne bloquent pas une suivante. Les compteurs distinguent traité, en attente, échec et ignoré. Le cron existant satisfaction conserve sa cadence ; A6 est ajouté toutes les dix minutes.
+- La file est parcourue par pages ; 100 anciennes lignes sans destinataire ne bloquent pas une suivante. Les compteurs distinguent traité, en attente, échec et ignoré. Le cron existant satisfaction conserve sa cadence ; A6 est ajouté chaque jour à 08:00 UTC, selon la précision permise par le forfait Vercel Hobby. Les emails ne sont donc pas immédiats : la cadence de dix minutes de l’ancienne PR a été refusée par Vercel avant création du déploiement. Une fréquence supérieure reste un choix d’infrastructure distinct ; aucun forfait, secret ou service supplémentaire n’est activé.
 
 ## Vérifications
 
