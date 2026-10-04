@@ -5,6 +5,7 @@ import { PGlite } from "@electric-sql/pglite";
 
 const schema = await fs.readFile(new URL("./fixtures/dailyOwnPositioningSchema.sql", import.meta.url), "utf8");
 const migration = await fs.readFile(new URL("../supabase/migrations/20261004103428_daily_studio_questionnaire_sources.sql", import.meta.url), "utf8");
+const resubmission = await fs.readFile(new URL("../supabase/migrations/20261004104842_daily_studio_questionnaire_resubmission.sql", import.meta.url), "utf8");
 const positioning = await fs.readFile(new URL("../supabase/migrations/20261002160230_daily_own_positioning_evidence.sql", import.meta.url), "utf8");
 const id = n => "00000000-0000-4000-8000-" + String(n).padStart(12, "0");
 const ORG=id(1), USER=id(2), FORM=id(3), OLD=id(5), NEXT=id(30), FINAL=id(31);
@@ -15,6 +16,7 @@ test("PostgreSQL réel : remplacement atomique, historique, relecture et privil�
   await db.exec(schema);
   await db.exec(positioning);
   await db.exec(migration);
+  await db.exec(resubmission);
   await db.exec("create unique index qa_current on daily_documents(organisation_id,document_type,linked_object_type,linked_object_id,logical_name) nulls not distinct where is_current=true;");
   async function insert(table,row) {
     const keys=Object.keys(row), values=Object.values(row).map(v => v && typeof v==="object" ? JSON.stringify(v) : v);
@@ -42,6 +44,12 @@ test("PostgreSQL réel : remplacement atomique, historique, relecture et privil�
     assert.equal(next.previous_document_id,OLD); assert.equal(next.version,2); assert.equal(next.status,"to_check");
     assert.equal(final.version,1); assert.equal(final.document_type,"learning_assessment_source"); assert.equal(final.formation_id,null);
     await assert.rejects(save(),/formation_changed/); assert.equal((await db.query("select count(*)::int n from daily_documents")).rows[0].n,3);
+  });
+  await t.test("une source corrigée renvoie la formation en revue et efface l’ancienne demande",async()=>{
+    await seed({status:"correction_requested",validation_note:"Remplacer le questionnaire",agent_review_signaled_at:"2026-10-01T09:00:00Z"});
+    const saved=await save([source("positioning",NEXT)],{title:"Programme corrigé"},{status:"correction_requested"});
+    assert.equal(saved.status,"review");assert.equal(saved.validation_note,null);assert.ok(new Date(saved.agent_review_signaled_at).getTime()>new Date("2026-10-01T09:00:00Z").getTime());
+    assert.equal(saved.title,"Programme corrigé");assert.equal(saved.public_registration_token,"stable-link");assert.equal(saved.version,4);assert.equal((await one("daily_documents",NEXT)).previous_document_id,OLD);
   });
   await t.test("une seconde source invalide annule aussi la première et son archivage",async()=>{
     await seed(); await assert.rejects(save([source("positioning",NEXT),source("assessment",FINAL,{sha256:"invalid"})]),/invalid_source/);
