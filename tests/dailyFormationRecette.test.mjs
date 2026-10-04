@@ -59,8 +59,8 @@ test("la création d'une formation est suivie par la création de sa session dé
   assert.doesNotMatch(formationsManager, /showSessionForm/);
 });
 
-test("une formation non validée est modifiée en place sans recréer son token public", () => {
-  assert.match(formationsRoute, /\["draft", "review", "correction_requested"\]\.includes\(existing\.status\)/);
+test("une formation existante est modifiée en place sans recréer son token public", () => {
+  assert.match(formationsRoute, /existing\.status === "validated" \|\| existing\.status === "correction_requested" \? "review"/);
   assert.match(formationsRoute, /\.from\("daily_formations"\)\.update\(\{/);
   assert.match(formationsRoute, /public_registration_token: existing\.public_registration_token \?\? registrationToken\(\)/);
   assert.match(formationsRoute, /versioned: false/);
@@ -89,4 +89,56 @@ test("P0-D conserve le droit d’écriture de l’assistance Studio", () => {
   assert.match(formationsRoute, /allowAssistanceWrite: true/);
   assert.match(formationsRoute, /logAgentAssistanceAction/);
   assert.doesNotMatch(formationsRoute, /blockedAgentAssistanceResponse/);
+});
+
+
+test("le contenu détaillé est saisissable en création et modification puis persisté", () => {
+  assert.match(formationsManager, /detailed_program: string/);
+  assert.match(formationsManager, /Contenu détaillé de la formation \*/);
+  assert.match(formationsManager, /value=\{form\.detailed_program\}/);
+  assert.match(formationsManager, /formation\.detailed_program \?\? ""/);
+  assert.match(formationsRoute, /detailed_program: text\(body, "detailed_program"\)/);
+  assert.doesNotMatch(formationsRoute, /detailed_program: ""/);
+});
+
+
+test("le mode assistance Studio peut enregistrer l’évaluation métier de la formation", async () => {
+  const source = await readFile(new URL("../app/api/client/daily/formations/assessment-inline/route.ts", import.meta.url), "utf8");
+  assert.match(source, /allowAssistanceWrite: true/);
+  assert.doesNotMatch(source, /assistance agent est en lecture seule/);
+  assert.match(source, /daily_formation_assessment_update/);
+  assert.match(source, /assistanceMode: context\.assisted/);
+});
+
+
+test("le parcours dédié de création Selen saisit et transmet le contenu détaillé", () => {
+  assert.match(newFormationPage, /name="detailed_program"/);
+  assert.match(newFormationPage, /Contenu détaillé de la formation \*/);
+  assert.match(newFormationPage, /detailed_program: text\("detailed_program"\)/);
+});
+
+
+test("modifier une formation validée la renvoie en review sans créer de nouvelle version", async () => {
+  const route = await readFile(new URL("../app/api/client/daily/formations/route.ts", import.meta.url), "utf8");
+  const manager = await readFile(new URL("../components/daily/DailyFormationsManager.tsx", import.meta.url), "utf8");
+  const patch = route.slice(route.indexOf("export async function PATCH"), route.indexOf("export async function DELETE"));
+  assert.match(patch, /existing\.status === "validated".*\? "review"/s);
+  assert.match(patch, /agent_review_signaled_at: reviewSignaledAt/);
+  assert.match(patch, /\.update\(\{/);
+  assert.doesNotMatch(patch, /pendingSuccessor/);
+  assert.doesNotMatch(patch, /daily_formation_version_create/);
+  assert.match(manager, /Formation modifiée et renvoyée à Selen pour validation/);
+});
+
+
+test("le dossier de candidature permet de télécharger le programme validé en PDF pour le financeur", async () => {
+  const details = await readFile(new URL("../components/daily/ProgramDetails.tsx", import.meta.url), "utf8");
+  const pdfRoute = await readFile(new URL("../app/api/daily-registration/[token]/program-pdf/route.ts", import.meta.url), "utf8");
+  assert.match(details, /formation\.status === "validated"/);
+  assert.match(details, /Télécharger le programme complet en PDF/);
+  assert.match(details, /Téléchargez obligatoirement le programme afin de pouvoir le transmettre à votre financeur/);
+  assert.match(details, /\/api\/daily-registration\/\$\{token\}\/program-pdf/);
+  assert.match(pdfRoute, /formation\.status !== "validated"/);
+  assert.match(pdfRoute, /Content-Type":"application\/pdf"/);
+  assert.match(await readFile(new URL("../lib/server/dailyRegistrationProgramPdf.ts", import.meta.url), "utf8"), /Contenu détaillé de la formation/);
 });

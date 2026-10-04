@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { loadOriginalPositioning, OwnPositioningError } from "@/lib/server/dailyOwnPositioning";
 import { logAgentAssistanceAction } from "@/lib/server/agentAssistance";
 import { getDailyOrganisationContext, getDailyOrganisationReadContext } from "@/lib/server/dailyOrganisationContext";
 import {
@@ -118,7 +119,7 @@ function buildPayload(body: Record<string, unknown>, userId: string, organisatio
     access_delays: text(body, "access_delays"),
     registration_methods: text(body, "registration_methods") || "Les modalités d'inscription sont préparées et suivies par Selen Daily.",
     price: text(body, "price"),
-    detailed_program: "",
+    detailed_program: text(body, "detailed_program"),
     detailed_program_document_url: detailedProgramDocumentUrl,
     positioning_questionnaire_document_url: positioningMode === "off_platform" ? nullableText(body, "positioning_questionnaire_document_url") : null,
     accessibility: text(body, "accessibility") || "La formation est accessible aux personnes en situation de handicap. Les besoins d'adaptation sont analysés dans le dossier d'inscription et suivis par Selen.",
@@ -169,6 +170,9 @@ export async function POST(req: Request) {
 
   const built = buildPayload(body, context.user.id, context.organisationId);
   if ("error" in built) return NextResponse.json({ error: built.error }, { status: 400 });
+  if (built.payload.positioning_mode === "off_platform" && !built.payload.positioning_questionnaire_document_url) return NextResponse.json({ error: "Importez votre questionnaire de positionnement avant d’enregistrer la formation." }, { status: 400 });
+  try { await loadOriginalPositioning(context.admin, built.payload, false); }
+  catch (cause) { return NextResponse.json({ error: cause instanceof OwnPositioningError ? cause.message : "Vérification du questionnaire indisponible." }, { status: cause instanceof OwnPositioningError ? cause.status : 500 }); }
   const trainerError = await validateAllowedTrainers(context.organisationId, built.payload.allowed_trainer_ids, context.admin);
   if (trainerError) return NextResponse.json({ error: trainerError }, { status: 400 });
   const { data, error } = await context.admin.from("daily_formations").insert({ ...built.payload, public_registration_token: registrationToken(), public_registration_enabled: true }).select("*").single();
@@ -183,78 +187,62 @@ export async function PATCH(req: Request) {
   const body = await req.json().catch(() => ({})) as Record<string, unknown>;
   const id = text(body, "id");
   if (!id) return NextResponse.json({ error: "Identifiant formation requis." }, { status: 400 });
-  const built = buildPayload(body, context.user.id, context.organisationId);
-  if ("error" in built) return NextResponse.json({ error: built.error }, { status: 400 });
-  const trainerError = await validateAllowedTrainers(context.organisationId, built.payload.allowed_trainer_ids, context.admin);
-  if (trainerError) return NextResponse.json({ error: trainerError }, { status: 400 });
+  const expectedUpdatedAt = typeof body.expected_updated_at === "string" ? body.expected_updated_at.trim() : "";
+  if (!expectedUpdatedAt || !Number.isFinite(Date.parse(expectedUpdatedAt))) return NextResponse.json({ error: "La version de la formation est requise. Rechargez le catalogue puis rouvrez la formation." }, { status: 400 });
   const { data: existing, error: existingError } = await context.admin.from("daily_formations").select("*").eq("id", id).eq("organisation_id", context.organisationId).maybeSingle();
   if (existingError) return NextResponse.json({ error: existingError.message }, { status: 500 });
   if (!existing) return NextResponse.json({ error: "Formation introuvable." }, { status: 404 });
   if (existing.status === "archived") return NextResponse.json({ error: "Une ancienne version archivée ne peut pas être modifiée." }, { status: 400 });
+  if (existing.updated_at !== expectedUpdatedAt) return NextResponse.json({ error: "Cette formation a été modifiée depuis l’ouverture du formulaire. Rechargez le catalogue pour reprendre la version actuelle." }, { status: 409 });
+  // Forms opened before these controls existed omit their metadata. Preserve
+  // that declaration, while an explicit "none" choice clears its evidence list.
+  const prerequisiteMode = Object.hasOwn(body, "prerequisite_mode") ? body.prerequisite_mode : existing.prerequisite_mode;
+  const editBody = {
+    ...body,
+    creation_mode: Object.hasOwn(body, "creation_mode") ? body.creation_mode : existing.creation_mode,
+    detailed_program_document_url: Object.hasOwn(body, "detailed_program_document_url") ? body.detailed_program_document_url : existing.detailed_program_document_url,
+    prerequisite_mode: prerequisiteMode,
+    prerequisite_requirements: Object.hasOwn(body, "prerequisite_requirements") ? body.prerequisite_requirements : parseDailyPrerequisiteMode(prerequisiteMode) === "none" ? [] : existing.prerequisite_requirements,
+    prerequisites: Object.hasOwn(body, "prerequisites") ? body.prerequisites : existing.prerequisites,
+  };
+  const built = buildPayload(editBody, context.user.id, context.organisationId);
+  if ("error" in built) return NextResponse.json({ error: built.error }, { status: 400 });
+  const trainerError = await validateAllowedTrainers(context.organisationId, built.payload.allowed_trainer_ids, context.admin);
+  if (trainerError) return NextResponse.json({ error: trainerError }, { status: 400 });
+  // An unchanged historical, unconfigured mode remains editable. A new choice
+  // of the OF's own questionnaire, or removal of its file, requires the import.
+  const unchangedLegacyPositioning = body.positioning_choice_confirmed !== true && existing.positioning_mode === "off_platform" && !existing.positioning_questionnaire_document_url && built.payload.positioning_mode === "off_platform" && !built.payload.positioning_questionnaire_document_url;
+  if (built.payload.positioning_mode === "off_platform" && !built.payload.positioning_questionnaire_document_url && !unchangedLegacyPositioning) return NextResponse.json({ error: "Importez votre questionnaire de positionnement avant d’enregistrer la formation." }, { status: 400 });
+  try { await loadOriginalPositioning(context.admin, { ...built.payload, id: existing.id }, false); }
+  catch (cause) { return NextResponse.json({ error: cause instanceof OwnPositioningError ? cause.message : "Vérification du questionnaire indisponible." }, { status: cause instanceof OwnPositioningError ? cause.status : 500 }); }
 
-  if (["draft", "review", "correction_requested"].includes(existing.status)) {
-    const nextStatus = existing.status === "correction_requested" ? "review" : built.payload.status;
-    const { data, error } = await context.admin.from("daily_formations").update({
-      ...built.payload,
-      learning_assessment_mode: existing.learning_assessment_mode,
-      learning_assessment_instructions: existing.learning_assessment_instructions,
-      learning_assessment_questions: existing.learning_assessment_questions,
-      status: nextStatus,
-      version: existing.version ?? 1,
-      previous_version_id: existing.previous_version_id ?? null,
-      public_registration_token: existing.public_registration_token ?? registrationToken(),
-      public_registration_enabled: existing.public_registration_enabled ?? true,
-      archived_at: null,
-    }).eq("id", existing.id).eq("organisation_id", context.organisationId).select("*").single();
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    if (context.assisted && context.assistance) await logAgentAssistanceAction({ supabase: context.admin, req, assistance: context.assistance, action: "daily_formation_update", actionLabel: "Formation modifiée par Studio pour le client", oldState: { id: existing.id, status: existing.status, title: existing.title }, newState: { id: data.id, status: data.status, title: data.title } });
-    return NextResponse.json({ formation: data, versioned: false, retainedVersion: true, assistanceMode: context.assisted });
-  }
-
-  const { data: pendingRows, error: pendingError } = await context.admin
-    .from("daily_formations")
-    .select("*")
-    .eq("organisation_id", context.organisationId)
-    .eq("previous_version_id", existing.id)
-    .in("status", ["review", "correction_requested"])
-    .order("version", { ascending: false })
-    .limit(1);
-  if (pendingError) return NextResponse.json({ error: pendingError.message }, { status: 500 });
-  const pendingSuccessor = pendingRows?.[0] ?? null;
-
-  if (pendingSuccessor) {
-    const { data, error } = await context.admin.from("daily_formations").update({
-      ...built.payload,
-      learning_assessment_mode: pendingSuccessor.learning_assessment_mode ?? existing.learning_assessment_mode,
-      learning_assessment_instructions: pendingSuccessor.learning_assessment_instructions ?? existing.learning_assessment_instructions,
-      learning_assessment_questions: pendingSuccessor.learning_assessment_questions ?? existing.learning_assessment_questions,
-      status: "review",
-      version: pendingSuccessor.version,
-      previous_version_id: existing.id,
-      public_registration_token: pendingSuccessor.public_registration_token ?? registrationToken(),
-      public_registration_enabled: false,
-      archived_at: null,
-    }).eq("id", pendingSuccessor.id).eq("organisation_id", context.organisationId).select("*").single();
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    if (context.assisted && context.assistance) await logAgentAssistanceAction({ supabase: context.admin, req, assistance: context.assistance, action: "daily_formation_update_pending", actionLabel: "Version de formation modifiée par Studio pour le client", oldState: { id: pendingSuccessor.id, status: pendingSuccessor.status, title: pendingSuccessor.title }, newState: { id: data.id, status: data.status, title: data.title } });
-    return NextResponse.json({ formation: data, versioned: false, reusedPendingVersion: true, previousValidatedVersionStillPublished: true, assistanceMode: context.assisted });
-  }
-
-  const { data: created, error: insertError } = await context.admin.from("daily_formations").insert({
+  const nextStatus = existing.status === "validated" || existing.status === "correction_requested" ? "review" : built.payload.status;
+  const reviewSignaledAt = nextStatus === "review" ? new Date().toISOString() : existing.agent_review_signaled_at ?? null;
+  const { data, error } = await context.admin.from("daily_formations").update({
     ...built.payload,
     learning_assessment_mode: existing.learning_assessment_mode,
     learning_assessment_instructions: existing.learning_assessment_instructions,
     learning_assessment_questions: existing.learning_assessment_questions,
-    status: "review",
-    version: Number(existing.version ?? 1) + 1,
-    previous_version_id: existing.id,
-    public_registration_token: registrationToken(),
-    public_registration_enabled: false,
-  }).select("*").single();
-  if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
-  if (context.assisted && context.assistance) await logAgentAssistanceAction({ supabase: context.admin, req, assistance: context.assistance, action: "daily_formation_version_create", actionLabel: "Nouvelle version de formation créée par Studio pour le client", oldState: { id: existing.id, status: existing.status, title: existing.title }, newState: { id: created.id, status: created.status, title: created.title } });
+    status: nextStatus,
+    version: existing.version ?? 1,
+    previous_version_id: existing.previous_version_id ?? null,
+    public_registration_token: existing.public_registration_token ?? registrationToken(),
+    public_registration_enabled: existing.public_registration_enabled ?? true,
+    agent_review_signaled_at: reviewSignaledAt,
+    validation_note: nextStatus === "review" ? null : existing.validation_note,
+    archived_at: null,
+  }).eq("id", existing.id).eq("organisation_id", context.organisationId).eq("status", existing.status).eq("updated_at", expectedUpdatedAt).neq("status", "archived").select("*").maybeSingle();
+  if (error) return NextResponse.json({ error: error.message }, { status: error.code === "PSE01" ? 409 : 500 });
+  if (!data) return NextResponse.json({ error: "Cette formation a été modifiée pendant l’enregistrement. Rechargez le catalogue pour reprendre la version actuelle." }, { status: 409 });
+  if (context.assisted && context.assistance) await logAgentAssistanceAction({
+    supabase: context.admin, req, assistance: context.assistance,
+    action: "daily_formation_update",
+    actionLabel: "Formation modifiée par Studio pour le client",
+    oldState: { id: existing.id, status: existing.status, title: existing.title },
+    newState: { id: data.id, status: data.status, title: data.title },
+  });
+  return NextResponse.json({ formation: data, versioned: false, retainedVersion: true, assistanceMode: context.assisted });
 
-  return NextResponse.json({ formation: created, versioned: true, retainedVersion: true, previousValidatedVersionStillPublished: true, assistanceMode: context.assisted });
 }
 
 export async function DELETE(req: Request) {

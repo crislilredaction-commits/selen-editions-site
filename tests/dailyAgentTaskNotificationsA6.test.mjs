@@ -4,6 +4,7 @@ import test from "node:test";
 
 const route = await readFile(new URL("../app/api/cron/daily-agent-task-notifications/route.ts", import.meta.url), "utf8");
 const sender = await readFile(new URL("../lib/server/dailyAgentTaskEmails.ts", import.meta.url), "utf8");
+const delivery = await readFile(new URL("../lib/server/dailyLearnerEmailDelivery.ts", import.meta.url), "utf8");
 const vercel = await readFile(new URL("../vercel.json", import.meta.url), "utf8");
 
 test("A6 route les tâches vers l'agent affecté sinon les admins", () => {
@@ -20,9 +21,11 @@ test("A6 couvre les tâches organisme et session sans migration de sécurité", 
 });
 
 test("A6 déduplique les emails par notification", () => {
-  assert.match(route, /\.is\("email_sent_at", null\)/);
-  assert.match(route, /email_sent_at: new Date\(\)\.toISOString\(\)/);
-  assert.match(sender, /string \| string\[\]/);
+  assert.match(sender, /notificationId.*eventAt/);
+  assert.match(delivery, /insert\(\{ \.\.\.input.row, id/);
+  assert.match(delivery, /previous.status !== "failed"/);
+  assert.match(sender, /provider_message_id/);
+  assert.match(route, /email_sent_at: sentAt/);
 });
 
 test("A6 est exécuté périodiquement", () => {

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { storedSessionParticipants } from "@/lib/dailySessionParticipants";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -247,9 +248,9 @@ export default function DailySessionsManager() {
       schedule_blocks: session.schedule_blocks?.length ? session.schedule_blocks : [{ date: session.start_date ?? "", start: "09:00", end: "17:00", note: "" }],
       location_address: session.location_address ?? "",
       remote_url: session.remote_url ?? "",
-      companies: session.companies?.length ? session.companies : [{ name: "", address: "", siret: "", email: "", participants: [] }],
-      beneficiaries: session.beneficiaries ?? [],
-      individual_beneficiaries: session.individual_beneficiaries ?? [],
+      companies: session.companies?.length ? session.companies.map((company) => ({ ...company, participants: storedSessionParticipants(company.participants) })) : [{ name: "", address: "", siret: "", email: "", participants: [] }],
+      beneficiaries: storedSessionParticipants(session.beneficiaries),
+      individual_beneficiaries: storedSessionParticipants(session.individual_beneficiaries),
       trainer_ids: session.trainer_ids ?? [],
       status: session.status,
     });
@@ -471,18 +472,39 @@ function SessionColumn(props: {
 function EvidencePanel({ session, loading, context, upload, confirmAbandonment, uploadingKey, abandoningKey }: { session: Session; loading: boolean; context: EvidenceContext | null; upload: (sessionId: string, enrolmentId: string, kind: "positioning" | "learning_assessment", file: File | null) => Promise<void>; confirmAbandonment: (sessionId: string, enrolmentId: string, occurredAt: string, reason: string) => Promise<void>; uploadingKey: string; abandoningKey: string }) {
   if (loading) return <div style={styles.evidencePanel}><LoadingMascot fullScreen={false} message="Sélion classe les dossiers apprenants…" /></div>;
   if (!context || context.enrolments.length === 0) return <div style={styles.evidencePanel}><p style={styles.muted}>Aucun apprenant rattaché à cette session pour le moment.</p></div>;
-  return <div style={styles.evidencePanel}><div><b>Documents et preuves par apprenant</b><p style={styles.muted}>Les preuves déjà acquises restent conservées même si une inscription est abandonnée.</p></div>{context.enrolments.map((enrolment) => {
+  return <div style={styles.evidencePanel}><div><b>Apprenants de la session · fiches et preuves</b><p style={styles.muted}>Les preuves déjà acquises restent conservées même si une inscription est abandonnée.</p></div>{context.enrolments.map((enrolment) => {
     const positioningDocs = context.documents.filter((doc) => doc.enrolment_id === enrolment.id && doc.document_type === "positioning_evidence");
     const assessmentDocs = context.documents.filter((doc) => doc.enrolment_id === enrolment.id && doc.document_type === "learning_assessment_evidence");
     const hasAssessmentForm = context.assessmentResponses.some((response) => response.enrolment_id === enrolment.id);
     const abandoned = enrolment.status === "abandoned";
+    const learner = learnerOf(enrolment);
     return <div key={enrolment.id} style={{ ...styles.learnerRow, ...(abandoned ? styles.learnerAbandoned : {}) }}>
-      <div><b>{learnerName(enrolment)}</b><small>{learnerOf(enrolment)?.email ?? ""}</small>{abandoned ? <span style={styles.abandonedBadge}>Abandon confirmé</span> : null}</div>
-      <UploadCell label="Test de positionnement" done={positioningDocs.length > 0 || ["completed", "validated", "done"].includes(String(enrolment.positioning_status ?? ""))} busy={uploadingKey === `${enrolment.id}:positioning`} disabled={abandoned} onFile={(file) => void upload(session.id, enrolment.id, "positioning", file)} />
+      <div><b>{learnerName(enrolment)}</b><small>{learner?.email ?? ""}</small>{learner?.id ? <Link style={styles.secondary} href={`/client/daily/apprenants?learner=${encodeURIComponent(learner.id)}`}>Ouvrir la fiche apprenant →</Link> : null}{abandoned ? <span style={styles.abandonedBadge}>Abandon confirmé</span> : null}</div>
+      <div><UploadCell label="Test de positionnement" done={positioningDocs.length > 0 || ["completed", "validated", "done"].includes(String(enrolment.positioning_status ?? ""))} busy={uploadingKey === `${enrolment.id}:positioning`} disabled={abandoned} onFile={(file) => void upload(session.id, enrolment.id, "positioning", file)} />{positioningDocs.map(document => <PositioningDownload key={document.id} id={document.id} name={document.logical_name} />)}</div>
       <UploadCell label="Évaluation finale" done={assessmentDocs.length > 0 || hasAssessmentForm} busy={uploadingKey === `${enrolment.id}:learning_assessment`} disabled={abandoned} onFile={(file) => void upload(session.id, enrolment.id, "learning_assessment", file)} />
       <AbandonmentControl enrolment={enrolment} sessionId={session.id} busy={abandoningKey === `${enrolment.id}:abandonment`} onConfirm={confirmAbandonment} />
     </div>;
   })}</div>;
+}
+
+function PositioningDownload({ id, name }: { id: string; name: string }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  async function download() {
+    setBusy(true); setError("");
+    let objectUrl: string | undefined;
+    try {
+      const response = await assistanceFetch(`/api/client/daily/uploads?id=${encodeURIComponent(id)}`, { cache: "no-store" });
+      if (!response.ok) throw new Error("Téléchargement du positionnement indisponible.");
+      const file = await response.blob();
+      objectUrl = URL.createObjectURL(file);
+      const link = document.createElement("a");
+      const extension = file.type === "application/msword" ? "doc" : file.type.includes("wordprocessingml") ? "docx" : "pdf";
+      link.href = objectUrl; link.download = `positionnement.${extension}`; link.click();
+    } catch { setError("Téléchargement du positionnement indisponible. Réessayez."); }
+    finally { if (objectUrl) { const url = objectUrl; window.setTimeout(() => URL.revokeObjectURL(url), 1000); } setBusy(false); }
+  }
+  return <div><button type="button" disabled={busy} style={styles.secondary} onClick={() => void download()}>{busy ? "Téléchargement…" : `Télécharger ${name || "le positionnement rempli"}`}</button>{error ? <small role="alert">{error}</small> : null}</div>;
 }
 
 function UploadCell({ label, done, busy, disabled = false, onFile }: { label: string; done: boolean; busy: boolean; disabled?: boolean; onFile: (file: File | null) => void }) {
