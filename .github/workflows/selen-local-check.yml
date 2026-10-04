@@ -1,97 +1,27 @@
-# Validation ponctuelle des heads Studio sur le runner Lenovo du dépôt Daily.
-# Cette branche de contrôle ne doit pas être fusionnée dans main.
+# Branche de contrôle temporaire, jamais fusionnée dans Daily.
 name: Selen local check
-
 on:
   push:
-    branches:
-      - "fix/studio-lenovo-validation-20261003"
-
+    branches: ["fix/studio-lenovo-validation-20261003"]
 permissions:
   contents: read
-
 concurrency:
   group: selen-codex-runner
   cancel-in-progress: false
-
 jobs:
-  build-and-test:
-    name: Studio PR ${{ matrix.pr }}
+  prepare-migration:
+    name: Supabase migration filename
     runs-on: [self-hosted, Linux, X64, selen-local]
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      max-parallel: 1
-      matrix:
-        include:
-          - pr: 252
-            commit: "64edc5a845c0dca9a59ef957b5717f5f87306368"
+    timeout-minutes: 10
     steps:
-      - name: Checkout exact Studio commit
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           repository: crislilredaction-commits/selen-studio
-          ref: ${{ matrix.commit }}
+          ref: "64edc5a845c0dca9a59ef957b5717f5f87306368"
           clean: true
           persist-credentials: false
-      - name: Verify tested commit
-        env:
-          STUDIO_EXPECTED_SHA: ${{ matrix.commit }}
-          STUDIO_PR: ${{ matrix.pr }}
+      - name: Generate migration with official Supabase CLI
         run: |
-          test "$(git rev-parse HEAD)" = "$STUDIO_EXPECTED_SHA"
-          printf 'Repository: crislilredaction-commits/selen-studio\nPR: %s\nCommit: %s\n' "$STUDIO_PR" "$STUDIO_EXPECTED_SHA" >> "$GITHUB_STEP_SUMMARY"
-      - name: Publish pending Studio check
-        env:
-          STUDIO_EXPECTED_SHA: ${{ matrix.commit }}
-        run: |
-          set -euo pipefail
-          [[ "$STUDIO_EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
-          command -v gh >/dev/null
-          test "$(gh api repos/crislilredaction-commits/selen-studio --jq '.permissions.push')" = true
-          gh api --method POST "repos/crislilredaction-commits/selen-studio/statuses/$STUDIO_EXPECTED_SHA" \
-            -f state=pending \
-            -f context='Selen local check / build-and-test' \
-            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
-            -f description='Lenovo : tests, typecheck et build en cours' >/dev/null
-      - name: Environment
-        run: |
-          node --version
-          npm --version
-      - name: Install dependencies
-        run: npm ci
-      - name: Run tests
-        run: npm test
-      - name: Typecheck
-        run: npm run typecheck
-      - name: Build
-        env:
-          # Compilation uniquement : mêmes valeurs factices que le contrôle Studio.
-          STRIPE_SECRET_KEY: sk_test_build_only
-          STRIPE_WEBHOOK_SECRET: whsec_build_only
-          NEXT_PUBLIC_SUPABASE_URL: https://build-only.invalid
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: build-only-placeholder
-          SUPABASE_SERVICE_ROLE_KEY: build-only-placeholder
-          RESEND_API_KEY: re_build_only
-          OPENAI_API_KEY: sk_build_only
-        run: npm run build
-      - name: Publish Studio check result
-        if: always()
-        env:
-          STUDIO_EXPECTED_SHA: ${{ matrix.commit }}
-          STUDIO_JOB_STATUS: ${{ job.status }}
-        run: |
-          set -euo pipefail
-          [[ "$STUDIO_EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
-          if [ "$STUDIO_JOB_STATUS" = success ]; then
-            STUDIO_CHECK_STATE=success
-            STUDIO_CHECK_DESCRIPTION='Lenovo : tests, typecheck et build réussis'
-          else
-            STUDIO_CHECK_STATE=failure
-            STUDIO_CHECK_DESCRIPTION='Lenovo : contrôle incomplet ou échoué'
-          fi
-          gh api --method POST "repos/crislilredaction-commits/selen-studio/statuses/$STUDIO_EXPECTED_SHA" \
-            -f state="$STUDIO_CHECK_STATE" \
-            -f context='Selen local check / build-and-test' \
-            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
-            -f description="$STUDIO_CHECK_DESCRIPTION" >/dev/null
+          npx --yes supabase@2.119.0 --version
+          npx --yes supabase@2.119.0 migration new --help
+          npx --yes supabase@2.119.0 migration new daily_studio_questionnaire_resubmission
