@@ -10,14 +10,14 @@ test("PostgreSQL réel : prérequis modifiables et candidatures existantes prot�
   const db = new PGlite(); t.after(() => db.close());
   await db.exec(`
     create role anon; create role authenticated;
-    create table public.daily_formations(id text primary key, title text, prerequisite_mode text not null default 'none', prerequisite_requirements jsonb not null default '[]', prerequisites text);
+    create table public.daily_formations(id text primary key, title text, prerequisite_mode text not null default 'none', prerequisite_requirements jsonb not null default '[]', prerequisites text, detailed_program text, learning_assessment_mode text default 'external', learning_assessment_questions jsonb not null default '[]');
     create table public.daily_formation_registration_requests(id text primary key, formation_id text not null references public.daily_formations(id), decision_status text not null, prerequisites_validated boolean, analysis jsonb);
     create table public.daily_prerequisite_evidence(id text primary key, registration_request_id text references public.daily_formation_registration_requests(id), status text, document_id text, review_comment text);
   `);
   await db.exec(`begin;${migration}commit;`);
   async function seed(status = null, mode = "required") {
     await db.exec("truncate public.daily_prerequisite_evidence,public.daily_formation_registration_requests,public.daily_formations");
-    await db.query("insert into public.daily_formations values ('f','Formation',$1,$2,$3)", [mode, JSON.stringify(mode === "none" ? [] : requirement), mode === "none" ? "Aucun prérequis" : "Niveau 4"]);
+    await db.query("insert into public.daily_formations(id,title,prerequisite_mode,prerequisite_requirements,prerequisites) values ('f','Formation',$1,$2,$3)", [mode, JSON.stringify(mode === "none" ? [] : requirement), mode === "none" ? "Aucun prérequis" : "Niveau 4"]);
     if (status) {
       await db.query("insert into public.daily_formation_registration_requests values ('r','f',$1,true,$2)", [status, JSON.stringify({ original: "Analyse humaine" })]);
       await db.query("insert into public.daily_prerequisite_evidence values ('e','r','verified','private-document','Validation humaine')");
@@ -49,6 +49,22 @@ test("PostgreSQL réel : prérequis modifiables et candidatures existantes prot�
     const after = await snapshot(); assert.equal(after.formation[0].title, "Intitulé corrigé");
     assert.deepEqual(after.requests, before.requests); assert.deepEqual(after.evidence, before.evidence);
   });
+  await t.test("le refus d’un prérequis annule aussi le programme et l’évaluation de la même sauvegarde", async () => {
+    await seed("ready_for_of"); const before = await snapshot();
+    await assert.rejects(db.query("update public.daily_formations set title='Intitulé corrigé',detailed_program='Nouveau programme',learning_assessment_mode='selen_quiz',learning_assessment_questions=$1,prerequisite_mode='none',prerequisite_requirements='[]',prerequisites='Aucun prérequis' where id='f'", [JSON.stringify([{ id: "final", label: "Évaluation finale", type: "free_text" }])]), error => error.code === "PSE01");
+    assert.deepEqual(await snapshot(), before);
+  });
+  await t.test("programme et évaluation restent modifiables ensemble quand la déclaration utilisée ne change pas", async () => {
+    await seed("ready_for_of"); const before = await snapshot();
+    const quiz = [{ id: "final", label: "Évaluation finale", type: "free_text" }];
+    await db.query("update public.daily_formations set title='Intitulé corrigé',detailed_program='Nouveau programme',learning_assessment_mode='selen_quiz',learning_assessment_questions=$1,prerequisite_mode='required',prerequisite_requirements=$2,prerequisites='Niveau 4' where id='f'", [JSON.stringify(quiz), JSON.stringify(requirement)]);
+    const after = await snapshot();
+    assert.equal(after.formation.length, 1); assert.equal(after.formation[0].id, "f");
+    assert.equal(after.formation[0].detailed_program, "Nouveau programme");
+    assert.equal(after.formation[0].learning_assessment_mode, "selen_quiz");
+    assert.deepEqual(after.formation[0].learning_assessment_questions, quiz);
+    assert.deepEqual(after.requests, before.requests); assert.deepEqual(after.evidence, before.evidence);
+  });
   await t.test("normaliser le texte aucun prérequis reste possible sans changer sa déclaration", async () => {
     await seed("pending", "none");
     await db.exec("update public.daily_formations set prerequisites='Aucun prérequis.' where id='f'");
@@ -61,7 +77,7 @@ test("PostgreSQL réel : prérequis modifiables et candidatures existantes prot�
   });
   await t.test("une candidature d’une autre formation ne bloque pas cette modification", async () => {
     await seed("pending");
-    await db.exec("insert into public.daily_formations values ('other','Autre','none','[]','Aucun prérequis'); update public.daily_formations set prerequisite_mode='required',prerequisite_requirements='[{\"id\":\"a\",\"label\":\"Attestation\"}]' where id='other'");
+    await db.exec("insert into public.daily_formations(id,title,prerequisite_mode,prerequisite_requirements,prerequisites) values ('other','Autre','none','[]','Aucun prérequis'); update public.daily_formations set prerequisite_mode='required',prerequisite_requirements='[{\"id\":\"a\",\"label\":\"Attestation\"}]' where id='other'");
   });
   await t.test("la protection reste un trigger privé avec le verrou de formation", async () => {
     const [{ definition, anon, authenticated }] = (await db.query("select pg_get_functiondef(p.oid) definition,has_function_privilege('anon',p.oid,'EXECUTE') anon,has_function_privilege('authenticated',p.oid,'EXECUTE') authenticated from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='guard_daily_formation_prerequisite_edit'")).rows;
