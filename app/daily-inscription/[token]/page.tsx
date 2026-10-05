@@ -278,7 +278,8 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
         positioning_answers: buildPositioningAnswers(),
         signature_consent: signatureConsent,
         signature_data: signatureData,
-        ...(ownPositioning ? { positioning_source_id: ownPositioning.id, submission_id: submissionId } : {}),
+        submission_id: submissionId,
+        ...(ownPositioning ? { positioning_source_id: ownPositioning.id } : {}),
       };
       const multipart = new FormData();
       if (ownPositioning) { multipart.append("payload", JSON.stringify(payload)); filledRows.forEach((row, index) => { if (row.file) multipart.append(`positioning_file_${index}`, row.file); }); }
