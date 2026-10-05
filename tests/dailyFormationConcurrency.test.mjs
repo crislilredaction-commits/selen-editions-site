@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import test from "node:test";
 import { harness, ids } from "./helpers/dailyOwnPositioningHarness.mjs";
 import { loadTypeScript } from "./helpers/loadTypeScript.mjs";
@@ -67,7 +68,43 @@ test("le statut brouillon et les évaluations existantes restent conservés", as
   const questions = [{ id: "q", label: "Question", type: "free_text", required: true }];
   const f = fixture({ row: { status: "draft", learning_assessment_mode: "selen_quiz", learning_assessment_questions: questions } });
   assert.equal((await f.call({ status: "draft" })).status, 200);
-  assert.equal(f.formation.status, "draft"); assert.deepEqual(f.formation.learning_assessment_questions, questions);
+  assert.equal(f.formation.status, "draft");
+  assert.deepEqual(f.formation.learning_assessment_questions, [{ ...questions[0], options: [], correct_answers: [], points: 1, order: 1 }]);
+});
+
+test("la source privée de l’évaluation est vérifiée puis enregistrée dans la même mutation", async () => {
+  const f = fixture();
+  const id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const bytes = Buffer.from("%PDF-source-évaluation-atomique");
+  f.db.daily_documents.push({
+    id, organisation_id: ids.org, formation_id: null, document_type: "learning_assessment_source",
+    linked_object_type: "organisation", linked_object_id: ids.org, bucket: "documents",
+    storage_path: `daily/${ids.org}/assessment.pdf`, mime_type: "application/pdf",
+    sha256: crypto.createHash("sha256").update(bytes).digest("hex"), is_current: true,
+    status: "to_check", archived_at: null,
+  });
+  f.storage.set(`daily/${ids.org}/assessment.pdf`, bytes);
+  const reference = `/api/client/daily/uploads?id=${id}`;
+  const response = await f.call({ learning_assessment_mode: "external", learning_assessment_document_url: reference });
+  assert.equal(response.status, 200);
+  assert.equal(f.writes.length, 1);
+  assert.equal(f.formation.learning_assessment_document_url, reference);
+});
+
+test("une source privée altérée annule la sauvegarde complète", async () => {
+  const f = fixture(); const before = structuredClone(f.formation);
+  const id = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  f.db.daily_documents.push({
+    id, organisation_id: ids.org, formation_id: null, document_type: "learning_assessment_source",
+    linked_object_type: "organisation", linked_object_id: ids.org, bucket: "documents",
+    storage_path: `daily/${ids.org}/assessment-altered.pdf`, mime_type: "application/pdf",
+    sha256: crypto.createHash("sha256").update("preuve-attendue").digest("hex"), is_current: true,
+    status: "to_check", archived_at: null,
+  });
+  f.storage.set(`daily/${ids.org}/assessment-altered.pdf`, Buffer.from("fichier-altéré"));
+  const response = await f.call({ learning_assessment_mode: "external", learning_assessment_document_url: `/api/client/daily/uploads?id=${id}` });
+  assert.equal(response.status, 409);
+  assert.deepEqual(f.writes, []); assert.deepEqual(f.formation, before);
 });
 
 async function uiFixture(options = {}) {
@@ -86,11 +123,8 @@ async function uiFixture(options = {}) {
     "@/components/AgentAssistanceBanner": { assistanceFetch: async (url, init = {}) => {
       if (!init.method) return Response.json(url.endsWith("workspace") ? { workspace: { capabilities: { trainings: true } } } : { formations: structuredClone(f.db.daily_formations) });
       const body = JSON.parse(init.body); requests.push({ url, body });
-      if (url.endsWith("assessment-inline")) {
-        if (options.assessmentFailure && !failed) { failed = true; return Response.json({ error: "Évaluation indisponible" }, { status: 503 }); }
-        return Response.json({ formation: structuredClone(f.formation) });
-      }
       assert.equal(url, "/api/client/daily/formations");
+      if (options.assessmentFailure && !failed) { failed = true; return Response.json({ error: "Évaluation indisponible" }, { status: 503 }); }
       const result = await f.call(body, true);
       if (options.unknownProgramResult && !failed) { failed = true; assert.equal(result.status, 200); throw new Error("Connexion interrompue après l’enregistrement"); }
       return result;
@@ -110,8 +144,8 @@ async function uiFixture(options = {}) {
 
 test("le formulaire réel transmet la date capturée à son ouverture", async () => {
   const h = await uiFixture(); await h.submit();
-  assert.equal(h.requests.length, 2); assert.equal(h.requests[0].body.expected_updated_at, revision);
-  assert.equal(h.requests[1].body.expected_updated_at, h.formation.updated_at);
+  assert.equal(h.requests.length, 1); assert.equal(h.requests[0].body.expected_updated_at, revision);
+  assert.equal(h.requests[0].body.learning_assessment_mode, "external");
 });
 
 test("une ancienne saisie du formulaire garde le texte et signale le conflit sans lancer l’évaluation", async () => {
@@ -123,15 +157,14 @@ test("une ancienne saisie du formulaire garde le texte et signale le conflit san
   assert.equal(h.nodes().filter(node => node.props?.role === "status").length, 0);
 });
 
-test("après un échec d’évaluation, la reprise utilise uniquement la version du programme déjà enregistrée", async () => {
+test("un échec de la sauvegarde atomique ne conserve ni programme ni évaluation et la reprise reste possible", async () => {
   const h = await uiFixture({ assessmentFailure: true }); await h.submit();
-  const savedRevision = h.formation.updated_at;
   assert.match(h.find(node => node.props?.role === "alert").props.children, /Évaluation indisponible/);
-  await h.submit(); assert.equal(h.requests.length, 4);
+  assert.equal(h.writes.length, 0);
+  await h.submit(); assert.equal(h.requests.length, 2);
   assert.equal(h.requests[0].body.expected_updated_at, revision);
-  assert.equal(h.requests[2].body.expected_updated_at, savedRevision);
-  assert.equal(h.requests[3].body.expected_updated_at, h.formation.updated_at);
-  assert.equal(h.writes.length, 2);
+  assert.equal(h.requests[1].body.expected_updated_at, revision);
+  assert.equal(h.writes.length, 1);
 });
 
 test("un enregistrement à résultat réseau inconnu ne fabrique pas une version pour le réessai", async () => {
@@ -150,7 +183,7 @@ for (const kind of ["training_program_source", "positioning_questionnaire_source
     assert.equal(h.requests.length, 0); assert.equal(h.writes.length, 0);
     assert.equal(h.find(n => n.type === "button" && n.props.type === "submit").props.disabled, true);
     upload.props.onStateChange("failed"); await h.submit(); assert.equal(h.requests.length, 0);
-    upload.props.onStateChange("idle"); await h.submit(); assert.equal(h.requests.length, 2);
+    upload.props.onStateChange("idle"); await h.submit(); assert.equal(h.requests.length, 1);
   });
 }
 test("un import en cours empêche aussi l’annulation et l’ouverture d’une autre formation", async () => {

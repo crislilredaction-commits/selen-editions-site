@@ -184,15 +184,15 @@ async function uiFixture(options = {}) {
     "@/components/AgentAssistanceBanner": { assistanceFetch: async (url, init = {}) => {
       if (!init.method) return Response.json(url.endsWith("workspace") ? { workspace: { capabilities: { trainings: true } } } : { formations: structuredClone(f.rows) });
       const body = JSON.parse(init.body); requests.push({ url, body });
-      if (url.endsWith("assessment-inline")) {
-        if (options.networkError && !failed) { failed = true; throw new Error("Connexion interrompue"); }
-        if (options.race) f.rows[0].updated_at = "2026-10-03T19:03:00.000Z";
-        return f.call(body);
-      }
       assert.equal(url, "/api/client/daily/formations");
       if (held) await held;
-      f.rows[0].updated_at = newerRevision;
-      return Response.json({ formation: structuredClone(f.rows[0]), assistanceMode: true });
+      if (options.networkError && !failed) { failed = true; throw new Error("Connexion interrompue"); }
+      if (options.race) f.rows[0].updated_at = "2026-10-03T19:03:00.000Z";
+      return f.call({
+        id: body.id, expected_updated_at: body.expected_updated_at,
+        mode: body.learning_assessment_mode, instructions: body.learning_assessment_instructions,
+        questions: body.learning_assessment_questions,
+      });
     } },
     "@/components/daily/FormationSourceUpload": { default: "Upload" },
     "@/components/ui/LoadingMascot": { default: "Loading" },
@@ -211,11 +211,12 @@ async function uiFixture(options = {}) {
   };
 }
 
-test("le vrai formulaire transmet la version retournée après sauvegarde du programme", async () => {
+test("le vrai formulaire transmet programme et évaluation avec la version ouverte dans une seule requête", async () => {
   const h = await uiFixture(); await h.submit(); h.render();
-  assert.equal(h.requests.length, 2);
-  assert.equal(h.requests[1].body.expected_updated_at, newerRevision);
-  assert.notEqual(h.requests[1].body.expected_updated_at, revision);
+  assert.equal(h.requests.length, 1);
+  assert.equal(h.requests[0].body.expected_updated_at, revision);
+  assert.equal(h.requests[0].body.learning_assessment_mode, "selen_quiz");
+  assert.deepEqual(h.requests[0].body.learning_assessment_questions, quiz);
   assert.equal(h.audit.length, 1);
   assert.match(h.texts(), /Formation mise à jour et renvoyée à Selen pour vérification/);
 });
@@ -233,7 +234,7 @@ test("deux soumissions immédiates ne doublent pas les écritures", async () => 
   await Promise.resolve(); const started = h.requests.length;
   h.release(); await Promise.all([first, second]); h.render();
   assert.equal(started, 1);
-  assert.equal(h.requests.length, 2); assert.equal(h.audit.length, 1);
+  assert.equal(h.requests.length, 1); assert.equal(h.audit.length, 1);
 });
 
 test("après une erreur réseau, la saisie reste ouverte et une reprise est possible", async () => {
@@ -242,7 +243,7 @@ test("après une erreur réseau, la saisie reste ouverte et une reprise est poss
   assert.equal(h.submitButton().props.disabled, false);
   assert.deepEqual(h.audit, []);
   await h.submit(); h.render();
-  assert.equal(h.requests.length, 4); assert.equal(h.audit.length, 1);
+  assert.equal(h.requests.length, 2); assert.equal(h.audit.length, 1);
   assert.match(h.texts(), /Formation mise à jour et renvoyée/);
 });
 
