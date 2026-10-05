@@ -22,16 +22,21 @@ test('accepted without session sends useful acceptance once, then materializatio
 });
 for(const attached of [false,true]) test(`real decision route accepted, attached=${attached}`,async () => {
   const h=harness(); h.request.decision_status='ready_for_of'; if(attached) h.request.attached_session_id='session';
-  const result=await h.post({decision:'accepted',actor_type:'organisation'});
-  assert.equal(result.ok,true); assert.equal(result.materialized,attached);
-  assert.deepEqual(statuses(result.learner_access),['sent']); assert.equal(h.sends.length,1); assert.equal(h.auth.length,attached?1:0);
-  await h.post({decision:'accepted',actor_type:'organisation'}); assert.equal(h.sends.length,1);
+  const result=await h.post({decision:'accepted',actor_type:'organisation',session_id:'session'});
+  assert.equal(result.ok,true); assert.equal(result.materialized,true);
+  assert.deepEqual(statuses(result.learner_access),['sent']); assert.equal(h.sends.length,1); assert.equal(h.auth.length,1);
+  const replay=await h.post({decision:'accepted',actor_type:'organisation',session_id:'session'}); assert.equal(replay.replayed,true); assert.equal(h.sends.length,1);
 });
-test('failed materialization preserves acceptance and sends acceptance without Auth',async () => {
+test('failed atomic materialization rolls back acceptance and sends no email',async () => {
   const h=harness({materializeFailure:true}); h.request.decision_status='ready_for_of'; h.request.attached_session_id='session';
+  const result=await h.post({decision:'accepted',actor_type:'organisation',session_id:'session'});
+  assert.equal(result.status,409); assert.equal(h.request.decision_status,'ready_for_of');
+  assert.equal(h.sends.length,0); assert.equal(h.auth.length,0);
+});
+test('acceptance requires a session before any durable decision',async () => {
+  const h=harness(); h.request.decision_status='ready_for_of';
   const result=await h.post({decision:'accepted',actor_type:'organisation'});
-  assert.equal(result.ok,true); assert.equal(result.materialized,false); assert.equal(h.request.decision_status,'accepted');
-  assert.deepEqual(statuses(result.learner_access),['sent']); assert.equal(h.auth.length,0);
+  assert.equal(result.status,400); assert.equal(h.request.decision_status,'ready_for_of'); assert.equal(h.sends.length,0);
 });
 for(const status of ['pending','refused','rejected','ready_for_of']) test(`${status} cannot send acceptance even via manager retry`,async () => {
   const h=harness(); h.request.decision_status=status;

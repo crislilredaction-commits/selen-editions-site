@@ -129,12 +129,12 @@ export default function RegistrationRequestsPage() {
       const response = await fetch("/api/client/daily/registration-requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ request_id: request.id, actor_type: actorType, decision, comment }),
+        body: JSON.stringify({ request_id: request.id, actor_type: actorType, decision, comment, ...(decision === "accepted" ? { session_id: selectedSessions[request.id] ?? "" } : {}) }),
       });
       const body = await response.json().catch(() => ({})) as ResponseBody;
       if (!response.ok) throw new Error(body.error ?? "Décision impossible.");
       if (decision === "accepted") {
-        setMessage((body.materialized ? "Candidature acceptée et inscription créée automatiquement dans la session." : body.materialization_error ? "Candidature acceptée. La création de l’inscription reste à finaliser." : "Candidature acceptée. Choisissez maintenant la session pour créer l'inscription sans ressaisie.") + emailFeedback(body));
+        setMessage("Candidature acceptée et inscription créée automatiquement dans la session. La préformation est ouverte." + emailFeedback(body));
       } else {
         setMessage("Candidature refusée par l’organisme. La décision finale est enregistrée.");
       }
@@ -270,12 +270,19 @@ export default function RegistrationRequestsPage() {
                 <span><strong>Demande :</strong> {request.response_type === "company" ? "Entreprise" : "Bénéficiaire"}</span>
                 {request.respondent_email ? <span><strong>Email :</strong> {request.respondent_email}</span> : null}
                 {participantCount(request.participants) ? <span><strong>Participants :</strong> {participantCount(request.participants)}</span> : null}
-                <span><strong>Session :</strong> {request.attached_session_id ? "déjà ciblée" : "à définir après accord"}</span>
+                <span><strong>Session :</strong> {request.attached_session_id ? "déjà ciblée" : "à choisir avant accord"}</span>
                 {request.adaptation_needed ? <span style={s.attention}><strong>Attention :</strong> besoin d'adaptation signalé</span> : null}
               </div>
               {summaryDetails(request)}
+              <div style={s.materializeBox}>
+                <strong>Session de l’inscription</strong>
+                {sessions.filter((session) => session.formation_id === request.formation_id).length ? <select value={selectedSessions[request.id] ?? ""} onChange={(event) => setSelectedSessions((current) => ({ ...current, [request.id]: event.target.value }))} style={s.select}>
+                  <option value="">Choisir une session</option>
+                  {sessions.filter((session) => session.formation_id === request.formation_id).map((session) => <option key={session.id} value={session.id}>{sessionLabel(session)}</option>)}
+                </select> : <p style={s.muted}>Créez d’abord une session compatible : l’acceptation doit produire immédiatement l’inscription et la préformation.</p>}
+              </div>
               <div style={s.actions}>
-                <button type="button" disabled={busyId === request.id} style={s.accept} onClick={() => void decide(request, "accepted")}>{busyId === request.id ? "Enregistrement…" : "Accepter la candidature"}</button>
+                <button type="button" disabled={busyId === request.id || !(selectedSessions[request.id] ?? "")} style={s.accept} onClick={() => void decide(request, "accepted")}>{busyId === request.id ? "Enregistrement…" : "Accepter et créer l’inscription"}</button>
                 <button type="button" disabled={busyId === request.id} style={s.refuse} onClick={() => void decide(request, "refused")}>Refuser la candidature</button>
               </div>
             </article>

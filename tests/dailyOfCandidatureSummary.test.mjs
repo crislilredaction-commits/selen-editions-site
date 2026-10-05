@@ -49,8 +49,8 @@ for (const status of ['ready_for_of','accepted','refused']) test(`real page: sev
   const values=nodes(tree).filter(n=>n.type==='dd'); assert.deepEqual(values.map(n=>text(n)),Array.from(projected.sections,s=>s.value));
   for(const node of values) assert.equal(node.props.style.whiteSpace,'pre-wrap');
   for(const secret of ['PRIVATE_EVALUATOR','PRIVATE_UNKNOWN','PRIVATE_PARTICIPANT','[object Object]']) assert.ok(!content.includes(secret));
-  if(status==='ready_for_of') { assert.ok(content.indexOf('alpha_SENTINEL_6')<content.indexOf('Accepter la candidature')); assert.ok(content.includes('Refuser la candidature')); }
-  else { assert.ok(content.includes('Décision alpha')); assert.ok(content.includes(status==='accepted'?'Acceptée':'Refusée')); assert.ok(!content.includes('Accepter la candidature')); }
+  if(status==='ready_for_of') { assert.ok(content.indexOf('alpha_SENTINEL_6')<content.indexOf('Accepter et créer l’inscription')); assert.ok(content.includes('Refuser la candidature')); }
+  else { assert.ok(content.includes('Décision alpha')); assert.ok(content.includes(status==='accepted'?'Acceptée':'Refusée')); assert.ok(!content.includes('Accepter et créer l’inscription')); }
   if(status==='accepted') { assert.ok(content.includes('SESSION_EXISTANTE'));assert.ok(content.includes('Créer l\'inscription'));assert.ok(content.includes('Vérifier / réessayer')); }
   await h.download(); assert.equal(h.fetches.length,1);h.flush();assert.equal(h.revoked.length,1);
 });
