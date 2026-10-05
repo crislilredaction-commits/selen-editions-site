@@ -3,7 +3,9 @@ import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import { sendDailyRegistrationConfirmation } from "@/lib/server/dailyRegistrationEmails";
 import { normalizeBeneficiarySiret, validateOptionalBeneficiarySiret } from "@/lib/dailyBeneficiarySiret";
-import { loadOriginalPositioning, OwnPositioningError, prepareOwnPositioning, persistOwnPositioning, positioningSubmissionAnswers, prepareJsonRegistrationSubmission, selenCandidatePositioningAnswers, type OwnPositioningSubmission } from "@/lib/server/dailyOwnPositioning";
+import { APPLICATION_PRIVATE_DOCUMENTS_MAX_BYTES } from "@/lib/daily/prerequisiteEvidence";
+import { loadOriginalPositioning, OwnPositioningError, prepareOwnPositioning, persistOwnPositioning, positioningSubmissionAnswers } from "@/lib/server/dailyOwnPositioning";
+import { PrerequisiteEvidenceError, preparePrerequisiteEvidence, persistPrerequisiteEvidence, replaceRejectedPrerequisiteEvidence, type PrerequisiteEvidenceSubmission } from "@/lib/server/dailyPrerequisiteEvidence";
 import {
   buildDailyRegistrationSummary,
   DAILY_COMPANY_QUESTIONS,
@@ -26,7 +28,7 @@ type PublicSession = {
   max_participants: number | null;
 };
 
-const FORMATION_FIELDS = "id,user_id,organisation_id,title,status,creation_mode,global_objective,learning_objectives,target_audience,prerequisites,duration_hours,duration_days,modality,modality_details,access_delays,registration_methods,price,detailed_program,detailed_program_document_url,accessibility,pedagogical_resources,pedagogical_methods,evaluation_methods,positioning_mode,positioning_questions,positioning_questionnaire_document_url,contact_phone,contact_email,contact_website" as const;
+const FORMATION_FIELDS = "id,user_id,organisation_id,title,status,creation_mode,global_objective,learning_objectives,target_audience,prerequisites,prerequisite_mode,prerequisite_requirements,duration_hours,duration_days,modality,modality_details,access_delays,registration_methods,price,detailed_program,detailed_program_document_url,accessibility,pedagogical_resources,pedagogical_methods,evaluation_methods,positioning_mode,positioning_questions,positioning_questionnaire_document_url,contact_phone,contact_email,contact_website" as const;
 const SESSION_SELECT = `id,user_id,organisation_id,formation_id,start_date,end_date,modality,distance_mode,status,schedule_blocks,registration_token,registration_status,adaptation_needed,companies,beneficiaries,individual_beneficiaries,daily_formations(${FORMATION_FIELDS})` as const;
 const FORMATION_SELECT = `${FORMATION_FIELDS},public_registration_token,public_registration_enabled` as const;
 const APPLICATION_CONSENT_TEXT =
@@ -48,7 +50,7 @@ function hasExplicitAdaptationAnswer(answers: Record<string, unknown>) {
   return String(answers.adaptation_needed_answer ?? answers.company_adaptation_needed ?? "").toLowerCase() === "oui";
 }
 
-function buildApplicationSignature(request: Request, body: Record<string, unknown>, targetId: string, responseType: string, needAnswers: Record<string, unknown>, positioningAnswers: Record<string, unknown>) {
+function buildApplicationSignature(request: Request, body: Record<string, unknown>, targetId: string, responseType: string, needAnswers: Record<string, unknown>, positioningAnswers: Record<string, unknown>, prerequisiteFingerprint: string | null) {
   const consentAccepted = body.signature_consent === true;
   const signatureData = text(body, "signature_data");
   if (!consentAccepted) return { error: "Merci de confirmer votre accord avant de signer le dossier." } as const;
@@ -59,7 +61,7 @@ function buildApplicationSignature(request: Request, body: Record<string, unknow
   const userAgent = request.headers.get("user-agent");
   const proofHash = createHash("sha256").update([
     targetId, responseType, text(body, "respondent_first_name"), text(body, "respondent_last_name"), text(body, "respondent_email").toLowerCase(),
-    JSON.stringify(needAnswers), JSON.stringify(positioningAnswers), signedAt, APPLICATION_CONSENT_TEXT, signatureData,
+    JSON.stringify(needAnswers), JSON.stringify(positioningAnswers), prerequisiteFingerprint ?? "", signedAt, APPLICATION_CONSENT_TEXT, signatureData,
   ].join("|")).digest("hex");
   return { value: { consent_text: APPLICATION_CONSENT_TEXT, signature_data: signatureData, signed_at: signedAt, ip_address: ipAddress, user_agent: userAgent, proof_hash: proofHash } } as const;
 }
@@ -102,15 +104,38 @@ function publicFormation(formation: Record<string, unknown>) {
   const { positioning_questionnaire_document_url: _privateReference, ...visible } = formation;
   return visible;
 }
-async function ownSubmissionReplay(submission: Pick<OwnPositioningSubmission, "id" | "fingerprint">, kind: "formation" | "session", targetId: string, userId: string) {
+type CandidateSubmission = {
+  id: string;
+  positioningFingerprint: string | null;
+  prerequisiteFingerprint: string | null;
+  respondentEmail: string;
+  responseType: string;
+};
+type CandidateSubmissionDisposition = {
+  response?: NextResponse;
+  replacement?: { expectedFingerprint: string; sessionId: string | null };
+};
+async function candidateSubmissionReplay(submission: CandidateSubmission, kind: "formation" | "session", targetId: string, userId: string, evidenceReplaced = false): Promise<CandidateSubmissionDisposition | null> {
   const admin = getAdminSupabase();
   const { data, error } = await admin.from(kind === "formation" ? "daily_formation_registration_requests" : "daily_registration_responses")
     .select("*")
     .eq("id", submission.id).eq(kind === "formation" ? "formation_id" : "session_id", targetId).eq("user_id", userId).maybeSingle();
   if (error) throw new OwnPositioningError("Vérification de la transmission indisponible.", 500);
   if (!data) return null;
-  if (data.positioning_answers?.submission_fingerprint !== submission.fingerprint) throw new OwnPositioningError("Cette transmission correspond à un dossier différent. Actualisez la page avant une nouvelle candidature.", 409);
+  if (String(data.respondent_email ?? "").trim().toLowerCase() !== submission.respondentEmail || data.response_type !== submission.responseType) throw new OwnPositioningError("Cette transmission correspond à un autre dossier. Actualisez la page avant une nouvelle candidature.", 409);
+  if (submission.positioningFingerprint && data.positioning_answers?.submission_fingerprint !== submission.positioningFingerprint) throw new OwnPositioningError("Cette transmission correspond à un dossier différent. Actualisez la page avant une nouvelle candidature.", 409);
   if (data.decision_status === "refused" || ["refused", "cancelled", "archived"].includes(data.status)) throw new OwnPositioningError("Ce dossier est clôturé. Contactez votre organisme de formation.", 409);
+  if (submission.prerequisiteFingerprint && data.prerequisite_submission_fingerprint !== submission.prerequisiteFingerprint) {
+    const expectedFingerprint = String(data.prerequisite_submission_fingerprint ?? "");
+    if (!/^[0-9a-f]{64}$/.test(expectedFingerprint)) throw new PrerequisiteEvidenceError("Cette transmission correspond à d’autres justificatifs. Actualisez la page avant une nouvelle candidature.", 409);
+    let evidenceQuery = admin.from("daily_prerequisite_evidence").select("id,status");
+    evidenceQuery = kind === "formation" ? evidenceQuery.eq("registration_request_id", data.id) : evidenceQuery.eq("registration_response_id", data.id);
+    const { data: evidence, error: evidenceError } = await evidenceQuery;
+    if (evidenceError) throw new PrerequisiteEvidenceError("Vérification des justificatifs indisponible.", 500);
+    const statuses = (evidence ?? []).map((row) => row.status);
+    if (!statuses.includes("rejected") || statuses.some((status) => !["verified", "rejected"].includes(status))) throw new PrerequisiteEvidenceError("Cette transmission correspond à d’autres justificatifs. Seules les pièces refusées peuvent être remplacées.", 409);
+    return { replacement: { expectedFingerprint, sessionId: kind === "session" ? targetId : data.attached_session_id ?? null } };
+  }
   const response = { id: data.id, status: data.status, submitted_at: data.submitted_at, signature_signed_at: data.signature_signed_at,
     ...(kind === "formation" ? { attached_session_id: data.attached_session_id } : {}) };
   const replaySessionId = kind === "session" ? targetId : data.attached_session_id;
@@ -120,8 +145,8 @@ async function ownSubmissionReplay(submission: Pick<OwnPositioningSubmission, "i
     if (replaySessionError || !replaySession || (kind === "formation" && replaySession.formation_id !== targetId)) throw new OwnPositioningError("La candidature a été reçue, mais sa session ne peut pas être confirmée. Contactez votre organisme.", 409);
     nextStep = isAsynchronous(replaySession) ? "asynchronous" : "scheduled";
   }
-  return NextResponse.json({ response, registrationKind: kind, alreadySubmitted: true, confirmationEmailSent: false,
-    nextStep });
+  return { response: NextResponse.json({ response, registrationKind: kind, alreadySubmitted: true, evidenceReplaced, confirmationEmailSent: false,
+    nextStep }) };
 }
 
 export async function GET(_request: Request, { params }: Params) {
@@ -133,7 +158,7 @@ export async function GET(_request: Request, { params }: Params) {
   if (session) {
     const organisation = await findOrganisation(session.user_id);
     const formation = Array.isArray(session.daily_formations) ? session.daily_formations[0] : session.daily_formations;
-    if (formation && formation.organisation_id !== session.organisation_id) throw new OwnPositioningError("Formation introuvable.", 404);
+    if (formation?.positioning_questionnaire_document_url && formation.organisation_id !== session.organisation_id) throw new OwnPositioningError("Formation introuvable.", 404);
     const original = formation ? await loadOriginalPositioning(getAdminSupabase(), formation) : null;
     return NextResponse.json({ registrationKind: "session", session: { ...session, daily_formations: formation ? publicFormation(formation) : null }, ownPositioning: original ? { id: original.id, name: original.name } : null, organisation, availableSessions: [], deliveryMode: session.modality === "distanciel" && session.distance_mode === "asynchrone" ? "asynchronous" : "scheduled", beneficiaryQuestions: DAILY_NEED_QUESTIONS, companyQuestions: DAILY_COMPANY_QUESTIONS, positioningQuestions: DAILY_POSITIONING_QUESTIONS, signatureConsentText: APPLICATION_CONSENT_TEXT });
   }
@@ -172,6 +197,7 @@ export async function POST(request: Request, { params }: Params) {
   const formation = session ? null : await findFormation(clean);
   if (!session && !formation) return NextResponse.json({ error: "Lien introuvable ou expiré." }, { status: 404 });
   const needAnswers = jsonObject(body.need_answers);
+  const respondentEmail = text(body, "respondent_email").toLowerCase();
   if (responseType === "beneficiary") {
     const beneficiarySiret = normalizeBeneficiarySiret(needAnswers.beneficiary_siret);
     const beneficiarySiretValidation = validateOptionalBeneficiarySiret(beneficiarySiret);
@@ -187,23 +213,33 @@ export async function POST(request: Request, { params }: Params) {
   const targetId = session?.id ?? formation?.id;
   if (!targetId) return NextResponse.json({ error: "Dossier de candidature introuvable." }, { status: 404 });
   const rawFormation = formation ?? (Array.isArray(session?.daily_formations) ? session.daily_formations[0] : session?.daily_formations);
-  if (session && rawFormation && rawFormation.organisation_id !== session.organisation_id) throw new OwnPositioningError("Formation introuvable.", 404);
+  if (session && rawFormation?.positioning_questionnaire_document_url && rawFormation.organisation_id !== session.organisation_id) throw new OwnPositioningError("Formation introuvable.", 404);
   const original = rawFormation ? await loadOriginalPositioning(getAdminSupabase(), rawFormation) : null;
-  if (rawFormation?.positioning_mode === "off_platform" && !original) throw new OwnPositioningError("Le questionnaire de l’organisme doit être importé avant la candidature. Contactez votre organisme de formation.", 409);
   const ownSubmission = original ? await prepareOwnPositioning(body, formData, original, `${formation ? "formation" : "session"}:${targetId}`) : null;
+  const prerequisiteSubmission = rawFormation ? await preparePrerequisiteEvidence(body, formData, rawFormation, `${formation ? "formation" : "session"}:${targetId}`) : null;
+  const submissionId = ownSubmission?.id ?? prerequisiteSubmission?.id ?? null;
+  if (ownSubmission && prerequisiteSubmission && ownSubmission.id !== prerequisiteSubmission.id) throw new PrerequisiteEvidenceError("Les documents ne correspondent pas au même dossier. Actualisez la page.", 409);
+  const privateDocumentBytes = (ownSubmission?.files.reduce((total, file) => total + file.bytes.length, 0) ?? 0) + (prerequisiteSubmission?.files.reduce((total, file) => total + file.bytes.length, 0) ?? 0);
+  if (privateDocumentBytes > APPLICATION_PRIVATE_DOCUMENTS_MAX_BYTES) throw new PrerequisiteEvidenceError("L’ensemble des documents privés du dossier doit peser moins de 4 Mo.", 413);
   if (ownSubmission) {
     positioningAnswers = positioningSubmissionAnswers(ownSubmission);
-  } else if (rawFormation?.positioning_mode === "selen") positioningAnswers = selenCandidatePositioningAnswers(body, rawFormation);
-  const submission = ownSubmission ?? prepareJsonRegistrationSubmission(body, positioningAnswers, `${formation ? "formation" : "session"}:${targetId}`);
-  positioningAnswers.submission_fingerprint = submission.fingerprint;
-  const replay = await ownSubmissionReplay(submission, formation ? "formation" : "session", targetId, (formation ?? session)!.user_id);
-  if (replay) return replay;
-  const signature = buildApplicationSignature(request, body, targetId, responseType, needAnswers, positioningAnswers);
+  }
+  const submission = submissionId ? { id: submissionId, positioningFingerprint: ownSubmission?.fingerprint ?? null, prerequisiteFingerprint: prerequisiteSubmission?.fingerprint ?? null, respondentEmail, responseType } : null;
+  const disposition = submission ? await candidateSubmissionReplay(submission, formation ? "formation" : "session", targetId, (formation ?? session)!.user_id) : null;
+  if (disposition?.response) return disposition.response;
+  const signature = buildApplicationSignature(request, body, targetId, responseType, needAnswers, positioningAnswers, prerequisiteSubmission?.fingerprint ?? null);
   if ("error" in signature) return NextResponse.json({ error: signature.error }, { status: 400 });
   const adaptationNeeded = hasExplicitAdaptationAnswer(needAnswers) || detectAdaptationNeeded(needAnswers);
   const supabase = getAdminSupabase();
+  if (disposition?.replacement) {
+    if (!prerequisiteSubmission) throw new PrerequisiteEvidenceError("Joignez tous les justificatifs corrigés avant de les retransmettre.");
+    await persistPrerequisiteEvidence(supabase, prerequisiteSubmission, formation ? "formation" : "session", disposition.replacement.sessionId, { stagedReplacement: true });
+    await replaceRejectedPrerequisiteEvidence(supabase, prerequisiteSubmission, formation ? "formation" : "session", disposition.replacement.expectedFingerprint);
+    const replay = await candidateSubmissionReplay(submission!, formation ? "formation" : "session", targetId, (formation ?? session)!.user_id, true);
+    if (!replay?.response) throw new PrerequisiteEvidenceError("Les justificatifs ont été remplacés, mais le dossier ne peut pas être relu.", 500);
+    return replay.response;
+  }
   const signatureFields = { signature_consent_text: signature.value.consent_text, signature_data: signature.value.signature_data, signature_proof_hash: signature.value.proof_hash, signature_signed_at: signature.value.signed_at, signature_ip_address: signature.value.ip_address, signature_user_agent: signature.value.user_agent };
-  const respondentEmail = text(body, "respondent_email").toLowerCase();
   const respondentFirstName = text(body, "respondent_first_name");
 
   if (formation) {
@@ -218,16 +254,18 @@ export async function POST(request: Request, { params }: Params) {
     } else if (publicSessions.length === 0 && asyncSession) attachedSession = asyncSession;
     const nextStep = attachedSession ? isAsynchronous(attachedSession) ? "asynchronous" : "scheduled" : "date_to_plan";
     if (ownSubmission) await persistOwnPositioning(supabase, ownSubmission, "formation", attachedSession?.id ?? null);
+    if (prerequisiteSubmission) await persistPrerequisiteEvidence(supabase, prerequisiteSubmission, "formation", attachedSession?.id ?? null);
     const { data: response, error } = await supabase.from("daily_formation_registration_requests").insert({
-      id: submission.id,
+      ...(submissionId ? { id: submissionId } : {}),
       formation_id: formation.id, user_id: formation.user_id, response_type: responseType,
       respondent_first_name: respondentFirstName || null, respondent_last_name: text(body, "respondent_last_name") || null, respondent_email: respondentEmail || null,
       company_name: responseType === "company" ? text(body, "company_name") || null : null, participants: responseType === "company" ? jsonArray(body.participants) : [],
       need_answers: needAnswers, positioning_answers: positioningAnswers, adaptation_needed: adaptationNeeded,
+      prerequisite_submission_fingerprint: prerequisiteSubmission?.fingerprint ?? null,
       attached_session_id: attachedSession?.id ?? null, status: attachedSession ? "attached" : "to_attach", submitted_at: signature.value.signed_at, ...signatureFields,
     }).select("id,status,attached_session_id,submitted_at,signature_signed_at").single();
     if (error) {
-      const replay = await ownSubmissionReplay(submission, "formation", formation.id, formation.user_id); if (replay) return replay;
+      if (submission) { const replay = await candidateSubmissionReplay(submission, "formation", formation.id, formation.user_id); if (replay?.response) return replay.response; }
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
     await supabase.from("daily_formations").update({ spontaneous_registration_task_status: attachedSession ? "none" : "to_attach" }).eq("id", formation.id);
@@ -238,15 +276,16 @@ export async function POST(request: Request, { params }: Params) {
 
   if (!session) return NextResponse.json({ error: "Lien introuvable ou expiré." }, { status: 404 });
   if (ownSubmission) await persistOwnPositioning(supabase, ownSubmission, "session", session.id);
+  if (prerequisiteSubmission) await persistPrerequisiteEvidence(supabase, prerequisiteSubmission, "session", session.id);
   const { data: response, error } = await supabase.from("daily_registration_responses").insert({
-    id: submission.id,
+    ...(submissionId ? { id: submissionId } : {}),
     session_id: session.id, user_id: session.user_id, response_type: responseType, respondent_first_name: respondentFirstName || null,
     respondent_last_name: text(body, "respondent_last_name") || null, respondent_email: respondentEmail || null,
     company_name: responseType === "company" ? text(body, "company_name") || null : null, participants: responseType === "company" ? jsonArray(body.participants) : [],
-    need_answers: needAnswers, positioning_answers: positioningAnswers, adaptation_needed: adaptationNeeded, status: "submitted", submitted_at: signature.value.signed_at, ...signatureFields,
+    need_answers: needAnswers, positioning_answers: positioningAnswers, adaptation_needed: adaptationNeeded, prerequisite_submission_fingerprint: prerequisiteSubmission?.fingerprint ?? null, status: "submitted", submitted_at: signature.value.signed_at, ...signatureFields,
   }).select("id,status,submitted_at,signature_signed_at").single();
   if (error) {
-    const replay = await ownSubmissionReplay(submission, "session", session.id, session.user_id); if (replay) return replay;
+    if (submission) { const replay = await candidateSubmissionReplay(submission, "session", session.id, session.user_id); if (replay?.response) return replay.response; }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
   const { data: responses } = await supabase.from("daily_registration_responses").select("response_type,respondent_first_name,respondent_last_name,company_name,need_answers,positioning_answers,adaptation_needed").eq("session_id", session.id).eq("status", "submitted");
@@ -258,5 +297,5 @@ export async function POST(request: Request, { params }: Params) {
   const legacyFormation = Array.isArray(session.daily_formations) ? session.daily_formations[0] : session.daily_formations;
   const confirmation = await sendConfirmationSafely({ email: respondentEmail, firstName: respondentFirstName || null, organisationName: organisation?.name ?? null, formationTitle: legacyFormation?.title ?? null, nextStep: legacyNextStep, sessionLabel: sessionLabel(session as unknown as PublicSession) });
   return NextResponse.json({ response, summary, nextStep: legacyNextStep, organisationName: organisation?.name ?? null, confirmationEmailSent: confirmation.sent });
-  } catch (cause) { return NextResponse.json({ error: cause instanceof OwnPositioningError ? cause.message : "La candidature n’a pas pu être transmise." }, { status: cause instanceof OwnPositioningError ? cause.status : 500 }); }
+  } catch (cause) { const known = cause instanceof OwnPositioningError || cause instanceof PrerequisiteEvidenceError; return NextResponse.json({ error: known ? cause.message : "La candidature n’a pas pu être transmise." }, { status: known ? cause.status : 500 }); }
 }

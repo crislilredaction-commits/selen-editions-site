@@ -80,6 +80,8 @@ function fixture(options = {}) {
     'next/server': require('next/server'), crypto: require('node:crypto'),
     '@/lib/server/clientNdaAccess': { getAdminSupabase: () => admin },
     '@/lib/server/dailyOwnPositioning': loadOwnPositioning(),
+    '@/lib/daily/prerequisiteEvidence': { APPLICATION_PRIVATE_DOCUMENTS_MAX_BYTES: 4 * 1024 * 1024 },
+    '@/lib/server/dailyPrerequisiteEvidence': { PrerequisiteEvidenceError: class extends Error {}, async preparePrerequisiteEvidence() { return null; }, async persistPrerequisiteEvidence() {} },
     '@/lib/server/dailyRegistrationEmails': { sendDailyRegistrationConfirmation() { assert.fail('Email forbidden'); } },
     '@/lib/dailyBeneficiarySiret': {}, '@/lib/dailyRegistration': {},
   });
