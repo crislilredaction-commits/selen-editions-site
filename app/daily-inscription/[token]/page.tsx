@@ -5,7 +5,9 @@ import ApplicationSignature from "@/components/daily/ApplicationSignature";
 import BeneficiaryProfessionalSiretFields from "@/components/daily/BeneficiaryProfessionalSiretFields";
 import ProgramDetails from "@/components/daily/ProgramDetails";
 import OwnPositioningFiles from "@/components/daily/OwnPositioningFiles";
+import PrerequisiteEvidenceFiles from "@/components/daily/PrerequisiteEvidenceFiles";
 import { positioningSubjectKey, OWN_POSITIONING_MAX_BYTES, type OwnPositioningSource } from "@/lib/daily/ownPositioning";
+import { APPLICATION_PRIVATE_DOCUMENTS_MAX_BYTES, prerequisiteEvidenceKey, type PrerequisiteRequirement } from "@/lib/daily/prerequisiteEvidence";
 import { normalizeBeneficiarySiret, validateOptionalBeneficiarySiret } from "@/lib/dailyBeneficiarySiret";
 
 type RegistrationMode = "beneficiary" | "company";
@@ -24,6 +26,8 @@ type PublicSession = {
     title?: string | null;
     positioning_mode?: string | null;
     positioning_questions?: PositioningQuestion[] | null;
+    prerequisite_mode?: string | null;
+    prerequisite_requirements?: PrerequisiteRequirement[] | null;
   } | null;
 };
 type AvailableSession = {
@@ -64,6 +68,8 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [replacementSubmitted, setReplacementSubmitted] = useState(false);
+  const [priorSubmission, setPriorSubmission] = useState(false);
   const [autosaveStatus, setAutosaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [error, setError] = useState("");
   const [session, setSession] = useState<PublicSession | null>(null);
@@ -81,10 +87,23 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
   const [submissionNextStep, setSubmissionNextStep] = useState<DeliveryMode>("date_to_plan");
   const [ownPositioning, setOwnPositioning] = useState<OwnPositioningSource | null>(null);
   const [filledDocuments, setFilledDocuments] = useState<Record<string, File>>({});
+  const [prerequisiteDocuments, setPrerequisiteDocuments] = useState<Record<string, File>>({});
   const [submissionId, setSubmissionId] = useState(() => crypto.randomUUID());
   const positioningSubjects = mode === "beneficiary" ? [{ first_name: form.first_name ?? "", last_name: form.last_name ?? "", email: form.email ?? "" }] : participants.filter(participant => participant.first_name || participant.last_name || participant.email);
   const filledRows = positioningSubjects.map(subject => ({ key: positioningSubjectKey(subject), subject, file: filledDocuments[positioningSubjectKey(subject)] }));
   const ownPositioningReady = !ownPositioning || (filledRows.length > 0 && filledRows.every(row => row.file) && filledRows.reduce((size, row) => size + (row.file?.size ?? 0), 0) <= OWN_POSITIONING_MAX_BYTES);
+  const prerequisiteRequirements = useMemo(() => {
+    if (session?.daily_formations?.prerequisite_mode !== "required" || !Array.isArray(session.daily_formations.prerequisite_requirements)) return [];
+    return session.daily_formations.prerequisite_requirements.filter((row) => row && String(row.id ?? "").trim() && String(row.label ?? "").trim());
+  }, [session]);
+  const prerequisitesRequired = session?.daily_formations?.prerequisite_mode === "required";
+  const prerequisiteRows = positioningSubjects.flatMap((subject, participantIndex) => prerequisiteRequirements.map((requirement, requirementIndex) => {
+    const key = prerequisiteEvidenceKey(participantIndex, requirement.id);
+    return { key, participantIndex, requirementIndex, subject, requirement, file: prerequisiteDocuments[key] };
+  }));
+  const prerequisitesReady = !prerequisitesRequired || (prerequisiteRequirements.length > 0 && prerequisiteRows.length > 0 && prerequisiteRows.every((row) => row.file));
+  const privateDocumentBytes = [...filledRows, ...prerequisiteRows].reduce((size, row) => size + (row.file?.size ?? 0), 0);
+  const privateDocumentsReady = ownPositioningReady && prerequisitesReady && privateDocumentBytes <= APPLICATION_PRIVATE_DOCUMENTS_MAX_BYTES;
 
   const positioningQuestions = useMemo(() => {
     const questions = session?.daily_formations?.positioning_questions;
@@ -111,6 +130,14 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
       setOrganisationName(data.organisation?.name || "votre organisme de formation");
       setSignatureConsentText(data.signatureConsentText ?? "");
       try {
+        const receipt = window.localStorage.getItem(`selen-daily-registration-receipt-${token}`);
+        if (receipt) {
+          const parsedReceipt = JSON.parse(receipt) as { submissionId?: string };
+          if (parsedReceipt.submissionId && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(parsedReceipt.submissionId)) {
+            setSubmissionId(parsedReceipt.submissionId);
+            setPriorSubmission(true);
+          }
+        }
         const draft = window.localStorage.getItem(`selen-daily-registration-${token}`);
         if (!draft) return;
         const parsed = JSON.parse(draft) as { mode?: RegistrationMode; step?: number; form?: Record<string, string>; participants?: Participant[]; submissionId?: string };
@@ -231,6 +258,22 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
     return true;
   }
 
+  function validatePrerequisites() {
+    if (prerequisitesRequired && prerequisiteRequirements.length === 0) {
+      setError("Les prérequis obligatoires de cette formation sont indisponibles. Contactez l’organisme de formation avant d’envoyer le dossier.");
+      return false;
+    }
+    if (!prerequisitesReady) {
+      setError("Joignez un justificatif pour chaque prérequis et pour chaque apprenant avant d’envoyer le dossier.");
+      return false;
+    }
+    if (privateDocumentBytes > APPLICATION_PRIVATE_DOCUMENTS_MAX_BYTES) {
+      setError("L’ensemble des documents privés du dossier doit peser moins de 4 Mo.");
+      return false;
+    }
+    return true;
+  }
+
   function validateContactDetails() {
     if (mode === "beneficiary" && !String(form.phone ?? "").trim()) {
       setError("Merci d'ajouter un téléphone. L'organisme de formation pourra ainsi vous recontacter si une précision est nécessaire.");
@@ -263,7 +306,7 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
   }
 
   async function submit() {
-    if (!validateContactDetails() || !validatePositioning() || !validateSignature()) return;
+    if (!validateContactDetails() || !validatePositioning() || !validatePrerequisites() || !validateSignature()) return;
     setSaving(true);
     setError("");
     try {
@@ -283,8 +326,13 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
         ...(ownPositioning ? { positioning_source_id: ownPositioning.id } : {}),
       };
       const multipart = new FormData();
-      if (ownPositioning) { multipart.append("payload", JSON.stringify(payload)); filledRows.forEach((row, index) => { if (row.file) multipart.append(`positioning_file_${index}`, row.file); }); }
-      const res = await fetch(`/api/daily-registration/${token}`, ownPositioning ? { method: "POST", body: multipart } : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const withPrivateDocuments = Boolean(ownPositioning || prerequisiteRequirements.length);
+      if (withPrivateDocuments) {
+        multipart.append("payload", JSON.stringify(payload));
+        filledRows.forEach((row, index) => { if (row.file) multipart.append(`positioning_file_${index}`, row.file); });
+        prerequisiteRows.forEach((row) => { if (row.file) multipart.append(`prerequisite_file_${row.participantIndex}_${row.requirementIndex}`, row.file); });
+      }
+      const res = await fetch(`/api/daily-registration/${token}`, withPrivateDocuments ? { method: "POST", body: multipart } : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     const data = await res.json().catch(() => null);
     setSaving(false);
     if (!res.ok) {
@@ -293,7 +341,11 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
     }
     if (data?.organisationName) setOrganisationName(data.organisationName);
     setSubmissionNextStep(data?.nextStep === "asynchronous" ? "asynchronous" : data?.nextStep === "scheduled" ? "scheduled" : "date_to_plan");
-    window.localStorage.removeItem(`selen-daily-registration-${token}`);
+    try {
+      window.localStorage.setItem(`selen-daily-registration-receipt-${token}`, JSON.stringify({ submissionId }));
+      window.localStorage.removeItem(`selen-daily-registration-${token}`);
+    } catch { /* La réponse serveur reste canonique si le stockage local est indisponible. */ }
+    setReplacementSubmitted(data?.evidenceReplaced === true);
     setSaved(true);
     } catch { setError("La transmission a été interrompue. Réessayez avec le même document rempli."); }
     finally { setSaving(false); }
@@ -308,10 +360,10 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
         <section style={s.page}>
           <ProgramDetails token={token} />
           <article style={s.card}>
-            <h1 style={s.title}>Merci, votre dossier signé est bien transmis</h1>
-            <p style={s.muted}>{organisationName} va pouvoir prendre connaissance de vos réponses et préparer la suite de votre inscription.</p>
+            <h1 style={s.title}>{replacementSubmitted ? "Merci, vos justificatifs corrigés sont transmis" : "Merci, votre dossier signé est bien transmis"}</h1>
+            <p style={s.muted}>{replacementSubmitted ? `${organisationName} doit maintenant vérifier à nouveau ces pièces. Votre candidature d’origine et son historique sont conservés.` : `${organisationName} va pouvoir prendre connaissance de vos réponses et préparer la suite de votre inscription.`}</p>
             {submissionNextStep === "asynchronous" ? <p style={s.callout}>Votre formation se déroule à distance à votre rythme. Vos identifiants d&apos;accès vous seront envoyés par email lorsque votre inscription aura été traitée.</p> : submissionNextStep === "date_to_plan" ? <p style={s.callout}>Aucune date n&apos;est encore planifiée. Une date va être calée avec le formateur et {organisationName} reviendra vers vous dès que possible.</p> : <p style={s.callout}>Votre demande est rattachée à la session que vous avez choisie. L&apos;organisme vous transmettra les informations nécessaires pour la suite.</p>}
-            <p style={s.confirmation}>Vous allez également recevoir un email de confirmation de la part de <strong>Selen Editions</strong>, partenaire de <strong>{organisationName}</strong>.</p>
+            {!replacementSubmitted ? <p style={s.confirmation}>Vous allez également recevoir un email de confirmation de la part de <strong>Selen Editions</strong>, partenaire de <strong>{organisationName}</strong>.</p> : <p style={s.confirmation}>L’organisme vous recontactera après la vérification de vos justificatifs corrigés.</p>}
           </article>
           <p style={s.powered}>Dossier sécurisé avec Selen Daily</p>
         </section>
@@ -331,6 +383,8 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
           <div style={s.progressOuter}><div style={{ ...s.progressInner, width: `${progress}%` }} /></div>
           <p style={s.autosave}>{autosaveStatus === "saving" ? "Enregistrement..." : autosaveStatus === "saved" ? "Enregistré" : autosaveStatus === "error" ? "Le brouillon n'a pas pu être enregistré" : ""}</p>
         </article>
+
+        {priorSubmission ? <p style={s.callout}>Votre candidature a été retrouvée. Si l’organisme vous a demandé de corriger un justificatif refusé, renseignez les mêmes informations et réponses, choisissez la même session et joignez toutes les pièces demandées. Votre candidature sera conservée et les justificatifs corrigés seront vérifiés à nouveau.</p> : null}
 
         {registrationKind === "formation" ? (
           <article style={s.sessionCard}>
@@ -362,12 +416,17 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
           ) : <CompanyStep step={hasSelenPositioning && step === 6 ? 5 : step} form={form} update={update} participants={participants} setParticipants={setParticipants} updateParticipant={updateParticipant} />}
 
           {step === totalSteps - 1 ? (
-            <>{ownPositioning ? <OwnPositioningFiles downloadUrl={`/api/daily-registration/${encodeURIComponent(token)}/positioning-document`} name={ownPositioning.name} rows={filledRows} onChange={(key, file) => setFilledDocuments(current => { const next = { ...current }; if (file) next[key] = file; else delete next[key]; return next; })} /> : null}<ApplicationSignature consentText={signatureConsentText} consent={signatureConsent} onConsentChange={setSignatureConsent} onSignatureChange={setSignatureData} /></>
+            <>
+              {ownPositioning ? <OwnPositioningFiles downloadUrl={`/api/daily-registration/${encodeURIComponent(token)}/positioning-document`} name={ownPositioning.name} rows={filledRows} onChange={(key, file) => setFilledDocuments(current => { const next = { ...current }; if (file) next[key] = file; else delete next[key]; return next; })} /> : null}
+              {prerequisitesRequired && prerequisiteRequirements.length === 0 ? <p role="alert" style={s.error}>Les prérequis obligatoires ne sont pas disponibles. Contactez l’organisme de formation avant d’envoyer le dossier.</p> : null}
+              <PrerequisiteEvidenceFiles rows={prerequisiteRows} onChange={(key, file) => setPrerequisiteDocuments(current => { const next = { ...current }; if (file) next[key] = file; else delete next[key]; return next; })} />
+              <ApplicationSignature consentText={signatureConsentText} consent={signatureConsent} onConsentChange={setSignatureConsent} onSignatureChange={setSignatureData} />
+            </>
           ) : null}
 
           <div style={s.actions}>
             {step > 0 ? <button type="button" className="btn-ghost" onClick={() => { if (step === totalSteps - 1) { setSignatureConsent(false); setSignatureData(""); } setStep(step - 1); }}><span>Retour</span></button> : null}
-            {step < totalSteps - 1 ? <button type="button" className="btn-ink" onClick={() => setStep(step + 1)}><span>Continuer</span></button> : <button type="button" className="btn-ink" disabled={saving || !ownPositioningReady} onClick={() => void submit()}><span>{saving ? "Transmission..." : "Signer et envoyer mon dossier"}</span></button>}
+            {step < totalSteps - 1 ? <button type="button" className="btn-ink" onClick={() => setStep(step + 1)}><span>Continuer</span></button> : <button type="button" className="btn-ink" disabled={saving || !privateDocumentsReady} onClick={() => void submit()}><span>{saving ? "Transmission..." : "Signer et envoyer mon dossier"}</span></button>}
           </div>
         </article>
         <p style={s.powered}>Dossier sécurisé avec Selen Daily</p>
