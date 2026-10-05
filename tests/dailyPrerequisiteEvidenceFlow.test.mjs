@@ -37,6 +37,7 @@ test("preuve obligatoire privée : soumission exacte et retry sans document ni e
 test("preuve refusée : remplacement versionné dans le même dossier, nouvelle revue et aucun nouvel email", async () => {
   const h = required(harness());
   assert.equal((await h.post(form(h))).status, 200);
+  const request = structuredClone(h.db.daily_formation_registration_requests[0]);
   const firstDocument = h.db.daily_documents.find((row) => row.document_type === "prerequisite_application_evidence");
   h.db.daily_prerequisite_evidence.push({
     id: uuid(70), registration_request_id: ids.submission, registration_response_id: null,
@@ -44,11 +45,12 @@ test("preuve refusée : remplacement versionné dans le même dossier, nouvelle 
     document_id: firstDocument.id, status: "rejected", submitted_at: "2026-10-05T17:00:00Z",
     reviewed_by: uuid(71), reviewed_at: "2026-10-05T17:30:00Z", review_comment: "Pièce illisible", updated_at: "2026-10-05T17:30:00Z",
   });
-  const replacement = await h.post(form(h, {}, [pdf("positionnement")], [[0, 0, pdf("diplome-corrige")]]));
+  const replacement = await h.post(form(h, {signature_data:"data:image/png;base64,bm91dmVsbGUgc2lnbmF0dXJl"}, [pdf("positionnement")], [[0, 0, pdf("diplome-corrige")]]));
   assert.equal(replacement.status, 200, await replacement.clone().text());
   const payload = await replacement.json();
   assert.equal(payload.evidenceReplaced, true); assert.equal(payload.alreadySubmitted, true);
   assert.equal(h.db.daily_formation_registration_requests.length, 1); assert.equal(h.sends.length, 1);
+  for(const key of ['signature_data','signature_proof_hash','signature_signed_at','need_answers','positioning_answers'])assert.deepEqual(h.db.daily_formation_registration_requests[0][key],request[key],`original ${key} must remain immutable`);
   const documents = h.db.daily_documents.filter((row) => row.document_type === "prerequisite_application_evidence");
   assert.equal(documents.length, 2);
   const current = documents.find((row) => row.is_current);
@@ -57,9 +59,23 @@ test("preuve refusée : remplacement versionné dans le même dossier, nouvelle 
   const evidence = h.db.daily_prerequisite_evidence[0];
   assert.equal(evidence.document_id, current.id); assert.equal(evidence.status, "submitted"); assert.equal(evidence.reviewed_by, null); assert.equal(evidence.review_comment, null);
   const count = h.db.daily_documents.length;
-  const retry = await h.post(form(h, {}, [pdf("positionnement")], [[0, 0, pdf("diplome-corrige")]]));
+  const retry = await h.post(form(h, {signature_data:"data:image/png;base64,bm91dmVsbGUgc2lnbmF0dXJl"}, [pdf("positionnement")], [[0, 0, pdf("diplome-corrige")]]));
   assert.equal(retry.status, 200); assert.equal((await retry.json()).alreadySubmitted, true);
   assert.equal(h.db.daily_documents.length, count); assert.equal(h.sends.length, 1);
+});
+
+for(const [name,extra,positioning] of [
+  ['identité',{respondent_first_name:'Autre'},[pdf('positionnement')]],
+  ['besoin',{need_answers:{expectations:'Autre besoin'}},[pdf('positionnement')]],
+  ['positionnement',{},[pdf('autre-positionnement')]],
+  ['session',{selected_session_id:uuid(99)},[pdf('positionnement')]],
+])test(`remplacement refusé si le dossier signé change : ${name}`,async()=>{
+  const h=required(harness());assert.equal((await h.post(form(h))).status,200);
+  const firstDocument=h.db.daily_documents.find(row=>row.document_type==='prerequisite_application_evidence');
+  h.db.daily_prerequisite_evidence.push({id:uuid(70),registration_request_id:ids.submission,document_id:firstDocument.id,participant_index:0,requirement_id:'diploma',status:'rejected'});
+  const before=h.db.daily_documents.length;
+  const response=await h.post(form(h,{signature_data:'data:image/png;base64,bm91dmVsbGU=',...extra},positioning,[[0,0,pdf('diplome-corrige')]]));
+  assert.equal(response.status,409);assert.equal(h.db.daily_documents.length,before);assert.equal(h.db.daily_formation_registration_requests.length,1);assert.equal(h.sends.length,1);assert.equal(firstDocument.is_current,true);
 });
 
 test("un prérequis requis sans chaque fichier bloque toute mutation et tout email", async () => {

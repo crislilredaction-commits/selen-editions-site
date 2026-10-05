@@ -110,8 +110,8 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
     return Array.isArray(questions) ? [...questions].sort((a, b) => Number(a.order ?? 0) - Number(b.order ?? 0)) : [];
   }, [session]);
 
-  const hasSelenPositioning = mode === "beneficiary" && session?.daily_formations?.positioning_mode === "selen" && positioningQuestions.length > 0;
-  const totalSteps = mode === "company" ? 6 : hasSelenPositioning ? 7 : 6;
+  const hasSelenPositioning = session?.daily_formations?.positioning_mode === "selen" && positioningQuestions.length > 0;
+  const totalSteps = hasSelenPositioning ? 7 : 6;
 
   useEffect(() => {
     async function load() {
@@ -231,16 +231,16 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
 
   function buildPositioningAnswers() {
     if (!hasSelenPositioning) return {};
-    return {
-      mode: "selen",
-      questions: positioningQuestions.map((question) => ({
+    const answersFor = (prefix = "") => positioningQuestions.map((question) => ({
         id: question.id,
         label: question.label,
         type: question.type,
-        required: Boolean(question.required),
-        answer: question.type === "multiple_choice" ? String(form[`positioning_${question.id}`] ?? "").split("|||").filter(Boolean) : form[`positioning_${question.id}`] ?? "",
-      })),
-    };
+        required: question.required !== false,
+        answer: question.type === "multiple_choice" ? String(form[`positioning_${prefix}${question.id}`] ?? "").split("|||").filter(Boolean) : form[`positioning_${prefix}${question.id}`] ?? "",
+      }));
+    return mode === "company" ? { mode: "selen", participants: positioningSubjects.map((subject, index) => ({
+      ...subject, participant_index: index, questions: answersFor(`${positioningSubjectKey(subject)}_`),
+    })) } : { mode: "selen", questions: answersFor() };
   }
 
   function validatePositioning() {
@@ -249,7 +249,8 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
       return false;
     }
     if (!hasSelenPositioning) return true;
-    const missing = positioningQuestions.some((question) => question.required && !String(form[`positioning_${question.id}`] ?? "").trim());
+    const prefixes = mode === "company" ? positioningSubjects.map(subject => `${positioningSubjectKey(subject)}_`) : [""];
+    const missing = !prefixes.length || prefixes.some(prefix => positioningQuestions.some((question) => question.required !== false && !String(form[`positioning_${prefix}${question.id}`] ?? "").trim()));
     if (missing) {
       setError("Quelques questions de positionnement restent à compléter. Prenez le temps de les renseigner, puis envoyez vos réponses.");
       return false;
@@ -362,7 +363,7 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
             <h1 style={s.title}>{replacementSubmitted ? "Merci, vos justificatifs corrigés sont transmis" : "Merci, votre dossier signé est bien transmis"}</h1>
             <p style={s.muted}>{replacementSubmitted ? `${organisationName} doit maintenant vérifier à nouveau ces pièces. Votre candidature d’origine et son historique sont conservés.` : `${organisationName} va pouvoir prendre connaissance de vos réponses et préparer la suite de votre inscription.`}</p>
             {submissionNextStep === "asynchronous" ? <p style={s.callout}>Votre formation se déroule à distance à votre rythme. Vos identifiants d&apos;accès vous seront envoyés par email lorsque votre inscription aura été traitée.</p> : submissionNextStep === "date_to_plan" ? <p style={s.callout}>Aucune date n&apos;est encore planifiée. Une date va être calée avec le formateur et {organisationName} reviendra vers vous dès que possible.</p> : <p style={s.callout}>Votre demande est rattachée à la session que vous avez choisie. L&apos;organisme vous transmettra les informations nécessaires pour la suite.</p>}
-            {!replacementSubmitted ? <p style={s.confirmation}>Vous allez également recevoir un email de confirmation de la part de <strong>Selen Editions</strong>, partenaire de <strong>{organisationName}</strong>.</p> : <p style={s.confirmation}>Aucun second dossier ni email de confirmation n’a été créé.</p>}
+            {!replacementSubmitted ? <p style={s.confirmation}>Vous allez également recevoir un email de confirmation de la part de <strong>Selen Editions</strong>, partenaire de <strong>{organisationName}</strong>.</p> : <p style={s.confirmation}>L’organisme vous recontactera après la vérification de vos justificatifs corrigés.</p>}
           </article>
           <p style={s.powered}>Dossier sécurisé avec Selen Daily</p>
         </section>
@@ -383,7 +384,7 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
           <p style={s.autosave}>{autosaveStatus === "saving" ? "Enregistrement..." : autosaveStatus === "saved" ? "Enregistré" : autosaveStatus === "error" ? "Le brouillon n'a pas pu être enregistré" : ""}</p>
         </article>
 
-        {priorSubmission ? <p style={s.callout}>Un dossier transmis depuis ce navigateur a été retrouvé. Si l’organisme vous a demandé de corriger un justificatif refusé, complétez à nouveau le formulaire avec la même adresse email et joignez toutes les pièces demandées : elles remplaceront les versions refusées sans créer une seconde candidature.</p> : null}
+        {priorSubmission ? <p style={s.callout}>Votre candidature a été retrouvée. Si l’organisme vous a demandé de corriger un justificatif refusé, renseignez les mêmes informations et réponses, choisissez la même session et joignez toutes les pièces demandées. Votre candidature sera conservée et les justificatifs corrigés seront vérifiés à nouveau.</p> : null}
 
         {registrationKind === "formation" ? (
           <article style={s.sessionCard}>
@@ -405,9 +406,14 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
         <article style={s.card}>
           {step === 0 ? <Welcome mode={mode} setMode={setMode} /> : mode === "beneficiary" ? (
             <BeneficiaryStep step={step} form={form} update={update} hasSelenPositioning={hasSelenPositioning} positioningQuestions={positioningQuestions} />
-          ) : (
-            <CompanyStep step={step} form={form} update={update} participants={participants} setParticipants={setParticipants} updateParticipant={updateParticipant} />
-          )}
+          ) : hasSelenPositioning && step === 5 ? (
+            <section><h2 style={s.sectionTitle}>Positionnement des apprenants</h2><p style={s.muted}>Chaque apprenant complète son questionnaire avant l’envoi du dossier.</p>
+              {positioningSubjects.map(subject => <fieldset key={positioningSubjectKey(subject)} style={s.card}>
+                <legend>{subject.first_name} {subject.last_name} · {subject.email}</legend>
+                {positioningQuestions.map(question => <PositioningQuestionField key={question.id} question={question} value={form[`positioning_${positioningSubjectKey(subject)}_${question.id}`] ?? ""} onChange={value => update(`positioning_${positioningSubjectKey(subject)}_${question.id}`, value)} />)}
+              </fieldset>)}
+            </section>
+          ) : <CompanyStep step={hasSelenPositioning && step === 6 ? 5 : step} form={form} update={update} participants={participants} setParticipants={setParticipants} updateParticipant={updateParticipant} />}
 
           {step === totalSteps - 1 ? (
             <>
@@ -539,7 +545,7 @@ function PositioningQuestionField({ question, value, onChange }: { question: Pos
   }
   return (
     <fieldset style={s.questionBox}>
-      <legend style={s.questionLegend}>{question.label}{question.required ? " *" : ""}</legend>
+      <legend style={s.questionLegend}>{question.label}{question.required !== false ? " *" : ""}</legend>
       {question.help_text ? <p style={s.muted}>{question.help_text}</p> : null}
       {question.type === "free_text" ? <textarea style={{ ...s.input, minHeight: 96 }} value={value} onChange={(event) => onChange(event.target.value)} /> : null}
       {question.type === "scale_1_5" ? <div style={s.choiceGrid}>{[1, 2, 3, 4, 5].map((score) => <button key={score} type="button" className={value === String(score) ? "btn-ink" : "btn-ghost"} onClick={() => onChange(String(score))}><span>{score}</span></button>)}</div> : null}

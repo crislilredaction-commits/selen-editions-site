@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import {loadTypeScript} from './helpers/loadTypeScript.mjs';
 import {harness,ids} from './helpers/dailyOwnPositioningHarness.mjs';
 
-async function view({company=false,loseFirstReply=false,companySubjects=null,startPositioning=false}={}) {
+async function view({company=false,loseFirstReply=false,companySubjects=null,startPositioning=false,prerequisites=false}={}) {
  const h=harness();Object.assign(h.formation,{positioning_mode:'selen',positioning_questionnaire_document_url:null,positioning_questions:[{id:'goal',label:'Objectif',type:'free_text',required:true}]});
+ if(prerequisites)Object.assign(h.formation,{prerequisite_mode:'required',prerequisite_requirements:[{id:'diploma',label:'Diplôme',required:true}]});
  const subjects=companySubjects??[h.subject];
  const draft={mode:company?'company':'beneficiary',step:startPositioning?5:6,submissionId:ids.submission,
   form:{first_name:'Alice',last_name:'Martin',email:'alice@example.test',phone:'0102030405',selected_session_id:ids.session,positioning_goal:'Progresser',admin_contact_name:'Alice',admin_contact_email:'alice@example.test',company_name:'Commanditaire'},participants:subjects};
@@ -12,13 +13,13 @@ async function view({company=false,loseFirstReply=false,companySubjects=null,sta
  if(company&&!startPositioning)draft.form[`positioning_${subjectKey(subjects[0])}_goal`]='Progresser';
  const storage=new Map([['selen-daily-registration-candidate-token',JSON.stringify(draft)]]);
  const states=[],effects=[],requests=[];let cursor=0,tree,posts=0;
- function Signature(){}const jsx=(type,props)=>({type,props});
+ function Signature(){}function PrerequisiteFiles(){}const jsx=(type,props)=>({type,props});
  const Page=loadTypeScript('app/daily-inscription/[token]/page.tsx',{
   react:{use:()=>({token:'candidate-token'}),useMemo:fn=>fn(),useEffect(fn){effects.push(fn);},useState(initial){const i=cursor++;if(!(i in states))states[i]=typeof initial==='function'?initial():initial;return[states[i],v=>states[i]=typeof v==='function'?v(states[i]):v];}},
-  'react/jsx-runtime':{jsx,jsxs:jsx},'@/components/daily/ApplicationSignature':{default:Signature},'@/components/daily/BeneficiaryProfessionalSiretFields':{},'@/components/daily/ProgramDetails':{},'@/components/daily/OwnPositioningFiles':{},
-  '@/lib/daily/ownPositioning':h.load('lib/daily/ownPositioning.ts'),'@/lib/dailyBeneficiarySiret':h.load('lib/dailyBeneficiarySiret.ts'),
- },{FormData,URLSearchParams,crypto:{randomUUID:()=>ids.submission},window:{location:{search:''},localStorage:{getItem:key=>storage.get(key),removeItem:key=>storage.delete(key)}},fetch:async(_url,options={})=>{
-  if(options.method==='POST'){requests.push(JSON.parse(options.body));const response=await h.post(requests.at(-1));posts++;if(loseFirstReply&&posts===1)throw Error('simulated lost reply');return response;}
+  'react/jsx-runtime':{jsx,jsxs:jsx},'@/components/daily/ApplicationSignature':{default:Signature},'@/components/daily/BeneficiaryProfessionalSiretFields':{},'@/components/daily/ProgramDetails':{},'@/components/daily/OwnPositioningFiles':{},'@/components/daily/PrerequisiteEvidenceFiles':{default:PrerequisiteFiles},
+  '@/lib/daily/ownPositioning':h.load('lib/daily/ownPositioning.ts'),'@/lib/daily/prerequisiteEvidence':h.load('lib/daily/prerequisiteEvidence.ts'),'@/lib/dailyBeneficiarySiret':h.load('lib/dailyBeneficiarySiret.ts'),
+ },{FormData,URLSearchParams,crypto:{randomUUID:()=>ids.submission},window:{location:{search:''},localStorage:{getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)}},fetch:async(_url,options={})=>{
+  if(options.method==='POST'){const multipart=options.body instanceof FormData;requests.push(JSON.parse(multipart?options.body.get('payload'):options.body));const response=await h.post(multipart?options.body:requests.at(-1));posts++;if(loseFirstReply&&posts===1)throw Error('simulated lost reply');return response;}
   return h.load('app/api/daily-registration/[token]/route.ts').GET(new Request('https://site.test'),h.params('candidate-token'));
  }}).default;
  const render=()=>{cursor=0;tree=Page({params:Promise.resolve({token:'candidate-token'})});};
@@ -28,15 +29,28 @@ async function view({company=false,loseFirstReply=false,companySubjects=null,sta
  const sign=()=>{const signature=find(n=>n.type===Signature);signature.props.onConsentChange(true);signature.props.onSignatureChange('data:image/png;base64,bW9jayBzaWduYXR1cmU=');render();};
  if(!startPositioning)sign();
  async function submit(expected=1){const before=posts;find(n=>n.type==='button'&&n.props.children?.props?.children==='Signer et envoyer mon dossier').props.onClick();for(let i=0;i<(expected?100:5)&&posts===before;i++)await new Promise(resolve=>setTimeout(resolve,5));await new Promise(resolve=>setTimeout(resolve,10));render();assert.equal(posts,before+expected);}
- return{h,requests,storage,submit,sign,render,nodes,find};
+ const attachProof=(file,participantIndex=0)=>{const files=find(n=>n.type===PrerequisiteFiles);const row=files.props.rows.find(row=>row.participantIndex===participantIndex);assert.ok(row);files.props.onChange(row.key,file);render();};
+ return{h,requests,storage,submit,sign,render,nodes,find,attachProof};
+}
+function assertPrivateDraftCleared(storage) {
+ assert.equal(storage.has('selen-daily-registration-candidate-token'),false);
+ assert.deepEqual([...storage.entries()],[['selen-daily-registration-receipt-candidate-token',JSON.stringify({submissionId:ids.submission})]]);
+ assert.doesNotMatch(JSON.stringify([...storage.entries()]),/Alice|Martin|alice@example|Progresser/);
 }
 for(const company of [false,true])test(`actual ${company?'company':'beneficiary'} page sends its persistent transmission ID in JSON`,async()=>{
- const v=await view({company});await v.submit();assert.equal(v.requests[0].submission_id,ids.submission);assert.equal(v.h.db.daily_formation_registration_requests.length,1);assert.equal(v.h.sends.length,1);assert.equal(v.storage.size,0);
+ const v=await view({company});await v.submit();assert.equal(v.requests[0].submission_id,ids.submission);assert.equal(v.h.db.daily_formation_registration_requests.length,1);assert.equal(v.h.sends.length,1);assertPrivateDraftCleared(v.storage);
  assert.equal(v.h.db.daily_formation_registration_requests[0].positioning_answers.questions[0].answer,'Progresser');
  if(company)assert.equal(v.requests[0].positioning_answers.participants[0].email,'alice@example.test');
 });
 test('actual candidate page retries a lost response without a second candidature or confirmation',async()=>{
- const v=await view({loseFirstReply:true});await v.submit();assert.equal(v.storage.size,1);await v.submit();assert.equal(v.requests[0].submission_id,v.requests[1].submission_id);assert.equal(v.h.db.daily_formation_registration_requests.length,1);assert.equal(v.h.sends.length,1);assert.equal(v.storage.size,0);
+ const v=await view({loseFirstReply:true});await v.submit();assert.equal(v.storage.size,1);assert.equal(v.storage.has('selen-daily-registration-candidate-token'),true);await v.submit();assert.equal(v.requests[0].submission_id,v.requests[1].submission_id);assert.equal(v.h.db.daily_formation_registration_requests.length,1);assert.equal(v.h.sends.length,1);assertPrivateDraftCleared(v.storage);
+});
+test('actual candidate page blocks a missing prerequisite and submits its private file with Selen answers',async()=>{
+ const v=await view({prerequisites:true});await v.submit(0);assert.equal(v.h.writes.length,0);assert.equal(v.h.sends.length,0);
+ v.attachProof(new File(['%PDF-1.7\nDiplôme Alice'],'diplome.pdf',{type:'application/pdf'}));await v.submit();
+ assert.equal(v.h.db.daily_formation_registration_requests.length,1);assert.equal(v.h.sends.length,1);
+ const proof=v.h.db.daily_documents.find(row=>row.document_type==='prerequisite_application_evidence');assert.ok(proof);assert.equal(proof.linked_object_id,ids.submission);assert.equal(proof.metadata.requirement_id,'diploma');assert.equal(proof.metadata.participant_index,0);
+ assert.equal(v.h.db.daily_formation_registration_requests[0].positioning_answers.questions[0].answer,'Progresser');assertPrivateDraftCleared(v.storage);
 });
 test('actual company page records separate answers for two learners',async()=>{
  const subjects=[{first_name:'Alice',last_name:'Martin',email:'alice@example.test'},{first_name:'Bob',last_name:'Durand',email:'bob@example.test'}];
