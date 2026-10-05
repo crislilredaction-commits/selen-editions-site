@@ -1,11 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { loadTypeScript } from "./helpers/loadTypeScript.mjs";
+import {harness as serverHarness,ids,uuid} from './helpers/dailyOwnPositioningHarness.mjs';
 
 const descriptive = ["global_objective", "learning_objectives", "detailed_program", "target_audience", "access_delays", "price", "pedagogical_resources", "evaluation_methods"];
 const original = "https://storage.invalid/programme-original.docx";
 const positioningOriginal = "/api/client/daily/uploads?id=00000000-0000-4000-8000-000000000005";
-function harness() {
+function harness(options={}) {
+  const configuration=options;
   const state = [], requests = [], navigation = [];
   let cursor = 0, tree;
   const jsx = (type, props) => ({ type, props });
@@ -24,10 +26,11 @@ function harness() {
       assert.equal(options.method, "POST");
       assert.equal(options.headers["Content-Type"], "application/json");
       requests.push(JSON.parse(options.body));
+      if(configuration.transport)return configuration.transport(requests.at(-1));
       return { ok: true, json: async () => ({ formation: { id: "formation/test" } }) };
     } },
   }, {
-    crypto: { randomUUID: () => "requirement-1" },
+    crypto: { randomUUID: () => options.nonce ?? "requirement-1" },
     FormData: class { constructor(values) { this.values = values; } get(key) { return this.values[key] ?? null; } },
   }).default;
   function nodes(node = tree) {
@@ -41,7 +44,7 @@ function harness() {
   return {
     requests, navigation, nodes, find, render,
     radio(index) { nodes().filter(n => n.props?.type === "radio")[index].props.onChange(); render(); },
-    upload(kind = "training_program_source") { const url = kind === "positioning_questionnaire_source" ? positioningOriginal : original; find(n => n.type === Upload && n.props.kind === kind).props.onUploaded(url); render(); assert.equal(find(n => n.type === Upload && n.props.kind === kind).props.value, url); },
+    upload(kind = "training_program_source") { const url = kind === "positioning_questionnaire_source" ? positioningOriginal : configuration.programUrl ?? original; find(n => n.type === Upload && n.props.kind === kind).props.onUploaded(url); render(); assert.equal(find(n => n.type === Upload && n.props.kind === kind).props.value, url); },
     change(node, value) { node.props.onChange({ target: { value } }); render(); },
     click(label) { find(n => n.type === "button" && n.props.children === label).props.onClick(); render(); },
     async submit(values = {}) {
@@ -52,6 +55,18 @@ function harness() {
     },
   };
 }
+
+test('actual imported creation page retries a lost response with the same identity and formation',async()=>{
+ const server=serverHarness({allowFormationWrite:true});const programId=uuid(20);server.db.daily_documents.push({...server.original,id:programId,document_type:'training_program_source'});let attempts=0;
+ const h=harness({nonce:uuid(30),programUrl:`/api/client/daily/uploads?id=${programId}`,transport:async body=>{
+  const result=await server.load('app/api/client/daily/formations/route.ts').POST(new Request('https://site.test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}));assert.equal(result.status,200);
+  if(++attempts===1)throw Error('simulated lost response');return result;
+ }});
+ h.upload();h.upload('positioning_questionnaire_source');const values={title:'Programme importé',duration_hours:'7',duration_days:'1',modality:'presentiel',contact_phone:'0102030405',contact_email:'of@example.test'};
+ await h.submit(values);assert.equal(h.navigation.length,0);await h.submit(values);
+ assert.equal(h.requests[0].creation_submission_id,uuid(30));assert.equal(h.requests[1].creation_submission_id,uuid(30));assert.equal(server.db.daily_formations.filter(f=>f.id!==ids.formation).length,1);assert.equal(server.writes.length,1);
+ assert.deepEqual(h.navigation,[`/client/daily/sessions/new?formation=${uuid(30)}`]);assert.equal(server.sends.length,0);
+});
 
 for (const mode of ["program_import", "selen_form"]) {
   test(`${mode}: real choice, descriptive requirements and API payload`, async () => {

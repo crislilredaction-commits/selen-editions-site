@@ -27,6 +27,7 @@ export default function DailyNewFormationPage() {
   const uploads = useRef<Partial<Record<DailyFormationSourceKind, DailySourceUploadState>>>({});
   const [uploadStates, setUploadStates] = useState<Partial<Record<DailyFormationSourceKind, DailySourceUploadState>>>({});
   const saveInProgress = useRef(false);
+  const creationSubmissionId = useRef<string | null>(null);
   const uploadPending = Object.values(uploadStates).includes("pending");
   const uploadBlocked = Object.values(uploadStates).some(state => state !== "idle");
   function sourceState(kind: DailyFormationSourceKind, state: DailySourceUploadState) { uploads.current = { ...uploads.current, [kind]: state }; setUploadStates(uploads.current); }
@@ -49,7 +50,9 @@ export default function DailyNewFormationPage() {
       const positioningQuestions = positioningMode === "selen" ? text("positioning_questions").split("\n").map((label) => label.trim()).filter(Boolean).map((label, index) => ({ id: `positioning_${index + 1}`, label, type: "free_text", required: true, options: [], help_text: "", order: index + 1 })) : [];
       if (positioningMode === "selen" && !positioningQuestions.length) throw new Error("Ajoutez au moins une question de positionnement.");
       if (prerequisiteMode === "required" && prerequisiteRequirements.length === 0) throw new Error("Ajoutez au moins un justificatif attendu pour les prérequis obligatoires.");
+      if (!creationSubmissionId.current) creationSubmissionId.current = crypto.randomUUID();
       const response = await assistanceFetch("/api/client/daily/formations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+        creation_submission_id: creationSubmissionId.current,
         creation_mode: mode, prerequisite_mode: prerequisiteMode, prerequisite_requirements: prerequisiteRequirements,
         detailed_program_document_url: mode === "program_import" ? programUrl : null, detailed_program: text("detailed_program"),
         title: text("title"), global_objective: text("global_objective"), learning_objectives: text("learning_objectives") ? [text("learning_objectives")] : [],
