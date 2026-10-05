@@ -1,3 +1,5 @@
+import { loadDailyCandidatureFollowup } from "./dailyCandidatureFollowup";
+
 type AdminClient = any;
 
 function isActiveEnrolment(status?: string | null) {
@@ -99,6 +101,8 @@ export async function loadDailySessionFollowupSnapshot(admin: AdminClient, organ
   if (readError) throw new Error(readError.message);
   if (!session) throw new Error("Session introuvable.");
 
+  const candidatures = await loadDailyCandidatureFollowup(admin, organisationId, sessionId);
+
   const activeEnrolments = (enrolments ?? []).filter((row: any) => isActiveEnrolment(row.status));
   const activeIds = new Set(activeEnrolments.map((row: any) => row.id));
   const attendance = (attendanceRecords ?? []).filter((row: any) => activeIds.has(row.enrolment_id));
@@ -116,8 +120,10 @@ export async function loadDailySessionFollowupSnapshot(admin: AdminClient, organ
     enrolments: activeEnrolments.map((row: any) => ({ id: row.id, name: learnerName(row), status: row.status })),
     entries: entries.map((row: any) => ({ ...row, learner_name: row.enrolment_id ? enrolmentNames.get(row.enrolment_id) ?? null : null })),
     signatures,
+    candidatures,
     summary: {
       session,
+      candidatures,
       learners: { active: activeEnrolments.length },
       attendance: { decided: decidedAttendance.length, total: attendance.length },
       assessments: { completed: completedAssessments.length, expected: activeEnrolments.length },

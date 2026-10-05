@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { CandidatureFollowup } from "@/lib/server/dailyCandidatureFollowup";
 import { assistanceFetch } from "@/components/AgentAssistanceBanner";
 
 type SignatureItem = {
@@ -29,6 +30,7 @@ type SignatureItem = {
 };
 
 type Summary = {
+  candidatures?: CandidatureFollowup[];
   learners: { active: number };
   attendance: { decided: number; total: number };
   assessments: { completed: number; expected: number };
@@ -180,6 +182,16 @@ export default function DailySessionFollowupSummary({ sessionId }: { sessionId: 
       <Metric label="Signatures" value={`${signatures.signed}/${signatures.total}`} detail={`${signatures.pending} en attente · ${signatures.followup_due ?? 0} relance(s) H+72 · ${signatures.failed} échec(s)`} />
       <Metric label="Suivis ouverts" value={summary.followup.open} detail={`${summary.followup.resolved} traité(s)`} />
       <Metric label="Événements consignés" value={summary.followup.incidents + summary.followup.adaptations} detail={`${summary.followup.incidents} incident(s) · ${summary.followup.adaptations} adaptation(s)`} />
+    </div>
+
+    <div style={{ marginTop: "1rem" }}>
+      <h3>Synthèses de candidature</h3>
+      {(summary.candidatures ?? []).length === 0 ? <p>Aucune synthèse de candidature rattachée à une inscription active.</p> : (summary.candidatures ?? []).map(item => <article key={item.requestId} style={{ marginBottom: "1rem" }}>
+        <strong>{item.applicant}</strong>
+        <p>Analyse Selen enregistrée : {item.analyzedAt}</p>
+        <p>Apprenants : {item.learners.map(person => person.name).join(", ")}</p>
+        <dl>{item.sections.map(section => <div key={section.key}><dt style={{ fontWeight: 700 }}>{section.label}</dt><dd style={{ margin: "0 0 .6rem", whiteSpace: "pre-wrap" }}>{section.value}</dd></div>)}</dl>
+      </article>)}
     </div>
 
     <div style={{ marginTop: "1rem", borderTop: "1px solid #d8b989", paddingTop: "1rem" }}>
