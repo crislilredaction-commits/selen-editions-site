@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { loadOriginalPositioning, OwnPositioningError } from "@/lib/server/dailyOwnPositioning";
 import { logAgentAssistanceAction } from "@/lib/server/agentAssistance";
 import { getDailyOrganisationContext, getDailyOrganisationReadContext } from "@/lib/server/dailyOrganisationContext";
+import { verifyDailyAssessmentSource } from "@/lib/server/dailyAssessmentSource";
 import {
   cleanPrerequisiteRequirements,
   parseDailyFormationCreationMode,
@@ -16,6 +17,8 @@ const STATUSES = new Set(["draft", "review", "validated", "correction_requested"
 const MODALITIES = new Set(["presentiel", "distanciel", "mixte"]);
 const POSITIONING_MODES = new Set(["off_platform", "selen"]);
 const POSITIONING_TYPES = new Set(["single_choice", "multiple_choice", "free_text", "scale_1_5"]);
+const ASSESSMENT_MODES = new Set(["external", "selen_quiz"]);
+const ASSESSMENT_TYPES = new Set(["single_choice", "multiple_choice", "free_text"]);
 
 function registrationToken() { return crypto.randomUUID().replaceAll("-", ""); }
 function text(body: Record<string, unknown>, key: string) { return String(body[key] ?? "").trim(); }
@@ -48,6 +51,56 @@ function cleanPositioningQuestions(value: unknown) {
       order: index + 1,
     };
   }).filter((question) => question.label && POSITIONING_TYPES.has(question.type));
+}
+
+function cleanAssessmentQuestions(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.map((raw, index) => {
+    const row = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+    const type = String(row.type ?? "single_choice").trim();
+    const options = Array.isArray(row.options) ? [...new Set(row.options.map((item) => String(item ?? "").trim()).filter(Boolean))] : [];
+    const correctAnswers = Array.isArray(row.correct_answers) ? [...new Set(row.correct_answers.map((item) => String(item ?? "").trim()).filter(Boolean))] : [];
+    const validCorrectAnswers = correctAnswers.filter((answer) => options.includes(answer));
+    return {
+      id: String(row.id ?? `assessment_${index + 1}`).trim() || `assessment_${index + 1}`,
+      label: String(row.label ?? "").trim(),
+      type: ASSESSMENT_TYPES.has(type) ? type : "single_choice",
+      options: type === "free_text" ? [] : options,
+      correct_answers: type === "free_text" ? [] : type === "single_choice" ? validCorrectAnswers.slice(0, 1) : validCorrectAnswers,
+      points: Math.max(0.5, Number(row.points) || 1),
+      required: row.required !== false,
+      order: index + 1,
+    };
+  }).filter((question) => question.label);
+}
+
+function buildAssessmentPayload(body: Record<string, unknown>, existing?: Record<string, unknown>) {
+  const supplied = Object.hasOwn(body, "learning_assessment_mode")
+    || Object.hasOwn(body, "learning_assessment_instructions")
+    || Object.hasOwn(body, "learning_assessment_questions")
+    || Object.hasOwn(body, "learning_assessment_document_url");
+  if (!supplied && existing) return { payload: {
+    learning_assessment_mode: existing.learning_assessment_mode,
+    learning_assessment_instructions: existing.learning_assessment_instructions,
+    learning_assessment_questions: existing.learning_assessment_questions,
+    learning_assessment_document_url: existing.learning_assessment_document_url,
+  } };
+  const mode = String(body.learning_assessment_mode ?? existing?.learning_assessment_mode ?? "external").trim();
+  const instructions = String(body.learning_assessment_instructions ?? "").trim();
+  const questions = cleanAssessmentQuestions(body.learning_assessment_questions);
+  const source = typeof body.learning_assessment_document_url === "string" ? body.learning_assessment_document_url.trim() : "";
+  if (!ASSESSMENT_MODES.has(mode)) return { error: "Mode d’évaluation invalide." };
+  if (mode === "selen_quiz" && questions.length === 0) return { error: "Ajoutez au moins une question pour l’évaluation finale ou choisissez le scan après session." };
+  if (mode === "selen_quiz") {
+    const invalid = questions.some((question) => question.type !== "free_text" && (question.options.length < 2 || question.correct_answers.length === 0));
+    if (invalid) return { error: "Chaque question à choix doit comporter au moins deux réponses distinctes et une bonne réponse." };
+  }
+  return { payload: {
+    learning_assessment_mode: mode,
+    learning_assessment_instructions: mode === "selen_quiz" ? instructions || null : null,
+    learning_assessment_questions: mode === "selen_quiz" ? questions : [],
+    learning_assessment_document_url: mode === "external" ? source || null : null,
+  } };
 }
 
 async function validateAllowedTrainers(
@@ -170,12 +223,18 @@ export async function POST(req: Request) {
 
   const built = buildPayload(body, context.user.id, context.organisationId);
   if ("error" in built) return NextResponse.json({ error: built.error }, { status: 400 });
+  const assessment = buildAssessmentPayload(body);
+  if ("error" in assessment) return NextResponse.json({ error: assessment.error }, { status: 400 });
   if (built.payload.positioning_mode === "off_platform" && !built.payload.positioning_questionnaire_document_url) return NextResponse.json({ error: "Importez votre questionnaire de positionnement avant d’enregistrer la formation." }, { status: 400 });
   try { await loadOriginalPositioning(context.admin, built.payload, false); }
   catch (cause) { return NextResponse.json({ error: cause instanceof OwnPositioningError ? cause.message : "Vérification du questionnaire indisponible." }, { status: cause instanceof OwnPositioningError ? cause.status : 500 }); }
   const trainerError = await validateAllowedTrainers(context.organisationId, built.payload.allowed_trainer_ids, context.admin);
   if (trainerError) return NextResponse.json({ error: trainerError }, { status: 400 });
-  const { data, error } = await context.admin.from("daily_formations").insert({ ...built.payload, public_registration_token: registrationToken(), public_registration_enabled: true }).select("*").single();
+  if (assessment.payload.learning_assessment_mode === "external" && assessment.payload.learning_assessment_document_url) {
+    try { await verifyDailyAssessmentSource(context.admin, context.organisationId, "", assessment.payload.learning_assessment_document_url); }
+    catch (cause) { return NextResponse.json({ error: cause instanceof Error ? cause.message : "Questionnaire privé indisponible." }, { status: 409 }); }
+  }
+  const { data, error } = await context.admin.from("daily_formations").insert({ ...built.payload, ...assessment.payload, public_registration_token: registrationToken(), public_registration_enabled: true }).select("*").single();
   if (error) return NextResponse.json({ error: error.message }, { status: error.code === "PSE01" ? 409 : 500 });
   if (context.assisted && context.assistance) await logAgentAssistanceAction({ supabase: context.admin, req, assistance: context.assistance, action: "daily_formation_create", actionLabel: "Formation créée par Studio pour le client", newState: { formation_id: data.id, title: data.title, status: data.status } });
   return NextResponse.json({ formation: data, assistanceMode: context.assisted });
@@ -207,6 +266,8 @@ export async function PATCH(req: Request) {
   };
   const built = buildPayload(editBody, context.user.id, context.organisationId);
   if ("error" in built) return NextResponse.json({ error: built.error }, { status: 400 });
+  const assessment = buildAssessmentPayload(body, existing as Record<string, unknown>);
+  if ("error" in assessment) return NextResponse.json({ error: assessment.error }, { status: 400 });
   const trainerError = await validateAllowedTrainers(context.organisationId, built.payload.allowed_trainer_ids, context.admin);
   if (trainerError) return NextResponse.json({ error: trainerError }, { status: 400 });
   // An unchanged historical, unconfigured mode remains editable. A new choice
@@ -215,14 +276,16 @@ export async function PATCH(req: Request) {
   if (built.payload.positioning_mode === "off_platform" && !built.payload.positioning_questionnaire_document_url && !unchangedLegacyPositioning) return NextResponse.json({ error: "Importez votre questionnaire de positionnement avant d’enregistrer la formation." }, { status: 400 });
   try { await loadOriginalPositioning(context.admin, { ...built.payload, id: existing.id }, false); }
   catch (cause) { return NextResponse.json({ error: cause instanceof OwnPositioningError ? cause.message : "Vérification du questionnaire indisponible." }, { status: cause instanceof OwnPositioningError ? cause.status : 500 }); }
+  if (assessment.payload.learning_assessment_mode === "external" && assessment.payload.learning_assessment_document_url) {
+    try { await verifyDailyAssessmentSource(context.admin, context.organisationId, existing.id, assessment.payload.learning_assessment_document_url); }
+    catch (cause) { return NextResponse.json({ error: cause instanceof Error ? cause.message : "Questionnaire privé indisponible." }, { status: 409 }); }
+  }
 
   const nextStatus = existing.status === "validated" || existing.status === "correction_requested" ? "review" : built.payload.status;
   const reviewSignaledAt = nextStatus === "review" ? new Date().toISOString() : existing.agent_review_signaled_at ?? null;
   const { data, error } = await context.admin.from("daily_formations").update({
     ...built.payload,
-    learning_assessment_mode: existing.learning_assessment_mode,
-    learning_assessment_instructions: existing.learning_assessment_instructions,
-    learning_assessment_questions: existing.learning_assessment_questions,
+    ...assessment.payload,
     status: nextStatus,
     version: existing.version ?? 1,
     previous_version_id: existing.previous_version_id ?? null,

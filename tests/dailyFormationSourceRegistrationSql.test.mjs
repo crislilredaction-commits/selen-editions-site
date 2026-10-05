@@ -57,7 +57,11 @@ test("PostgreSQL réel : import privé atomique, relecture, original intact et p
   });
   await t.test("une autre OF, un autre type ou un original retiré ne peut être attaché au catalogue",async()=>{
     await seed();await formation();await save();await db.query("update daily_documents set organisation_id=$1 where id=$2",[id(99),next]);
-    await assert.rejects(db.query("update daily_formations set positioning_questionnaire_document_url=$1 where id=$2",[`/api/client/daily/uploads?id=${next}`,id(20)]),/document original a changé/);
+    const beforeFormation=(await db.query("select * from daily_formations where id=$1",[id(20)])).rows[0];
+    const beforeDocuments=(await db.query("select * from daily_documents order by id")).rows;
+    await assert.rejects(db.query("update daily_formations set title='Programme corrigé',detailed_program='Contenu corrigé',learning_assessment_mode='selen_quiz',learning_assessment_questions=$3,positioning_questionnaire_document_url=$1 where id=$2",[`/api/client/daily/uploads?id=${next}`,id(20),JSON.stringify([{id:"final",label:"Évaluation finale",type:"free_text"}])]),/document original a changé/);
+    assert.deepEqual((await db.query("select * from daily_formations where id=$1",[id(20)])).rows[0],beforeFormation);
+    assert.deepEqual((await db.query("select * from daily_documents order by id")).rows,beforeDocuments);
     assert.equal((await row(old)).is_current,true);
   });
   await t.test("l’original signé et ses preuves restent strictement identiques",async()=>{

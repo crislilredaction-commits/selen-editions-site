@@ -177,7 +177,7 @@ for (const mode of ["selen_form", "program_import"]) test(`formulaire réel ${mo
     const required = controls.type === "div" ? controls.props.children[0].props.required : controls.props.required;
     assert.equal(required, mode === "selen_form", field.props.label);
   }
-  await h.submit(); assert.equal(h.requests.length, 2);
+  await h.submit(); assert.equal(h.requests.length, 1);
   const payload = h.requests[0].body;
   assert.equal(payload.creation_mode, mode); assert.equal(payload.detailed_program_document_url, program);
   assert.equal(payload.prerequisite_mode, "required"); assert.deepEqual(payload.prerequisite_requirements, requirements);
