@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createHash } from "node:crypto";
 import { loadOriginalPositioning, OwnPositioningError } from "@/lib/server/dailyOwnPositioning";
 import { logAgentAssistanceAction } from "@/lib/server/agentAssistance";
 import { getDailyOrganisationContext, getDailyOrganisationReadContext } from "@/lib/server/dailyOrganisationContext";
@@ -21,6 +22,11 @@ const ASSESSMENT_MODES = new Set(["external", "selen_quiz"]);
 const ASSESSMENT_TYPES = new Set(["single_choice", "multiple_choice", "free_text"]);
 
 function registrationToken() { return crypto.randomUUID().replaceAll("-", ""); }
+function stableCreation(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stableCreation);
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, stableCreation(item)]));
+  return value;
+}
 function text(body: Record<string, unknown>, key: string) { return String(body[key] ?? "").trim(); }
 function nullableText(body: Record<string, unknown>, key: string) { return text(body, key) || null; }
 function numberValue(body: Record<string, unknown>, key: string) {
@@ -210,7 +216,7 @@ export async function POST(req: Request) {
     const { data: source, error: sourceError } = await context.admin.from("daily_formations").select("*").eq("id", sourceId).eq("organisation_id", context.organisationId).maybeSingle();
     if (sourceError) return NextResponse.json({ error: sourceError.message }, { status: 500 });
     if (!source) return NextResponse.json({ error: "Formation source introuvable." }, { status: 404 });
-    const { id: _id, created_at: _createdAt, updated_at: _updatedAt, archived_at: _archivedAt, validation_note: _validationNote, previous_version_id: _previousVersionId, public_registration_token: _publicRegistrationToken, ...copy } = source;
+    const { id: _id, created_at: _createdAt, updated_at: _updatedAt, archived_at: _archivedAt, validation_note: _validationNote, previous_version_id: _previousVersionId, public_registration_token: _publicRegistrationToken, creation_submission_fingerprint: _creationReceipt, ...copy } = source;
     const { data, error } = await context.admin.from("daily_formations").insert({
       ...copy, user_id: context.user.id, organisation_id: context.organisationId, title: `${source.title} — copie`, status: "draft", version: 1,
       validation_note: null, previous_version_id: null, archived_at: null, spontaneous_registration_task_status: "none",
@@ -225,6 +231,21 @@ export async function POST(req: Request) {
   if ("error" in built) return NextResponse.json({ error: built.error }, { status: 400 });
   const assessment = buildAssessmentPayload(body);
   if ("error" in assessment) return NextResponse.json({ error: assessment.error }, { status: 400 });
+  const submissionId = text(body, "creation_submission_id").toLowerCase();
+  if ((submissionId || built.payload.creation_mode === "program_import") && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(submissionId)) return NextResponse.json({ error: "Rechargez le formulaire avant de créer la formation." }, { status: 400 });
+  const { updated_visible_at: _visibleAt, ...receivedPayload } = built.payload;
+  const fingerprint = submissionId ? createHash("sha256").update(JSON.stringify(stableCreation({ ...receivedPayload, ...assessment.payload }))).digest("hex") : null;
+  const { admin: creationAdmin, organisationId: creationOrganisationId, assisted: creationAssisted } = context;
+  async function receivedCreation() {
+    if (!submissionId) return null;
+    const { data: received, error: readError } = await creationAdmin.from("daily_formations").select("*").eq("id", submissionId).eq("organisation_id", creationOrganisationId).maybeSingle();
+    if (readError) return NextResponse.json({ error: "Vérification de l’enregistrement indisponible. Réessayez sans modifier le formulaire." }, { status: 503 });
+    if (!received) return null;
+    if (received.creation_submission_fingerprint !== fingerprint) return NextResponse.json({ error: "Cet envoi est déjà enregistré avec d’autres informations. Rechargez le catalogue pour modifier la formation existante." }, { status: 409 });
+    return NextResponse.json({ formation: received, alreadyCreated: true, assistanceMode: creationAssisted });
+  }
+  const received = await receivedCreation();
+  if (received) return received;
   if (built.payload.positioning_mode === "off_platform" && !built.payload.positioning_questionnaire_document_url) return NextResponse.json({ error: "Importez votre questionnaire de positionnement avant d’enregistrer la formation." }, { status: 400 });
   try { await loadOriginalPositioning(context.admin, built.payload, false); }
   catch (cause) { return NextResponse.json({ error: cause instanceof OwnPositioningError ? cause.message : "Vérification du questionnaire indisponible." }, { status: cause instanceof OwnPositioningError ? cause.status : 500 }); }
@@ -234,8 +255,14 @@ export async function POST(req: Request) {
     try { await verifyDailyAssessmentSource(context.admin, context.organisationId, "", assessment.payload.learning_assessment_document_url); }
     catch (cause) { return NextResponse.json({ error: cause instanceof Error ? cause.message : "Questionnaire privé indisponible." }, { status: 409 }); }
   }
-  const { data, error } = await context.admin.from("daily_formations").insert({ ...built.payload, ...assessment.payload, public_registration_token: registrationToken(), public_registration_enabled: true }).select("*").single();
-  if (error) return NextResponse.json({ error: error.message }, { status: error.code === "PSE01" ? 409 : 500 });
+  const { data, error } = await context.admin.from("daily_formations").insert({ ...built.payload, ...assessment.payload,
+    ...(submissionId ? { id: submissionId, creation_submission_fingerprint: fingerprint } : {}),
+    public_registration_token: registrationToken(), public_registration_enabled: true }).select("*").single();
+  if (error || !data) {
+    const recovered = await receivedCreation();
+    if (recovered) return recovered;
+    return NextResponse.json({ error: error?.code === "23505" ? "Cet identifiant d’envoi est déjà utilisé. Rechargez le catalogue." : error?.message || "L’enregistrement n’a pas pu être confirmé. Réessayez sans modifier le formulaire." }, { status: error?.code === "23505" || error?.code === "PSE01" ? 409 : 500 });
+  }
   if (context.assisted && context.assistance) await logAgentAssistanceAction({ supabase: context.admin, req, assistance: context.assistance, action: "daily_formation_create", actionLabel: "Formation créée par Studio pour le client", newState: { formation_id: data.id, title: data.title, status: data.status } });
   return NextResponse.json({ formation: data, assistanceMode: context.assisted });
 }

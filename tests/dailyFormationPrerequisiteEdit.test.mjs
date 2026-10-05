@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { harness, ids } from "./helpers/dailyOwnPositioningHarness.mjs";
+import { harness, ids, uuid } from "./helpers/dailyOwnPositioningHarness.mjs";
 import { loadTypeScript } from "./helpers/loadTypeScript.mjs";
 
 const requirements = [{ id: "diploma", label: "Diplôme", description: "Copie lisible", required: true }];
@@ -113,7 +113,7 @@ test("la création conserve sa déclaration explicite et ses contrôles", async 
   const f = fixture();
   assert.equal((await f.call({ id: undefined, prerequisite_mode: "required", prerequisite_requirements: [] }, "POST")).status, 400);
   assert.deepEqual(f.writes, []);
-  assert.equal((await f.call({ id: undefined, creation_mode: "program_import", learning_objectives: [], ...Object.fromEntries(descriptive.map(key => [key, ""])), prerequisite_mode: "none", prerequisite_requirements: [] }, "POST")).status, 200);
+  assert.equal((await f.call({ id: undefined, creation_submission_id: uuid(30), creation_mode: "program_import", learning_objectives: [], ...Object.fromEntries(descriptive.map(key => [key, ""])), prerequisite_mode: "none", prerequisite_requirements: [] }, "POST")).status, 200);
   assert.equal(f.db.daily_formations.length, 2);
 });
 
