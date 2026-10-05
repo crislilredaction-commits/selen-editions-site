@@ -5,7 +5,7 @@ import { PGlite } from '@electric-sql/pglite';
 
 const schema = await fs.readFile(new URL('./fixtures/dailyOwnPositioningSchema.sql', import.meta.url), 'utf8');
 const legacy = await fs.readFile(new URL('../supabase/migrations/20260829170817_daily_formation_version_workflow.sql', import.meta.url), 'utf8');
-const guard = await fs.readFile(new URL('../supabase/migrations/20261005061254_daily_formation_review_validation_guard.sql', import.meta.url), 'utf8');
+const guard = await fs.readFile(new URL('../supabase/migrations/20261005062808_daily_formation_review_validation_guard.sql', import.meta.url), 'utf8');
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const FORM = id(1), ORG = id(2), USER = id(3);
 
