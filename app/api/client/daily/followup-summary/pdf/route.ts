@@ -48,7 +48,7 @@ export async function GET(request: Request) {
 
   try {
     const snapshot = await loadDailySessionFollowupSnapshot(context.admin, context.organisationId, sessionId);
-    const { session, organisation, summary, entries, enrolments } = snapshot;
+    const { session, organisation, summary, entries, enrolments, candidatures } = snapshot;
     const title = formationTitle(session);
     const organisationName = text(organisation?.legal_name || organisation?.name) || "Organisme de formation";
     const doc = new jsPDF({ unit: "mm", format: "a4" });
@@ -67,8 +67,9 @@ export async function GET(request: Request) {
       doc.setFont("helvetica", options?.bold ? "bold" : "normal");
       doc.setFontSize(options?.size ?? 10);
       const lines = doc.splitTextToSize(value, width);
-      doc.text(lines, left, y);
-      y += lines.length * ((options?.size ?? 10) * 0.42) + (options?.gap ?? 3);
+      const height = (options?.size ?? 10) * 0.42;
+      for (const line of lines) { ensureSpace(height); doc.text(line, left, y); y += height; }
+      y += options?.gap ?? 3;
     };
     const metric = (label: string, value: string) => {
       ensureSpace(8);
@@ -105,6 +106,15 @@ export async function GET(request: Request) {
     if (enrolments.length === 0) paragraph("Aucun apprenant actif.", { size: 9 });
     else enrolments.forEach((item: any) => paragraph(`• ${item.name}`, { size: 9, gap: 1 }));
 
+    y += 3;
+    paragraph("Synthèses de candidature", { bold: true, size: 12, gap: 4 });
+    if (!candidatures.length) paragraph("Aucune synthèse rattachée à une inscription active.", { size: 9 });
+    for (const item of candidatures) {
+      paragraph(item.applicant, { bold: true, size: 11 });
+      paragraph(`Analyse Selen enregistrée : ${item.analyzedAt}`, { size: 9 });
+      paragraph(`Apprenants : ${item.learners.map(person => person.name).join(", ")}`, { size: 9 });
+      for (const section of item.sections) paragraph(`${section.label} : ${section.value}`, { size: 9 });
+    }
     y += 3;
     paragraph("Historique du suivi", { bold: true, size: 12, gap: 4 });
     if (entries.length === 0) {
