@@ -94,7 +94,7 @@ export function buildDailyRegistrationSummary(
     ],
     points_formateur: collect("specific_requests"),
     positionnement: responses
-      .filter((response) => response.response_type === "beneficiary")
+      .filter((response) => response.response_type === "beneficiary" || response.positioning_answers?.mode === "selen")
       .map((response) => response.positioning_answers)
       .filter((answers) => answers && Object.keys(answers).length > 0),
     adaptation_needed: responses.some((response) => Boolean(response.adaptation_needed)),

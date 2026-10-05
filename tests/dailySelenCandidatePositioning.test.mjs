@@ -72,12 +72,42 @@ test('unknown insert result recovers the received Selen candidature without rese
 test('foreign OF session formation cannot collect Selen answers',async()=>{
  const h=setup({legacy:true});h.formation.organisation_id=uuid(99);assert.equal((await h.post(h.payload())).status,404);assert.equal(h.writes.length,0);assert.equal(h.sends.length,0);
 });
-test('company JSON retry remains unique without impersonating beneficiary answers',async()=>{
+test('company dossier cannot omit each participant Selen positioning',async()=>{
  const h=setup();const body=h.payload({response_type:'company',company_name:'Commanditaire',participants:[h.subject],positioning_answers:{}});
- assert.equal((await h.post(body)).status,200);assert.equal((await h.post(body)).status,200);assert.equal(h.db.daily_formation_registration_requests.length,1);assert.equal(h.sends.length,1);
- assert.equal(h.db.daily_formation_registration_requests[0].positioning_answers.questions,undefined);
+ assert.equal((await h.post(body)).status,400);assert.equal(h.writes.length,0);assert.equal(h.sends.length,0);
 });
 test('missing OF original cannot silently bypass mandatory filled proof',async()=>{
  const h=harness();h.formation.positioning_questionnaire_document_url=null;
  assert.equal((await h.post(h.body())).status,409);assert.equal(h.writes.length,0);assert.equal(h.sends.length,0);
+});
+
+test('company Selen positioning preserves each learner, question version and unique retry',async()=>{
+ const h=setup();const bob={first_name:'Bob',last_name:'Durand',email:'bob@example.test'};
+ const body=h.payload({response_type:'company',company_name:'Commanditaire',participants:[h.subject,bob],positioning_answers:{mode:'selen',participants:[h.subject,bob].map((subject,index)=>({...subject,participant_index:index,questions:h.payload().positioning_answers.questions}))}});
+ assert.equal((await h.post(body)).status,200);assert.equal((await h.post(body)).status,200);
+ const row=h.db.daily_formation_registration_requests[0];assert.equal(row.positioning_answers.participants.length,2);
+ assert.equal(row.positioning_answers.participants[1].email,bob.email);assert.equal(row.positioning_answers.participants[1].questions[0].label,'Objectif');
+ assert.equal(row.positioning_answers.questions[5].label,'Bob Durand — Objectif');assert.equal(h.db.daily_formation_registration_requests.length,1);assert.equal(h.sends.length,1);
+});
+for(const missing of ['missing learner','wrong learner','missing answer'])test(`company Selen dossier rejects ${missing} before persistence`,async()=>{
+ const h=setup();const body=h.payload({response_type:'company',company_name:'Commanditaire',participants:[h.subject],positioning_answers:{mode:'selen',participants:[{...h.subject,participant_index:0,questions:h.payload().positioning_answers.questions}]}});
+ if(missing==='missing learner')body.positioning_answers.participants=[];
+ else if(missing==='wrong learner')body.positioning_answers.participants[0].email='foreign@example.test';
+ else body.positioning_answers.participants[0].questions=[];
+ assert.equal((await h.post(body)).status,400);assert.equal(h.writes.length,0);assert.equal(h.sends.length,0);
+});
+test('OF reads stored Selen answers under original labels without private technical metadata',async()=>{
+ const h=setup();await h.post(h.payload());h.formation.positioning_questions[0].label='New wording';
+ const res=await h.load('app/api/client/daily/registration-requests/route.ts').GET();assert.equal(res.status,200);
+ const result=(await res.json()).requests[0];assert.equal(result.positioning_responses[0].label,'Objectif');assert.deepEqual(result.positioning_responses[0].lines,['Progresser']);
+ assert.equal(result.positioning_answers,undefined);assert.equal(JSON.stringify(result.positioning_responses).includes('submission_fingerprint'),false);assert.equal(JSON.stringify(result.positioning_responses).includes('questionnaire_sha256'),false);
+});
+
+test('OF Selen answer projection excludes another organisation and unauthorised role',async()=>{
+ for(const nonManager of [false,true]){
+  const h=setup({nonManager});await h.post(h.payload());h.db.daily_formation_registration_requests.push({...h.db.daily_formation_registration_requests[0],id:uuid(99),formation_id:uuid(98),positioning_answers:{mode:'selen',questions:[{label:'Foreign private answer',answer:'Secret'}]}});
+  h.db.daily_formations.push({...h.formation,id:uuid(98),organisation_id:uuid(97)});
+  const res=await h.load('app/api/client/daily/registration-requests/route.ts').GET();assert.equal(res.status,nonManager?403:200);
+  const result=await res.json();assert.equal(JSON.stringify(result).includes('Foreign private answer'),false);if(!nonManager)assert.equal(result.requests.length,1);
+ }
 });

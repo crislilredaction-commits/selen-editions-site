@@ -39,6 +39,16 @@ function applicantLabel(row: RequestRow) {
   const person = [row.respondent_first_name, row.respondent_last_name].filter(Boolean).join(" ").trim();
   return row.company_name?.trim() || person || row.respondent_email?.trim() || "Candidat";
 }
+function positioningResponses(value: unknown) {
+  const answers = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  if (answers.mode !== "selen" || !Array.isArray(answers.questions)) return [];
+  return answers.questions.map((raw, index) => {
+    const row = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+    const values = Array.isArray(row.answer) ? row.answer : [row.answer];
+    const lines = values.filter(value => typeof value === "string" || typeof value === "number" || typeof value === "boolean").map(value => String(value).trim()).filter(Boolean);
+    return { label: typeof row.label === "string" && row.label.trim() ? row.label : `Question ${index + 1}`, lines };
+  });
+}
 async function getAccess() {
   const context = await getDailyClientWorkspace();
   if (!context.ok) return context;
@@ -159,7 +169,7 @@ export async function GET() {
     const materializedCount = new Map<string, number>();
     for (const row of materializations ?? []) materializedCount.set(row.registration_request_id, (materializedCount.get(row.registration_request_id) ?? 0) + 1);
 
-    // Return verified file descriptors, never the raw answers or storage paths.
+    // Return verified files and readable Selen answers, without technical proofs.
     const proofsFor = (row: RequestRow) => {
       const answers = row.positioning_answers as Record<string, unknown> | null;
       return answers?.mode === "off_platform" && Array.isArray(answers.external_documents)
@@ -196,6 +206,7 @@ export async function GET() {
         return {
         ...visible,
         positioning_documents,
+        positioning_responses: positioningResponses(positioning_answers),
         applicant_label: applicantLabel(row),
         formation_title: formationById.get(row.formation_id)?.title ?? "Formation",
         decisions: decisionsByRequest.get(row.id) ?? [],

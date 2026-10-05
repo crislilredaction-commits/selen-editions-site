@@ -78,7 +78,24 @@ function stable(value: unknown): unknown {
 // The public payload supplies answers only. Question wording, types and choices
 // come from the validated formation, so a browser cannot remove an obligation.
 export function selenCandidatePositioningAnswers(body: Json, formation: Json): Json {
-  if (formation.positioning_mode !== "selen" || body.response_type !== "beneficiary") return {};
+  if (formation.positioning_mode !== "selen") return {};
+  if (body.response_type === "company") {
+    const subjects = positioningSubjects(body);
+    const raw = body.positioning_answers && typeof body.positioning_answers === "object" ? body.positioning_answers as Json : {};
+    const submitted = Array.isArray(raw.participants) ? raw.participants : [];
+    if (submitted.length !== subjects.length) throw new OwnPositioningError("Complétez le positionnement de chaque apprenant avant la candidature.");
+    const participants = subjects.map((subject, index) => {
+      const matching = submitted.filter(value => value && typeof value === "object" && (value as Json).participant_index === index);
+      const row = matching[0] as Json | undefined;
+      if (matching.length !== 1 || !row || text(row.email).toLowerCase() !== subject.email || text(row.first_name) !== subject.first_name || text(row.last_name) !== subject.last_name) throw new OwnPositioningError("Le positionnement doit correspondre à chaque apprenant indiqué dans le dossier.");
+      const answers = selenCandidatePositioningAnswers({ ...body, response_type: "beneficiary", positioning_answers: { questions: row.questions } }, formation);
+      return { ...subject, participant_index: index, questionnaire_sha256: answers.questionnaire_sha256, questions: answers.questions as Json[] };
+    });
+    return { mode: "selen", questionnaire_sha256: participants[0].questionnaire_sha256, participants,
+      questions: participants.flatMap(participant => participant.questions.map(question => ({ ...question,
+        id: `${participant.participant_index}:${question.id}`, participant_index: participant.participant_index,
+        label: `${participant.first_name} ${participant.last_name} — ${question.label}` }))) };
+  }
   if (formation.status !== "validated" || !Array.isArray(formation.positioning_questions) || !formation.positioning_questions.length) {
     throw new OwnPositioningError("Le questionnaire est en cours de validation. Actualisez le dossier après validation de la formation.", 409);
   }
