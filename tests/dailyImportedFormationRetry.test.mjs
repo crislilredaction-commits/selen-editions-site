@@ -20,7 +20,7 @@ test('concurrent imported programme retries share the primary-key winner',async(
  const h=importedCreationFixture();assert.deepEqual((await Promise.all([h.post(),h.post()])).map(r=>r.status),[200,200]);assert.equal(h.created().length,1);assert.equal(h.writes.length,1);
 });
 test('replay after agent correction and validation preserves its current work and link',async()=>{
- const h=importedCreationFixture();await h.post();const row=h.created()[0];Object.assign(row,{title:'Programme relu et corrigé',status:'validated',detailed_program:'Contenu saisi par l’agent',spontaneous_registration_task_status:'to_attach'});h.original.is_current=false;
+ const h=importedCreationFixture();await h.post();const row=h.created()[0];Object.assign(row,{title:'Programme relu et corrigé',status:'validated',detailed_program:'Contenu saisi par l’agent',spontaneous_registration_task_status:'to_attach',detailed_program_document_url:`/api/client/daily/uploads?id=${uuid(21)}`});const prior=h.db.daily_documents.find(d=>d.id===uuid(20));h.db.daily_documents.push({...prior,id:uuid(21),previous_document_id:prior.id,is_current:true});prior.is_current=false;
  const before=structuredClone(row);assert.equal((await h.post()).status,200);assert.deepEqual(row,before);assert.equal(h.created().length,1);assert.equal(h.writes.length,1);
 });
 for(const change of ['title','programme','positioning','assessment'])test(`changed ${change} cannot reuse an imported creation identity`,async()=>{
