@@ -74,6 +74,77 @@ function stable(value: unknown): unknown {
   if (value && typeof value === "object") return Object.fromEntries(Object.entries(value as Json).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, stable(item)]));
   return value;
 }
+
+// The public payload supplies answers only. Question wording, types and choices
+// come from the validated formation, so a browser cannot remove an obligation.
+export function selenCandidatePositioningAnswers(body: Json, formation: Json): Json {
+  if (formation.positioning_mode !== "selen") return {};
+  if (body.response_type === "company") {
+    const subjects = positioningSubjects(body);
+    const raw = body.positioning_answers && typeof body.positioning_answers === "object" ? body.positioning_answers as Json : {};
+    const submitted = Array.isArray(raw.participants) ? raw.participants : [];
+    if (submitted.length !== subjects.length) throw new OwnPositioningError("Complétez le positionnement de chaque apprenant avant la candidature.");
+    const participants = subjects.map((subject, index) => {
+      const matching = submitted.filter(value => value && typeof value === "object" && (value as Json).participant_index === index);
+      const row = matching[0] as Json | undefined;
+      if (matching.length !== 1 || !row || text(row.email).toLowerCase() !== subject.email || text(row.first_name) !== subject.first_name || text(row.last_name) !== subject.last_name) throw new OwnPositioningError("Le positionnement doit correspondre à chaque apprenant indiqué dans le dossier.");
+      const answers = selenCandidatePositioningAnswers({ ...body, response_type: "beneficiary", positioning_answers: { questions: row.questions } }, formation);
+      return { ...subject, participant_index: index, questionnaire_sha256: answers.questionnaire_sha256, questions: answers.questions as Json[] };
+    });
+    return { mode: "selen", questionnaire_sha256: participants[0].questionnaire_sha256, participants,
+      questions: participants.flatMap(participant => participant.questions.map(question => ({ ...question,
+        id: `${participant.participant_index}:${question.id}`, participant_index: participant.participant_index,
+        label: `${participant.first_name} ${participant.last_name} — ${question.label}` }))) };
+  }
+  if (formation.status !== "validated" || !Array.isArray(formation.positioning_questions) || !formation.positioning_questions.length) {
+    throw new OwnPositioningError("Le questionnaire est en cours de validation. Actualisez le dossier après validation de la formation.", 409);
+  }
+  const raw = body.positioning_answers && typeof body.positioning_answers === "object" ? body.positioning_answers as Json : {};
+  const submitted = Array.isArray(raw.questions) ? raw.questions : [];
+  const answers = new Map<string, unknown>();
+  for (const item of submitted) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) throw new OwnPositioningError("Réponses de positionnement invalides.");
+    const row = item as Json, id = text(row.id);
+    if (!id || answers.has(id)) throw new OwnPositioningError("Chaque question doit recevoir une seule réponse.");
+    answers.set(id, row.answer);
+  }
+  const ids = new Set<string>();
+  const questionnaire = formation.positioning_questions.map((item, index) => {
+    const row = item && typeof item === "object" ? item as Json : {};
+    const id = text(row.id), label = text(row.label), type = text(row.type);
+    if (!id || ids.has(id) || !label || !["free_text", "single_choice", "multiple_choice", "scale_1_5"].includes(type)) throw new OwnPositioningError("Questionnaire indisponible. Contactez votre organisme de formation.", 409);
+    ids.add(id);
+    const options = Array.isArray(row.options) ? row.options.map(text).filter(Boolean) : [];
+    if (["single_choice", "multiple_choice"].includes(type) && (!options.length || new Set(options).size !== options.length)) throw new OwnPositioningError("Questionnaire indisponible. Contactez votre organisme de formation.", 409);
+    return { id, label, type, required: row.required !== false, options, order: index + 1, help_text: text(row.help_text) };
+  });
+  if ([...answers.keys()].some(id => !ids.has(id))) throw new OwnPositioningError("Le questionnaire a changé. Actualisez votre dossier.", 409);
+  const questions = questionnaire.map(question => {
+    const rawAnswer = answers.get(question.id);
+    let answer: string | string[];
+    if (question.type === "multiple_choice") {
+      if (rawAnswer !== undefined && (!Array.isArray(rawAnswer) || rawAnswer.some(value => typeof value !== "string"))) throw new OwnPositioningError("Choisissez les réponses proposées pour le positionnement.");
+      answer = Array.isArray(rawAnswer) ? rawAnswer.map(text) : [];
+      if (new Set(answer).size !== answer.length || answer.some(value => !question.options.includes(value))) throw new OwnPositioningError("Choisissez les réponses proposées pour le positionnement.");
+    } else {
+      if (rawAnswer !== undefined && typeof rawAnswer !== "string") throw new OwnPositioningError("Réponse de positionnement invalide.");
+      answer = text(rawAnswer);
+      if (answer && question.type === "single_choice" && !question.options.includes(answer)) throw new OwnPositioningError("Choisissez une réponse proposée pour le positionnement.");
+      if (answer && question.type === "scale_1_5" && !/^[1-5]$/.test(answer)) throw new OwnPositioningError("Le positionnement doit être évalué de 1 à 5.");
+    }
+    if (question.required && !answer.length) throw new OwnPositioningError("Répondez aux questions de positionnement obligatoires avant d’envoyer le dossier.");
+    return { ...question, answer };
+  });
+  return { mode: "selen", questionnaire_sha256: hash(JSON.stringify(stable(questionnaire))), questions };
+}
+
+export function prepareJsonRegistrationSubmission(body: Json, positioningAnswers: Json, scope: string): Pick<OwnPositioningSubmission, "id" | "fingerprint"> {
+  const id = text(body.submission_id).toLowerCase();
+  if (!uuid.test(id)) throw new OwnPositioningError("Actualisez le dossier avant de transmettre votre candidature.");
+  const fingerprint = hash(JSON.stringify(stable({ scope, body: { ...body, submission_id: id, positioning_answers: positioningAnswers } })));
+  return { id, fingerprint };
+}
+
 export async function prepareOwnPositioning(body: Json, formData: FormData | null, original: OriginalPositioning, scope: string): Promise<OwnPositioningSubmission> {
   if (!formData) throw new OwnPositioningError("Réimportez le document de positionnement rempli avant d’envoyer votre candidature.");
   if (text(body.positioning_source_id).toLowerCase() !== original.id) throw new OwnPositioningError("Le questionnaire a changé. Actualisez le dossier, téléchargez sa version actuelle et réimportez le document rempli.", 409);

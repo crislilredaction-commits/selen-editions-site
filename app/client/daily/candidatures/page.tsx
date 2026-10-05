@@ -41,6 +41,7 @@ type RegistrationRequest = {
   agent_analysis_completed_at?: string | null;
   agent_analysis_summary?: Record<string, unknown> | null;
   positioning_documents?: Array<{ id: string; name: string }>;
+  positioning_responses?: Array<{ label: string; lines: string[] }>;
   can_decide: boolean;
   can_materialize?: boolean;
   decisions: DecisionRow[];
@@ -204,11 +205,18 @@ export default function RegistrationRequestsPage() {
     }
   }
 
+  function positioningDetails(request: RegistrationRequest) {
+    return <section aria-label="Positionnement du candidat" style={{ marginTop: 16, minWidth: 0, overflowWrap: "anywhere" }}>
+      {request.positioning_documents?.length ? <div><strong>Positionnements remplis</strong><ul>{request.positioning_documents.map(file => <li key={file.id}><a href={`/api/client/daily/uploads?id=${encodeURIComponent(file.id)}`} download rel="noreferrer">{file.name}</a></li>)}</ul></div> : null}
+      {request.positioning_responses?.length ? <div><h4>Réponses au questionnaire de positionnement</h4><dl>{request.positioning_responses.map((row, index) => <div key={index} style={{ marginBottom: 12 }}><dt style={{ fontWeight: 800 }}>{row.label}</dt><dd style={{ margin: "4px 0 0", whiteSpace: "pre-wrap" }}>{row.lines.length ? row.lines.join("\n") : "Sans réponse"}</dd></div>)}</dl></div> : null}
+    </section>;
+  }
+
   function summaryDetails(request: RegistrationRequest) {
     const summary = projectCandidatureSummary(request);
     return <section aria-label="Synthèse Selen" style={{ marginTop: 16, minWidth: 0, overflowWrap: "anywhere" }}>
       <h3>Synthèse Selen</h3>
-      {request.positioning_documents?.length ? <div><strong>Positionnements remplis</strong><ul>{request.positioning_documents.map(file => <li key={file.id}><a href={`/api/client/daily/uploads?id=${encodeURIComponent(file.id)}`} download rel="noreferrer">{file.name}</a></li>)}</ul></div> : null}
+      {positioningDetails(request)}
       <p>Date de synthèse : {summary.analyzedAt}</p>
       {!summary.available ? <p>Synthèse indisponible.</p> : null}
       <dl>{summary.sections.map(section => <div key={section.key} style={{ marginBottom: 12 }}>
@@ -239,6 +247,15 @@ export default function RegistrationRequestsPage() {
       {error ? <p role="alert" style={s.error}>{error}</p> : null}
       {waitingAnalysis.length ? <p role="status" style={s.muted}>{waitingAnalysis.length} candidature(s) sont encore en cours d’analyse par Selen et ne peuvent pas encore être décidées.</p> : null}
       {message ? <p role="status" style={s.success}>{message}</p> : null}
+
+      {waitingAnalysis.length ? <section aria-label="Candidatures en cours d’analyse" style={s.list}>
+        {waitingAnalysis.map(request => <article key={request.id} style={s.card}>
+          <span style={s.pendingBadge}>Analyse Selen en cours</span>
+          <h2 style={s.h2}>{request.applicant_label}</h2>
+          <p style={s.formation}>{request.formation_title}</p>
+          {positioningDetails(request)}
+        </article>)}
+      </section> : null}
 
       {pending.length === 0 ? (
         <section style={s.empty}><strong>Aucune candidature n'attend votre décision.</strong><p style={s.muted}>Les nouvelles demandes apparaîtront ici automatiquement.</p></section>

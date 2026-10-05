@@ -91,8 +91,8 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
     return Array.isArray(questions) ? [...questions].sort((a, b) => Number(a.order ?? 0) - Number(b.order ?? 0)) : [];
   }, [session]);
 
-  const hasSelenPositioning = mode === "beneficiary" && session?.daily_formations?.positioning_mode === "selen" && positioningQuestions.length > 0;
-  const totalSteps = mode === "company" ? 6 : hasSelenPositioning ? 7 : 6;
+  const hasSelenPositioning = session?.daily_formations?.positioning_mode === "selen" && positioningQuestions.length > 0;
+  const totalSteps = hasSelenPositioning ? 7 : 6;
 
   useEffect(() => {
     async function load() {
@@ -204,16 +204,16 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
 
   function buildPositioningAnswers() {
     if (!hasSelenPositioning) return {};
-    return {
-      mode: "selen",
-      questions: positioningQuestions.map((question) => ({
+    const answersFor = (prefix = "") => positioningQuestions.map((question) => ({
         id: question.id,
         label: question.label,
         type: question.type,
-        required: Boolean(question.required),
-        answer: question.type === "multiple_choice" ? String(form[`positioning_${question.id}`] ?? "").split("|||").filter(Boolean) : form[`positioning_${question.id}`] ?? "",
-      })),
-    };
+        required: question.required !== false,
+        answer: question.type === "multiple_choice" ? String(form[`positioning_${prefix}${question.id}`] ?? "").split("|||").filter(Boolean) : form[`positioning_${prefix}${question.id}`] ?? "",
+      }));
+    return mode === "company" ? { mode: "selen", participants: positioningSubjects.map((subject, index) => ({
+      ...subject, participant_index: index, questions: answersFor(`${positioningSubjectKey(subject)}_`),
+    })) } : { mode: "selen", questions: answersFor() };
   }
 
   function validatePositioning() {
@@ -222,7 +222,8 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
       return false;
     }
     if (!hasSelenPositioning) return true;
-    const missing = positioningQuestions.some((question) => question.required && !String(form[`positioning_${question.id}`] ?? "").trim());
+    const prefixes = mode === "company" ? positioningSubjects.map(subject => `${positioningSubjectKey(subject)}_`) : [""];
+    const missing = !prefixes.length || prefixes.some(prefix => positioningQuestions.some((question) => question.required !== false && !String(form[`positioning_${prefix}${question.id}`] ?? "").trim()));
     if (missing) {
       setError("Quelques questions de positionnement restent à compléter. Prenez le temps de les renseigner, puis envoyez vos réponses.");
       return false;
@@ -278,7 +279,8 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
         positioning_answers: buildPositioningAnswers(),
         signature_consent: signatureConsent,
         signature_data: signatureData,
-        ...(ownPositioning ? { positioning_source_id: ownPositioning.id, submission_id: submissionId } : {}),
+        submission_id: submissionId,
+        ...(ownPositioning ? { positioning_source_id: ownPositioning.id } : {}),
       };
       const multipart = new FormData();
       if (ownPositioning) { multipart.append("payload", JSON.stringify(payload)); filledRows.forEach((row, index) => { if (row.file) multipart.append(`positioning_file_${index}`, row.file); }); }
@@ -350,9 +352,14 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
         <article style={s.card}>
           {step === 0 ? <Welcome mode={mode} setMode={setMode} /> : mode === "beneficiary" ? (
             <BeneficiaryStep step={step} form={form} update={update} hasSelenPositioning={hasSelenPositioning} positioningQuestions={positioningQuestions} />
-          ) : (
-            <CompanyStep step={step} form={form} update={update} participants={participants} setParticipants={setParticipants} updateParticipant={updateParticipant} />
-          )}
+          ) : hasSelenPositioning && step === 5 ? (
+            <section><h2 style={s.sectionTitle}>Positionnement des apprenants</h2><p style={s.muted}>Chaque apprenant complète son questionnaire avant l’envoi du dossier.</p>
+              {positioningSubjects.map(subject => <fieldset key={positioningSubjectKey(subject)} style={s.card}>
+                <legend>{subject.first_name} {subject.last_name} · {subject.email}</legend>
+                {positioningQuestions.map(question => <PositioningQuestionField key={question.id} question={question} value={form[`positioning_${positioningSubjectKey(subject)}_${question.id}`] ?? ""} onChange={value => update(`positioning_${positioningSubjectKey(subject)}_${question.id}`, value)} />)}
+              </fieldset>)}
+            </section>
+          ) : <CompanyStep step={hasSelenPositioning && step === 6 ? 5 : step} form={form} update={update} participants={participants} setParticipants={setParticipants} updateParticipant={updateParticipant} />}
 
           {step === totalSteps - 1 ? (
             <>{ownPositioning ? <OwnPositioningFiles downloadUrl={`/api/daily-registration/${encodeURIComponent(token)}/positioning-document`} name={ownPositioning.name} rows={filledRows} onChange={(key, file) => setFilledDocuments(current => { const next = { ...current }; if (file) next[key] = file; else delete next[key]; return next; })} /> : null}<ApplicationSignature consentText={signatureConsentText} consent={signatureConsent} onConsentChange={setSignatureConsent} onSignatureChange={setSignatureData} /></>
@@ -479,7 +486,7 @@ function PositioningQuestionField({ question, value, onChange }: { question: Pos
   }
   return (
     <fieldset style={s.questionBox}>
-      <legend style={s.questionLegend}>{question.label}{question.required ? " *" : ""}</legend>
+      <legend style={s.questionLegend}>{question.label}{question.required !== false ? " *" : ""}</legend>
       {question.help_text ? <p style={s.muted}>{question.help_text}</p> : null}
       {question.type === "free_text" ? <textarea style={{ ...s.input, minHeight: 96 }} value={value} onChange={(event) => onChange(event.target.value)} /> : null}
       {question.type === "scale_1_5" ? <div style={s.choiceGrid}>{[1, 2, 3, 4, 5].map((score) => <button key={score} type="button" className={value === String(score) ? "btn-ink" : "btn-ghost"} onClick={() => onChange(String(score))}><span>{score}</span></button>)}</div> : null}

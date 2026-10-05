@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import { sendDailyRegistrationConfirmation } from "@/lib/server/dailyRegistrationEmails";
 import { normalizeBeneficiarySiret, validateOptionalBeneficiarySiret } from "@/lib/dailyBeneficiarySiret";
-import { loadOriginalPositioning, OwnPositioningError, prepareOwnPositioning, persistOwnPositioning, positioningSubmissionAnswers, type OwnPositioningSubmission } from "@/lib/server/dailyOwnPositioning";
+import { loadOriginalPositioning, OwnPositioningError, prepareOwnPositioning, persistOwnPositioning, positioningSubmissionAnswers, prepareJsonRegistrationSubmission, selenCandidatePositioningAnswers, type OwnPositioningSubmission } from "@/lib/server/dailyOwnPositioning";
 import {
   buildDailyRegistrationSummary,
   DAILY_COMPANY_QUESTIONS,
@@ -102,7 +102,7 @@ function publicFormation(formation: Record<string, unknown>) {
   const { positioning_questionnaire_document_url: _privateReference, ...visible } = formation;
   return visible;
 }
-async function ownSubmissionReplay(submission: OwnPositioningSubmission, kind: "formation" | "session", targetId: string, userId: string) {
+async function ownSubmissionReplay(submission: Pick<OwnPositioningSubmission, "id" | "fingerprint">, kind: "formation" | "session", targetId: string, userId: string) {
   const admin = getAdminSupabase();
   const { data, error } = await admin.from(kind === "formation" ? "daily_formation_registration_requests" : "daily_registration_responses")
     .select("*")
@@ -133,7 +133,7 @@ export async function GET(_request: Request, { params }: Params) {
   if (session) {
     const organisation = await findOrganisation(session.user_id);
     const formation = Array.isArray(session.daily_formations) ? session.daily_formations[0] : session.daily_formations;
-    if (formation?.positioning_questionnaire_document_url && formation.organisation_id !== session.organisation_id) throw new OwnPositioningError("Formation introuvable.", 404);
+    if (formation && formation.organisation_id !== session.organisation_id) throw new OwnPositioningError("Formation introuvable.", 404);
     const original = formation ? await loadOriginalPositioning(getAdminSupabase(), formation) : null;
     return NextResponse.json({ registrationKind: "session", session: { ...session, daily_formations: formation ? publicFormation(formation) : null }, ownPositioning: original ? { id: original.id, name: original.name } : null, organisation, availableSessions: [], deliveryMode: session.modality === "distanciel" && session.distance_mode === "asynchrone" ? "asynchronous" : "scheduled", beneficiaryQuestions: DAILY_NEED_QUESTIONS, companyQuestions: DAILY_COMPANY_QUESTIONS, positioningQuestions: DAILY_POSITIONING_QUESTIONS, signatureConsentText: APPLICATION_CONSENT_TEXT });
   }
@@ -187,14 +187,17 @@ export async function POST(request: Request, { params }: Params) {
   const targetId = session?.id ?? formation?.id;
   if (!targetId) return NextResponse.json({ error: "Dossier de candidature introuvable." }, { status: 404 });
   const rawFormation = formation ?? (Array.isArray(session?.daily_formations) ? session.daily_formations[0] : session?.daily_formations);
-  if (session && rawFormation?.positioning_questionnaire_document_url && rawFormation.organisation_id !== session.organisation_id) throw new OwnPositioningError("Formation introuvable.", 404);
+  if (session && rawFormation && rawFormation.organisation_id !== session.organisation_id) throw new OwnPositioningError("Formation introuvable.", 404);
   const original = rawFormation ? await loadOriginalPositioning(getAdminSupabase(), rawFormation) : null;
+  if (rawFormation?.positioning_mode === "off_platform" && !original) throw new OwnPositioningError("Le questionnaire de l’organisme doit être importé avant la candidature. Contactez votre organisme de formation.", 409);
   const ownSubmission = original ? await prepareOwnPositioning(body, formData, original, `${formation ? "formation" : "session"}:${targetId}`) : null;
   if (ownSubmission) {
     positioningAnswers = positioningSubmissionAnswers(ownSubmission);
-    const replay = await ownSubmissionReplay(ownSubmission, formation ? "formation" : "session", targetId, (formation ?? session)!.user_id);
-    if (replay) return replay;
-  }
+  } else if (rawFormation?.positioning_mode === "selen") positioningAnswers = selenCandidatePositioningAnswers(body, rawFormation);
+  const submission = ownSubmission ?? prepareJsonRegistrationSubmission(body, positioningAnswers, `${formation ? "formation" : "session"}:${targetId}`);
+  positioningAnswers.submission_fingerprint = submission.fingerprint;
+  const replay = await ownSubmissionReplay(submission, formation ? "formation" : "session", targetId, (formation ?? session)!.user_id);
+  if (replay) return replay;
   const signature = buildApplicationSignature(request, body, targetId, responseType, needAnswers, positioningAnswers);
   if ("error" in signature) return NextResponse.json({ error: signature.error }, { status: 400 });
   const adaptationNeeded = hasExplicitAdaptationAnswer(needAnswers) || detectAdaptationNeeded(needAnswers);
@@ -216,7 +219,7 @@ export async function POST(request: Request, { params }: Params) {
     const nextStep = attachedSession ? isAsynchronous(attachedSession) ? "asynchronous" : "scheduled" : "date_to_plan";
     if (ownSubmission) await persistOwnPositioning(supabase, ownSubmission, "formation", attachedSession?.id ?? null);
     const { data: response, error } = await supabase.from("daily_formation_registration_requests").insert({
-      ...(ownSubmission ? { id: ownSubmission.id } : {}),
+      id: submission.id,
       formation_id: formation.id, user_id: formation.user_id, response_type: responseType,
       respondent_first_name: respondentFirstName || null, respondent_last_name: text(body, "respondent_last_name") || null, respondent_email: respondentEmail || null,
       company_name: responseType === "company" ? text(body, "company_name") || null : null, participants: responseType === "company" ? jsonArray(body.participants) : [],
@@ -224,7 +227,7 @@ export async function POST(request: Request, { params }: Params) {
       attached_session_id: attachedSession?.id ?? null, status: attachedSession ? "attached" : "to_attach", submitted_at: signature.value.signed_at, ...signatureFields,
     }).select("id,status,attached_session_id,submitted_at,signature_signed_at").single();
     if (error) {
-      if (ownSubmission) { const replay = await ownSubmissionReplay(ownSubmission, "formation", formation.id, formation.user_id); if (replay) return replay; }
+      const replay = await ownSubmissionReplay(submission, "formation", formation.id, formation.user_id); if (replay) return replay;
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
     await supabase.from("daily_formations").update({ spontaneous_registration_task_status: attachedSession ? "none" : "to_attach" }).eq("id", formation.id);
@@ -236,14 +239,14 @@ export async function POST(request: Request, { params }: Params) {
   if (!session) return NextResponse.json({ error: "Lien introuvable ou expiré." }, { status: 404 });
   if (ownSubmission) await persistOwnPositioning(supabase, ownSubmission, "session", session.id);
   const { data: response, error } = await supabase.from("daily_registration_responses").insert({
-    ...(ownSubmission ? { id: ownSubmission.id } : {}),
+    id: submission.id,
     session_id: session.id, user_id: session.user_id, response_type: responseType, respondent_first_name: respondentFirstName || null,
     respondent_last_name: text(body, "respondent_last_name") || null, respondent_email: respondentEmail || null,
     company_name: responseType === "company" ? text(body, "company_name") || null : null, participants: responseType === "company" ? jsonArray(body.participants) : [],
     need_answers: needAnswers, positioning_answers: positioningAnswers, adaptation_needed: adaptationNeeded, status: "submitted", submitted_at: signature.value.signed_at, ...signatureFields,
   }).select("id,status,submitted_at,signature_signed_at").single();
   if (error) {
-    if (ownSubmission) { const replay = await ownSubmissionReplay(ownSubmission, "session", session.id, session.user_id); if (replay) return replay; }
+    const replay = await ownSubmissionReplay(submission, "session", session.id, session.user_id); if (replay) return replay;
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
   const { data: responses } = await supabase.from("daily_registration_responses").select("response_type,respondent_first_name,respondent_last_name,company_name,need_answers,positioning_answers,adaptation_needed").eq("session_id", session.id).eq("status", "submitted");
