@@ -49,6 +49,16 @@ export function harness(options = {}) {
     }; return query;
   }, async rpc(name,args) {
     calls.push(['rpc',name,args]);
+    if(name === 'daily_accept_and_materialize_registration_request') {
+      if(!args.p_session_id) return {data:null,error:{message:'session required'}};
+      if(request.decision_status === 'refused') return {data:null,error:{message:'already decided'}};
+      const replayed=request.decision_status === 'accepted';
+      if(!replayed) request.decision_status='accepted';
+      if(options.materializeFailure) { if(!replayed) request.decision_status='ready_for_of'; return {data:null,error:{message:'materialization failed'}}; }
+      request.attached_session_id=args.p_session_id; request.materialized_at='2026-10-01';
+      db.daily_registration_request_enrolments=[{registration_request_id:'request',enrolment_id:'enrolment'}];
+      return {data:{replayed,materialization:{created:true}},error:null};
+    }
     if(name === 'daily_record_registration_request_decision') {
       if(request.decision_status !== 'ready_for_of') return {data:null,error:{message:'already decided'}};
       request.decision_status=args.p_decision; return {data:{accepted:true},error:null};

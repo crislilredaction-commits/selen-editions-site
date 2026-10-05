@@ -78,6 +78,6 @@ for(const status of ['pending','ready_for_of'])test(`actual OF page consults rec
  const nodes=node=>!node||typeof node!=='object'?[]:Array.isArray(node)?node.flatMap(nodes):[node,...nodes(node.props?.children)];
  const texts=node=>typeof node==='string'?node:!node||typeof node!=='object'?'':Array.isArray(node)?node.map(texts).join(' '):texts(node.props?.children);
  assert.match(texts(tree),/Objectif original/);assert.match(texts(tree),/Apprendre à écrire/);assert.doesNotMatch(texts(tree),/Nouvelle version|questionnaire_sha256|submission_fingerprint/);
- assert.equal(nodes(tree).some(n=>n.type==='button'&&String(n.props.children).includes('Accepter la candidature')),status==='ready_for_of');
+ assert.equal(nodes(tree).some(n=>n.type==='button'&&String(n.props.children).includes('Accepter et créer l’inscription')),status==='ready_for_of');
  assert.equal(h.db.daily_formation_registration_requests.length,1);assert.equal(h.sends.length,1);
 });

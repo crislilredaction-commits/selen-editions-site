@@ -265,32 +265,30 @@ export async function POST(req: Request) {
     if (requestedActorType === "organisation" && !access.isManager) return NextResponse.json({ error: "Seul un responsable de l'organisme peut répondre au nom de l'OF." }, { status: 403 });
     if (!access.isManager) return NextResponse.json({ error: "Seul le responsable de l’organisme peut prendre la décision finale." }, { status: 403 });
 
-    const { data, error } = await access.admin.rpc("daily_record_registration_request_decision", {
+    const sessionId = typeof body.session_id === "string" ? body.session_id.trim() : "";
+    if (decision === "accepted" && !sessionId) return NextResponse.json({ error: "Choisissez la session avant d’accepter la candidature." }, { status: 400 });
+    const rpcName = decision === "accepted" ? "daily_accept_and_materialize_registration_request" : "daily_record_registration_request_decision";
+    const rpcArgs = decision === "accepted" ? {
+      p_request_id: requestId,
+      p_session_id: sessionId,
+      p_actor_user_id: access.user.id,
+      p_comment: comment,
+    } : {
       p_request_id: requestId,
       p_actor_user_id: access.user.id,
       p_actor_type: requestedActorType,
       p_decision: decision,
       p_comment: comment,
-    });
+    };
+    const { data, error } = await access.admin.rpc(rpcName, rpcArgs);
     if (error) {
       const known = error.message.includes("already decided") ? "Cette candidature a déjà reçu une décision finale." : error.message.includes("analysis required") ? "L’analyse Selen doit être terminée avant la décision OF." : error.message.includes("permission required") ? "Vous n’êtes pas autorisé à statuer sur cette candidature." : error.message;
       return NextResponse.json({ error: known }, { status: 409 });
     }
 
     if (decision === "accepted") {
-      const { data: acceptedRequest, error: acceptedRequestError } = await access.admin.from("daily_formation_registration_requests").select("attached_session_id").eq("id", requestId).single();
-      if (acceptedRequestError) return NextResponse.json({ ok: true, result: data, materialized: false, learner_access: [{ status: "send_failed" }] });
-      if (acceptedRequest?.attached_session_id) {
-        const { data: materialized, error: materializedError } = await access.admin.rpc("daily_materialize_registration_request", { p_request_id: requestId, p_session_id: acceptedRequest.attached_session_id });
-        if (!materializedError) {
-          const { learnerAccess, enterpriseAccess } = await provisionAcceptedAccesses(access, requestId, acceptedRequest.attached_session_id, req);
-          return NextResponse.json({ ok: true, result: data, materialized: true, materialization: materialized, learner_access: learnerAccess, enterprise_access: enterpriseAccess });
-        }
-        const learnerAccess = await provisionLearnerAccess(access, requestId, req);
-        return NextResponse.json({ ok: true, result: data, materialized: false, materialization_error: materializedError.message, learner_access: learnerAccess });
-      }
-      const learnerAccess = await provisionLearnerAccess(access, requestId, req);
-      return NextResponse.json({ ok: true, result: data, materialized: false, learner_access: learnerAccess });
+      const { learnerAccess, enterpriseAccess } = await provisionAcceptedAccesses(access, requestId, sessionId, req);
+      return NextResponse.json({ ok: true, result: data, materialized: true, materialization: data?.materialization, replayed: data?.replayed === true, learner_access: learnerAccess, enterprise_access: enterpriseAccess });
     }
     return NextResponse.json({ ok: true, result: data, materialized: false });
   } catch (cause) {
