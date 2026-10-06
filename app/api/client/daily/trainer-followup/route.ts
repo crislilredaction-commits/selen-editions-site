@@ -104,7 +104,7 @@ export async function GET(request: Request) {
 
   const [{ data: entries, error: entriesError }, { data: enrolments, error: enrolmentsError }, { data: portalRows, error: portalError }] = await Promise.all([
     context.admin.from("daily_session_followup_entries").select("id,session_id,enrolment_id,entry_type,level,occurred_at,summary,description,action_taken,status,resolved_at,created_by,author_role,author_name,created_at,updated_at").eq("organisation_id", context.organisationId).eq("session_id", sessionId).order("occurred_at", { ascending: false }),
-    context.admin.from("daily_session_enrolments").select("id,status,daily_learners(id,first_name,last_name,email)").eq("organisation_id", context.organisationId).eq("session_id", sessionId).not("status", "in", "(cancelled,declined)"),
+    context.admin.from("daily_session_enrolments").select("id,learner_id,status,positioning_status,prerequisites_status,daily_learners(id,first_name,last_name,email)").eq("organisation_id", context.organisationId).eq("session_id", sessionId).not("status", "in", "(cancelled,declined)"),
     context.admin.from("daily_portal_access_tokens").select("id,session_id,entity_name,entity_email,token,status,expires_at,viewed_at").eq("session_id", sessionId).eq("portal_type", "learner").not("status", "eq", "expired"),
   ]);
   if (entriesError || enrolmentsError || portalError) {
@@ -112,6 +112,11 @@ export async function GET(request: Request) {
   }
 
   const enrolmentRows = enrolments ?? [];
+  const enrolmentIds = enrolmentRows.map((row) => row.id);
+  const { data: supportNeeds, error: supportNeedsError } = enrolmentIds.length
+    ? await context.admin.from("daily_enrolment_support_needs").select("enrolment_id,has_specific_needs,planned_accommodations,contact_requested").eq("organisation_id", context.organisationId).in("enrolment_id", enrolmentIds)
+    : { data: [], error: null };
+  if (supportNeedsError) return NextResponse.json({ error: supportNeedsError.message }, { status: 500 });
   const portalAccess = enrolmentRows.flatMap((enrolment) => {
     const learnerValue = enrolment.daily_learners;
     const learner = Array.isArray(learnerValue) ? learnerValue[0] : learnerValue;
@@ -125,7 +130,7 @@ export async function GET(request: Request) {
     return portal ? [{ ...portal, enrolment_id: enrolment.id }] : [];
   });
 
-  return NextResponse.json({ session, entries: entries ?? [], enrolments: enrolmentRows, portalAccess });
+  return NextResponse.json({ session, entries: entries ?? [], enrolments: enrolmentRows, supportNeeds: supportNeeds ?? [], portalAccess });
 }
 
 export async function POST(request: Request) {

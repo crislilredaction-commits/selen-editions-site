@@ -11,8 +11,9 @@ type Session = {
   end_date?: string | null;
   daily_formations?: { title?: string | null } | { title?: string | null }[] | null;
 };
-type Learner = { first_name?: string | null; last_name?: string | null; email?: string | null };
-type Enrolment = { id: string; status: string; daily_learners?: Learner | Learner[] | null };
+type Learner = { id?: string; first_name?: string | null; last_name?: string | null; email?: string | null };
+type Enrolment = { id: string; learner_id?: string; status: string; positioning_status?: string | null; prerequisites_status?: string | null; daily_learners?: Learner | Learner[] | null };
+type SupportNeed = { enrolment_id: string; has_specific_needs: boolean; planned_accommodations?: string | null; contact_requested?: boolean };
 type Entry = {
   id: string;
   enrolment_id?: string | null;
@@ -56,10 +57,12 @@ const levelLabels: Record<Entry["level"], string> = {
 };
 
 export default function TrainerSessionFollowupPage() {
+  const [requestedEnrolmentId, setRequestedEnrolmentId] = useState("");
   const [sessions, setSessions] = useState<Session[]>([]);
   const [sessionId, setSessionId] = useState("");
   const [entries, setEntries] = useState<Entry[]>([]);
   const [enrolments, setEnrolments] = useState<Enrolment[]>([]);
+  const [supportNeeds, setSupportNeeds] = useState<SupportNeed[]>([]);
   const [entryType, setEntryType] = useState<Entry["entry_type"]>("note");
   const [level, setLevel] = useState<Entry["level"]>("attention");
   const [enrolmentId, setEnrolmentId] = useState("");
@@ -77,18 +80,24 @@ export default function TrainerSessionFollowupPage() {
     critical: entries.filter((entry) => entry.entry_type !== "note" && entry.status === "open" && entry.level === "critical").length,
   }), [entries]);
 
-  async function loadSessions() {
+  async function loadSessions(preferredSessionId = "") {
     const response = await fetch("/api/client/daily/trainer-followup", { cache: "no-store" });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) return setError(data.error ?? "Chargement impossible.");
     setSessions(data.sessions ?? []);
-    setSessionId((current) => current || data.sessions?.[0]?.id || "");
+    setSessionId((current) => {
+      if (current) return current;
+      return (data.sessions ?? []).some((session: Session) => session.id === preferredSessionId)
+        ? preferredSessionId
+        : data.sessions?.[0]?.id || "";
+    });
   }
 
   async function loadSession(id: string) {
     if (!id) {
       setEntries([]);
       setEnrolments([]);
+      setSupportNeeds([]);
       return;
     }
     setError("");
@@ -97,9 +106,16 @@ export default function TrainerSessionFollowupPage() {
     if (!response.ok) return setError(data.error ?? "Chargement impossible.");
     setEntries(data.entries ?? []);
     setEnrolments(data.enrolments ?? []);
+    setSupportNeeds(data.supportNeeds ?? []);
+    if (requestedEnrolmentId && (data.enrolments ?? []).some((item: Enrolment) => item.id === requestedEnrolmentId)) setEnrolmentId(requestedEnrolmentId);
   }
 
-  useEffect(() => { void loadSessions(); }, []);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const preferredSessionId = params.get("session") ?? "";
+    setRequestedEnrolmentId(params.get("enrolment") ?? "");
+    void loadSessions(preferredSessionId);
+  }, []);
   useEffect(() => { void loadSession(sessionId); }, [sessionId]);
 
   async function createEntry() {
@@ -189,6 +205,33 @@ export default function TrainerSessionFollowupPage() {
           </p>
         ) : null}
       </SelenCard>
+
+      {sessionId ? (
+        <section style={styles.section} aria-labelledby="session-learners-title">
+          <SelenCard>
+            <SelenCardTitle><span id="session-learners-title">Apprenants de la session</span></SelenCardTitle>
+            <p style={styles.help}>Fiches en lecture seule, limitées à vos sessions affectées. Les coordonnées et adaptations affichées servent uniquement au suivi pédagogique.</p>
+            {enrolments.length === 0 ? <p style={styles.empty}>Aucun apprenant actif dans cette session.</p> : (
+              <div style={styles.learnerGrid}>
+                {enrolments.map((enrolment) => {
+                  const learner = Array.isArray(enrolment.daily_learners) ? enrolment.daily_learners[0] : enrolment.daily_learners;
+                  const support = supportNeeds.find((item) => item.enrolment_id === enrolment.id);
+                  return <article key={enrolment.id} id={`learner-${enrolment.id}`} style={{ ...styles.learnerCard, ...(requestedEnrolmentId === enrolment.id ? styles.learnerCardSelected : {}) }}>
+                    <div><strong>{learnerName(enrolment)}</strong>{learner?.email ? <p style={styles.entryMeta}>{learner.email}</p> : null}</div>
+                    <dl style={styles.learnerFacts}>
+                      <div><dt>Inscription</dt><dd>{enrolment.status}</dd></div>
+                      <div><dt>Positionnement</dt><dd>{enrolment.positioning_status || "Non démarré"}</dd></div>
+                      <div><dt>Prérequis</dt><dd>{enrolment.prerequisites_status || "Non vérifiés"}</dd></div>
+                    </dl>
+                    {support?.has_specific_needs ? <p style={styles.adaptation}><strong>Adaptation :</strong> {support.planned_accommodations || "À organiser avec l’organisme"}{support.contact_requested ? " · échange demandé" : ""}</p> : null}
+                    <a href={`?session=${encodeURIComponent(sessionId)}&enrolment=${encodeURIComponent(enrolment.id)}#learner-${encodeURIComponent(enrolment.id)}`} style={styles.learnerLink}>Ouvrir cette fiche apprenant</a>
+                  </article>;
+                })}
+              </div>
+            )}
+          </SelenCard>
+        </section>
+      ) : null}
 
       {sessionId ? (
         <section style={styles.section}>
@@ -364,6 +407,12 @@ const styles: Record<string, React.CSSProperties> = {
   formGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: ".75rem" },
   actionRow: { display: "flex", justifyContent: "flex-start", marginTop: ".9rem" },
   historyList: { display: "grid", gap: ".75rem" },
+  learnerGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: ".75rem" },
+  learnerCard: { display: "grid", gap: ".65rem", padding: ".9rem", border: "1px solid var(--sepia-mid)", borderRadius: 12, background: "var(--paper)" },
+  learnerCardSelected: { borderColor: "var(--rust)", boxShadow: "0 0 0 2px rgba(138,75,36,.12)" },
+  learnerFacts: { display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: ".45rem", margin: 0, fontSize: ".78rem" },
+  adaptation: { margin: 0, padding: ".6rem", borderRadius: 8, background: "rgba(210,145,65,.10)", fontSize: ".82rem", lineHeight: 1.45 },
+  learnerLink: { color: "var(--rust)", fontWeight: 750, fontSize: ".85rem" },
   empty: { margin: 0, padding: "1rem", border: "1px dashed var(--sepia-mid)", borderRadius: 14, color: "var(--ink-soft)" },
   entryHeader: { display: "flex", justifyContent: "space-between", gap: ".75rem", flexWrap: "wrap", alignItems: "flex-start" },
   entryMeta: { margin: ".35rem 0 0", color: "var(--ink-soft)", fontSize: ".82rem", lineHeight: 1.45 },
