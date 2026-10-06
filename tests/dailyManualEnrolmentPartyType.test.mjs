@@ -23,11 +23,11 @@ test('canonical choice overrides SIRET and funding on each session of the same l
   assert.equal(resolve(first, ''), 'individual');
   assert.equal(resolve(second, learner.siret), 'company');
 });
-test('historical missing/null choices retain the previous client SIRET rule', () => {
+test('missing/null choices never infer a party from any SIRET', () => {
   for (const row of [{}, { contracting_party_type: null }]) {
-    assert.equal(resolve(row, ''), 'individual');
-    assert.equal(resolve(row, '12345678901234'), 'company');
-    assert.equal(validate(row, false), null);
+    assert.equal(resolve(row), null);
+    assert.equal(resolve(row, '12345678901234'), null);
+    assert.ok(validate(row));
   }
 });
 test('manual creation requires an explicit choice and company requires a sponsor', () => {
@@ -88,12 +88,13 @@ test('API rejects invalid changes, requires sponsor, preserves omitted historica
 });
 test('both generators consume canonical enrolment choice and Studio reads it through assisted API', () => {
   const server=read('app/api/client/daily/pretraining-documents/route.ts');
-  assert.match(server,/resolveContractingPartyType\(enrolment,company\?\.siret\)/);
-  assert.match(server,/resolveContractingPartyType\(e,company.siret\)/);
+  assert.match(server,/resolveContractingPartyType\(enrolment\)/);
+  assert.match(server,/resolveContractingPartyType\(e\)/);
+  assert.doesNotMatch(server,/resolveContractingPartyType\([^)]*,[^)]*siret/i);
   assert.ok(server.indexOf('Renseignez l’entreprise') < server.indexOf('const created:any[]'));
   const client=read('app/client/daily/generateur-documents/page.tsx');
   assert.match(client,/row.session_id===session.id&&recipient.id===`learner:\$\{row.learner_id\}`/);
-  assert.match(client,/resolveContractingPartyType\(enrolment\?\?\{\},clientSiret\)/);
+  assert.match(client,/resolveContractingPartyType\(enrolment\?\?\{\}\)/);
   assert.match(read('app/api/client/daily/learners/route.ts'),/allowAssistanceRead:true/);
   assert.match(read('app/api/client/daily/learner-shared-documents/route.ts'),/contracting_party_type,company_name/);
   assert.match(read('app/client/daily/apprenants/page.tsx'),/contracting_party_type:f.get\("contracting_party_type"\)/);
@@ -147,13 +148,12 @@ test('company without SIRET generates a convention; missing sponsor blocks all g
   const invalid=await generateDocuments([row],[]);
   assert.equal(invalid.response.status,400);assert.equal(invalid.documents.length,0);
 });
-test('historical generation retains agreement with SIRET and contract without SIRET',async()=>{
+test('historical generation is blocked until the enrolment receives an explicit choice',async()=>{
   const row={id:'historical',company_name:'Sponsor',daily_learners:{first_name:'Alice'}};
   for(const siret of ['', '12345678901234']) {
     const {response,documents}=await generateDocuments([row],[{name:'Sponsor',siret}]);
-    assert.equal(response.status,200);
-    const contractual=documents.filter(d=>['training_contract','training_agreement'].includes(d.document_type));
-    assert.equal(contractual.length,1);
-    assert.equal(contractual[0].document_type,siret?'training_agreement':'training_contract');
+    assert.equal(response.status,400);
+    assert.match(response.body.error,/partie contractante/i);
+    assert.equal(documents.length,0);
   }
 });

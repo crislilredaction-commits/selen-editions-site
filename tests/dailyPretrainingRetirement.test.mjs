@@ -75,12 +75,12 @@ test('A still needed by another learner remains represented in current agreement
   const f=fixture({enrolments:[enrolment('one','individual'),enrolment('two','company')],documents:[agreement()]});
   assert.equal((await f.post()).status,200);assert.equal(current(f,'training_agreement').length,1);assert.equal(current(f,'training_agreement')[0].metadata.company_name,'A');
 });
-test('historical NULL, unregistered companies/participants and foreign or noncontractual documents preserved',async()=>{
-  const protectedRows=[{...contract('foreign-org'),organisation_id:'other'},{...contract('foreign-session'),session_id:'other'}, {...contract('program'),document_type:'training_program',logical_name:'other-program'},contract('historical-participant','unregistered')];
-  const f=fixture({enrolments:[enrolment('one',null),enrolment('individual-history',null,'No SIRET')],companies:[{name:'A',siret:'123'},{name:'No SIRET'},{name:'Historical',siret:'789'}],documents:[...protectedRows,agreement()]});
-  assert.equal((await f.post()).status,200);assert.deepEqual(f.rows.slice(0,protectedRows.length),protectedRows);
-  assert.deepEqual(current(f,'training_agreement').map(row=>row.metadata.company_name).sort(),['A','Historical']);
-  assert.ok(current(f,'training_contract').some(row=>row.enrolment_id==='individual-history'));
+test('a historical NULL choice blocks generation and preserves every current document',async()=>{
+  const protectedRows=[{...contract('foreign-org'),organisation_id:'other'},{...contract('foreign-session'),session_id:'other'}, {...contract('program'),document_type:'training_program',logical_name:'other-program'},contract('historical-participant','unregistered'),agreement()];
+  const f=fixture({enrolments:[enrolment('one',null)],companies:[{name:'A',siret:'123'},{name:'Historical',siret:'789'}],documents:protectedRows});
+  const response=await f.post();
+  assert.equal(response.status,400);assert.match(response.body.error,/partie contractante/i);
+  assert.deepEqual(f.rows,protectedRows);assert.equal(f.uploads.length,0);
 });
 test('invalid company validation leaves opposite document current without uploads',async()=>{
   const f=fixture({companies:[]});assert.equal((await f.post()).status,400);assert.equal(f.rows[0].is_current,true);assert.equal(f.uploads.length,0);

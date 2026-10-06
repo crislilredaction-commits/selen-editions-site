@@ -22,8 +22,9 @@ test("le générateur n'expose plus de parcours contrat autonome", () => {
   assert.match(legacyContractGenerator, /redirect\("\/client\/daily\/generateur-documents"\)/);
 });
 
-test("le générateur choisit contrat ou convention depuis l’inscription, avec repli historique", () => {
-  assert.match(generator, /resolveContractingPartyType\(enrolment\?\?\{\},clientSiret\)/);
+test("le générateur choisit contrat ou convention exclusivement depuis l’inscription", () => {
+  assert.match(generator, /resolveContractingPartyType\(enrolment\?\?\{\}\)/);
+  assert.match(generator, /Choisissez d’abord « particulier » ou « entreprise » sur l’inscription/);
   assert.match(generator, /makeConvention/);
   assert.match(generator, /makeContract/);
   assert.match(generator, /SIRET client/);
@@ -31,12 +32,13 @@ test("le générateur choisit contrat ou convention depuis l’inscription, avec
   assert.match(generator, /Convention de formation/);
 });
 
-test("le SIRET client doit être vide ou contenir exactement 14 chiffres", () => {
+test("le SIRET client est validé comme donnée du commanditaire mais ne choisit jamais le document", () => {
   assert.match(generator, /rawClientSiret/);
   assert.match(generator, /rawClientSiret\.replace\(\/\\s\+\/g,""\)/);
   assert.match(generator, /\^\\d\{14\}\$/);
   assert.match(generator, /Le SIRET du client doit comporter exactement 14 chiffres/);
-  assert.match(generator, /SIRET valide \(14 chiffres\) : convention\. Champ vide : contrat\./);
+  assert.match(generator, /ne change jamais le type de document/);
+  assert.doesNotMatch(generator, /resolveContractingPartyType\([^)]*clientSiret/);
 });
 
 test("le programme généré reprend les indicateurs de performance de la formation", () => {
