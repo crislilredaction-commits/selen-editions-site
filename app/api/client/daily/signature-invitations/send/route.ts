@@ -109,6 +109,7 @@ export async function POST(req: Request) {
     formationTitle,
     signatureUrl,
     expiresAt: signature.expires_at,
+    idempotencyKey: `daily-signature-invitation/${signature.id}`,
   };
   const prepared = prepareDailySignatureInvitationEmail(emailInput);
 
