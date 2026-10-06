@@ -11,6 +11,7 @@ type SignatureInvitationInput = {
   formationTitle: string;
   signatureUrl: string;
   expiresAt?: string | null;
+  idempotencyKey?: string;
 };
 
 export function prepareDailySignatureInvitationEmail(input: SignatureInvitationInput) {
@@ -47,14 +48,14 @@ export function prepareDailySignatureFollowupEmail(input: SignatureInvitationInp
 }
 
 export async function sendDailySignatureInvitation(input: SignatureInvitationInput) {
-  return sendPrepared(input.email, prepareDailySignatureInvitationEmail(input), "invitation de signature");
+  return sendPrepared(input.email, prepareDailySignatureInvitationEmail(input), "invitation de signature", input.idempotencyKey);
 }
 
 export async function sendDailySignatureFollowup(input: SignatureInvitationInput) {
-  return sendPrepared(input.email, prepareDailySignatureFollowupEmail(input), "relance de signature");
+  return sendPrepared(input.email, prepareDailySignatureFollowupEmail(input), "relance de signature", input.idempotencyKey);
 }
 
-async function sendPrepared(email: string, message: { subject: string; text: string; html: string }, label: string) {
+async function sendPrepared(email: string, message: { subject: string; text: string; html: string }, label: string, idempotencyKey?: string) {
   if (!resend) return { sent: false as const, reason: "missing_resend_api_key" as const };
   const { data, error } = await resend.emails.send({
     from: resendFromEmail,
@@ -63,7 +64,7 @@ async function sendPrepared(email: string, message: { subject: string; text: str
     text: message.text,
     html: message.html,
     replyTo: "hello@selen-editions.fr",
-  });
+  }, idempotencyKey ? { idempotencyKey } : undefined);
   if (error) {
     console.error(`Daily : ${label} impossible`, error);
     return { sent: false as const, reason: "send_failed" as const };

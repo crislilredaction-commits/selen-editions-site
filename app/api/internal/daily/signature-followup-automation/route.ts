@@ -6,8 +6,9 @@ import {
 } from "@/lib/server/dailySignatureInvitationEmails";
 import {
   DAILY_SIGNATURE_J3_STAGE,
+  DAILY_SIGNATURE_J6_STAGE,
   DAILY_SIGNATURE_REMINDER_TYPE,
-  moveDailySignatureReminderToPhoneCall,
+  moveDailySignatureReminderToNextStage,
   resolveDailySignatureFollowupReminder,
 } from "@/lib/server/dailySignatureFollowupReminders";
 
@@ -19,10 +20,10 @@ function one<T>(value: T | T[] | null | undefined): T | null {
   return value ?? null;
 }
 function authorized(req: Request) {
-  const expected = process.env.DAILY_AUTOMATION_SECRET?.trim();
-  if (!expected) return { ok: false as const, status: 503, error: "DAILY_AUTOMATION_SECRET manquant." };
+  const expected = [process.env.DAILY_AUTOMATION_SECRET, process.env.CRON_SECRET].map((value) => value?.trim()).filter(Boolean);
+  if (!expected.length) return { ok: false as const, status: 503, error: "Secret d’automatisation manquant." };
   const received = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim();
-  if (!received || received !== expected) return { ok: false as const, status: 401, error: "Accès refusé." };
+  if (!received || !expected.includes(received)) return { ok: false as const, status: 401, error: "Accès refusé." };
   return { ok: true as const };
 }
 
@@ -40,13 +41,13 @@ export async function GET(req: Request) {
     .from("client_reminders")
     .select("id,client_email,due_at,status,metadata")
     .eq("reminder_type", DAILY_SIGNATURE_REMINDER_TYPE)
-    .eq("status", "ready")
+    .in("status", ["ready", "postponed"])
     .lte("due_at", nowIso)
     .order("due_at", { ascending: true })
     .limit(100);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const candidates = (data ?? []).filter((row) => text(row.metadata?.followup_stage) === DAILY_SIGNATURE_J3_STAGE);
+  const candidates = (data ?? []).filter((row) => [DAILY_SIGNATURE_J3_STAGE, DAILY_SIGNATURE_J6_STAGE].includes(text(row.metadata?.followup_stage)));
   let processed = 0;
   let skipped = 0;
   let failed = 0;
@@ -54,6 +55,8 @@ export async function GET(req: Request) {
 
   for (const reminder of candidates) {
     const metadata = (reminder.metadata ?? {}) as Record<string, unknown>;
+    const currentStage = text(metadata.followup_stage) as typeof DAILY_SIGNATURE_J3_STAGE | typeof DAILY_SIGNATURE_J6_STAGE;
+    const sourceStatus = reminder.status;
     const signatureId = text(metadata.signature_id);
     const organisationId = text(metadata.organisation_id);
     const sessionId = text(metadata.session_id);
@@ -92,7 +95,7 @@ export async function GET(req: Request) {
 
     const { data: convention, error: conventionError } = await admin
       .from("daily_conventions")
-      .select("id,organisation_id,session_id,recipient_name,recipient_email,company_name,document_name,daily_sessions(id,internal_reference,daily_formations(title))")
+      .select("id,organisation_id,session_id,recipient_name,recipient_email,company_name,document_name,daily_sessions(id,internal_reference,start_date,daily_formations(title))")
       .eq("id", conventionId)
       .eq("organisation_id", organisationId)
       .eq("session_id", sessionId)
@@ -122,16 +125,25 @@ export async function GET(req: Request) {
       .eq("session_id", sessionId)
       .eq("communication_type", "convention_signature_followup")
       .eq("recipient_email", email)
-      .contains("metadata", { signature_id: signatureId, followup_stage: DAILY_SIGNATURE_J3_STAGE })
-      .in("status", ["queued", "sent", "delivered"])
+      .contains("metadata", { signature_id: signatureId, followup_stage: currentStage })
+      .in("status", ["queued", "sent", "delivered", "failed"])
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
     if (previous?.sent_at) {
       if (execute) {
-        const { data: claimed } = await admin.from("client_reminders").update({ status: "postponed" }).eq("id", reminder.id).eq("status", "ready").select("id").maybeSingle();
-        if (claimed) await moveDailySignatureReminderToPhoneCall(admin, { reminderId: reminder.id, initialSentAt, documentName, automaticEmailSentAt: previous.sent_at, metadata });
+        const { data: claimed } = await admin.from("client_reminders").update({ status: "draft" }).eq("id", reminder.id).eq("status", sourceStatus).select("id").maybeSingle();
+        if (claimed) await moveDailySignatureReminderToNextStage(admin, {
+          reminderId: reminder.id,
+          initialSentAt,
+          documentName,
+          automaticEmailSentAt: previous.sent_at,
+          completedStage: currentStage,
+          sessionId,
+          sessionStartDate: session?.start_date ?? null,
+          metadata,
+        });
       }
       skipped += 1;
       details.push({ reminder_id: reminder.id, signature_id: signatureId, status: "already_sent" });
@@ -146,9 +158,9 @@ export async function GET(req: Request) {
     // Réservation atomique du rappel : un second exécuteur ne pourra pas envoyer le même email en parallèle.
     const { data: claimed, error: claimError } = await admin
       .from("client_reminders")
-      .update({ status: "postponed" })
+      .update({ status: "draft" })
       .eq("id", reminder.id)
-      .eq("status", "ready")
+      .eq("status", sourceStatus)
       .select("id")
       .maybeSingle();
     if (claimError || !claimed) {
@@ -158,26 +170,40 @@ export async function GET(req: Request) {
     }
 
     const signatureUrl = `${url.origin}/daily-signature/${encodeURIComponent(signature.token)}`;
-    const emailInput = { email, signatoryName, documentName, formationTitle, signatureUrl, expiresAt: signature.expires_at };
+    const emailInput = {
+      email,
+      signatoryName,
+      documentName,
+      formationTitle,
+      signatureUrl,
+      expiresAt: signature.expires_at,
+      idempotencyKey: `daily-signature-followup/${signatureId}/${currentStage}`,
+    };
     const prepared = prepareDailySignatureFollowupEmail(emailInput);
-    const { data: communication, error: evidenceError } = await admin.from("daily_communications").insert({
-      organisation_id: organisationId,
-      session_id: sessionId,
-      communication_type: "convention_signature_followup",
-      channel: "email",
-      recipient_email: email,
-      recipient_name: signatoryName || null,
-      subject: prepared.subject,
-      text_body: prepared.text,
-      html_body: prepared.html,
-      provider: "resend",
-      status: "queued",
-      created_by: null,
-      metadata: { signature_id: signatureId, convention_id: conventionId, followup_stage: DAILY_SIGNATURE_J3_STAGE, automatic: true },
-    }).select("id").single();
+    let communication = previous?.id ? { id: previous.id } : null;
+    let evidenceError = null as { message?: string } | null;
+    if (!communication) {
+      const inserted = await admin.from("daily_communications").insert({
+        organisation_id: organisationId,
+        session_id: sessionId,
+        communication_type: "convention_signature_followup",
+        channel: "email",
+        recipient_email: email,
+        recipient_name: signatoryName || null,
+        subject: prepared.subject,
+        text_body: prepared.text,
+        html_body: prepared.html,
+        provider: "resend",
+        status: "queued",
+        created_by: null,
+        metadata: { signature_id: signatureId, convention_id: conventionId, followup_stage: currentStage, automatic: true },
+      }).select("id").single();
+      communication = inserted.data;
+      evidenceError = inserted.error;
+    }
 
     if (evidenceError || !communication) {
-      await admin.from("client_reminders").update({ status: "ready", due_at: reminder.due_at }).eq("id", reminder.id).eq("status", "postponed");
+      await admin.from("client_reminders").update({ status: sourceStatus, due_at: reminder.due_at }).eq("id", reminder.id).eq("status", "draft");
       failed += 1;
       details.push({ reminder_id: reminder.id, signature_id: signatureId, status: "evidence_failed" });
       continue;
@@ -188,7 +214,7 @@ export async function GET(req: Request) {
       const failedAt = new Date().toISOString();
       await Promise.all([
         admin.from("daily_communications").update({ status: "failed", failed_at: failedAt, failure_reason: sent.reason }).eq("id", communication.id).eq("organisation_id", organisationId),
-        admin.from("client_reminders").update({ status: "ready", due_at: reminder.due_at }).eq("id", reminder.id).eq("status", "postponed"),
+        admin.from("client_reminders").update({ status: sourceStatus, due_at: reminder.due_at }).eq("id", reminder.id).eq("status", "draft"),
       ]);
       failed += 1;
       details.push({ reminder_id: reminder.id, signature_id: signatureId, status: sent.reason });
@@ -205,20 +231,24 @@ export async function GET(req: Request) {
     }).eq("id", communication.id).eq("organisation_id", organisationId);
 
     if (finalizeError) {
+      await admin.from("client_reminders").update({ status: sourceStatus, due_at: reminder.due_at }).eq("id", reminder.id).eq("status", "draft");
       failed += 1;
       details.push({ reminder_id: reminder.id, signature_id: signatureId, status: "sent_evidence_finalize_failed" });
       continue;
     }
 
-    await moveDailySignatureReminderToPhoneCall(admin, {
+    const transition = await moveDailySignatureReminderToNextStage(admin, {
       reminderId: reminder.id,
       initialSentAt,
       documentName,
       automaticEmailSentAt: sentAt,
+      completedStage: currentStage,
+      sessionId,
+      sessionStartDate: session?.start_date ?? null,
       metadata,
     });
     processed += 1;
-    details.push({ reminder_id: reminder.id, signature_id: signatureId, status: "sent_and_phone_scheduled" });
+    details.push({ reminder_id: reminder.id, signature_id: signatureId, status: `sent_and_${transition.stage}_scheduled` });
   }
 
   return NextResponse.json({ ok: failed === 0, execute, due: candidates.length, processed, skipped, failed, details }, { status: failed === 0 ? 200 : 207 });
