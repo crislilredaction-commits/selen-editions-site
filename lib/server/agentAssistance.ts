@@ -11,6 +11,7 @@ export type AgentAssistanceContext = {
   organisation_id: string;
   dossier_id: string | null;
   expires_at: string;
+  metadata: Record<string, unknown>;
 };
 
 function hashToken(token: string) {
@@ -44,7 +45,7 @@ export async function verifyAgentAssistance(
   const { data, error } = await supabase
     .from("selen_agent_assistance_tokens")
     .select(
-      "id, agent_user_id, agent_email, organisation_id, dossier_id, status, expires_at",
+      "id, agent_user_id, agent_email, organisation_id, dossier_id, status, expires_at, metadata",
     )
     .eq("token_hash", hashToken(token))
     .eq("status", "active")
@@ -150,6 +151,9 @@ export async function getAssistedClientUser(
   );
 
   if (!assistance) return null;
+  if (assistance.metadata?.scope && assistance.metadata.scope !== "daily_workspace") {
+    return null;
+  }
 
   const { data: organisation } = await supabase
     .from("organisations")

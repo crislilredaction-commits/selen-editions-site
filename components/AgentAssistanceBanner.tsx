@@ -4,6 +4,13 @@ import { useEffect, useState } from "react";
 
 const TOKEN_KEY = "selen_agent_assistance_token";
 const RETURN_KEY = "selen_agent_assistance_return_to";
+const STUDIO_ORIGIN = new URL(
+  process.env.NEXT_PUBLIC_STUDIO_URL || "https://studio.selen-editions.fr",
+).origin;
+
+function isSafeStudioReturn(url: URL) {
+  return url.origin === STUDIO_ORIGIN || url.hostname === "localhost";
+}
 
 export function getStoredAssistanceToken() {
   if (typeof window === "undefined") return "";
@@ -42,7 +49,7 @@ export default function AgentAssistanceBanner() {
       if (returnTo) {
         try {
           const returnUrl = new URL(returnTo);
-          if (returnUrl.protocol === "https:" || returnUrl.hostname === "localhost") {
+          if (isSafeStudioReturn(returnUrl)) {
             window.sessionStorage.setItem(RETURN_KEY, returnUrl.toString());
           }
         } catch {
