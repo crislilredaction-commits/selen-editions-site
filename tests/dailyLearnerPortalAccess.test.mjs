@@ -47,10 +47,17 @@ test("the learner does not need a Supabase account before opening the portal", (
 });
 
 test("portal access email is traceable and idempotent", () => {
-  assert.match(helper, /communication_type: "learner_portal_access"/);
+  assert.match(helper, /const communicationType = source === "post_signature" \? "learner_start_pack_available" : "learner_portal_access"/);
+  assert.match(helper, /communication_type: communicationType/);
   assert.match(helper, /contains\("metadata", \{ portal_access_id: access\.id, enrolment_id: enrolment\.id \}\)/);
   assert.match(delivery, /return "already_sent"/);
   assert.match(helper, /provider_message_id/);
+});
+
+test("a legacy email-keyed access is reused before creating another token", () => {
+  assert.match(helper, /const \{ data: canonicalAccess/);
+  assert.match(helper, /\.eq\("entity_email", email\)/);
+  assert.match(helper, /existingAccess = legacyAccess/);
 });
 
 test("missing email or a provider failure never cancels the enrolment", () => {
@@ -165,4 +172,17 @@ test("provider rejection prevents email delivery and any sent announcement", asy
   assert.equal(h.auth.length, 1);
   assert.equal(h.db.daily_communications[0].status, 'failed');
   assert.equal(h.db.daily_communications[0].sent_at, undefined);
+});
+
+test("post-signature availability sends one distinct trace and reuses it on retry", async () => {
+  const { harness } = await import('./helpers/dailyAcceptanceHarness.mjs');
+  const h = harness({ materialized: true });
+  const first = await h.ensure({ source: 'post_signature' });
+  const replay = await h.ensure({ source: 'post_signature' });
+  assert.equal(first.status, 'sent');
+  assert.equal(replay.status, 'already_sent');
+  assert.equal(h.sends.length, 1);
+  assert.equal(h.db.daily_communications.length, 1);
+  assert.equal(h.db.daily_communications[0].communication_type, 'learner_start_pack_available');
+  assert.equal(h.db.daily_communications[0].metadata.source, 'post_signature');
 });

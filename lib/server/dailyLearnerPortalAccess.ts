@@ -16,10 +16,14 @@ function escapeHtml(value: string) {
     .replaceAll("'", "&#039;");
 }
 
-function portalEmail(input: { learnerName: string; formationTitle: string; portalUrl: string }) {
-  const subject = `Votre espace apprenant · ${input.formationTitle}`;
+function portalEmail(input: { learnerName: string; formationTitle: string; portalUrl: string; postSignature?: boolean }) {
+  const subject = input.postSignature
+    ? `Vos documents de démarrage sont disponibles · ${input.formationTitle}`
+    : `Votre espace apprenant · ${input.formationTitle}`;
   const greeting = input.learnerName ? `Bonjour ${input.learnerName},` : "Bonjour,";
-  const body = `Votre inscription à la formation « ${input.formationTitle} » est enregistrée. Vous pouvez désormais accéder à votre espace apprenant Selen Daily.`;
+  const body = input.postSignature
+    ? `La signature de votre dossier est terminée. Votre convocation, votre livret d’accueil et le règlement intérieur sont désormais disponibles dans votre espace apprenant Selen Daily pour la formation « ${input.formationTitle} ».`
+    : `Votre inscription à la formation « ${input.formationTitle} » est enregistrée. Vous pouvez désormais accéder à votre espace apprenant Selen Daily.`;
   const instructions = "À la première connexion, cliquez sur « Activer mon accès », puis choisissez votre mot de passe. Utilisez de préférence 12 caractères ou plus avec majuscule, minuscule, chiffre et symbole. Si le mot de passe est refusé, choisissez-en un autre sur la même page.";
   const textBody = [greeting, "", body, "", `Accéder à mon espace : ${input.portalUrl}`, "", instructions, "", "Si vous avez reçu plusieurs messages, utilisez le dernier. Conservez ce lien personnel et ne le transmettez pas.", "", "Selen Editions"].join("\n");
   const htmlBody = `<div style="font-family:Arial,sans-serif;color:#3e2a1f;line-height:1.6;max-width:640px">
@@ -34,7 +38,7 @@ function portalEmail(input: { learnerName: string; formationTitle: string; porta
 }
 
 type AdminClient = any;
-type LearnerAccessSource = "accepted_registration_request" | "manual_enrolment" | "manual_resend";
+type LearnerAccessSource = "accepted_registration_request" | "manual_enrolment" | "manual_resend" | "post_signature";
 
 type EnsureAccessInput = {
   enrolmentId: string;
@@ -92,14 +96,32 @@ export async function ensureAndSendLearnerPortalAccess(admin: AdminClient, input
   if (!email) return { enrolmentId: input.enrolmentId, learnerId: learner.id, status: "missing_email" };
 
   const entityKey = `learner:${learner.id}`;
-  const { data: existingAccess, error: existingError } = await admin
+  const { data: canonicalAccess, error: canonicalError } = await admin
     .from("daily_portal_access_tokens")
-    .select("id,token,status,expires_at")
+    .select("id,token,status,expires_at,entity_key,entity_email")
     .eq("session_id", session.id)
     .eq("portal_type", "learner")
     .eq("entity_key", entityKey)
     .maybeSingle();
-  if (existingError) throw existingError;
+  if (canonicalError) throw canonicalError;
+
+  // Les premiers accès Studio utilisaient l'email comme clé d'entité. Les
+  // réutiliser évite de créer un second accès pour le même apprenant lorsque
+  // le déclenchement post-signature arrive après cet historique.
+  let existingAccess = canonicalAccess;
+  if (!existingAccess) {
+    const { data: legacyAccess, error: legacyError } = await admin
+      .from("daily_portal_access_tokens")
+      .select("id,token,status,expires_at,entity_key,entity_email")
+      .eq("session_id", session.id)
+      .eq("portal_type", "learner")
+      .eq("entity_email", email)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (legacyError) throw legacyError;
+    existingAccess = legacyAccess;
+  }
 
   let access = existingAccess;
   if (!access) {
@@ -139,13 +161,14 @@ export async function ensureAndSendLearnerPortalAccess(admin: AdminClient, input
   }
 
   const portalUrl = `${input.origin}/daily/portail/learner/${encodeURIComponent(access.token)}`;
+  const communicationType = source === "post_signature" ? "learner_start_pack_available" : "learner_portal_access";
   if (!force) {
     const { data: previous, error: previousError } = await admin
       .from("daily_communications")
       .select("id,status,sent_at,provider_message_id")
       .eq("organisation_id", enrolment.organisation_id)
       .eq("session_id", session.id)
-      .eq("communication_type", "learner_portal_access")
+      .eq("communication_type", communicationType)
       .eq("recipient_email", email)
       .contains("metadata", { portal_access_id: access.id, enrolment_id: enrolment.id })
       .contains("metadata", { auth_protected: true })
@@ -160,11 +183,11 @@ export async function ensureAndSendLearnerPortalAccess(admin: AdminClient, input
   }
 
   const delivery = await deliverLearnerEmail(admin, {
-    key: `learner_portal_access:${enrolment.organisation_id}:${enrolment.id}:${access.id}:${email}`,
+    key: `${communicationType}:${enrolment.organisation_id}:${enrolment.id}:${access.id}:${email}`,
     force,
     row: {
       organisation_id: enrolment.organisation_id, session_id: session.id, enrolment_id: enrolment.id,
-      communication_type: "learner_portal_access", channel: "email", recipient_email: email,
+      communication_type: communicationType, channel: "email", recipient_email: email,
       recipient_name: learnerName || null, provider: "resend", created_by: input.createdBy ?? session.user_id,
       metadata: { portal_access_id: access.id, learner_id: learner.id, enrolment_id: enrolment.id, registration_request_id: input.registrationRequestId ?? null, source, auth_protected: true },
     },
@@ -172,7 +195,7 @@ export async function ensureAndSendLearnerPortalAccess(admin: AdminClient, input
       const authUrl = await buildDailyPortalAuthEntryUrl({ email, portalType: "learner", token: access.token });
       return source === "accepted_registration_request"
         ? acceptanceEmail({ name: learnerName, formation, organisation, session, enrolment, origin: input.origin, portalUrl: authUrl })
-        : portalEmail({ learnerName, formationTitle: text(formation?.title) || "Formation Selen Daily", portalUrl: authUrl });
+        : portalEmail({ learnerName, formationTitle: text(formation?.title) || "Formation Selen Daily", portalUrl: authUrl, postSignature: source === "post_signature" });
     },
   });
   return { enrolmentId: enrolment.id, learnerId: learner.id, email, portalAccessId: access.id, ...delivery, portalUrl };
