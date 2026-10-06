@@ -4,10 +4,8 @@ export function isContractingPartyType(value: unknown): value is ContractingPart
   return value === "individual" || value === "company";
 }
 
-// Only historical enrolments without a canonical choice retain the former SIRET rule.
-export function resolveContractingPartyType(enrolment: { contracting_party_type?: unknown }, legacyClientSiret?: unknown): ContractingPartyType {
-  if (isContractingPartyType(enrolment.contracting_party_type)) return enrolment.contracting_party_type;
-  return String(legacyClientSiret ?? "").trim() ? "company" : "individual";
+export function resolveContractingPartyType(enrolment: { contracting_party_type?: unknown }): ContractingPartyType | null {
+  return isContractingPartyType(enrolment.contracting_party_type) ? enrolment.contracting_party_type : null;
 }
 
 export function validateContractingParty(enrolment: { contracting_party_type?: unknown; company_name?: unknown }, required = true): string | null {

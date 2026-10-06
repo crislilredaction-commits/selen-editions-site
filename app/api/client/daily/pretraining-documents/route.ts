@@ -1,4 +1,4 @@
-import { resolveContractingPartyType } from "@/lib/dailyContractingParty";
+import { resolveContractingPartyType, validateContractingParty } from "@/lib/dailyContractingParty";
 import { NextResponse } from "next/server";
 import { getDailyOrganisationContext } from "@/lib/server/dailyOrganisationContext";
 import { buildConvocationHtml, buildRegistrationPositioningHtml, buildTrainingAgreementHtml, buildTrainingContractHtml, buildTrainingProgramHtml, buildWelcomeBookletHtml, buildInternalRegulationsHtml, type DailyPretrainingCommon } from "@/lib/server/dailyPretrainingDocumentHtml";
@@ -95,16 +95,19 @@ export async function POST(req:Request) {
       startDate:text(session.start_date), endDate:text(session.end_date), schedule:scheduleText(session.schedule_blocks), modality:text(session.modality), location:text(session.location_address || session.remote_url), generatedAt:new Date(),
     };
     const companies = asArray(session.companies) as Record<string,unknown>[];
-    // Validate before generating any document; never fall back to a contract for a company choice.
+    // The contractual party belongs to the enrolment. Never infer it from a SIRET,
+    // the learner identity or the funding mode.
     for (const enrolment of enrolments) {
-      if(enrolment.contracting_party_type === "company" && !companies.some(row=>text(row.name) && text(row.name)===text(enrolment.company_name))) {
+      const partyError = validateContractingParty(enrolment);
+      if (partyError) return NextResponse.json({error:partyError},{status:400});
+      if(resolveContractingPartyType(enrolment) === "company" && !companies.some(row=>text(row.name) && text(row.name)===text(enrolment.company_name))) {
         return NextResponse.json({error:"Renseignez l’entreprise commanditaire de cette inscription dans les entreprises de la session."},{status:400});
       }
     }
-    const applicableCompanies = companies.filter(row=>enrolments.some((e:any)=>text(e.company_name)===text(row.name)&&resolveContractingPartyType(e,row.siret)==="company") || (text(row.siret)&&!enrolments.some((e:any)=>text(e.company_name)===text(row.name))));
+    const applicableCompanies = companies.filter(row=>enrolments.some((e:any)=>text(e.company_name)===text(row.name)&&resolveContractingPartyType(e)==="company"));
     const companyEnrolmentIds = new Set(enrolments.filter((enrolment:any)=> {
       const company = companies.find(row=>text(row.name) && text(row.name)===text(enrolment.company_name));
-      return resolveContractingPartyType(enrolment,company?.siret) === "company";
+      return resolveContractingPartyType(enrolment) === "company";
     }).map((enrolment:any)=>enrolment.id));
     // Snapshot only this session's current contractual documents after validation.
     // Keep historical enrolment documents outside the loaded enrolments untouched.
@@ -131,7 +134,7 @@ export async function POST(req:Request) {
     created.push(await generateCanonicalDocument({admin:context.admin,organisationId:context.organisationId,userId:context.user.id,documentType:"welcome_booklet",linkedObjectType:"session",linkedObjectId:sessionId,logicalName:"livret-accueil-session",filenameBase:"livret-accueil",metadata:{session_id:sessionId,formation_id:session.formation_id},html:buildWelcomeBookletHtml(common,{registrationMethods:text(formation.registration_methods),accessDelays:text(formation.access_delays),accessibility:text(formation.accessibility)})}));
     created.push(await generateCanonicalDocument({admin:context.admin,organisationId:context.organisationId,userId:context.user.id,documentType:"internal_regulations",linkedObjectType:"session",linkedObjectId:sessionId,logicalName:"reglement-interieur-session",filenameBase:"reglement-interieur",metadata:{session_id:sessionId,formation_id:session.formation_id},html:buildInternalRegulationsHtml(common)}));
     for (const company of applicableCompanies) {
-      const learnerNames=enrolments.filter((e:any)=>text(e.company_name)===text(company.name)&&resolveContractingPartyType(e,company.siret)==="company").map((e:any)=>`${text(e.daily_learners?.first_name)} ${text(e.daily_learners?.last_name)}`.trim()).filter(Boolean).join("\n");
+      const learnerNames=enrolments.filter((e:any)=>text(e.company_name)===text(company.name)&&resolveContractingPartyType(e)==="company").map((e:any)=>`${text(e.daily_learners?.first_name)} ${text(e.daily_learners?.last_name)}`.trim()).filter(Boolean).join("\n");
       created.push(await generateCanonicalDocument({admin:context.admin,organisationId:context.organisationId,userId:context.user.id,deferRetirement:true,documentType:"training_agreement",linkedObjectType:"session",linkedObjectId:sessionId,logicalName:`convention-${safe(text(company.name)||text(company.siret))}`,filenameBase:`convention-${text(company.name)||common.formationTitle}`,metadata:{session_id:sessionId,formation_id:session.formation_id,company_name:text(company.name),client_siret:text(company.siret),contractual_kind:"convention"},html:buildTrainingAgreementHtml(common,{clientName:text(company.name),clientAddress:text(company.address),clientSiret:text(company.siret),representative:text(company.contact_name),learnerNames,price:text(formation.price),objective:text(formation.global_objective),prerequisites:text(formation.prerequisites),evaluation:text(formation.evaluation_methods)})}));
     }
     const needsMap = new Map(needs.map((n:any)=>[n.enrolment_id,n]));
@@ -140,7 +143,7 @@ export async function POST(req:Request) {
       const learnerName = `${text(learner.first_name)} ${text(learner.last_name)}`.trim();
       const need:any = needsMap.get(enrolment.id);
       const company = companies.find((row)=>text(row.name) && text(row.name)===text(enrolment.company_name));
-      if (resolveContractingPartyType(enrolment,company?.siret) === "individual") created.push(await generateCanonicalDocument({admin:context.admin,organisationId:context.organisationId,userId:context.user.id,deferRetirement:true,documentType:"training_contract",linkedObjectType:"enrolment",linkedObjectId:enrolment.id,logicalName:"contrat-formation-apprenant",filenameBase:`contrat-${learnerName}`,metadata:{session_id:sessionId,formation_id:session.formation_id,enrolment_id:enrolment.id,learner_id:enrolment.learner_id,learner_name:learnerName,contractual_kind:"individual_contract"},html:buildTrainingContractHtml(common,{learnerName,learnerEmail:text(learner.email),price:text(formation.price),objective:text(formation.global_objective),prerequisites:text(formation.prerequisites),evaluation:text(formation.evaluation_methods)})}));
+      if (resolveContractingPartyType(enrolment) === "individual") created.push(await generateCanonicalDocument({admin:context.admin,organisationId:context.organisationId,userId:context.user.id,deferRetirement:true,documentType:"training_contract",linkedObjectType:"enrolment",linkedObjectId:enrolment.id,logicalName:"contrat-formation-apprenant",filenameBase:`contrat-${learnerName}`,metadata:{session_id:sessionId,formation_id:session.formation_id,enrolment_id:enrolment.id,learner_id:enrolment.learner_id,learner_name:learnerName,contractual_kind:"individual_contract"},html:buildTrainingContractHtml(common,{learnerName,learnerEmail:text(learner.email),price:text(formation.price),objective:text(formation.global_objective),prerequisites:text(formation.prerequisites),evaluation:text(formation.evaluation_methods)})}));
       created.push(await generateCanonicalDocument({admin:context.admin,organisationId:context.organisationId,userId:context.user.id,documentType:"convocation",linkedObjectType:"enrolment",linkedObjectId:enrolment.id,logicalName:"convocation-apprenant",filenameBase:`convocation-${learnerName}`,metadata:{session_id:sessionId,formation_id:session.formation_id,enrolment_id:enrolment.id,learner_id:enrolment.learner_id,learner_name:learnerName},html:buildConvocationHtml(common,{learnerName,learnerEmail:text(learner.email),trainerNames,usefulInfo:need?.planned_accommodations ? `Adaptation prévue : ${text(need.planned_accommodations)}` : ""})}));
       created.push(await generateCanonicalDocument({admin:context.admin,organisationId:context.organisationId,userId:context.user.id,documentType:"registration_positioning",linkedObjectType:"enrolment",linkedObjectId:enrolment.id,logicalName:"inscription-positionnement",filenameBase:`inscription-positionnement-${learnerName}`,metadata:{session_id:sessionId,formation_id:session.formation_id,enrolment_id:enrolment.id,learner_id:enrolment.learner_id,learner_name:learnerName},html:buildRegistrationPositioningHtml(common,{learnerName,learnerEmail:text(learner.email),companyName:text(enrolment.company_name || learner.company_name),funding:[text(enrolment.funding_type),text(enrolment.funding_organisation)].filter(Boolean).join(" · "),prerequisites:text(formation.prerequisites),positioningStatus:text(enrolment.positioning_status),prerequisiteStatus:text(enrolment.prerequisites_status),supportNeeds:need?.has_specific_needs ? [text(need.needs_description),text(need.planned_accommodations)].filter(Boolean).join("\n") : ""})}));
     }
