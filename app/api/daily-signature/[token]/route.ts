@@ -7,6 +7,7 @@ import {
   verifyAgentAssistance,
 } from "@/lib/server/agentAssistance";
 import { dispatchPretrainingPackAfterConventionSigned } from "@/lib/server/dailySignedConventionPretrainingPack";
+import { sendPostSignatureLearnerAccess } from "@/lib/server/dailyPostSignatureLearnerAccess";
 import { resolveDailySignatureFollowupReminder } from "@/lib/server/dailySignatureFollowupReminders";
 import { getContractEarlyStartContext, individualEarlyStartRequestText, INDIVIDUAL_FULL_PERFORMANCE_ACKNOWLEDGEMENT_TEXT, INDIVIDUAL_EARLY_START_TEXT_VERSION } from "@/lib/dailyIndividualEarlyStart";
 
@@ -80,6 +81,43 @@ async function resolveReminderWithoutBreakingSignature(
   }
 }
 
+async function openLearnerAccessWithoutBreakingSignature(
+  supabase: ReturnType<typeof getAdminSupabase>,
+  conventionId: string,
+  request: Request,
+  createdBy?: string | null,
+) {
+  try {
+    return await sendPostSignatureLearnerAccess(supabase, {
+      conventionId,
+      origin: new URL(request.url).origin,
+      createdBy: createdBy ?? null,
+    });
+  } catch (error) {
+    console.error("Daily : signature enregistrée mais accès apprenant post-signature non finalisé", error);
+    return [];
+  }
+}
+
+async function openPostSignatureAvailability(
+  supabase: ReturnType<typeof getAdminSupabase>,
+  conventionId: string,
+  request: Request,
+  createdBy?: string | null,
+) {
+  const pack = await dispatchPackWithoutBreakingSignature(supabase, conventionId);
+  if (pack.status !== "sent" && pack.status !== "already_sent") {
+    return { pack, learnerAccess: [] };
+  }
+  const learnerAccess = await openLearnerAccessWithoutBreakingSignature(
+    supabase,
+    conventionId,
+    request,
+    createdBy,
+  );
+  return { pack, learnerAccess };
+}
+
 export async function GET(_request: Request, { params }: Params) {
   const { token } = await params;
   const clean = cleanToken(token);
@@ -138,15 +176,16 @@ export async function POST(request: Request, { params }: Params) {
   const signature = await findSignature(clean);
   if (!signature) return NextResponse.json({ error: "Lien de signature introuvable." }, { status: 404 });
   if (signature.status === "signed") {
-    const [pack, reminderResolved] = await Promise.all([
-      dispatchPackWithoutBreakingSignature(supabase, signature.convention_id),
+    const [availability, reminderResolved] = await Promise.all([
+      openPostSignatureAvailability(supabase, signature.convention_id, request, signature.user_id),
       resolveReminderWithoutBreakingSignature(supabase, signature.id, signature.signed_at ?? undefined),
     ]);
     return NextResponse.json({
       ok: true,
       alreadySigned: true,
       signedAt: signature.signed_at,
-      pretrainingPack: pack,
+      pretrainingPack: availability.pack,
+      learnerAccess: availability.learnerAccess,
       followupReminderResolved: reminderResolved,
     });
   }
@@ -201,9 +240,9 @@ export async function POST(request: Request, { params }: Params) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const [pack, reminderResolved] = await Promise.all([
-    dispatchPackWithoutBreakingSignature(supabase, signature.convention_id),
+  const [availability, reminderResolved] = await Promise.all([
+    openPostSignatureAvailability(supabase, signature.convention_id, request, signature.user_id),
     resolveReminderWithoutBreakingSignature(supabase, signature.id, signedAt),
   ]);
-  return NextResponse.json({ ok: true, signature: data, pretrainingPack: pack, followupReminderResolved: reminderResolved });
+  return NextResponse.json({ ok: true, signature: data, pretrainingPack: availability.pack, learnerAccess: availability.learnerAccess, followupReminderResolved: reminderResolved });
 }
