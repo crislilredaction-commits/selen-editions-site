@@ -354,13 +354,14 @@ function TrainerPedagogicalTools({sessionId,enrolments}:{sessionId:string;enrolm
   return <div style={{display:"grid",gap:12,marginBottom:16}}>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:8}}>
       <div style={styles.metricCard}><span style={styles.metricLabel}>Créneaux d’émargement</span><strong>{slots.length}</strong></div>
-      <div style={styles.metricCard}><span style={styles.metricLabel}>Présences recueillies</span><strong>{records.filter(r=>r.status==="signed").length}</strong></div>
+      <div style={styles.metricCard}><span style={styles.metricLabel}>Présences recueillies</span><strong>{records.filter(r=>r.status==="present").length}</strong></div>
       <div style={styles.metricCard}><span style={styles.metricLabel}>Ressources / preuves</span><strong>{documents.length}</strong></div>
     </div>
     <form onSubmit={upload} style={{display:"grid",gap:8,padding:12,border:"1px solid var(--sepia-mid)",borderRadius:12}}>
       <strong>Ressource, feuille papier ou évaluation externe</strong>
       <select name="kind" required style={styles.input}><option value="resource">Ressource pédagogique</option><option value="attendance_paper">Feuille d’émargement signée</option><option value="external_evaluation">Évaluation externe</option></select>
       <input name="title" placeholder="Titre du document" style={styles.input}/>
+      <label style={styles.field}><span style={styles.label}>Disponible à partir de (ressource)</span><input name="available_from" type="datetime-local" style={styles.input}/><small style={styles.help}>Laissez vide pour rendre la ressource disponible immédiatement.</small></label>
       <select name="enrolment_id" style={styles.input}><option value="">Session entière</option>{enrolments.map(e=><option key={e.id} value={e.id}>{learnerName(e)}</option>)}</select>
       <select name="slot_id" style={styles.input}><option value="">Créneau si preuve d’émargement</option>{slots.map(s=><option key={s.id} value={s.id}>{s.slot_date} · {String(s.starts_at).slice(0,5)}-{String(s.ends_at).slice(0,5)} {s.label??""}</option>)}</select>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}><input name="score" type="number" min="0" max="20" step=".25" placeholder="Note /20 (évaluation)" style={styles.input}/><select name="acquisition_level" style={styles.input}><option value="">Niveau d’acquisition</option><option value="acquis">Acquis</option><option value="en_cours">En cours d’acquisition</option><option value="non_acquis">Non acquis</option></select></div>
@@ -368,6 +369,12 @@ function TrainerPedagogicalTools({sessionId,enrolments}:{sessionId:string;enrolm
       <input name="file" type="file" required accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" />
       <button disabled={busy} style={{padding:10,fontWeight:800}}>{busy?"Import…":"Importer dans la session"}</button>{message?<small>{message}</small>:null}
     </form>
+    {documents.length ? <div style={{display:"grid",gap:8}}><strong>Documents importés</strong>{documents.map(document=>{
+      const metadata=document.metadata&&typeof document.metadata==="object"?document.metadata:{};
+      const learner=enrolments.find(item=>item.id===document.enrolment_id);
+      const availableFrom=typeof metadata.available_from==="string"?metadata.available_from:"";
+      const author=typeof metadata.trainer_name==="string"?metadata.trainer_name:"";
+      return <article key={document.id} style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",padding:10,border:"1px solid var(--sepia-mid)",borderRadius:10}}><div><strong>{document.logical_name}</strong><p style={styles.entryMeta}>{document.document_type==="trainer_resource"?"Ressource pédagogique":document.document_type==="attendance_paper_evidence"?"Preuve d’émargement":"Évaluation externe"}{learner?` · ${learnerName(learner)}`:" · session entière"}{author?` · ${author}`:""} · importé le {new Date(document.created_at).toLocaleString("fr-FR")}{availableFrom?` · disponible le ${new Date(availableFrom).toLocaleString("fr-FR")}`:""}</p></div><a href={`/api/client/daily/trainer-session-workspace/document?session_id=${encodeURIComponent(sessionId)}&id=${encodeURIComponent(document.id)}`} target="_blank" rel="noreferrer">Consulter</a></article>})}</div>:null}
     {slots.length?<a href={`/api/client/daily/trainer-session-workspace/attendance-sheet?session_id=${encodeURIComponent(sessionId)}`} target="_blank" rel="noreferrer">Télécharger la feuille d’émargement préremplie</a>:null}
   </div>
 }

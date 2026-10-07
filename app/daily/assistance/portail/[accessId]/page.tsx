@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import { verifyAgentAssistance } from "@/lib/server/agentAssistance";
+import {DAILY_PORTAL_RESOURCE_STATUSES,DAILY_PORTAL_RESOURCE_TYPES,isDailyPortalResourceVisible} from "@/lib/server/dailyPortalResourceVisibility";
 
 type Props = {
   params: Promise<{ accessId: string }>;
@@ -75,6 +76,9 @@ export default async function DelegatedPortalPreview({ params, searchParams }: P
     : null;
   if (access.portal_type === "learner" && !learner) notFound();
 
+  const {data:resourceRows}=await admin.from("daily_documents").select("id,document_type,linked_object_type,linked_object_id,logical_name,created_at,metadata,session_id,enrolment_id,learner_id").eq("organisation_id",assistance.organisation_id).eq("is_current",true).in("status",DAILY_PORTAL_RESOURCE_STATUSES).in("document_type",DAILY_PORTAL_RESOURCE_TYPES).order("created_at",{ascending:false});
+  const resources=(resourceRows??[]).filter(resource=>isDailyPortalResourceVisible({resource,role:access.portal_type,sessionId:session.id,enrolmentIds:learner?[String(learner.id)]:[],learnerIds:learner?[String(learner.learner_id)]:[]}));
+
   const { data: followup } = access.portal_type === "trainer"
     ? await admin
         .from("daily_session_followup_entries")
@@ -141,6 +145,10 @@ export default async function DelegatedPortalPreview({ params, searchParams }: P
           {(followup ?? []).length === 0 ? <p style={s.muted}>Aucune entrée de suivi.</p> : (followup ?? []).map((entry) => <div key={entry.id} style={s.row}><span>{entry.summary}</span><strong>{entry.entry_type} · {entry.status}</strong></div>)}
         </article>
       </> : null}
+      <article style={{ ...s.card, ...s.full }}>
+        <h2 style={s.h2}>Ressources disponibles</h2>
+        {resources.length===0?<p style={s.muted}>Aucune ressource disponible dans cet espace.</p>:resources.map(resource=><div key={resource.id} style={s.row}><span>{resource.logical_name}</span><a href={`/daily/assistance/portail/${encodeURIComponent(access.id)}/document?assistanceToken=${encodeURIComponent(token)}&id=${encodeURIComponent(resource.id)}`} target="_blank" rel="noreferrer">Consulter</a></div>)}
+      </article>
     </section>
   </main>;
 }

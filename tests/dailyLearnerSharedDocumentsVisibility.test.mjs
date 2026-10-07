@@ -10,8 +10,9 @@ const satisfactionPath = new URL("../app/api/daily-portal/[token]/satisfaction/r
 const conventionPath = new URL("../app/api/daily-portal/[token]/convention/route.ts", import.meta.url);
 const convocationPath = new URL("../app/api/daily-portal/[token]/convocation/route.ts", import.meta.url);
 const publisherPath = new URL("../app/api/client/daily/learner-shared-documents/route.ts", import.meta.url);
+const visibilityPath = new URL("../lib/server/dailyPortalResourceVisibility.ts", import.meta.url);
 
-const [resources, portal, document, assessment, satisfaction, convention, convocation, publisher] = await Promise.all([
+const [resources, portal, document, assessment, satisfaction, convention, convocation, publisher, visibility] = await Promise.all([
   readFile(resourcesPath, "utf8"),
   readFile(portalPath, "utf8"),
   readFile(documentPath, "utf8"),
@@ -20,24 +21,26 @@ const [resources, portal, document, assessment, satisfaction, convention, convoc
   readFile(conventionPath, "utf8"),
   readFile(convocationPath, "utf8"),
   readFile(publisherPath, "utf8"),
+  readFile(visibilityPath, "utf8"),
 ]);
+const resourceRules = `${resources}\n${visibility}`;
 
 test("le portail ressources reconnaît les trois portées publiables", () => {
   for (const scope of ["organisation", "session", "learners"]) {
-    assert.match(resources, new RegExp(`scope === \\"${scope}\\"`));
+    assert.match(resourceRules, new RegExp(`scope === \\"${scope}\\"`));
   }
 });
 
 test("un document organisme est visible par un apprenant", () => {
-  assert.match(resources, /scope === "organisation"\) return access\.portal_type === "learner" \|\| access\.portal_type === "trainer"/);
+  assert.match(resourceRules, /scope === "organisation"\) return role === "learner" \|\| role === "trainer"/);
   assert.match(portal, /if\(scope==="organisation"\)return true/);
 });
 
 test("une diffusion ciblée vérifie le learner_id de l'apprenant courant", () => {
   assert.match(resources, /select\("id,learner_id,daily_learners\(email\)"\)/);
   assert.match(resources, /allowedLearnerIds = matchingRows\.map/);
-  assert.match(resources, /scope === "learners"\) return access\.portal_type === "learner"/);
-  assert.match(resources, /metadata\.learner_ids\.map\(String\)\.some/);
+  assert.match(resourceRules, /scope === "learners" && role === "learner"/);
+  assert.match(resourceRules, /metadata\.learner_ids\.map\(String\)\.some/);
   assert.match(portal, /m\.learner_ids as unknown\[\]\)\.map\(String\)\.includes\(String\(learnerId\)\)/);
 });
 
