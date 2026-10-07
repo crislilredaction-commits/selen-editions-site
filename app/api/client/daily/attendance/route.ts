@@ -165,6 +165,14 @@ export async function POST(req: Request) {
     const requestedModes = body.block_modes && typeof body.block_modes === "object"
       ? body.block_modes as Record<string, string>
       : {};
+    const { data: existingSlots, error: existingSlotsError } = await context.admin
+      .from("daily_attendance_slots")
+      .select("id,slot_key,status")
+      .eq("organisation_id", context.organisationId)
+      .eq("session_id", sessionId);
+    if (existingSlotsError) return NextResponse.json({ error: existingSlotsError.message }, { status: 500 });
+    const existingByKey = new Map((existingSlots ?? []).map((slot) => [slot.slot_key, slot]));
+    const desiredKeys = new Set<string>();
 
     for (let index = 0; index < blocks.length; index += 1) {
       const raw = blocks[index];
@@ -174,6 +182,8 @@ export async function POST(req: Request) {
       const end = String(block.end ?? "").trim();
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(start) || !/^\d{2}:\d{2}$/.test(end)) continue;
       const key = slotKey({ date, start, end }, index);
+      desiredKeys.add(key);
+      const existingSlot = existingByKey.get(key);
       const mode = modeForBlock(session, requestedModes[key]);
       const { error } = await context.admin
         .from("daily_attendance_slots")
@@ -186,18 +196,40 @@ export async function POST(req: Request) {
           ends_at: end,
           mode,
           label: String(block.note ?? "").trim() || null,
-          status: "draft",
+          status: existingSlot && existingSlot.status !== "cancelled" ? existingSlot.status : "draft",
           created_by: context.user.id,
           updated_at: new Date().toISOString(),
         }, { onConflict: "session_id,slot_key" });
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    const obsoleteActiveIds = (existingSlots ?? [])
+      .filter((slot) => !desiredKeys.has(slot.slot_key) && ["draft", "open"].includes(slot.status))
+      .map((slot) => slot.id);
+    if (obsoleteActiveIds.length > 0) {
+      const { error: cancelError } = await context.admin
+        .from("daily_attendance_slots")
+        .update({ status: "cancelled", updated_at: new Date().toISOString() })
+        .eq("organisation_id", context.organisationId)
+        .eq("session_id", sessionId)
+        .in("id", obsoleteActiveIds);
+      if (cancelError) return NextResponse.json({ error: cancelError.message }, { status: 500 });
+      const { error: revokeError } = await context.admin
+        .from("daily_attendance_access_tokens")
+        .update({ status: "revoked" })
+        .eq("organisation_id", context.organisationId)
+        .eq("session_id", sessionId)
+        .in("slot_id", obsoleteActiveIds)
+        .eq("status", "active");
+      if (revokeError) return NextResponse.json({ error: revokeError.message }, { status: 500 });
+    }
+
     const [{ data: slots }, { data: enrolments }] = await Promise.all([
-      context.admin.from("daily_attendance_slots").select("id").eq("organisation_id", context.organisationId).eq("session_id", sessionId),
+      context.admin.from("daily_attendance_slots").select("id,slot_key,status").eq("organisation_id", context.organisationId).eq("session_id", sessionId),
       context.admin.from("daily_session_enrolments").select("id,status").eq("organisation_id", context.organisationId).eq("session_id", sessionId),
     ]);
-    const rows = (slots ?? []).flatMap((slot) =>
+    const currentSlots = (slots ?? []).filter((slot) => desiredKeys.has(slot.slot_key) && slot.status !== "cancelled");
+    const rows = currentSlots.flatMap((slot) =>
       (enrolments ?? []).filter((enrolment) => activeEnrolment(enrolment.status)).map((enrolment) => ({
         organisation_id: context.organisationId,
         session_id: sessionId,

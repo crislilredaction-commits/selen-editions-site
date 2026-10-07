@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import {
   DAILY_ATTENDANCE_CONSENT,
+  attendanceSlotHasStarted,
   buildAttendanceProofHash,
   createAttendanceVerificationCode,
   hashAttendanceEmail,
@@ -73,7 +74,7 @@ async function getIdentity(
       .maybeSingle();
     enrolment = data;
   }
-  if (!enrolment || ["declined", "cancelled"].includes(enrolment.status)) return null;
+  if (!enrolment || ["declined", "cancelled", "abandoned", "completed"].includes(enrolment.status)) return null;
   const { data: learner } = await admin
     .from("daily_learners")
     .select("id,first_name,last_name,email")
@@ -106,6 +107,9 @@ export async function GET(_request: Request, { params }: Params) {
     const { slot, session } = await loadSlotAndSession(admin, access);
     if (!slot || !session || ["closed", "cancelled"].includes(slot.status)) {
       return NextResponse.json({ error: "Ce créneau d'émargement n'est plus disponible." }, { status: 410 });
+    }
+    if (!attendanceSlotHasStarted(slot)) {
+      return NextResponse.json({ error: "Ce créneau d’émargement ouvrira à son heure réelle de début." }, { status: 425 });
     }
     const identity = access.access_type === "individual" ? await getIdentity(admin, access) : null;
     let record = null;
@@ -144,6 +148,9 @@ export async function POST(request: Request, { params }: Params) {
     const { slot, session } = await loadSlotAndSession(admin, access);
     if (!slot || !session || ["closed", "cancelled"].includes(slot.status)) {
       return NextResponse.json({ error: "Ce créneau est fermé." }, { status: 410 });
+    }
+    if (!attendanceSlotHasStarted(slot)) {
+      return NextResponse.json({ error: "Ce créneau d’émargement ouvrira à son heure réelle de début." }, { status: 425 });
     }
 
     if (body.action === "request_code") {
