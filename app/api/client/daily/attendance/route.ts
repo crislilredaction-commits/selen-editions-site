@@ -9,6 +9,7 @@ import {
   createAttendanceToken,
 } from "@/lib/server/dailyAttendance";
 import { ensurePosttrainingDocuments } from "@/lib/server/dailyPosttrainingDocuments";
+import { refreshDailyAttendanceChecklist } from "@/lib/server/dailyAttendanceChecklist";
 
 function text(body: Record<string, unknown>, key: string) {
   return String(body[key] ?? "").trim();
@@ -35,30 +36,6 @@ function linkExpiry(slotDate: string) {
   const date = new Date(`${slotDate}T12:00:00.000Z`);
   date.setUTCDate(date.getUTCDate() + 3);
   return date.toISOString();
-}
-
-async function refreshChecklist(
-  admin: ReturnType<typeof import("@/lib/server/clientNdaAccess").getAdminSupabase>,
-  sessionId: string,
-  organisationId: string,
-) {
-  const [{ data: slots }, { data: records }] = await Promise.all([
-    admin.from("daily_attendance_slots").select("status").eq("session_id", sessionId),
-    admin.from("daily_attendance_records").select("status").eq("session_id", sessionId),
-  ]);
-  const hasSlots = (slots ?? []).length > 0;
-  if (!hasSlots) return;
-  const complete =
-    (records ?? []).length > 0 &&
-    (records ?? []).every((record) => record.status !== "pending") &&
-    (slots ?? []).every((slot) => slot.status === "closed" || slot.status === "cancelled");
-  await admin
-    .from("daily_session_checklist_items")
-    .update({ status: complete ? "to_review" : "in_progress" })
-    .eq("organisation_id", organisationId)
-    .eq("session_id", sessionId)
-    .eq("item_key", "attendance_followup")
-    .in("status", ["todo", "in_progress", "to_review"]);
 }
 
 async function tryEnsurePosttrainingDocuments(
@@ -88,7 +65,7 @@ async function loadSessionOverview(
   if (sessionError) throw new Error(sessionError.message);
   if (!session) return null;
 
-  const [{ data: slots, error: slotsError }, { data: enrolments, error: enrolmentsError }] = await Promise.all([
+  const [{ data: slots, error: slotsError }, { data: enrolments, error: enrolmentsError }, { data: communications, error: communicationsError }] = await Promise.all([
     admin
       .from("daily_attendance_slots")
       .select("id,slot_key,slot_date,starts_at,ends_at,mode,label,status,created_at,daily_attendance_access_tokens(id,access_type,enrolment_id,channel,status,expires_at,last_used_at),daily_attendance_records(id,enrolment_id,status,signed_at,validated_at)")
@@ -101,14 +78,23 @@ async function loadSessionOverview(
       .select("id,learner_id,status,daily_learners(id,first_name,last_name,email)")
       .eq("organisation_id", organisationId)
       .eq("session_id", sessionId),
+    admin
+      .from("daily_communications")
+      .select("id,enrolment_id,communication_type,status,sent_at,created_at,metadata")
+      .eq("organisation_id", organisationId)
+      .eq("session_id", sessionId)
+      .in("communication_type", ["attendance_request", "attendance_reminder"])
+      .in("status", ["queued", "sent", "delivered"]),
   ]);
   if (slotsError) throw new Error(slotsError.message);
   if (enrolmentsError) throw new Error(enrolmentsError.message);
+  if (communicationsError) throw new Error(communicationsError.message);
 
   return {
     session,
     slots: slots ?? [],
     enrolments: (enrolments ?? []).filter((enrolment) => activeEnrolment(enrolment.status)),
+    communications: communications ?? [],
   };
 }
 
@@ -244,7 +230,7 @@ export async function POST(req: Request) {
         .upsert(rows, { onConflict: "slot_id,enrolment_id", ignoreDuplicates: true });
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     }
-    await refreshChecklist(context.admin, sessionId, context.organisationId);
+    await refreshDailyAttendanceChecklist(context.admin, context.organisationId, sessionId);
     const overview = await loadSessionOverview(context.admin, context.organisationId, sessionId);
     return NextResponse.json({ ok: true, overview });
   }
@@ -332,7 +318,7 @@ export async function POST(req: Request) {
       .eq("organisation_id", context.organisationId)
       .eq("slot_id", slotId)
       .eq("status", "active");
-    await refreshChecklist(context.admin, sessionId, context.organisationId);
+    await refreshDailyAttendanceChecklist(context.admin, context.organisationId, sessionId);
     await tryEnsurePosttrainingDocuments(context.admin, context.organisationId, context.user.id, sessionId);
     return NextResponse.json({ ok: true });
   }
@@ -353,7 +339,7 @@ export async function POST(req: Request) {
       .eq("enrolment_id", enrolmentId)
       .neq("status", "present");
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    await refreshChecklist(context.admin, sessionId, context.organisationId);
+    await refreshDailyAttendanceChecklist(context.admin, context.organisationId, sessionId);
     await tryEnsurePosttrainingDocuments(context.admin, context.organisationId, context.user.id, sessionId);
     return NextResponse.json({ ok: true });
   }
