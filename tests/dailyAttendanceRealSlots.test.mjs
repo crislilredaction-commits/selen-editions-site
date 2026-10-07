@@ -28,3 +28,14 @@ test("P1 exclut toute inscription inactive et conserve l'idempotence", () => {
   assert.match(publicApi, /onConflict: "slot_id,enrolment_id"/);
   assert.match(attendanceApi, /ignoreDuplicates: true/);
 });
+
+
+test("P1 annule les anciens créneaux actifs sans effacer l'historique", () => {
+  assert.match(attendanceApi, /obsoleteActiveIds/);
+  assert.match(attendanceApi, /\["draft", "open"\]\.includes\(slot\.status\)/);
+  assert.match(attendanceApi, /update\(\{ status: "cancelled"/);
+  assert.match(attendanceApi, /daily_attendance_access_tokens/);
+  assert.match(attendanceApi, /update\(\{ status: "revoked" \}\)/);
+  assert.match(attendanceApi, /currentSlots/);
+  assert.doesNotMatch(attendanceApi, /delete\(\)/);
+});
