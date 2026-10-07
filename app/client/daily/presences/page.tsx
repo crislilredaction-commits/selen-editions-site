@@ -2,12 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { assistanceFetch } from "@/components/AgentAssistanceBanner";
+import { dailyAttendanceLabel, dailyAttendanceSummary } from "@/lib/dailyAttendanceState";
 
 type Session = { id: string; internal_reference?: string | null; start_date?: string | null; end_date?: string | null; daily_formations?: { title?: string } | { title?: string }[] | null };
 type ScheduleBlock = { date?: string; start?: string; end?: string; note?: string };
 type Slot = { id: string; slot_date: string; starts_at: string; ends_at: string; mode: string; status: string; daily_attendance_records?: { enrolment_id: string; status: string }[] };
 type Enrolment = { id: string; status: string; daily_learners?: { first_name?: string | null; last_name?: string | null; email?: string | null } | { first_name?: string | null; last_name?: string | null; email?: string | null }[] | null };
-type Overview = { session: { modality?: string | null; distance_mode?: string | null; schedule_blocks?: ScheduleBlock[] | null }; slots: Slot[]; enrolments: Enrolment[] };
+type Communication = { id: string; enrolment_id: string; communication_type: string; status: string; sent_at?: string | null; created_at: string; metadata?: { attendance_slot_id?: string } | null };
+type Overview = { session: { modality?: string | null; distance_mode?: string | null; schedule_blocks?: ScheduleBlock[] | null }; slots: Slot[]; enrolments: Enrolment[]; communications: Communication[] };
 type GeneratedAccess = { url: string; channel: "qr" | "chat" | "link" };
 
 type QrApi = {
@@ -162,14 +164,24 @@ export default function DailyPresencePage() {
         <button disabled={busy} onClick={() => void run({ action: "prepare_session", block_modes: blockModes })} style={{ marginTop: ".8rem", padding: ".7rem" }}>Préparer l'émargement</button>
       </> : null}
     </section>
+    {overview?.enrolments.length ? <section style={{ padding: "1rem", background: "#fffaf0", border: "1px solid #d8b989", marginBottom: "1rem" }}>
+      <h2>État global des participants</h2>
+      {overview.enrolments.map((enrolment) => {
+        const statuses = overview.slots.filter((slot) => slot.status !== "cancelled").map((slot) => slot.daily_attendance_records?.find((record) => record.enrolment_id === enrolment.id)?.status ?? "pending");
+        return <p key={enrolment.id}><strong>{learnerName(enrolment)}</strong> · {dailyAttendanceSummary(statuses)}</p>;
+      })}
+    </section> : null}
     {overview?.slots.map((slot) => <section key={slot.id} style={{ padding: "1rem", background: "#fffaf0", border: "1px solid #d8b989", marginBottom: "1rem" }}>
       <h2>{new Date(`${slot.slot_date}T12:00:00`).toLocaleDateString("fr-FR")} · {slot.starts_at.slice(0, 5)}–{slot.ends_at.slice(0, 5)}</h2>
       <p>{slot.mode.replaceAll("_", " ")} · {slot.status}</p>
       {slot.mode !== "distanciel_asynchrone" && slot.status !== "closed" ? <button disabled={busy} onClick={() => void run({ action: "create_link", slot_id: slot.id })} style={{ padding: ".55rem" }}>{slot.mode === "presentiel" ? "Créer et afficher le QR" : "Créer le lien à partager dans le chat"}</button> : null}
       <div style={{ marginTop: ".8rem" }}>{overview.enrolments.map((enrolment) => {
         const record = slot.daily_attendance_records?.find((row) => row.enrolment_id === enrolment.id);
+        const reminders = overview.communications.filter((item) => item.enrolment_id === enrolment.id && item.communication_type === "attendance_reminder" && item.metadata?.attendance_slot_id === slot.id);
+        const lastReminder = reminders.map((item) => item.sent_at ?? item.created_at).sort().at(-1);
         return <div key={enrolment.id} style={{ display: "flex", gap: ".6rem", alignItems: "center", flexWrap: "wrap", padding: ".55rem 0", borderTop: "1px solid #ead8bc" }}>
-          <strong style={{ minWidth: 180 }}>{learnerName(enrolment)}</strong><span>{record?.status ?? "pending"}</span>
+          <strong style={{ minWidth: 180 }}>{learnerName(enrolment)}</strong><span>{dailyAttendanceLabel(record?.status, slot.status === "closed" ? "closed" : "open")}</span>
+          {reminders.length ? <small>{reminders.length} relance{reminders.length > 1 ? "s" : ""}{lastReminder ? ` · dernière ${new Date(lastReminder).toLocaleString("fr-FR")}` : ""}</small> : null}
           {slot.mode === "distanciel_asynchrone" && slot.status !== "closed" ? <button disabled={busy} onClick={() => void run({ action: "create_link", slot_id: slot.id, enrolment_id: enrolment.id })}>Lien individuel</button> : null}
           {record?.status !== "present" ? <><button disabled={busy} onClick={() => void run({ action: "set_absence", slot_id: slot.id, enrolment_id: enrolment.id, status: "absent" })}>Absent</button><button disabled={busy} onClick={() => void run({ action: "set_absence", slot_id: slot.id, enrolment_id: enrolment.id, status: "excused" })}>Justifiée</button></> : null}
         </div>;
