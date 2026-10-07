@@ -1,5 +1,36 @@
 import { createHash, randomBytes, randomInt } from "crypto";
 
+
+export const DAILY_ATTENDANCE_TIME_ZONE = "Europe/Paris";
+
+export function attendanceParisClock(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: DAILY_ATTENDANCE_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return {
+    date: `${values.year}-${values.month}-${values.day}`,
+    minutes: Number(values.hour) * 60 + Number(values.minute),
+  };
+}
+
+export function attendanceSlotHasStarted(
+  slot: { slot_date: string; starts_at: string },
+  now = new Date(),
+) {
+  const clock = attendanceParisClock(now);
+  if (clock.date !== slot.slot_date) return clock.date > slot.slot_date;
+  const [hours, minutes] = slot.starts_at.slice(0, 5).split(":").map(Number);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return false;
+  return clock.minutes >= hours * 60 + minutes;
+}
+
 export const DAILY_ATTENDANCE_CONSENT =
   "Je confirme ma présence pour ce créneau de formation et j’accepte que ma signature électronique, la date et l’heure de signature ainsi que les éléments techniques de preuve soient conservés dans le dossier de formation.";
 
