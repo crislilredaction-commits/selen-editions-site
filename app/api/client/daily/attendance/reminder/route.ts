@@ -74,7 +74,7 @@ export async function POST(req: Request) {
   if (!enrolment || ["declined", "cancelled", "completed"].includes(enrolment.status)) {
     return NextResponse.json({ error: "Inscription inactive." }, { status: 404 });
   }
-  if (record?.status === "present") return NextResponse.json({ error: "La présence est déjà signée." }, { status: 409 });
+  if (record?.status !== "pending") return NextResponse.json({ error: "Cette présence est déjà traitée ; aucune relance n’est nécessaire." }, { status: 409 });
 
   const learner = one(enrolment.daily_learners as { first_name?: string | null; last_name?: string | null; email?: string | null } | { first_name?: string | null; last_name?: string | null; email?: string | null }[] | null);
   const email = text(learner?.email).toLowerCase();
@@ -93,6 +93,29 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Un accès vient déjà d’être généré. Patientez une minute avant une nouvelle relance." }, { status: 429 });
   }
 
+  const learnerName = [learner?.first_name, learner?.last_name].filter(Boolean).join(" ").trim();
+  const { data: communication, error: reservationError } = await context.admin
+    .from("daily_communications")
+    .insert({
+      organisation_id: context.organisationId,
+      session_id: sessionId,
+      enrolment_id: enrolmentId,
+      communication_type: "attendance_reminder",
+      channel: "email",
+      recipient_email: email,
+      recipient_name: learnerName || null,
+      subject: "Relance d’émargement à envoyer",
+      provider: "resend",
+      status: "queued",
+      created_by: context.user.id,
+      metadata: { attendance_slot_id: slotId, manual: true },
+    })
+    .select("id")
+    .single();
+  if (reservationError || !communication) {
+    return NextResponse.json({ error: reservationError?.code === "23505" ? "Cette relance est déjà enregistrée." : "La preuve d’envoi n’a pas pu être réservée. Aucun message n’a été envoyé." }, { status: reservationError?.code === "23505" ? 409 : 500 });
+  }
+
   const { error: revokeError } = await context.admin
     .from("daily_attendance_access_tokens")
     .update({ status: "revoked" })
@@ -100,7 +123,10 @@ export async function POST(req: Request) {
     .eq("slot_id", slotId)
     .eq("enrolment_id", enrolmentId)
     .eq("status", "active");
-  if (revokeError) return NextResponse.json({ error: revokeError.message }, { status: 500 });
+  if (revokeError) {
+    await context.admin.from("daily_communications").update({ status: "failed", failed_at: new Date().toISOString(), failure_reason: revokeError.message }).eq("id", communication.id);
+    return NextResponse.json({ error: revokeError.message }, { status: 500 });
+  }
 
   const { token, tokenHash } = createAttendanceToken();
   const expiresAt = linkExpiry(slot.slot_date);
@@ -120,11 +146,13 @@ export async function POST(req: Request) {
     })
     .select("id")
     .single();
-  if (tokenError || !access) return NextResponse.json({ error: tokenError?.message ?? "Lien impossible à créer." }, { status: 500 });
+  if (tokenError || !access) {
+    await context.admin.from("daily_communications").update({ status: "failed", failed_at: new Date().toISOString(), failure_reason: tokenError?.message ?? "Lien impossible à créer." }).eq("id", communication.id);
+    return NextResponse.json({ error: tokenError?.message ?? "Lien impossible à créer." }, { status: 500 });
+  }
 
   const origin = new URL(req.url).origin;
   const attendanceUrl = `${origin}/daily-emargement/${token}`;
-  const learnerName = [learner?.first_name, learner?.last_name].filter(Boolean).join(" ").trim();
   const slotLabel = `${new Date(`${slot.slot_date}T12:00:00`).toLocaleDateString("fr-FR")} · ${slot.starts_at.slice(0, 5)} à ${slot.ends_at.slice(0, 5)}${slot.label ? ` · ${slot.label}` : ""}`;
   const emailInput = {
     email,
@@ -135,38 +163,45 @@ export async function POST(req: Request) {
   };
   const prepared = prepareDailyAttendanceReminder(emailInput);
 
-  const { data: communication, error: evidenceError } = await context.admin
+  const { error: evidenceError } = await context.admin
     .from("daily_communications")
-    .insert({
-      organisation_id: context.organisationId,
-      session_id: sessionId,
-      enrolment_id: enrolmentId,
-      communication_type: "attendance_reminder",
-      channel: "email",
-      recipient_email: email,
-      recipient_name: learnerName || null,
+    .update({
       subject: prepared.subject,
       text_body: prepared.text,
       html_body: prepared.html,
-      provider: "resend",
-      status: "queued",
-      created_by: context.user.id,
       metadata: {
         attendance_slot_id: slotId,
         attendance_access_token_id: access.id,
         token_expires_at: expiresAt,
       },
     })
-    .select("id")
-    .single();
+    .eq("id", communication.id);
 
-  if (evidenceError || !communication) {
+  if (evidenceError) {
     await context.admin
       .from("daily_attendance_access_tokens")
       .update({ status: "revoked" })
       .eq("id", access.id)
       .eq("organisation_id", context.organisationId);
+    await context.admin.from("daily_communications").update({ status: "failed", failed_at: new Date().toISOString(), failure_reason: evidenceError.message }).eq("id", communication.id);
     return NextResponse.json({ error: "La preuve d’envoi n’a pas pu être réservée. Le message n’a pas été envoyé et le lien a été révoqué." }, { status: 500 });
+  }
+
+  const { data: attendanceBeforeSend } = await context.admin
+    .from("daily_attendance_records")
+    .select("status")
+    .eq("organisation_id", context.organisationId)
+    .eq("session_id", sessionId)
+    .eq("slot_id", slotId)
+    .eq("enrolment_id", enrolmentId)
+    .maybeSingle();
+  if (attendanceBeforeSend?.status !== "pending") {
+    const cancelledAt = new Date().toISOString();
+    await Promise.all([
+      context.admin.from("daily_attendance_access_tokens").update({ status: "revoked" }).eq("id", access.id).eq("organisation_id", context.organisationId),
+      context.admin.from("daily_communications").update({ status: "failed", failed_at: cancelledAt, failure_reason: "attendance_already_resolved" }).eq("id", communication.id).eq("organisation_id", context.organisationId),
+    ]);
+    return NextResponse.json({ error: "La présence vient d’être traitée ; aucune relance n’a été envoyée." }, { status: 409 });
   }
 
   const sent = await sendDailyAttendanceReminder(emailInput);
