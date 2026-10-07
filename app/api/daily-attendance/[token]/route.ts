@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
+import { refreshDailyAttendanceChecklist } from "@/lib/server/dailyAttendanceChecklist";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import {
   DAILY_ATTENDANCE_CONSENT,
@@ -283,7 +284,7 @@ export async function POST(request: Request, { params }: Params) {
     if (recordError) return NextResponse.json({ error: recordError.message }, { status: 500 });
 
     await admin.from("daily_attendance_access_tokens").update({ last_used_at: signedAt }).eq("id", access.id);
-    await admin.from("daily_session_checklist_items").update({ status: "in_progress" }).eq("organisation_id", access.organisation_id).eq("session_id", access.session_id).eq("item_key", "attendance_followup").eq("status", "todo");
+    await refreshDailyAttendanceChecklist(admin, access.organisation_id, access.session_id);
     return NextResponse.json({ ok: true, signedAt });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Émargement impossible." }, { status: 500 });

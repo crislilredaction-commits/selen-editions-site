@@ -151,7 +151,7 @@ export async function GET(req: Request) {
       .select("session_id,enrolment_id,communication_type,status,metadata,created_at")
       .in("session_id", sessionIds)
       .in("communication_type", ["attendance_request", "attendance_reminder"])
-      .in("status", ["queued", "sent"]),
+      .in("status", ["queued", "sent", "delivered"]),
   ]);
 
   const readError = sessionsResult.error ?? enrolmentsResult.error ?? recordsResult.error ?? communicationsResult.error;
@@ -216,6 +216,45 @@ export async function GET(req: Request) {
         continue;
       }
 
+      const { data: currentAttendance, error: currentAttendanceError } = await admin
+        .from("daily_attendance_records")
+        .select("status")
+        .eq("organisation_id", slot.organisation_id)
+        .eq("session_id", slot.session_id)
+        .eq("slot_id", slot.id)
+        .eq("enrolment_id", enrolment.id)
+        .maybeSingle();
+      if (currentAttendanceError || currentAttendance?.status !== "pending") {
+        skipped += 1;
+        details.push({ slot_id: slot.id, enrolment_id: enrolment.id, phase, status: currentAttendanceError ? "attendance_recheck_failed" : "already_resolved" });
+        continue;
+      }
+
+      const learnerName = [learner?.first_name, learner?.last_name].filter(Boolean).join(" ").trim();
+      const { data: communication, error: evidenceError } = await admin
+        .from("daily_communications")
+        .insert({
+          organisation_id: slot.organisation_id,
+          session_id: slot.session_id,
+          enrolment_id: enrolment.id,
+          communication_type: communicationType,
+          channel: "email",
+          recipient_email: email,
+          recipient_name: learnerName || null,
+          subject: "Émargement à envoyer",
+          provider: "resend",
+          status: "queued",
+          created_by: null,
+          metadata: { attendance_slot_id: slot.id, automation_phase: phase },
+        })
+        .select("id")
+        .single();
+      if (evidenceError || !communication) {
+        skipped += 1;
+        details.push({ slot_id: slot.id, enrolment_id: enrolment.id, phase, status: evidenceError?.code === "23505" ? "already_reserved" : "evidence_failed" });
+        continue;
+      }
+
       const { error: revokeError } = await admin
         .from("daily_attendance_access_tokens")
         .update({ status: "revoked" })
@@ -224,6 +263,7 @@ export async function GET(req: Request) {
         .eq("enrolment_id", enrolment.id)
         .eq("status", "active");
       if (revokeError) {
+        await admin.from("daily_communications").update({ status: "failed", failed_at: new Date().toISOString(), failure_reason: revokeError.message }).eq("id", communication.id);
         failed += 1;
         details.push({ slot_id: slot.id, enrolment_id: enrolment.id, phase, status: "token_revoke_failed" });
         continue;
@@ -248,12 +288,12 @@ export async function GET(req: Request) {
         .select("id")
         .single();
       if (tokenError || !tokenRow) {
+        await admin.from("daily_communications").update({ status: "failed", failed_at: new Date().toISOString(), failure_reason: tokenError?.message ?? "token_create_failed" }).eq("id", communication.id);
         failed += 1;
         details.push({ slot_id: slot.id, enrolment_id: enrolment.id, phase, status: "token_create_failed" });
         continue;
       }
 
-      const learnerName = [learner?.first_name, learner?.last_name].filter(Boolean).join(" ").trim();
       const emailInput = {
         email,
         learnerName,
@@ -265,22 +305,12 @@ export async function GET(req: Request) {
         ? prepareDailyAttendanceRequest(emailInput)
         : prepareDailyAttendanceReminder(emailInput);
 
-      const { data: communication, error: evidenceError } = await admin
+      const { error: evidenceUpdateError } = await admin
         .from("daily_communications")
-        .insert({
-          organisation_id: slot.organisation_id,
-          session_id: slot.session_id,
-          enrolment_id: enrolment.id,
-          communication_type: communicationType,
-          channel: "email",
-          recipient_email: email,
-          recipient_name: learnerName || null,
+        .update({
           subject: prepared.subject,
           text_body: prepared.text,
           html_body: prepared.html,
-          provider: "resend",
-          status: "queued",
-          created_by: null,
           metadata: {
             attendance_slot_id: slot.id,
             attendance_access_token_id: tokenRow.id,
@@ -288,13 +318,32 @@ export async function GET(req: Request) {
             automation_phase: phase,
           },
         })
-        .select("id")
-        .single();
+        .eq("id", communication.id);
 
-      if (evidenceError || !communication) {
+      if (evidenceUpdateError) {
         await admin.from("daily_attendance_access_tokens").update({ status: "revoked" }).eq("id", tokenRow.id);
+        await admin.from("daily_communications").update({ status: "failed", failed_at: new Date().toISOString(), failure_reason: evidenceUpdateError.message }).eq("id", communication.id);
         failed += 1;
         details.push({ slot_id: slot.id, enrolment_id: enrolment.id, phase, status: "evidence_failed" });
+        continue;
+      }
+
+      const { data: attendanceBeforeSend } = await admin
+        .from("daily_attendance_records")
+        .select("status")
+        .eq("organisation_id", slot.organisation_id)
+        .eq("session_id", slot.session_id)
+        .eq("slot_id", slot.id)
+        .eq("enrolment_id", enrolment.id)
+        .maybeSingle();
+      if (attendanceBeforeSend?.status !== "pending") {
+        const cancelledAt = new Date().toISOString();
+        await Promise.all([
+          admin.from("daily_attendance_access_tokens").update({ status: "revoked" }).eq("id", tokenRow.id),
+          admin.from("daily_communications").update({ status: "failed", failed_at: cancelledAt, failure_reason: "attendance_already_resolved" }).eq("id", communication.id),
+        ]);
+        skipped += 1;
+        details.push({ slot_id: slot.id, enrolment_id: enrolment.id, phase, status: "resolved_before_send" });
         continue;
       }
 
