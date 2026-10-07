@@ -7,7 +7,8 @@ const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 test("l’espace apprenant expose les documents utiles avant formation", async () => {
   const resources = await read("app/api/daily-portal/[token]/resources/route.ts");
   const download = await read("app/api/daily-portal/[token]/document/route.ts");
-  for (const source of [resources, download]) {
+  const visibility = await read("lib/server/dailyPortalResourceVisibility.ts");
+  for (const source of [`${resources}\n${visibility}`, `${download}\n${visibility}`]) {
     assert.match(source, /convocation/);
     assert.match(source, /registration_positioning/);
     assert.match(source, /training_program/);
@@ -17,8 +18,9 @@ test("l’espace apprenant expose les documents utiles avant formation", async (
 
 test("les documents individuels restent bornés à l’inscription de l’apprenant", async () => {
   const resources = await read("app/api/daily-portal/[token]/resources/route.ts");
+  const visibility = await read("lib/server/dailyPortalResourceVisibility.ts");
   assert.match(resources, /allowedEnrolmentIds/);
-  assert.match(resources, /linked_object_type === "enrolment"/);
+  assert.match(visibility, /linked_object_type === "enrolment"/);
   assert.match(resources, /daily_learners\(email\)/);
 });
 

@@ -1,0 +1,18 @@
+import {headers} from "next/headers";
+import {NextResponse} from "next/server";
+import {verifyAgentAssistance} from "@/lib/server/agentAssistance";
+import {getAdminSupabase} from "@/lib/server/clientNdaAccess";
+import {DAILY_PORTAL_RESOURCE_STATUSES,DAILY_PORTAL_RESOURCE_TYPES,isDailyPortalResourceVisible} from "@/lib/server/dailyPortalResourceVisibility";
+
+type Params={params:Promise<{accessId:string}>};
+export async function GET(request:Request,{params}:Params){
+  const{accessId}=await params;const url=new URL(request.url),token=url.searchParams.get("assistanceToken")??"",documentId=url.searchParams.get("id")??"";const admin=getAdminSupabase();const assistance=await verifyAgentAssistance(admin,token);
+  if(!assistance||assistance.metadata?.scope!=="portal_preview"||String(assistance.metadata?.portal_access_id??"")!==accessId)return NextResponse.json({error:"Document introuvable."},{status:404});
+  const{data:access}=await admin.from("daily_portal_access_tokens").select("id,session_id,portal_type,entity_email,status,expires_at").eq("id",accessId).in("portal_type",["learner","trainer"]).maybeSingle();const expired=Boolean(access?.expires_at&&new Date(access.expires_at).getTime()<Date.now());if(!access||["revoked","expired"].includes(String(access.status??""))||expired)return NextResponse.json({error:"Document introuvable."},{status:404});
+  const{data:session}=await admin.from("daily_sessions").select("id,organisation_id").eq("id",access.session_id).eq("organisation_id",assistance.organisation_id).neq("status","archived").maybeSingle();if(!session)return NextResponse.json({error:"Document introuvable."},{status:404});
+  const enrolmentIds:string[]=[],learnerIds:string[]=[];if(access.portal_type==="learner"){const{data:rows}=await admin.from("daily_session_enrolments").select("id,learner_id,daily_learners(email)").eq("session_id",session.id).eq("organisation_id",assistance.organisation_id).not("status","in","(declined,cancelled,abandoned)");for(const row of rows??[]){const learner=Array.isArray(row.daily_learners)?row.daily_learners[0]:row.daily_learners;if(String(learner?.email??"").trim().toLowerCase()===String(access.entity_email??"").trim().toLowerCase()){enrolmentIds.push(String(row.id));learnerIds.push(String(row.learner_id))}}}
+  const{data:document}=await admin.from("daily_documents").select("id,document_type,linked_object_type,linked_object_id,session_id,enrolment_id,learner_id,metadata,bucket,storage_path").eq("id",documentId).eq("organisation_id",assistance.organisation_id).eq("is_current",true).in("status",DAILY_PORTAL_RESOURCE_STATUSES).in("document_type",DAILY_PORTAL_RESOURCE_TYPES).maybeSingle();
+  if(!document||!isDailyPortalResourceVisible({resource:document,role:access.portal_type,sessionId:session.id,enrolmentIds,learnerIds}))return NextResponse.json({error:"Document introuvable."},{status:404});
+  const headerList=await headers();await admin.from("selen_agent_assistance_logs").insert({assistance_token_id:assistance.id,agent_user_id:assistance.agent_user_id,agent_email:assistance.agent_email,organisation_id:assistance.organisation_id,dossier_id:assistance.dossier_id,action:"delegated_portal_document_viewed",action_label:"Ressource consultée en délégation",ip:headerList.get("x-forwarded-for")?.split(",")[0]?.trim()||headerList.get("x-real-ip"),user_agent:headerList.get("user-agent"),metadata:{mode:"agent_assistance",scope:"portal_preview",portal_access_id:access.id,session_id:session.id,document_id:document.id}});
+  const{data:signed}=await admin.storage.from(document.bucket).createSignedUrl(document.storage_path,120);if(!signed?.signedUrl)return NextResponse.json({error:"Téléchargement indisponible."},{status:500});return NextResponse.redirect(signed.signedUrl);
+}

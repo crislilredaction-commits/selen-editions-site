@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
+import {DAILY_PORTAL_RESOURCE_STATUSES,DAILY_PORTAL_RESOURCE_TYPES,isDailyPortalResourceVisible} from "@/lib/server/dailyPortalResourceVisibility";
 
 type Params = { params: Promise<{ token: string }> };
 type Json = Record<string, unknown>;
 const text = (value: unknown) => String(value ?? "").trim();
 const email = (value: unknown) => text(value).toLowerCase();
 const array = (value: unknown): Json[] => Array.isArray(value) ? value.filter((v): v is Json => Boolean(v && typeof v === "object")) : [];
-const published = ["validated", "published", "signed", "active"];
-const learnerTypes = ["training_program", "convocation", "registration_positioning", "completion_certificate", "organisation_shared"];
 
 function matchesLearnerRecipient(row: Json, access: Json) {
   const entityEmail = email(access.entity_email);
@@ -103,8 +102,7 @@ export async function GET(_request: Request, { params }: Params) {
 
   const { data: session, error: sessionError } = await admin.from("daily_sessions").select("id,organisation_id,companies").eq("id", access.session_id).neq("status", "archived").maybeSingle();
   if (sessionError || !session) return NextResponse.json({ error: sessionError?.message ?? "Session introuvable." }, { status: sessionError ? 500 : 404 });
-  const documentTypes = access.portal_type === "learner" ? learnerTypes : ["training_program", "completion_certificate", "organisation_shared"];
-  const { data: documents, error: documentError } = await admin.from("daily_documents").select("id,document_type,linked_object_type,linked_object_id,logical_name,version,status,mime_type,created_at,metadata").eq("organisation_id", session.organisation_id).eq("is_current", true).in("status", published).in("document_type", documentTypes).order("created_at", { ascending: false });
+  const { data: documents, error: documentError } = await admin.from("daily_documents").select("id,document_type,linked_object_type,linked_object_id,logical_name,version,status,mime_type,created_at,metadata,session_id,enrolment_id,learner_id").eq("organisation_id", session.organisation_id).eq("is_current", true).in("status", DAILY_PORTAL_RESOURCE_STATUSES).in("document_type", DAILY_PORTAL_RESOURCE_TYPES).order("created_at", { ascending: false });
   if (documentError) return NextResponse.json({ error: documentError.message }, { status: 500 });
 
   let allowedEnrolmentIds: string[] = [];
@@ -123,16 +121,7 @@ export async function GET(_request: Request, { params }: Params) {
     }
   }
 
-  const visible = (documents ?? []).filter((document: Json) => {
-    if (document.document_type === "training_program") return document.linked_object_type === "session" && document.linked_object_id === session.id;
-    if (["convocation", "registration_positioning", "completion_certificate"].includes(text(document.document_type))) return access.portal_type === "learner" && document.linked_object_type === "enrolment" && allowedEnrolmentIds.includes(text(document.linked_object_id));
-    const metadata = document.metadata && typeof document.metadata === "object" && !Array.isArray(document.metadata) ? document.metadata as Json : {};
-    const scope = text(metadata.distribution_scope);
-    if (scope === "organisation") return access.portal_type === "learner" || access.portal_type === "trainer";
-    if (scope === "session") return text(metadata.session_id) === session.id;
-    if (scope === "learners") return access.portal_type === "learner" && text(metadata.session_id) === session.id && Array.isArray(metadata.learner_ids) && metadata.learner_ids.map(String).some((learnerId) => allowedLearnerIds.includes(learnerId));
-    return false;
-  });
+  const visible = (documents ?? []).filter((document: Json) => isDailyPortalResourceVisible({resource:document,role:access.portal_type,sessionId:session.id,enrolmentIds:allowedEnrolmentIds,learnerIds:allowedLearnerIds}));
 
   let pretrainingResources: Json[] = [];
   try {
