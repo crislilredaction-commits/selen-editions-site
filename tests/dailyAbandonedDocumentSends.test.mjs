@@ -121,5 +121,5 @@ test("l'automatisation d'émargement exclut aussi les inscriptions abandonnées"
 test("un échec de finalisation de la preuve email rend l'automatisation non OK sans provoquer de réenvoi", () => {
   assert.match(attendanceAutomation, /if \(finalizeError\) failed \+= 1;/);
   assert.match(attendanceAutomation, /status: finalizeError \? "sent_evidence_finalize_failed" : "sent"/);
-  assert.match(attendanceAutomation, /\.in\("status", \["queued", "sent"\]\)/);
+  assert.match(attendanceAutomation, /\.in\("status", \["queued", "sent", "delivered"\]\)/);
 });
