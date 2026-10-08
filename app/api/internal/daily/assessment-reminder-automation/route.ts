@@ -120,7 +120,7 @@ export async function GET(req: Request) {
     .from("daily_sessions")
     .select("id,organisation_id,internal_reference,end_date,status,trainer_ids,daily_formations(title,learning_assessment_mode)")
     .eq("end_date", today)
-    .neq("status", "archived")
+    .not("status", "in", "(archived,cancelled)")
     .order("internal_reference", { ascending: true });
 
   if (sessionError) return NextResponse.json({ error: sessionError.message }, { status: 500 });
@@ -145,6 +145,7 @@ export async function GET(req: Request) {
       .select("linked_object_id")
       .eq("document_type", "learning_assessment_evidence")
       .eq("linked_object_type", "enrolment")
+      .in("session_id", sessionIds)
       .eq("is_current", true)
       .is("archived_at", null),
     admin
@@ -280,7 +281,7 @@ export async function GET(req: Request) {
         continue;
       }
 
-      const uploadUrl = new URL("/client/daily/evaluations/preuves", url.origin).toString();
+      const uploadUrl = new URL(`/client/daily/formateur/suivi-sessions?session=${encodeURIComponent(session.id)}`, url.origin).toString();
       const emailInput = {
         email,
         trainerName: text(trainer.display_name),
@@ -319,6 +320,11 @@ export async function GET(req: Request) {
         .single();
 
       if (evidenceError || !communication) {
+        if (evidenceError?.code === "23505") {
+          skipped += 1;
+          details.push({ session_id: session.id, trainer_id: trainerId, status: "already_sent_today" });
+          continue;
+        }
         failed += 1;
         details.push({ session_id: session.id, trainer_id: trainerId, status: "evidence_failed" });
         continue;

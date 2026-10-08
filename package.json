@@ -10,6 +10,7 @@
     "start": "next start",
     "lint": "eslint",
     "test:daily-resources-trainer-p3": "node --test tests/dailyResourcesTrainerWorkspaceP3.test.mjs",
+    "test:daily-assessment-p5": "node --test tests/dailyAssessmentLifecycleP5.test.mjs",
     "test:nda-guards": "node --test tests/ndaRouteGuards.test.mjs",
     "test:daily-ux-guards": "node --test tests/dailyOnboardingUxGuards.test.mjs tests/dailyDashboardUxGuards.test.mjs tests/dailyReclamationsNavigation.test.mjs",
     "test:daily-tone-guards": "node --test tests/dailyToneScope.test.mjs",

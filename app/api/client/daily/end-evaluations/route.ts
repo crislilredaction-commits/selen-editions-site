@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { blockedAgentAssistanceResponse, getAssistanceTokenFromRequest } from "@/lib/server/agentAssistance";
 import { getDailyOrganisationContext, getDailyOrganisationReadContext } from "@/lib/server/dailyOrganisationContext";
 import { activeDailyEnrolment, createDailyFeedbackToken, dailyFeedbackPath } from "@/lib/server/dailyEndEvaluations";
-import { ensurePosttrainingDocuments } from "@/lib/server/dailyPosttrainingDocuments";
+import { refreshDailyEndEvaluationsChecklist, tryEnsureDailyPosttrainingDocuments as tryEnsurePosttrainingDocuments } from "@/lib/server/dailyEndEvaluationLifecycle";
 
 const OUTCOMES = new Set(["pending", "achieved", "partially_achieved", "not_achieved", "not_applicable"]);
 
@@ -31,45 +31,6 @@ async function sessionExists(
   return data;
 }
 
-async function refreshChecklist(
-  admin: ReturnType<typeof import("@/lib/server/clientNdaAccess").getAdminSupabase>,
-  organisationId: string,
-  sessionId: string,
-) {
-  const [{ data: enrolments }, { data: assessments }, { data: responses }] = await Promise.all([
-    admin.from("daily_session_enrolments").select("id,status").eq("organisation_id", organisationId).eq("session_id", sessionId),
-    admin.from("daily_learning_assessments").select("enrolment_id,outcome").eq("organisation_id", organisationId).eq("session_id", sessionId),
-    admin.from("daily_learner_feedback_responses").select("enrolment_id").eq("organisation_id", organisationId).eq("session_id", sessionId),
-  ]);
-  const active = (enrolments ?? []).filter((row) => activeDailyEnrolment(row.status));
-  if (active.length === 0) return;
-  const assessmentMap = new Map((assessments ?? []).map((row) => [row.enrolment_id, row.outcome]));
-  const feedbackSet = new Set((responses ?? []).map((row) => row.enrolment_id));
-  const anyStarted = active.some((row) => assessmentMap.get(row.id) && assessmentMap.get(row.id) !== "pending") || feedbackSet.size > 0;
-  const complete = active.every((row) => assessmentMap.get(row.id) && assessmentMap.get(row.id) !== "pending" && feedbackSet.has(row.id));
-  const status = complete ? "to_review" : anyStarted ? "in_progress" : "todo";
-  await admin
-    .from("daily_session_checklist_items")
-    .update({ status })
-    .eq("organisation_id", organisationId)
-    .eq("session_id", sessionId)
-    .eq("item_key", "end_evaluations")
-    .neq("status", "not_applicable");
-}
-
-async function tryEnsurePosttrainingDocuments(
-  admin: ReturnType<typeof import("@/lib/server/clientNdaAccess").getAdminSupabase>,
-  organisationId: string,
-  userId: string,
-  sessionId: string,
-) {
-  try {
-    await ensurePosttrainingDocuments({ admin, organisationId, userId, sessionId });
-  } catch (error) {
-    console.error("[daily] automatic post-training document generation failed after end evaluation", error);
-  }
-}
-
 async function loadOverview(
   admin: ReturnType<typeof import("@/lib/server/clientNdaAccess").getAdminSupabase>,
   organisationId: string,
@@ -82,6 +43,7 @@ async function loadOverview(
     { data: assessments, error: assessmentError },
     { data: responses, error: responseError },
     { data: quizResponses, error: quizResponseError },
+    { data: evidence, error: evidenceError },
   ] = await Promise.all([
     admin
       .from("daily_session_enrolments")
@@ -103,13 +65,22 @@ async function loadOverview(
       .select("id,enrolment_id,question_snapshot,answers,auto_score,score_max,requires_manual_review,submitted_at")
       .eq("organisation_id", organisationId)
       .eq("session_id", sessionId),
+    admin
+      .from("daily_documents")
+      .select("id,enrolment_id,logical_name,status,version,previous_document_id,created_at")
+      .eq("organisation_id", organisationId)
+      .eq("session_id", sessionId)
+      .eq("document_type", "learning_assessment_evidence")
+      .eq("is_current", true)
+      .is("archived_at", null),
   ]);
-  if (enrolmentError || assessmentError || responseError || quizResponseError) {
+  if (enrolmentError || assessmentError || responseError || quizResponseError || evidenceError) {
     throw new Error(
       enrolmentError?.message ??
         assessmentError?.message ??
         responseError?.message ??
         quizResponseError?.message ??
+        evidenceError?.message ??
         "Lecture impossible.",
     );
   }
@@ -119,6 +90,7 @@ async function loadOverview(
     assessments: assessments ?? [],
     feedback: responses ?? [],
     quizResponses: quizResponses ?? [],
+    evidence: evidence ?? [],
   };
 }
 
@@ -132,7 +104,7 @@ export async function GET(request: Request) {
       .from("daily_sessions")
       .select("id,internal_reference,start_date,end_date,status,daily_formations(id,title)")
       .eq("organisation_id", context.organisationId)
-      .neq("status", "archived")
+      .not("status", "in", "(archived,cancelled)")
       .order("end_date", { ascending: false });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ sessions: data ?? [] });
@@ -173,7 +145,7 @@ export async function POST(request: Request) {
       const { error: upsertError } = await context.admin.from("daily_learning_assessments").upsert(rows, { onConflict: "session_id,enrolment_id", ignoreDuplicates: true });
       if (upsertError) return NextResponse.json({ error: upsertError.message }, { status: 500 });
     }
-    await refreshChecklist(context.admin, context.organisationId, sessionId);
+    await refreshDailyEndEvaluationsChecklist(context.admin, context.organisationId, sessionId);
     return NextResponse.json({ ok: true, overview: await loadOverview(context.admin, context.organisationId, sessionId) });
   }
 
@@ -209,7 +181,7 @@ export async function POST(request: Request) {
       updated_at: now,
     }, { onConflict: "session_id,enrolment_id" }).select("*").single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    await refreshChecklist(context.admin, context.organisationId, sessionId);
+    await refreshDailyEndEvaluationsChecklist(context.admin, context.organisationId, sessionId);
     await tryEnsurePosttrainingDocuments(context.admin, context.organisationId, context.user.id, sessionId);
     return NextResponse.json({ ok: true, assessment: data });
   }
