@@ -7,7 +7,7 @@ import DailySessionFollowupSummary from "@/components/daily/DailySessionFollowup
 type Session = { id: string; internal_reference?: string | null; start_date?: string | null; end_date?: string | null; daily_formations?: { title?: string } | { title?: string }[] | null };
 type Learner = { first_name?: string | null; last_name?: string | null; email?: string | null };
 type Enrolment = { id: string; status: string; daily_learners?: Learner | Learner[] | null };
-type Entry = { id: string; enrolment_id?: string | null; entry_type: "incident" | "adaptation" | "note"; level: "info" | "attention" | "critical"; occurred_at: string; summary: string; description?: string | null; action_taken?: string | null; status: "open" | "resolved"; resolved_at?: string | null; author_role?: string | null; author_name?: string | null };
+type Entry = { id: string; enrolment_id?: string | null; entry_type: "incident" | "adaptation" | "absence" | "note"; level: "info" | "attention" | "critical"; occurred_at: string; summary: string; description?: string | null; action_taken?: string | null; status: "open" | "resolved"; resolved_at?: string | null; author_role?: string | null; author_name?: string | null };
 
 function formationTitle(session: Session) {
   const formation = Array.isArray(session.daily_formations) ? session.daily_formations[0] : session.daily_formations;
@@ -24,6 +24,7 @@ function learnerName(enrolment?: Enrolment) {
 }
 function entryTypeLabel(entryType: Entry["entry_type"]) {
   if (entryType === "adaptation") return "Adaptation";
+  if (entryType === "absence") return "Absence";
   if (entryType === "note") return "Note de suivi";
   return "Incident";
 }
@@ -33,7 +34,8 @@ export default function DailySessionFollowupPage() {
   const [sessionId, setSessionId] = useState("");
   const [entries, setEntries] = useState<Entry[]>([]);
   const [enrolments, setEnrolments] = useState<Enrolment[]>([]);
-  const [entryType, setEntryType] = useState<"incident" | "adaptation">("incident");
+  const [entryType, setEntryType] = useState<"incident" | "adaptation" | "absence">("incident");
+  const [requestId, setRequestId] = useState(() => crypto.randomUUID());
   const [level, setLevel] = useState<"info" | "attention" | "critical">("attention");
   const [enrolmentId, setEnrolmentId] = useState("");
   const [summary, setSummary] = useState("");
@@ -70,12 +72,13 @@ export default function DailySessionFollowupPage() {
     const response = await assistanceFetch("/api/client/daily/followup", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ session_id: sessionId, action: "create", entry_type: entryType, level, enrolment_id: enrolmentId || null, summary, description, action_taken: actionTaken }),
+      body: JSON.stringify({ request_id: requestId, session_id: sessionId, action: "create", entry_type: entryType, level, enrolment_id: enrolmentId || null, summary, description, action_taken: actionTaken }),
     });
     const data = await response.json().catch(() => ({}));
     setBusy(false);
     if (!response.ok) return setError(data.error ?? "Enregistrement impossible.");
     setSummary(""); setDescription(""); setActionTaken(""); setEnrolmentId("");
+    setRequestId(crypto.randomUUID());
     setMessage(entryType === "adaptation" ? "Adaptation enregistrée." : "Incident enregistré.");
     await load(sessionId);
   }
@@ -117,7 +120,7 @@ export default function DailySessionFollowupPage() {
     {sessionId ? <section style={{ padding: "1rem", background: "#fffaf0", border: "1px solid #d8b989", marginBottom: "1rem", display: "grid", gap: ".75rem" }}>
       <h2 style={{ margin: 0 }}>Ajouter un élément de suivi</h2>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: ".7rem" }}>
-        <label style={{ display: "grid", gap: ".35rem" }}>Type<select value={entryType} onChange={(event) => setEntryType(event.target.value as "incident" | "adaptation")} style={{ padding: ".6rem" }}><option value="incident">Incident / difficulté</option><option value="adaptation">Adaptation mise en place</option></select></label>
+        <label style={{ display: "grid", gap: ".35rem" }}>Type<select value={entryType} onChange={(event) => setEntryType(event.target.value as "incident" | "adaptation" | "absence")} style={{ padding: ".6rem" }}><option value="incident">Incident / difficulté</option><option value="adaptation">Adaptation mise en place</option><option value="absence">Absence à qualifier</option></select></label>
         <label style={{ display: "grid", gap: ".35rem" }}>Niveau<select value={level} onChange={(event) => setLevel(event.target.value as "info" | "attention" | "critical")} style={{ padding: ".6rem" }}><option value="info">Information</option><option value="attention">À suivre</option><option value="critical">Critique</option></select></label>
         <label style={{ display: "grid", gap: ".35rem" }}>Apprenant concerné<select value={enrolmentId} onChange={(event) => setEnrolmentId(event.target.value)} style={{ padding: ".6rem" }}><option value="">Session entière / aucun en particulier</option>{enrolments.map((item) => <option key={item.id} value={item.id}>{learnerName(item)}</option>)}</select></label>
       </div>

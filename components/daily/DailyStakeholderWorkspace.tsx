@@ -33,6 +33,7 @@ export default function DailyStakeholderWorkspace({ role, token }: Props) {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
+  const [followupRequestId, setFollowupRequestId] = useState(() => crypto.randomUUID());
 
   async function reload() {
     setLoading(true);
@@ -109,11 +110,12 @@ export default function DailyStakeholderWorkspace({ role, token }: Props) {
     const response = await fetch(`/api/daily-portal/${token}/followup`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(Object.fromEntries(form.entries())),
+      body: JSON.stringify({ ...Object.fromEntries(form.entries()), request_id: followupRequestId }),
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) return setError(payload.error ?? "Enregistrement impossible.");
     event.currentTarget.reset();
+    setFollowupRequestId(crypto.randomUUID());
     setMessage("Le suivi de session a été complété.");
     await reload();
   }

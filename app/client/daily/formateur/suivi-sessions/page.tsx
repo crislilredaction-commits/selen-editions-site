@@ -69,6 +69,7 @@ export default function TrainerSessionFollowupPage() {
   const [summary, setSummary] = useState("");
   const [description, setDescription] = useState("");
   const [actionTaken, setActionTaken] = useState("");
+  const [requestId, setRequestId] = useState(() => crypto.randomUUID());
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -127,6 +128,7 @@ export default function TrainerSessionFollowupPage() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        request_id: requestId,
         action: "create",
         session_id: sessionId,
         entry_type: entryType,
@@ -143,6 +145,7 @@ export default function TrainerSessionFollowupPage() {
     setSummary("");
     setDescription("");
     setActionTaken("");
+    setRequestId(crypto.randomUUID());
     setEnrolmentId("");
     setMessage(entryType === "note" ? "Note de suivi enregistrée." : "Élément de suivi enregistré.");
     await loadSession(sessionId);

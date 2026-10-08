@@ -2,8 +2,10 @@ import { NextResponse } from "next/server";
 import { blockedAgentAssistanceResponse, getAssistanceTokenFromRequest } from "@/lib/server/agentAssistance";
 import { getDailyOrganisationContext, getDailyOrganisationReadContext } from "@/lib/server/dailyOrganisationContext";
 
-const ENTRY_TYPES = new Set(["incident", "adaptation"]);
+const ENTRY_TYPES = new Set(["incident", "adaptation", "absence"]);
 const LEVELS = new Set(["info", "attention", "critical"]);
+const INACTIVE_ENROLMENTS = new Set(["cancelled", "declined", "abandoned", "completed"]);
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function text(body: Record<string, unknown>, key: string) {
   return String(body[key] ?? "").trim();
@@ -91,7 +93,7 @@ export async function GET(request: Request) {
       .select("id,status,daily_learners(id,first_name,last_name,email)")
       .eq("organisation_id", context.organisationId)
       .eq("session_id", sessionId)
-      .not("status", "in", "(cancelled,declined)"),
+      .not("status", "in", "(cancelled,declined,abandoned,completed)"),
   ]);
   if (entriesError || enrolmentsError) return NextResponse.json({ error: entriesError?.message ?? enrolmentsError?.message }, { status: 500 });
   return NextResponse.json({ entries: entries ?? [], enrolments: enrolments ?? [] });
@@ -110,6 +112,7 @@ export async function POST(request: Request) {
 
   if (action === "create") {
     const entryType = text(body, "entry_type");
+    const requestId = text(body, "request_id");
     const level = text(body, "level") || "attention";
     const summary = text(body, "summary");
     const description = text(body, "description") || null;
@@ -119,6 +122,7 @@ export async function POST(request: Request) {
     const occurredAt = occurredAtRaw && !Number.isNaN(Date.parse(occurredAtRaw)) ? new Date(occurredAtRaw).toISOString() : new Date().toISOString();
 
     if (!ENTRY_TYPES.has(entryType)) return NextResponse.json({ error: "Type de suivi invalide." }, { status: 400 });
+    if (!UUID_PATTERN.test(requestId)) return NextResponse.json({ error: "Identifiant de requête invalide." }, { status: 400 });
     if (!LEVELS.has(level)) return NextResponse.json({ error: "Niveau de suivi invalide." }, { status: 400 });
     if (!summary || summary.length > 240) return NextResponse.json({ error: "Le résumé est obligatoire et limité à 240 caractères." }, { status: 400 });
 
@@ -130,7 +134,7 @@ export async function POST(request: Request) {
         .eq("session_id", sessionId)
         .eq("id", enrolmentId)
         .maybeSingle();
-      if (!enrolment || ["cancelled", "declined"].includes(enrolment.status)) {
+      if (!enrolment || INACTIVE_ENROLMENTS.has(enrolment.status)) {
         return NextResponse.json({ error: "Inscription introuvable ou inactive." }, { status: 404 });
       }
     }
@@ -138,6 +142,7 @@ export async function POST(request: Request) {
     const { data, error } = await context.admin
       .from("daily_session_followup_entries")
       .insert({
+        id: requestId,
         organisation_id: context.organisationId,
         session_id: sessionId,
         enrolment_id: enrolmentId,
@@ -154,6 +159,10 @@ export async function POST(request: Request) {
       })
       .select("*")
       .single();
+    if (error?.code === "23505") {
+      const { data: replay } = await context.admin.from("daily_session_followup_entries").select("*").eq("id", requestId).eq("organisation_id", context.organisationId).eq("session_id", sessionId).maybeSingle();
+      if (replay) return NextResponse.json({ ok: true, entry: replay, replayed: true });
+    }
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     await refreshFollowupChecklist(context.admin, context.organisationId, sessionId);
     return NextResponse.json({ ok: true, entry: data });
@@ -162,7 +171,8 @@ export async function POST(request: Request) {
   if (action === "resolve") {
     const id = text(body, "id");
     if (!id) return NextResponse.json({ error: "Élément de suivi requis." }, { status: 400 });
-    const actionTaken = text(body, "action_taken") || null;
+    const actionTaken = text(body, "action_taken");
+    if (!actionTaken) return NextResponse.json({ error: "L’action réalisée est requise pour clôturer le suivi." }, { status: 400 });
     const now = new Date().toISOString();
     const { data, error } = await context.admin
       .from("daily_session_followup_entries")
