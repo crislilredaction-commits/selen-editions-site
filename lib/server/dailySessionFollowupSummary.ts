@@ -18,6 +18,14 @@ function learnerName(enrolment: any) {
   return name || String(learner.email ?? "").trim() || "Apprenant";
 }
 
+function clean(value: unknown) {
+  return String(value ?? "").trim() || null;
+}
+
+function uniqueText(values: unknown[]) {
+  return Array.from(new Set(values.map(clean).filter((value): value is string => Boolean(value))));
+}
+
 function signatureRows(conventions: any[], communications: any[]) {
   const evidenceBySignature = new Map<string, any>();
   for (const communication of communications) {
@@ -85,19 +93,21 @@ export async function loadDailySessionFollowupSnapshot(admin: AdminClient, organ
     { data: followupEntries, error: followupError },
     { data: conventions, error: conventionsError },
     { data: signatureCommunications, error: communicationsError },
+    { data: posttrainingAnalyses, error: posttrainingError },
   ] = await Promise.all([
     admin.from("daily_sessions").select("id,internal_reference,start_date,end_date,status,daily_formations(id,title)").eq("organisation_id", organisationId).eq("id", sessionId).maybeSingle(),
     admin.from("organisations").select("id,name,legal_name,siret,nda_number").eq("id", organisationId).maybeSingle(),
     admin.from("daily_session_enrolments").select("id,status,daily_learners(id,first_name,last_name,email)").eq("organisation_id", organisationId).eq("session_id", sessionId),
     admin.from("daily_attendance_records").select("id,enrolment_id,status").eq("organisation_id", organisationId).eq("session_id", sessionId),
-    admin.from("daily_learning_assessments").select("id,enrolment_id,outcome").eq("organisation_id", organisationId).eq("session_id", sessionId),
-    admin.from("daily_learner_feedback_responses").select("id,enrolment_id,overall_rating").eq("organisation_id", organisationId).eq("session_id", sessionId),
+    admin.from("daily_learning_assessments").select("id,enrolment_id,outcome,score,score_max,method,notes,assessed_at").eq("organisation_id", organisationId).eq("session_id", sessionId),
+    admin.from("daily_learner_feedback_responses").select("id,enrolment_id,overall_rating,objectives_rating,trainer_rating,organisation_rating,content_rating,pace_rating,would_recommend,strengths,improvements,adaptation_feedback,free_comment,submitted_at").eq("organisation_id", organisationId).eq("session_id", sessionId),
     admin.from("daily_session_followup_entries").select("id,enrolment_id,entry_type,level,occurred_at,summary,description,action_taken,status,resolved_at,author_role,author_name").eq("organisation_id", organisationId).eq("session_id", sessionId).order("occurred_at", { ascending: true }),
     admin.from("daily_conventions").select("id,document_name,recipient_type,recipient_name,recipient_email,company_name,version,generated_at,daily_convention_signatures(id,signatory_type,signatory_name,signatory_email,status,created_at,viewed_at,signed_at,expires_at,last_error)").eq("organisation_id", organisationId).eq("session_id", sessionId).order("generated_at", { ascending: true }),
     admin.from("daily_communications").select("id,status,sent_at,delivered_at,failed_at,failure_reason,created_at,metadata").eq("organisation_id", organisationId).eq("session_id", sessionId).eq("communication_type", "convention_signature").order("created_at", { ascending: true }),
+    admin.from("daily_posttraining_analyses").select("id,enrolment_id,strengths,weaknesses,vigilance,summary,action_required,updated_at").eq("organisation_id", organisationId).eq("session_id", sessionId),
   ]);
 
-  const readError = sessionError ?? organisationError ?? enrolmentsError ?? attendanceError ?? assessmentsError ?? feedbackError ?? followupError ?? conventionsError ?? communicationsError;
+  const readError = sessionError ?? organisationError ?? enrolmentsError ?? attendanceError ?? assessmentsError ?? feedbackError ?? followupError ?? conventionsError ?? communicationsError ?? posttrainingError;
   if (readError) throw new Error(readError.message);
   if (!session) throw new Error("Session introuvable.");
 
@@ -113,11 +123,28 @@ export async function loadDailySessionFollowupSnapshot(admin: AdminClient, organ
   const signatures = signatureRows(conventions ?? [], signatureCommunications ?? []);
   const ratings = learnerFeedback.map((row: any) => Number(row.overall_rating)).filter((value: number) => Number.isFinite(value));
   const enrolmentNames = new Map(activeEnrolments.map((row: any) => [row.id, learnerName(row)]));
+  const assessmentByEnrolment = new Map(completedAssessments.map((row: any) => [row.enrolment_id, row]));
+  const feedbackByEnrolment = new Map(learnerFeedback.map((row: any) => [row.enrolment_id, row]));
+  const analysisByEnrolment = new Map((posttrainingAnalyses ?? []).filter((row: any) => activeIds.has(row.enrolment_id)).map((row: any) => [row.enrolment_id, row]));
+  const learnerDetails = activeEnrolments.map((row: any) => ({
+    id: row.id,
+    name: learnerName(row),
+    status: row.status,
+    assessment: assessmentByEnrolment.get(row.id) ?? null,
+    satisfaction: feedbackByEnrolment.get(row.id) ?? null,
+    analysis: analysisByEnrolment.get(row.id) ?? null,
+  }));
+  const activeEntries = entries.filter((row: any) =>
+    row.status === "open"
+    && ["incident", "adaptation"].includes(String(row.entry_type))
+    && (!row.enrolment_id || activeIds.has(row.enrolment_id))
+  );
+  const analyses = [...analysisByEnrolment.values()];
 
   return {
     session,
     organisation,
-    enrolments: activeEnrolments.map((row: any) => ({ id: row.id, name: learnerName(row), status: row.status })),
+    enrolments: learnerDetails,
     entries: entries.map((row: any) => ({ ...row, learner_name: row.enrolment_id ? enrolmentNames.get(row.enrolment_id) ?? null : null })),
     signatures,
     candidatures,
@@ -128,6 +155,27 @@ export async function loadDailySessionFollowupSnapshot(admin: AdminClient, organ
       attendance: { decided: decidedAttendance.length, total: attendance.length },
       assessments: { completed: completedAssessments.length, expected: activeEnrolments.length },
       satisfaction: { responses: learnerFeedback.length, expected: activeEnrolments.length, average_rating: ratings.length > 0 ? ratings.reduce((sum: number, value: number) => sum + value, 0) / ratings.length : null },
+      posttraining: {
+        analyzed: analyses.length,
+        expected: activeEnrolments.length,
+        action_required: analyses.filter((row: any) => row.action_required).length,
+        strengths: uniqueText([
+          ...analyses.map((row: any) => row.strengths),
+          ...learnerFeedback.map((row: any) => row.strengths),
+        ]),
+        weaknesses: uniqueText([
+          ...analyses.map((row: any) => row.weaknesses),
+          ...learnerFeedback.map((row: any) => row.improvements),
+        ]),
+        vigilance: uniqueText([
+          ...analyses.map((row: any) => row.vigilance),
+          ...learnerFeedback.map((row: any) => row.adaptation_feedback),
+          ...activeEntries.map((row: any) => row.summary),
+        ]),
+        summaries: uniqueText(analyses.map((row: any) => row.summary)),
+        open_difficulties: activeEntries.length,
+        details: learnerDetails,
+      },
       signatures: {
         total: signatures.length,
         pending: signatures.filter((row: any) => ["pending", "viewed", "sent"].includes(String(row.status))).length,

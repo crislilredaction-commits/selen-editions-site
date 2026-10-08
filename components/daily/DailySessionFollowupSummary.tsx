@@ -35,6 +35,23 @@ type Summary = {
   attendance: { decided: number; total: number };
   assessments: { completed: number; expected: number };
   satisfaction: { responses: number; expected: number; average_rating: number | null };
+  posttraining: {
+    analyzed: number;
+    expected: number;
+    action_required: number;
+    strengths: string[];
+    weaknesses: string[];
+    vigilance: string[];
+    summaries: string[];
+    open_difficulties: number;
+    details: Array<{
+      id: string;
+      name: string;
+      assessment: { outcome?: string | null; score?: number | null; score_max?: number | null; method?: string | null; notes?: string | null } | null;
+      satisfaction: { overall_rating?: number | null; strengths?: string | null; improvements?: string | null; adaptation_feedback?: string | null; free_comment?: string | null } | null;
+      analysis: { strengths?: string | null; weaknesses?: string | null; vigilance?: string | null; summary?: string | null; action_required?: boolean | null } | null;
+    }>;
+  };
   signatures: { total: number; pending: number; viewed: number; signed: number; expired: number; failed: number; followup_due?: number; items: SignatureItem[] };
   followup: { open: number; resolved: number; incidents: number; adaptations: number };
 };
@@ -184,6 +201,27 @@ export default function DailySessionFollowupSummary({ sessionId }: { sessionId: 
       <Metric label="Événements consignés" value={summary.followup.incidents + summary.followup.adaptations} detail={`${summary.followup.incidents} incident(s) · ${summary.followup.adaptations} adaptation(s)`} />
     </div>
 
+    <div style={{ marginTop: "1rem", borderTop: "1px solid #d8b989", paddingTop: "1rem" }}>
+      <h3 style={{ margin: "0 0 .35rem" }}>Synthèse post-formation</h3>
+      <p style={{ marginTop: 0, color: "#70503b" }}>{summary.posttraining.analyzed}/{summary.posttraining.expected} analyse(s) structurée(s) · {summary.posttraining.action_required} vigilance(s) avec action · {summary.posttraining.open_difficulties} difficulté(s) ouverte(s).</p>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: ".65rem" }}>
+        <PosttrainingList title="Points forts" values={summary.posttraining.strengths} empty="Aucun point fort consolidé." />
+        <PosttrainingList title="Points faibles / difficultés" values={summary.posttraining.weaknesses} empty="Aucune faiblesse consolidée." />
+        <PosttrainingList title="Vigilances" values={summary.posttraining.vigilance} empty="Aucune vigilance consolidée." />
+      </div>
+      <div style={{ display: "grid", gap: ".6rem", marginTop: ".75rem" }}>
+        {summary.posttraining.details.map((item) => <article key={item.id} style={{ padding: ".8rem", border: "1px solid #d8b989", background: "#fff" }}>
+          <strong>{item.name}</strong>
+          <p style={{ margin: ".35rem 0", color: "#70503b" }}>Évaluation : {item.assessment?.outcome ?? "non renseignée"}{item.assessment?.score != null ? ` · ${item.assessment.score}/${item.assessment.score_max ?? 20}` : ""} · Satisfaction : {item.satisfaction?.overall_rating != null ? `${item.satisfaction.overall_rating}/5` : "non reçue"}</p>
+          {item.analysis?.summary ? <p style={{ margin: ".35rem 0" }}><strong>Synthèse :</strong> {item.analysis.summary}</p> : null}
+          {item.analysis?.strengths || item.satisfaction?.strengths ? <p style={{ margin: ".35rem 0" }}><strong>Forces :</strong> {item.analysis?.strengths || item.satisfaction?.strengths}</p> : null}
+          {item.analysis?.weaknesses || item.satisfaction?.improvements ? <p style={{ margin: ".35rem 0" }}><strong>Faiblesses :</strong> {item.analysis?.weaknesses || item.satisfaction?.improvements}</p> : null}
+          {item.analysis?.vigilance || item.satisfaction?.adaptation_feedback ? <p style={{ margin: ".35rem 0" }}><strong>Vigilance :</strong> {item.analysis?.vigilance || item.satisfaction?.adaptation_feedback}</p> : null}
+          {item.analysis?.action_required ? <p style={{ margin: ".35rem 0", fontWeight: 800, color: "#7b2f21" }}>Une action humaine reste nécessaire.</p> : null}
+        </article>)}
+      </div>
+    </div>
+
     <div style={{ marginTop: "1rem" }}>
       <h3>Synthèses de candidature</h3>
       {(summary.candidatures ?? []).length === 0 ? <p>Aucune synthèse de candidature rattachée à une inscription active.</p> : (summary.candidatures ?? []).map(item => <article key={item.requestId} style={{ marginBottom: "1rem" }}>
@@ -228,4 +266,11 @@ export default function DailySessionFollowupSummary({ sessionId }: { sessionId: 
       </div>}
     </div>
   </section>;
+}
+
+function PosttrainingList({ title, values, empty }: { title: string; values: string[]; empty: string }) {
+  return <div style={{ padding: ".75rem", border: "1px solid #d8b989", background: "#fff" }}>
+    <strong>{title}</strong>
+    {values.length === 0 ? <p style={{ marginBottom: 0, color: "#70503b" }}>{empty}</p> : <ul style={{ marginBottom: 0, paddingLeft: "1.1rem" }}>{values.map((value) => <li key={value}>{value}</li>)}</ul>}
+  </div>;
 }

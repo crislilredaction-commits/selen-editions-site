@@ -7,21 +7,29 @@ import LoadingMascot from "@/components/ui/LoadingMascot";
 type FormationIndicator = {
   formation_id: string;
   title: string;
+  sessions: number;
   learners: number;
   abandonments: number;
+  assessments_completed: number;
+  assessment_completion_rate: number;
   successful_assessments: number;
   success_rate: number;
   satisfaction_responses: number;
+  satisfaction_response_rate: number;
   satisfaction_average: number | null;
 };
 
 type Indicators = {
   totals: {
+    sessions: number;
     learners: number;
     abandonments: number;
+    assessments_completed: number;
+    assessment_completion_rate: number;
     successful_assessments: number;
     success_rate: number;
     satisfaction_responses: number;
+    satisfaction_response_rate: number;
     satisfaction_average: number | null;
   };
   formations: FormationIndicator[];
@@ -77,9 +85,9 @@ export default function DailyIndicatorsPage() {
       </header>
 
       <section style={styles.cards}>
-        <Metric label="Satisfaction" value={rating(totals.satisfaction_average)} detail={`${totals.satisfaction_responses} réponse${totals.satisfaction_responses > 1 ? "s" : ""} exploitée${totals.satisfaction_responses > 1 ? "s" : ""}`} />
+        <Metric label="Satisfaction" value={rating(totals.satisfaction_average)} detail={`${totals.satisfaction_responses} réponse${totals.satisfaction_responses > 1 ? "s" : ""} · ${rate(totals.satisfaction_response_rate)} de retour`} />
         <Metric label="Apprenants" value={String(totals.learners)} detail="Apprenants actifs sur les sessions terminées" />
-        <Metric label="Réussite finale" value={rate(totals.success_rate)} detail={`${totals.successful_assessments} résultat${totals.successful_assessments > 1 ? "s" : ""} Acquis`} />
+        <Metric label="Réussite finale" value={rate(totals.success_rate)} detail={`${totals.successful_assessments} résultat${totals.successful_assessments > 1 ? "s" : ""} Acquis · ${rate(totals.assessment_completion_rate)} évalué`} />
         <Metric label="Abandons" value={String(totals.abandonments)} detail="Uniquement les inscriptions explicitement marquées Abandon" />
       </section>
 
@@ -100,6 +108,7 @@ export default function DailyIndicatorsPage() {
               <thead>
                 <tr>
                   <th style={styles.th}>Formation</th>
+                  <th style={styles.th}>Sessions</th>
                   <th style={styles.th}>Apprenants</th>
                   <th style={styles.th}>Satisfaction</th>
                   <th style={styles.th}>Réussite</th>
@@ -110,9 +119,10 @@ export default function DailyIndicatorsPage() {
                 {indicators.formations.map((item) => (
                   <tr key={item.formation_id}>
                     <td style={styles.td}><strong>{item.title}</strong></td>
+                    <td style={styles.td}>{item.sessions}</td>
                     <td style={styles.td}>{item.learners}</td>
-                    <td style={styles.td}>{rating(item.satisfaction_average)}</td>
-                    <td style={styles.td}>{rate(item.success_rate)}</td>
+                    <td style={styles.td}>{rating(item.satisfaction_average)}<small style={{ display: "block", color: "#756149" }}>{rate(item.satisfaction_response_rate)} de retour</small></td>
+                    <td style={styles.td}>{rate(item.success_rate)}<small style={{ display: "block", color: "#756149" }}>{rate(item.assessment_completion_rate)} évalué</small></td>
                     <td style={styles.td}>{item.abandonments}</td>
                   </tr>
                 ))}
