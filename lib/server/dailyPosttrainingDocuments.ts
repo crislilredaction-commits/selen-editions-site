@@ -65,6 +65,7 @@ async function generate(args: {
   logicalName: string;
   filenameBase: string;
   html: string;
+  sourceFingerprint: string;
   metadata: Record<string, unknown>;
 }) {
   const {
@@ -77,70 +78,50 @@ async function generate(args: {
     logicalName,
     filenameBase,
     html,
+    sourceFingerprint,
     metadata,
   } = args;
-  const { data: rows, error: readError } = await admin
-    .from("daily_documents")
-    .select("id,version,is_current")
-    .eq("organisation_id", organisationId)
-    .eq("document_type", documentType)
-    .eq("linked_object_type", linkedObjectType)
-    .eq("linked_object_id", linkedObjectId)
-    .eq("logical_name", logicalName)
-    .order("version", { ascending: false })
-    .limit(1);
-  if (readError) throw new Error(readError.message);
-
-  const previous = rows?.[0] ?? null;
-  const version = Number(previous?.version ?? 0) + 1;
-  if (previous?.is_current) {
-    const { error } = await admin
-      .from("daily_documents")
-      .update({ is_current: false, updated_by: userId })
-      .eq("id", previous.id);
-    if (error) throw new Error(error.message);
-  }
-
-  const stamp = new Date().toISOString().replaceAll(":", "-").replaceAll(".", "-");
-  const storagePath = `daily/${organisationId}/${linkedObjectType}/${linkedObjectId}/${documentType}/${safe(filenameBase)}-v${version}-${stamp}.doc`;
+  const documentId = crypto.randomUUID();
+  const storagePath = `daily/${organisationId}/${linkedObjectType}/${linkedObjectId}/${documentType}/${safe(filenameBase)}-${documentId}.doc`;
   const blob = new Blob([html], { type: "application/msword;charset=utf-8" });
   const { error: uploadError } = await admin.storage
     .from("documents")
     .upload(storagePath, blob, { contentType: "application/msword;charset=utf-8", upsert: false });
   if (uploadError) throw new Error(uploadError.message);
 
-  const { data, error } = await admin
-    .from("daily_documents")
-    .insert({
-      organisation_id: organisationId,
-      document_type: documentType,
-      linked_object_type: linkedObjectType,
-      linked_object_id: linkedObjectId,
-      version,
-      status: "to_check",
-      logical_name: logicalName,
-      bucket: "documents",
-      storage_path: storagePath,
-      mime_type: "application/msword",
-      size_bytes: new TextEncoder().encode(html).byteLength,
-      sha256: await sha256(html),
-      created_by: userId,
-      updated_by: userId,
-      is_current: true,
-      previous_document_id: previous?.id ?? null,
-      metadata: {
-        ...metadata,
-        generated_by: "daily_posttraining",
-        generated_at: new Date().toISOString(),
-      },
-    })
-    .select("*")
-    .single();
-  if (error) {
+  const documentMetadata = {
+    ...metadata,
+    source_fingerprint: sourceFingerprint,
+    generated_by: "daily_posttraining",
+    generated_at: new Date().toISOString(),
+  };
+  const { data: registration, error } = await admin.rpc("daily_register_posttraining_document", {
+    p_document_id: documentId,
+    p_organisation_id: organisationId,
+    p_document_type: documentType,
+    p_linked_object_type: linkedObjectType,
+    p_linked_object_id: linkedObjectId,
+    p_logical_name: logicalName,
+    p_storage_path: storagePath,
+    p_mime_type: "application/msword",
+    p_size_bytes: new TextEncoder().encode(html).byteLength,
+    p_sha256: await sha256(html),
+    p_actor_id: userId,
+    p_metadata: documentMetadata,
+  });
+  if (error || !registration?.id) {
     await admin.storage.from("documents").remove([storagePath]);
-    throw new Error(error.message);
+    throw new Error(error?.message ?? "Le document de fin n’a pas pu être enregistré.");
   }
-  return data;
+  if (!registration.created) await admin.storage.from("documents").remove([storagePath]);
+  const { data, error: readError } = await admin
+    .from("daily_documents")
+    .select("*")
+    .eq("id", registration.id)
+    .eq("organisation_id", organisationId)
+    .single();
+  if (readError || !data) throw new Error(readError?.message ?? "Document de fin introuvable après enregistrement.");
+  return { document: data, created: Boolean(registration.created) };
 }
 
 async function load(admin: any, organisationId: string, sessionId: string) {
@@ -163,7 +144,8 @@ async function load(admin: any, organisationId: string, sessionId: string) {
       .select("id,status,learner_id,daily_learners(id,first_name,last_name,email)")
       .eq("session_id", sessionId)
       .eq("organisation_id", organisationId)
-      .not("status", "in", '(declined,cancelled,abandoned)'),
+      .not("status", "in", '(declined,cancelled,abandoned)')
+      .order("id"),
     admin
       .from("daily_attendance_slots")
       .select("id,slot_date,starts_at,ends_at,status")
@@ -249,6 +231,11 @@ export async function generatePosttrainingDocuments(args: {
   const { admin, organisationId, userId, sessionId, mode = "manual", now = new Date() } = args;
   const automatic = mode === "auto";
   const { session, enrolments, slots, records, assessments, org } = await load(admin, organisationId, sessionId);
+
+  if (["cancelled", "archived"].includes(text(session.status))) {
+    if (automatic) return autoBlocked("session_inactive");
+    throw new PosttrainingDocumentError("Cette session n’est plus active : ses documents de fin sont sans objet.", 409);
+  }
 
   if (slots.length === 0) {
     if (automatic) return autoBlocked("no_attendance_slots");
@@ -347,7 +334,14 @@ export async function generatePosttrainingDocuments(args: {
 
   const created: any[] = [];
   if (!automatic || !existingKeys.has(attendanceKey)) {
-    created.push(await generate({
+    const sourceFingerprint = await sha256(JSON.stringify({
+      kind: "attendance_summary",
+      organisation: { name: orgName },
+      session: { id: sessionId, reference: session.internal_reference, start: session.start_date, end: session.end_date },
+      formation: title,
+      lines,
+    }));
+    const generated = await generate({
       admin,
       organisationId,
       userId,
@@ -357,6 +351,7 @@ export async function generatePosttrainingDocuments(args: {
       logicalName: "releve-presences",
       filenameBase: `releve-presences-${title}`,
       metadata: { session_id: sessionId },
+      sourceFingerprint,
       html: buildAttendanceSummaryHtml({
         organisationName: orgName,
         formationTitle: title,
@@ -366,7 +361,8 @@ export async function generatePosttrainingDocuments(args: {
         lines,
         generatedAt: now,
       }),
-    }));
+    });
+    if (generated.created) created.push(generated.document);
   }
 
   for (const { enrolment, attendedHours } of eligibleEnrolments) {
@@ -375,7 +371,15 @@ export async function generatePosttrainingDocuments(args: {
     const assessment: any = assessmentMap.get(enrolment.id);
     const learningOutcome = text(assessment?.outcome) || null;
     const learningResult = completionCertificateLearningResult(learningOutcome as any);
-    created.push(await generate({
+    const sourceFingerprint = await sha256(JSON.stringify({
+      kind: "completion_certificate",
+      organisation: { name: orgName, siret: org?.siret, nda: org?.nda_number },
+      session: { id: sessionId, start: session.start_date, end: session.end_date },
+      formation: title,
+      enrolment: { id: enrolment.id, learner: learnerName(enrolment), plannedHours, attendedHours },
+      assessment: { outcome: learningOutcome, assessedAt: assessment?.assessed_at ?? null },
+    }));
+    const generated = await generate({
       admin,
       organisationId,
       userId,
@@ -384,6 +388,7 @@ export async function generatePosttrainingDocuments(args: {
       linkedObjectId: enrolment.id,
       logicalName: "certificat-realisation",
       filenameBase: `certificat-realisation-${learnerName(enrolment)}`,
+      sourceFingerprint,
       metadata: {
         session_id: sessionId,
         enrolment_id: enrolment.id,
@@ -408,7 +413,8 @@ export async function generatePosttrainingDocuments(args: {
         learningOutcome: learningOutcome as any,
         generatedAt: now,
       }),
-    }));
+    });
+    if (generated.created) created.push(generated.document);
   }
 
   await syncChecklist(admin, organisationId, sessionId, 1 + eligibleCertificates);

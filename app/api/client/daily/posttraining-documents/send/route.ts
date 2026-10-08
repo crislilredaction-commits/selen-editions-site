@@ -99,8 +99,8 @@ export async function POST(request: Request) {
     .maybeSingle();
   if (sessionError) return NextResponse.json({ error: sessionError.message }, { status: 500 });
   if (!session) return NextResponse.json({ error: "Session introuvable." }, { status: 404 });
-  if (session.status === "archived") {
-    return NextResponse.json({ error: "Le dossier est archivé. Réouvrez-le avant d’envoyer un nouveau document." }, { status: 409 });
+  if (["cancelled", "archived"].includes(session.status)) {
+    return NextResponse.json({ error: "La session n’est plus active. Aucun nouveau document ne peut être envoyé." }, { status: 409 });
   }
 
   const formation = one(session.daily_formations as { title?: string | null } | { title?: string | null }[] | null);
