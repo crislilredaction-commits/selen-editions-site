@@ -119,7 +119,7 @@ export async function GET(req: Request) {
     .not("end_date", "is", null)
     .gte("end_date", windowStart)
     .lte("end_date", today)
-    .neq("status", "archived")
+    .not("status", "in", "(archived,cancelled)")
     .order("end_date", { ascending: true });
   if (sessionError) return NextResponse.json({ error: sessionError.message }, { status: 500 });
 
@@ -196,8 +196,12 @@ export async function GET(req: Request) {
           status: "open",
           created_by: null,
         });
-        if (error) failed += 1;
-        else { phoneTasksCreated += 1; processed += 1; }
+        if (error) {
+          if (error.code !== "23505") failed += 1;
+        } else {
+          phoneTasksCreated += 1;
+          processed += 1;
+        }
       }
       details.push({ session_id: enrolment.session_id, enrolment_id: enrolment.id, status: execute ? "phone_task_created" : "phone_task_due" });
       continue;
@@ -301,8 +305,11 @@ export async function GET(req: Request) {
         status: "open",
         created_by: null,
       });
-      if (phoneError) failed += 1;
-      else phoneTasksCreated += 1;
+      if (phoneError) {
+        if (phoneError.code !== "23505") failed += 1;
+      } else {
+        phoneTasksCreated += 1;
+      }
     }
     details.push({ session_id: enrolment.session_id, enrolment_id: enrolment.id, phase, status: finalizeError ? "sent_evidence_finalize_failed" : "sent" });
   }
