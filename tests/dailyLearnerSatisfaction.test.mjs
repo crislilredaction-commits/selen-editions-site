@@ -4,8 +4,9 @@ import test from "node:test";
 
 const routePath = new URL("../app/api/daily-portal/[token]/learner-satisfaction/route.ts", import.meta.url);
 const helperPath = new URL("../lib/daily/endOfTraining.ts", import.meta.url);
+const privacyMigrationPath = new URL("../supabase/migrations/20261008074500_daily_satisfaction_followup_confidentiality.sql", import.meta.url);
 
-const [route, helper] = await Promise.all([readFile(routePath, "utf8"), readFile(helperPath, "utf8")]);
+const [route, helper, privacyMigration] = await Promise.all([readFile(routePath, "utf8"), readFile(helperPath, "utf8"), readFile(privacyMigrationPath, "utf8")]);
 
 test("learner satisfaction is restricted to active learner portal access", () => {
   assert.match(route, /access\.portal_type !== "learner"/);
@@ -30,7 +31,9 @@ test("external assessment satisfaction opens two hours before the final Paris sl
 });
 
 test("learner satisfaction is unique per enrolment and cannot be submitted early", () => {
-  assert.match(route, /if \(resolved\.feedback\).*status: 409/);
+  assert.match(route, /if \(resolved\.feedback\)/);
+  assert.match(route, /alreadySubmitted: true/);
+  assert.match(route, /submittedAt: resolved\.feedback\.submitted_at/);
   assert.match(route, /if \(!resolved\.availability\.available\)/);
   assert.match(route, /status: 403/);
   assert.match(route, /insertError\?\.code === "23505"/);
@@ -44,12 +47,11 @@ test("learner satisfaction stores the canonical response with bounded ratings", 
   assert.match(route, /enrolment_id: resolved\.enrolment\.id/);
 });
 
-test("useful learner satisfaction feedback feeds the canonical session follow-up", () => {
-  assert.match(route, /daily_session_followup_entries/);
-  assert.match(route, /entry_type: "note"/);
-  assert.match(route, /level: needsAttention \? "attention" : "info"/);
-  assert.match(route, /status: needsAttention \? "open" : "resolved"/);
-  assert.match(route, /enrolment_id: resolved\.enrolment\.id/);
-  assert.match(route, /author_role: "Apprenant"/);
-  assert.match(route, /resolved_at: needsAttention \? null : created\.submitted_at/);
+test("learner satisfaction remains confidential and finalizes reminders immediately", () => {
+  assert.match(route, /finalizeDailyLearnerSatisfaction/);
+  assert.doesNotMatch(route, /daily_session_followup_entries/);
+  assert.doesNotMatch(route, /description.*strengths|description.*freeComment/);
+  assert.match(privacyMigration, /summary like 'Satisfaction apprenant — %'/);
+  assert.match(privacyMigration, /status = 'resolved'/);
+  assert.match(privacyMigration, /Verbatim conservé uniquement dans la réponse de satisfaction canonique/);
 });

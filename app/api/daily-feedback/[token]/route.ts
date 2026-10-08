@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import { activeDailyEnrolment, hashDailyFeedbackToken } from "@/lib/server/dailyEndEvaluations";
+import { finalizeDailyLearnerSatisfaction } from "@/lib/server/dailyLearnerSatisfactionLifecycle";
 
 type Params = { params: Promise<{ token: string }> };
-const PHONE_FOLLOWUP_SOURCE = "satisfaction_phone_followup";
 
 function rating(value: unknown) {
   if (value === null || value === undefined || String(value).trim() === "") return null;
@@ -87,7 +87,19 @@ export async function POST(request: Request, { params }: Params) {
     }
 
     const { data: existing } = await admin.from("daily_learner_feedback_responses").select("id,submitted_at").eq("session_id", token.session_id).eq("enrolment_id", token.enrolment_id).maybeSingle();
-    if (existing) return NextResponse.json({ ok: true, alreadySubmitted: true, submittedAt: existing.submitted_at });
+    if (existing) {
+      try {
+        await finalizeDailyLearnerSatisfaction(admin, {
+          organisationId: token.organisation_id,
+          sessionId: token.session_id,
+          enrolmentId: token.enrolment_id,
+          submittedAt: existing.submitted_at,
+        });
+      } catch {
+        return NextResponse.json({ ok: true, alreadySubmitted: true, submittedAt: existing.submitted_at, warning: "Réponse déjà enregistrée ; finalisation des relances à retenter." }, { status: 207 });
+      }
+      return NextResponse.json({ ok: true, alreadySubmitted: true, submittedAt: existing.submitted_at });
+    }
 
     const overall = rating(body.overall_rating);
     const objectives = rating(body.objectives_rating);
@@ -117,16 +129,16 @@ export async function POST(request: Request, { params }: Params) {
       submitted_at: submittedAt,
     });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    await admin.from("daily_learner_feedback_tokens").update({ status: "submitted", last_used_at: submittedAt }).eq("id", token.id);
-    await admin.from("daily_quality_actions").update({
-      status: "closed",
-      implemented_at: submittedAt,
-      implemented_improvement: "Réponse satisfaction reçue : relance téléphonique devenue sans objet.",
-    })
-      .eq("organisation_id", token.organisation_id)
-      .eq("source_type", PHONE_FOLLOWUP_SOURCE)
-      .eq("source_id", token.enrolment_id)
-      .in("status", ["open", "planned"]);
+    try {
+      await finalizeDailyLearnerSatisfaction(admin, {
+        organisationId: token.organisation_id,
+        sessionId: token.session_id,
+        enrolmentId: token.enrolment_id,
+        submittedAt,
+      });
+    } catch {
+      return NextResponse.json({ ok: true, submittedAt, warning: "Questionnaire enregistré ; finalisation des relances à retenter." }, { status: 207 });
+    }
 
     const [{ data: active }, { data: assessments }, { data: responses }] = await Promise.all([
       admin.from("daily_session_enrolments").select("id,status").eq("organisation_id", token.organisation_id).eq("session_id", token.session_id).not("status", "in", "(cancelled,declined,abandoned)"),

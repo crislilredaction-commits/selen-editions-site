@@ -7,6 +7,7 @@ const stakeholder = await readFile(new URL("../app/api/internal/daily/stakeholde
 const cronRoute = await readFile(new URL("../app/api/cron/daily-satisfaction/route.ts", import.meta.url), "utf8");
 const vercelConfig = JSON.parse(await readFile(new URL("../vercel.json", import.meta.url), "utf8"));
 const endEvaluations = await readFile(new URL("../lib/server/dailyEndEvaluations.ts", import.meta.url), "utf8");
+const uniquenessMigration = await readFile(new URL("../supabase/migrations/20261008073500_daily_satisfaction_active_followup_uniqueness.sql", import.meta.url), "utf8");
 
 for (const [label, source] of [["apprenants", learner], ["parties prenantes", stakeholder]]) {
   test(`${label}: deux relances seulement à J+2 et J+4`, () => {
@@ -34,6 +35,14 @@ test("la satisfaction entreprise démarre à J+15 puis conserve les relances J+2
 test("les inscriptions abandonnées sont exclues des relances de satisfaction", () => {
   assert.match(endEvaluations, /status !== "cancelled" && status !== "declined" && status !== "abandoned"/);
   assert.match(learner, /activeDailyEnrolment\(row\.status\)/);
+});
+
+test("les sessions annulées sont exclues et la tâche téléphone résiste aux retries concurrents", () => {
+  assert.match(learner, /\.not\("status", "in", "\(archived,cancelled\)"\)/);
+  assert.match(learner, /error\.code !== "23505"/);
+  assert.match(uniquenessMigration, /create unique index if not exists daily_quality_actions_active_satisfaction_phone_unique/);
+  assert.match(uniquenessMigration, /source_type = 'satisfaction_phone_followup'/);
+  assert.match(uniquenessMigration, /status in \('open', 'planned'\)/);
 });
 
 test("Vercel déclenche quotidiennement le lot satisfaction complet", () => {

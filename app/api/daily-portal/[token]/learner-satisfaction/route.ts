@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import { getLearnerSatisfactionAvailability } from "@/lib/daily/endOfTraining";
+import { finalizeDailyLearnerSatisfaction } from "@/lib/server/dailyLearnerSatisfactionLifecycle";
 
 type Params = { params: Promise<{ token: string }> };
 type JsonRecord = Record<string, unknown>;
@@ -22,18 +23,6 @@ function rating(value: unknown, required = false) {
 function optionalText(value: unknown) {
   const clean = text(value);
   return clean ? clean.slice(0, 4000) : null;
-}
-
-function enrolmentLearner(enrolment: { daily_learners?: unknown }) {
-  const raw = Array.isArray(enrolment.daily_learners) ? enrolment.daily_learners[0] : enrolment.daily_learners;
-  return raw && typeof raw === "object" ? raw as JsonRecord : null;
-}
-
-function learnerDisplayName(enrolment: { daily_learners?: unknown }) {
-  const learner = enrolmentLearner(enrolment);
-  return [text(learner?.first_name), text(learner?.last_name)].filter(Boolean).join(" ")
-    || text(learner?.email)
-    || "Apprenant";
 }
 
 async function resolveLearner(token: string) {
@@ -127,7 +116,19 @@ export async function POST(request: Request, { params }: Params) {
   try {
     const resolved = await resolveLearner(clean);
     if ("error" in resolved) return NextResponse.json({ error: resolved.error }, { status: resolved.status });
-    if (resolved.feedback) return NextResponse.json({ error: "Votre questionnaire a déjà été transmis." }, { status: 409 });
+    if (resolved.feedback) {
+      try {
+        await finalizeDailyLearnerSatisfaction(resolved.supabase, {
+          organisationId: resolved.session.organisation_id,
+          sessionId: resolved.session.id,
+          enrolmentId: resolved.enrolment.id,
+          submittedAt: resolved.feedback.submitted_at,
+        });
+      } catch {
+        return NextResponse.json({ submitted: true, alreadySubmitted: true, submittedAt: resolved.feedback.submitted_at, warning: "Réponse déjà enregistrée ; finalisation des relances à retenter." }, { status: 207 });
+      }
+      return NextResponse.json({ submitted: true, alreadySubmitted: true, submittedAt: resolved.feedback.submitted_at });
+    }
     if (!resolved.availability.available) {
       return NextResponse.json({ error: resolved.mode === "selen_quiz" ? "Transmettez d’abord votre évaluation de fin de formation." : "Le questionnaire n’est pas encore ouvert." }, { status: 403 });
     }
@@ -172,41 +173,15 @@ export async function POST(request: Request, { params }: Params) {
       return NextResponse.json({ error: insertError?.message ?? "Enregistrement impossible." }, { status: 500 });
     }
 
-    const hasUsefulComment = Boolean(strengths || improvements || adaptationFeedback || freeComment);
-    const needsAttention = overall <= 3 || objectives <= 3 || Boolean(improvements || adaptationFeedback || freeComment);
-    if (hasUsefulComment || needsAttention) {
-      const authorName = learnerDisplayName(resolved.enrolment);
-      const description = [
-        `Satisfaction globale : ${overall}/5.`,
-        `Atteinte des objectifs : ${objectives}/5.`,
-        strengths ? `Points positifs : ${strengths}` : null,
-        improvements ? `À améliorer : ${improvements}` : null,
-        adaptationFeedback ? `Adaptations / besoins : ${adaptationFeedback}` : null,
-        freeComment ? `Commentaire : ${freeComment}` : null,
-      ].filter(Boolean).join("\n");
-      const { error: followupError } = await resolved.supabase
-        .from("daily_session_followup_entries")
-        .insert({
-          organisation_id: resolved.session.organisation_id,
-          session_id: resolved.session.id,
-          enrolment_id: resolved.enrolment.id,
-          entry_type: "note",
-          level: needsAttention ? "attention" : "info",
-          occurred_at: created.submitted_at,
-          summary: `Satisfaction apprenant — ${authorName}`.slice(0, 240),
-          description,
-          status: needsAttention ? "open" : "resolved",
-          resolved_at: needsAttention ? null : created.submitted_at,
-          author_role: "Apprenant",
-          author_name: authorName,
-        });
-      if (followupError) {
-        return NextResponse.json({
-          submitted: true,
-          submittedAt: created.submitted_at,
-          warning: "Questionnaire enregistré, mais le commentaire n’a pas pu être ajouté au suivi de session.",
-        }, { status: 207 });
-      }
+    try {
+      await finalizeDailyLearnerSatisfaction(resolved.supabase, {
+        organisationId: resolved.session.organisation_id,
+        sessionId: resolved.session.id,
+        enrolmentId: resolved.enrolment.id,
+        submittedAt: created.submitted_at,
+      });
+    } catch {
+      return NextResponse.json({ submitted: true, submittedAt: created.submitted_at, warning: "Questionnaire enregistré ; finalisation des relances à retenter." }, { status: 207 });
     }
 
     return NextResponse.json({ submitted: true, submittedAt: created.submitted_at });
