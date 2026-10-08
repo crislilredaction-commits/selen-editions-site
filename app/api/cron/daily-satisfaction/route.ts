@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { GET as runLearnerSatisfactionAutomation } from "@/app/api/internal/daily/satisfaction-automation/route";
 import { GET as runStakeholderSatisfactionAutomation } from "@/app/api/internal/daily/stakeholder-satisfaction-automation/route";
+import { GET as runAssessmentReminderAutomation } from "@/app/api/internal/daily/assessment-reminder-automation/route";
 
 const LEARNER_AUTOMATION_PATH = "/api/internal/daily/satisfaction-automation";
 const STAKEHOLDER_AUTOMATION_PATH = "/api/internal/daily/stakeholder-satisfaction-automation";
+const ASSESSMENT_AUTOMATION_PATH = "/api/internal/daily/assessment-reminder-automation";
 
 function cronSecret() {
   return process.env.CRON_SECRET?.trim() ?? "";
@@ -60,17 +62,25 @@ export async function GET(request: Request) {
     runStakeholderSatisfactionAutomation,
     secret,
   );
+  const assessmentResponse = await runWithAutomationSecret(
+    request,
+    ASSESSMENT_AUTOMATION_PATH,
+    runAssessmentReminderAutomation,
+    secret,
+  );
 
-  const [learners, stakeholders] = await Promise.all([
+  const [learners, stakeholders, assessments] = await Promise.all([
     responsePayload(learnerResponse),
     responsePayload(stakeholderResponse),
+    responsePayload(assessmentResponse),
   ]);
-  const ok = learnerResponse.ok && stakeholderResponse.ok;
+  const ok = learnerResponse.ok && stakeholderResponse.ok && assessmentResponse.ok;
 
   return NextResponse.json({
     ok,
     executed: true,
     learners,
     stakeholders,
+    assessments,
   }, { status: ok ? 200 : 207 });
 }

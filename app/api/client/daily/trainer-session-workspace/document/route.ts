@@ -1,7 +1,7 @@
 import {NextResponse} from "next/server";
 import {getAssignedDailyTrainerSession,getDailyTrainerWorkspaceContext} from "@/lib/server/dailyTrainerWorkspaceContext";
 
-const types=["trainer_resource","attendance_paper_evidence","external_evaluation"];
+const types=["trainer_resource","attendance_paper_evidence","learning_assessment_evidence"];
 export async function GET(request:Request){
   const context=await getDailyTrainerWorkspaceContext();if(!context.ok)return NextResponse.json({error:context.error},{status:context.status});
   const params=new URL(request.url).searchParams,sessionId=params.get("session_id")??"",documentId=params.get("id")??"";
