@@ -102,6 +102,31 @@ export async function GET(request: Request) {
     metric("Événements", `${summary.followup.incidents} incident(s) · ${summary.followup.adaptations} adaptation(s)`);
 
     y += 3;
+    paragraph("Synthèse post-formation", { bold: true, size: 12, gap: 3 });
+    metric("Analyses structurées", `${summary.posttraining.analyzed}/${summary.posttraining.expected}`);
+    metric("Vigilances avec action", String(summary.posttraining.action_required));
+    metric("Difficultés ouvertes", String(summary.posttraining.open_difficulties));
+    const list = (label: string, values: string[]) => {
+      paragraph(label, { bold: true, size: 10, gap: 1 });
+      if (values.length === 0) paragraph("Aucun élément consolidé.", { size: 9, gap: 1 });
+      else values.forEach((value) => paragraph(`• ${value}`, { size: 9, gap: 1 }));
+    };
+    list("Points forts", summary.posttraining.strengths);
+    list("Points faibles / difficultés", summary.posttraining.weaknesses);
+    list("Vigilances", summary.posttraining.vigilance);
+    for (const item of summary.posttraining.details) {
+      ensureSpace(24);
+      paragraph(item.name, { bold: true, size: 10, gap: 1 });
+      paragraph(`Évaluation : ${item.assessment?.outcome ?? "non renseignée"}${item.assessment?.score != null ? ` · ${item.assessment.score}/${item.assessment.score_max ?? 20}` : ""} · Satisfaction : ${item.satisfaction?.overall_rating != null ? `${item.satisfaction.overall_rating}/5` : "non reçue"}`, { size: 9, gap: 1 });
+      if (item.analysis?.summary) paragraph(`Synthèse : ${item.analysis.summary}`, { size: 9, gap: 1 });
+      if (item.analysis?.strengths || item.satisfaction?.strengths) paragraph(`Forces : ${item.analysis?.strengths || item.satisfaction?.strengths}`, { size: 9, gap: 1 });
+      if (item.analysis?.weaknesses || item.satisfaction?.improvements) paragraph(`Faiblesses : ${item.analysis?.weaknesses || item.satisfaction?.improvements}`, { size: 9, gap: 1 });
+      if (item.analysis?.vigilance || item.satisfaction?.adaptation_feedback) paragraph(`Vigilance : ${item.analysis?.vigilance || item.satisfaction?.adaptation_feedback}`, { size: 9, gap: 1 });
+      if (item.analysis?.action_required) paragraph("Action humaine requise.", { bold: true, size: 9, gap: 1 });
+      y += 2;
+    }
+
+    y += 3;
     paragraph("Apprenants", { bold: true, size: 12, gap: 3 });
     if (enrolments.length === 0) paragraph("Aucun apprenant actif.", { size: 9 });
     else enrolments.forEach((item: any) => paragraph(`• ${item.name}`, { size: 9, gap: 1 }));
