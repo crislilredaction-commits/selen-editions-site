@@ -4,6 +4,8 @@ import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 
 const ENTRY_TYPES = new Set(["incident", "adaptation", "note", "absence"]);
 const LEVELS = new Set(["info", "attention", "critical"]);
+const INACTIVE_ENROLMENTS = new Set(["cancelled", "declined", "abandoned", "completed"]);
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function text(body: Record<string, unknown>, key: string) {
   return String(body[key] ?? "").trim();
@@ -104,7 +106,7 @@ export async function GET(request: Request) {
 
   const [{ data: entries, error: entriesError }, { data: enrolments, error: enrolmentsError }, { data: portalRows, error: portalError }] = await Promise.all([
     context.admin.from("daily_session_followup_entries").select("id,session_id,enrolment_id,entry_type,level,occurred_at,summary,description,action_taken,status,resolved_at,created_by,author_role,author_name,created_at,updated_at").eq("organisation_id", context.organisationId).eq("session_id", sessionId).order("occurred_at", { ascending: false }),
-    context.admin.from("daily_session_enrolments").select("id,learner_id,status,positioning_status,prerequisites_status,daily_learners(id,first_name,last_name,email)").eq("organisation_id", context.organisationId).eq("session_id", sessionId).not("status", "in", "(cancelled,declined)"),
+    context.admin.from("daily_session_enrolments").select("id,learner_id,status,positioning_status,prerequisites_status,daily_learners(id,first_name,last_name,email)").eq("organisation_id", context.organisationId).eq("session_id", sessionId).not("status", "in", "(cancelled,declined,abandoned,completed)"),
     context.admin.from("daily_portal_access_tokens").select("id,session_id,entity_name,entity_email,token,status,expires_at,viewed_at").eq("session_id", sessionId).eq("portal_type", "learner").not("status", "eq", "expired"),
   ]);
   if (entriesError || enrolmentsError || portalError) {
@@ -146,6 +148,7 @@ export async function POST(request: Request) {
 
   if (action === "create") {
     const entryType = text(body, "entry_type") || "note";
+    const requestId = text(body, "request_id");
     const requestedLevel = text(body, "level") || "attention";
     const level = entryType === "note" ? "info" : requestedLevel;
     const summary = text(body, "summary");
@@ -156,17 +159,22 @@ export async function POST(request: Request) {
     const occurredAt = occurredAtRaw && !Number.isNaN(Date.parse(occurredAtRaw)) ? new Date(occurredAtRaw).toISOString() : new Date().toISOString();
 
     if (!ENTRY_TYPES.has(entryType)) return NextResponse.json({ error: "Type de suivi invalide." }, { status: 400 });
+    if (!UUID_PATTERN.test(requestId)) return NextResponse.json({ error: "Identifiant de requête invalide." }, { status: 400 });
     if (!LEVELS.has(level)) return NextResponse.json({ error: "Niveau de suivi invalide." }, { status: 400 });
     if (!summary || summary.length > 240) return NextResponse.json({ error: "Le résumé est obligatoire et limité à 240 caractères." }, { status: 400 });
 
     if (enrolmentId) {
       const { data: enrolment } = await context.admin.from("daily_session_enrolments").select("id,status").eq("organisation_id", context.organisationId).eq("session_id", sessionId).eq("id", enrolmentId).maybeSingle();
-      if (!enrolment || ["cancelled", "declined"].includes(enrolment.status)) return NextResponse.json({ error: "Inscription introuvable ou inactive." }, { status: 404 });
+      if (!enrolment || INACTIVE_ENROLMENTS.has(enrolment.status)) return NextResponse.json({ error: "Inscription introuvable ou inactive." }, { status: 404 });
     }
 
     const isNote = entryType === "note";
     const now = new Date().toISOString();
-    const { data, error } = await context.admin.from("daily_session_followup_entries").insert({ organisation_id: context.organisationId, session_id: sessionId, enrolment_id: enrolmentId, entry_type: entryType, level, occurred_at: occurredAt, summary, description, action_taken: actionTaken, status: isNote ? "resolved" : "open", created_by: context.user.id, author_role: "Formateur", author_name: context.trainerName, resolved_by: isNote ? context.user.id : null, resolved_at: isNote ? now : null }).select("*").single();
+    const { data, error } = await context.admin.from("daily_session_followup_entries").insert({ id: requestId, organisation_id: context.organisationId, session_id: sessionId, enrolment_id: enrolmentId, entry_type: entryType, level, occurred_at: occurredAt, summary, description, action_taken: actionTaken, status: isNote ? "resolved" : "open", created_by: context.user.id, author_role: "Formateur", author_name: context.trainerName, resolved_by: isNote ? context.user.id : null, resolved_at: isNote ? now : null }).select("*").single();
+    if (error?.code === "23505") {
+      const { data: replay } = await context.admin.from("daily_session_followup_entries").select("*").eq("id", requestId).eq("organisation_id", context.organisationId).eq("session_id", sessionId).maybeSingle();
+      if (replay) return NextResponse.json({ ok: true, entry: replay, replayed: true });
+    }
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     if (!isNote) await refreshFollowupChecklist(context.admin, context.organisationId, sessionId);
     return NextResponse.json({ ok: true, entry: data });

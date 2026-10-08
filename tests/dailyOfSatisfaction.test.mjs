@@ -45,7 +45,7 @@ test("le retour est distinct de Qualiopi et utilise le schéma canonique du suiv
 });
 
 test("la vue OF reconnaît les notes automatiques de satisfaction", () => {
-  assert.match(followupPage, /entry_type: "incident" \| "adaptation" \| "note"/);
+  assert.match(followupPage, /entry_type: "incident" \| "adaptation" \| "absence" \| "note"/);
   assert.match(followupPage, /if \(entryType === "note"\) return "Note de suivi"/);
 });
 
