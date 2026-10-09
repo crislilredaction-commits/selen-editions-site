@@ -41,7 +41,7 @@ export function harness(options={}) {
   if(!owner||owner.prerequisite_submission_fingerprint!==args.p_expected_fingerprint)return{data:null,error:{code:'40001',message:'La candidature a déjà changé.'}};
   const evidence=db.daily_prerequisite_evidence.filter(row=>args.p_owner_kind==='registration_request'?row.registration_request_id===owner.id:row.registration_response_id===owner.id);
   if(!evidence.some(row=>row.status==='rejected')||evidence.some(row=>!['verified','rejected'].includes(row.status)))return{data:null,error:{code:'PSE01',message:'Seul un jeu relu et refusé peut être remplacé.'}};
-  for(const row of evidence){
+  for(const row of evidence.filter(row=>row.status==='rejected')){
    const next=db.daily_documents.find(document=>document.linked_object_id===owner.id&&document.metadata?.submission_fingerprint===args.p_new_fingerprint&&document.metadata?.participant_index===row.participant_index&&document.metadata?.requirement_id===row.requirement_id&&document.metadata?.staged_replacement===true&&!document.is_current);
    if(!next)return{data:null,error:{code:'23514',message:'Justificatif corrigé introuvable.'}};
    const previous=db.daily_documents.find(document=>document.id===row.document_id&&document.is_current);
