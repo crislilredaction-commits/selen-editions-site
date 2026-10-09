@@ -101,7 +101,7 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
     const key = prerequisiteEvidenceKey(participantIndex, requirement.id);
     return { key, participantIndex, requirementIndex, subject, requirement, file: prerequisiteDocuments[key] };
   }));
-  const prerequisitesReady = !prerequisitesRequired || (prerequisiteRequirements.length > 0 && prerequisiteRows.length > 0 && prerequisiteRows.every((row) => row.file));
+  const prerequisitesReady = !prerequisitesRequired || (prerequisiteRequirements.length > 0 && prerequisiteRows.length > 0 && prerequisiteRows.every((row) => row.requirement.required === false || row.file));
   const privateDocumentBytes = [...filledRows, ...prerequisiteRows].reduce((size, row) => size + (row.file?.size ?? 0), 0);
   const privateDocumentsReady = ownPositioningReady && prerequisitesReady && privateDocumentBytes <= APPLICATION_PRIVATE_DOCUMENTS_MAX_BYTES;
 
