@@ -3,7 +3,7 @@ export const DAILY_PREREQUISITE_MODES = ["none", "required"] as const;
 
 export type DailyFormationCreationMode = (typeof DAILY_FORMATION_CREATION_MODES)[number];
 export type DailyPrerequisiteMode = (typeof DAILY_PREREQUISITE_MODES)[number];
-export type DailyPrerequisiteRequirement = { id: string; label: string; description: string; required: true };
+export type DailyPrerequisiteRequirement = { id: string; label: string; description: string; required: boolean };
 
 const SELEN_FORM_REQUIRED_FIELDS = ["title", "global_objective", "target_audience", "duration_hours", "duration_days", "modality", "access_delays", "price", "pedagogical_resources", "evaluation_methods", "contact_phone", "contact_email"] as const;
 const PROGRAM_IMPORT_REQUIRED_COMPLEMENTS = ["title", "duration_hours", "duration_days", "modality", "contact_phone", "contact_email"] as const;
@@ -27,7 +27,7 @@ export function cleanPrerequisiteRequirements(value: unknown): DailyPrerequisite
     const key = label.toLocaleLowerCase("fr");
     if (seen.has(key)) return [];
     seen.add(key);
-    return [{ id: String(source.id ?? `prerequisite_${index + 1}`).trim() || `prerequisite_${index + 1}`, label, description: String(source.description ?? "").trim(), required: true as const }];
+    return [{ id: String(source.id ?? `prerequisite_${index + 1}`).trim() || `prerequisite_${index + 1}`, label, description: String(source.description ?? "").trim(), required: source.required !== false }];
   });
 }
 export function validatePrerequisiteDeclaration(mode: DailyPrerequisiteMode, requirements: DailyPrerequisiteRequirement[]): string | null {
