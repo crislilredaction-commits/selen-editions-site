@@ -264,7 +264,7 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
       return false;
     }
     if (!prerequisitesReady) {
-      setError("Joignez un justificatif pour chaque prérequis et pour chaque apprenant avant d’envoyer le dossier.");
+      setError("Joignez les justificatifs obligatoires pour chaque apprenant avant d’envoyer le dossier.");
       return false;
     }
     if (privateDocumentBytes > APPLICATION_PRIVATE_DOCUMENTS_MAX_BYTES) {
@@ -419,6 +419,7 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
             <>
               {ownPositioning ? <OwnPositioningFiles downloadUrl={`/api/daily-registration/${encodeURIComponent(token)}/positioning-document`} name={ownPositioning.name} rows={filledRows} onChange={(key, file) => setFilledDocuments(current => { const next = { ...current }; if (file) next[key] = file; else delete next[key]; return next; })} /> : null}
               {prerequisitesRequired && prerequisiteRequirements.length === 0 ? <p role="alert" style={s.error}>Les prérequis obligatoires ne sont pas disponibles. Contactez l’organisme de formation avant d’envoyer le dossier.</p> : null}
+              {prerequisiteRows.length > 0 ? <p style={s.notice}>Étape suivant le positionnement : déposez les justificatifs demandés pour chaque apprenant, puis signez le dossier.</p> : null}
               <PrerequisiteEvidenceFiles rows={prerequisiteRows} onChange={(key, file) => setPrerequisiteDocuments(current => { const next = { ...current }; if (file) next[key] = file; else delete next[key]; return next; })} />
               <ApplicationSignature consentText={signatureConsentText} consent={signatureConsent} onConsentChange={setSignatureConsent} onSignatureChange={setSignatureData} />
             </>
