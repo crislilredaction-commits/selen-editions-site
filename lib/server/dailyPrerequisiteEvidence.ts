@@ -62,7 +62,13 @@ function validBytes(bytes: Buffer, mime: string) {
   return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
 }
 
-export async function preparePrerequisiteEvidence(body: Json, formData: FormData | null, formation: Json, scope: string): Promise<PrerequisiteEvidenceSubmission | null> {
+export async function preparePrerequisiteEvidence(
+  body: Json,
+  formData: FormData | null,
+  formation: Json,
+  scope: string,
+  existingVerified = new Set<string>(),
+): Promise<PrerequisiteEvidenceSubmission | null> {
   const requirements = prerequisiteRequirements(formation);
   if (!requirements.length) return null;
   if (!formData && requirements.some((requirement) => requirement.required !== false)) throw new PrerequisiteEvidenceError("Joignez les justificatifs obligatoires avant d’envoyer votre candidature.");
@@ -75,7 +81,7 @@ export async function preparePrerequisiteEvidence(body: Json, formData: FormData
       const requirement = requirements[requirementIndex];
       const file = formData?.get(`prerequisite_file_${participantIndex}_${requirementIndex}`);
       if (!(file instanceof File) || file.size === 0) {
-        if (requirement.required === false) continue;
+        if (requirement.required === false || existingVerified.has(`${participantIndex}:${requirement.id}`)) continue;
         throw new PrerequisiteEvidenceError(`Joignez le justificatif obligatoire « ${requirement.label} » pour chaque apprenant.`);
       }
       if (file.size > PREREQUISITE_EVIDENCE_MAX_FILE_BYTES) throw new PrerequisiteEvidenceError("Chaque justificatif doit peser moins de 2 Mo.", 413);

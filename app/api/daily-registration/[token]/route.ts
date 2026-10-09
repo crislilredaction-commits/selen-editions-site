@@ -100,6 +100,36 @@ async function sendConfirmationSafely(input: Parameters<typeof sendDailyRegistra
   catch (error) { console.warn("Daily registration: confirmation email failed", error); return { sent: false, reason: "send_failed" as const }; }
 }
 
+async function existingVerifiedPrerequisiteKeys(
+  kind: "formation" | "session",
+  submissionId: string,
+  targetId: string,
+  ownerUserId: string,
+) {
+  const verified = new Set<string>();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(submissionId)) return verified;
+  const admin = getAdminSupabase();
+  if (kind === "formation") {
+    const { data: owner, error } = await admin.from("daily_formation_registration_requests")
+      .select("id,decision_status").eq("id", submissionId).eq("formation_id", targetId).eq("user_id", ownerUserId).maybeSingle();
+    if (error) throw new PrerequisiteEvidenceError("Vérification des justificatifs existants indisponible.", 500);
+    if (!owner || owner.decision_status !== "pending") return verified;
+  } else {
+    const { data: owner, error } = await admin.from("daily_registration_responses")
+      .select("id,status").eq("id", submissionId).eq("session_id", targetId).eq("user_id", ownerUserId).maybeSingle();
+    if (error) throw new PrerequisiteEvidenceError("Vérification des justificatifs existants indisponible.", 500);
+    if (!owner || owner.status !== "submitted") return verified;
+  }
+  let query = admin.from("daily_prerequisite_evidence").select("participant_index,requirement_id,status");
+  query = kind === "formation" ? query.eq("registration_request_id", submissionId) : query.eq("registration_response_id", submissionId);
+  const { data: evidence, error } = await query;
+  if (error) throw new PrerequisiteEvidenceError("Vérification des justificatifs existants indisponible.", 500);
+  for (const row of evidence ?? []) {
+    if (row.status === "verified") verified.add(`${row.participant_index}:${row.requirement_id}`);
+  }
+  return verified;
+}
+
 function publicFormation(formation: Record<string, unknown>) {
   const { positioning_questionnaire_document_url: _privateReference, ...visible } = formation;
   return visible;
@@ -253,7 +283,11 @@ export async function POST(request: Request, { params }: Params) {
   const original = rawFormation ? await loadOriginalPositioning(getAdminSupabase(), rawFormation) : null;
   if (rawFormation?.positioning_mode === "off_platform" && !original) throw new OwnPositioningError("Le questionnaire de l’organisme doit être importé avant la candidature. Contactez votre organisme de formation.", 409);
   const ownSubmission = original ? await prepareOwnPositioning(body, formData, original, `${formation ? "formation" : "session"}:${targetId}`) : null;
-  const prerequisiteSubmission = rawFormation ? await preparePrerequisiteEvidence(body, formData, rawFormation, `${formation ? "formation" : "session"}:${targetId}`) : null;
+  const registrationKind = formation ? "formation" : "session";
+  const verifiedPrerequisites = rawFormation
+    ? await existingVerifiedPrerequisiteKeys(registrationKind, text(body, "submission_id"), targetId, String(rawFormation.user_id ?? session?.user_id ?? ""))
+    : new Set<string>();
+  const prerequisiteSubmission = rawFormation ? await preparePrerequisiteEvidence(body, formData, rawFormation, `${registrationKind}:${targetId}`, verifiedPrerequisites) : null;
   const privateDocumentBytes = (ownSubmission?.files.reduce((total, file) => total + file.bytes.length, 0) ?? 0) + (prerequisiteSubmission?.files.reduce((total, file) => total + file.bytes.length, 0) ?? 0);
   if (privateDocumentBytes > APPLICATION_PRIVATE_DOCUMENTS_MAX_BYTES) throw new PrerequisiteEvidenceError("L’ensemble des documents privés du dossier doit peser moins de 4 Mo.", 413);
   if (ownSubmission) {

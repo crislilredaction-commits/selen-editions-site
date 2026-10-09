@@ -64,6 +64,31 @@ test("preuve refusée : remplacement versionné dans le même dossier, nouvelle 
   assert.equal(h.db.daily_documents.length, count); assert.equal(h.sends.length, 1);
 });
 
+test("une correction remplace seulement la pièce refusée et conserve la pièce déjà validée", async () => {
+  const h = required(harness(), [requirement("diploma", "Diplôme"), requirement("experience", "Expérience")]);
+  assert.equal((await h.post(form(h, {}, [pdf("positionnement")], [[0, 0, pdf("diplome")], [0, 1, pdf("experience")]]))).status, 200);
+  const [diploma, experience] = h.db.daily_documents.filter((row) => row.document_type === "prerequisite_application_evidence");
+  h.db.daily_prerequisite_evidence.push(
+    { id: uuid(70), registration_request_id: ids.submission, registration_response_id: null, participant_index: 0, requirement_id: "diploma", requirement_label: "Diplôme", document_id: diploma.id, status: "verified", submitted_at: "2026-10-05T17:00:00Z", reviewed_by: uuid(71), reviewed_at: "2026-10-05T17:30:00Z", review_comment: "Conforme", updated_at: "2026-10-05T17:30:00Z" },
+    { id: uuid(72), registration_request_id: ids.submission, registration_response_id: null, participant_index: 0, requirement_id: "experience", requirement_label: "Expérience", document_id: experience.id, status: "rejected", submitted_at: "2026-10-05T17:00:00Z", reviewed_by: uuid(71), reviewed_at: "2026-10-05T17:30:00Z", review_comment: "Illisible", updated_at: "2026-10-05T17:30:00Z" },
+  );
+  const response = await h.post(form(h, { signature_data: "data:image/png;base64,bm91dmVsbGU=" }, [pdf("positionnement")], [[0, 1, pdf("experience-corrigee")]]));
+  assert.equal(response.status, 200, await response.clone().text());
+  assert.equal(diploma.is_current, true);
+  assert.equal(h.db.daily_prerequisite_evidence[0].document_id, diploma.id);
+  assert.equal(h.db.daily_prerequisite_evidence[0].status, "verified");
+  assert.equal(experience.is_current, false);
+  assert.equal(h.db.daily_prerequisite_evidence[1].status, "submitted");
+});
+
+test("une pièce facultative absente n’empêche ni la préparation ni l’envoi", async () => {
+  const h = required(harness(), [requirement("diploma", "Diplôme"), { ...requirement("experience", "Expérience"), required: false }]);
+  const response = await h.post(form(h, {}, [pdf("positionnement")], [[0, 0, pdf("diplome")]]));
+  assert.equal(response.status, 200, await response.clone().text());
+  const documents = h.db.daily_documents.filter((row) => row.document_type === "prerequisite_application_evidence");
+  assert.deepEqual(documents.map((row) => row.metadata.requirement_id), ["diploma"]);
+});
+
 for(const [name,extra,positioning] of [
   ['identité',{respondent_first_name:'Autre'},[pdf('positionnement')]],
   ['besoin',{need_answers:{expectations:'Autre besoin'}},[pdf('positionnement')]],

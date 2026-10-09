@@ -4,6 +4,7 @@ import test from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 
 const migration = await readFile(new URL("../supabase/migrations/20261005172000_daily_prerequisite_submission_review.sql", import.meta.url), "utf8");
+const optionalMigration = await readFile(new URL("../supabase/migrations/20261009140651_daily_optional_prerequisite_evidence.sql", import.meta.url), "utf8");
 const ids = {
   org: "00000000-0000-4000-8000-000000000001",
   formation: "00000000-0000-4000-8000-000000000002",
@@ -53,7 +54,7 @@ test("PostgreSQL réel : dépôt exact, deux propriétaires, revue immuable et g
       constraint daily_prerequisite_evidence_review_consistency check ((status in ('awaiting_upload','submitted') and reviewed_by is null and reviewed_at is null) or (status in ('verified','rejected') and reviewed_by is not null and reviewed_at is not null))
     );
   `);
-  await db.exec(`begin; ${migration} commit;`);
+  await db.exec(`begin; ${migration} ${optionalMigration} commit;`);
   await db.exec(`
     create trigger daily_registration_guard_prerequisite_acceptance before update of decision_status on public.daily_formation_registration_requests
       for each row execute function public.guard_daily_registration_prerequisite_acceptance();
@@ -114,6 +115,24 @@ test("PostgreSQL réel : dépôt exact, deux propriétaires, revue immuable et g
     values (gen_random_uuid(),$1,$2,null,'prerequisite_application_evidence','registration_request',$3,'documents',$4,'application/pdf',$5,true,'to_check',$6)`, [ids.org, ids.formation, extraRequest, `daily/${ids.org}/prerequisite-applications/${ids.formation}/${extraRequest}/extra.pdf`, "c".repeat(64), JSON.stringify({ source: "daily_prerequisite_evidence", submission_fingerprint: fingerprint, staged_replacement: false, participant_index: 1, requirement_id: "diploma", subject_first_name: "Alice", subject_last_name: "Martin", subject_email: "alice@example.test" })]);
   await assert.rejects(db.query(`insert into public.daily_formation_registration_requests (
     id,formation_id,attached_session_id,response_type,participants,respondent_first_name,respondent_last_name,respondent_email,prerequisite_submission_fingerprint
-  ) values ($1,$2,null,'beneficiary','[]','Alice','Martin','alice@example.test',$3)`, [extraRequest, ids.formation, fingerprint]), /ne correspond pas exactement/);
+  ) values ($1,$2,null,'beneficiary','[]','Alice','Martin','alice@example.test',$3)`, [extraRequest, ids.formation, fingerprint]), /inattendue|ne correspond pas exactement/);
   assert.equal((await db.query("select count(*)::int count from public.daily_formation_registration_requests where id=$1", [extraRequest])).rows[0].count, 0);
+
+  const optionalRequest = "00000000-0000-4000-8000-000000000012";
+  const optionalDocument = "00000000-0000-4000-8000-000000000013";
+  const mixedRequirements = [
+    { id: "diploma", label: "Diplôme", required: true },
+    { id: "experience", label: "Attestation d’expérience", required: false },
+  ];
+  await db.query("update public.daily_formations set prerequisite_requirements=$2 where id=$1", [ids.formation, JSON.stringify(mixedRequirements)]);
+  await insertDocument({ id: optionalDocument, owner: optionalRequest, kind: "registration_request", session: ids.session });
+  await db.query(`insert into public.daily_formation_registration_requests (
+    id,formation_id,attached_session_id,response_type,participants,respondent_first_name,respondent_last_name,respondent_email,prerequisite_submission_fingerprint
+  ) values ($1,$2,$3,'beneficiary','[]','Alice','Martin','alice@example.test',$4)`, [optionalRequest, ids.formation, ids.session, fingerprint]);
+  const optionalEvidence = (await db.query("select * from public.daily_prerequisite_evidence where registration_request_id=$1", [optionalRequest])).rows;
+  assert.equal(optionalEvidence.length, 1);
+  assert.equal(optionalEvidence[0].requirement_id, "diploma");
+  await db.query("select public.review_daily_prerequisite_evidence($1,$2,'verified','Pièce obligatoire lisible',$3)", [optionalEvidence[0].id, optionalEvidence[0].updated_at, ids.reviewer]);
+  await db.query("update public.daily_formation_registration_requests set decision_status='accepted' where id=$1", [optionalRequest]);
+  assert.equal((await db.query("select decision_status from public.daily_formation_registration_requests where id=$1", [optionalRequest])).rows[0].decision_status, "accepted");
 });
