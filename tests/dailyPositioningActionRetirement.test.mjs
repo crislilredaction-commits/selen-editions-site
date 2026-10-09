@@ -3,16 +3,16 @@ import assert from 'node:assert/strict';
 import { loadTypeScript } from './helpers/loadTypeScript.mjs';
 import { harness } from './helpers/dailyOwnPositioningHarness.mjs';
 
-function fixture({positioning='completed',prerequisites='met',enrolmentStatus='pending',sessionStatus='ready',forbidden=false}={}) {
+function fixture({positioning='completed',prerequisites='met',enrolmentStatus='pending',sessionStatus='ready',formationStatus='validated',forbidden=false}={}) {
   const organisationId='org-own',userId='user-own';
-  const session={id:'session-own',organisation_id:organisationId,status:sessionStatus,trainer_ids:['trainer-own'],daily_formations:{title:'Formation QA'}};
+  const session={id:'session-own',organisation_id:organisationId,status:sessionStatus,trainer_ids:['trainer-own'],daily_formations:{title:'Formation QA',status:formationStatus}};
   const enrolment={id:'enrolment-own',organisation_id:organisationId,session_id:session.id,status:enrolmentStatus,positioning_status:positioning,prerequisites_status:prerequisites,daily_learners:{first_name:'Alice',last_name:'Martin'},daily_sessions:session};
   const rows={daily_sessions:[session],daily_session_enrolments:[enrolment,{...enrolment,id:'enrolment-foreign',organisation_id:'org-other'}],daily_session_checklist_items:[],daily_enrolment_support_needs:[],daily_onboarding:[{user_id:userId,support_tasks:[],quality_tracking_enabled:false}],organisations:[{id:organisationId,qualiopi_status:'none'}],daily_business_watch_entries:[],daily_quality_actions:[],daily_formations:[],client_reminders:[]};
   const reads=[];
   const admin={from(table){
     assert.ok(Object.hasOwn(rows,table),`Unexpected table ${table}`);reads.push(table);
-    const filters=[];let single=false;
-    const query={select(){return query},eq(k,v){filters.push(row=>row[k]===v);return query},neq(k,v){filters.push(row=>row[k]!==v);return query},in(k,v){filters.push(row=>v.includes(row[k]));return query},not(k,op,value){assert.equal(op,'in');const values=value.slice(1,-1).split(',');filters.push(row=>!values.includes(row[k]));return query},gte(k,v){filters.push(row=>row[k]>=v);return query},lt(k,v){filters.push(row=>row[k]<v);return query},lte(k,v){filters.push(row=>row[k]<=v);return query},order(){return query},limit(){return query},maybeSingle(){single=true;return query},then(resolve,reject){const data=rows[table].filter(row=>filters.every(predicate=>predicate(row)));return Promise.resolve({data:single?data[0]??null:data,error:null}).then(resolve,reject)}};
+    const filters=[];let single=false,rangeStart=null,rangeEnd=null;
+    const query={select(){return query},eq(k,v){filters.push(row=>row[k]===v);return query},neq(k,v){filters.push(row=>row[k]!==v);return query},in(k,v){filters.push(row=>v.includes(row[k]));return query},not(k,op,value){assert.equal(op,'in');const values=value.slice(1,-1).split(',');filters.push(row=>!values.includes(row[k]));return query},gte(k,v){filters.push(row=>row[k]>=v);return query},lt(k,v){filters.push(row=>row[k]<v);return query},lte(k,v){filters.push(row=>row[k]<=v);return query},order(){return query},limit(){return query},range(start,end){rangeStart=start;rangeEnd=end;return query},maybeSingle(){single=true;return query},then(resolve,reject){let data=rows[table].filter(row=>filters.every(predicate=>predicate(row)));if(rangeStart!==null&&rangeEnd!==null)data=data.slice(rangeStart,rangeEnd+1);return Promise.resolve({data:single?data[0]??null:data,error:null}).then(resolve,reject)}};
     return query;
   }};
   const completion=harness().load('lib/server/dailySessionCompletion.ts');
@@ -53,6 +53,7 @@ test('closed enrolments and archived sessions do not create positioning actions'
     const f=fixture({enrolmentStatus:status,positioning:'not_started'});assert.equal((await (await f.get()).json()).counts.learners,0);
   }
   const f=fixture({sessionStatus:'archived',positioning:'not_started'});assert.equal((await (await f.get()).json()).counts.learners,0);
+  const archivedFormation=fixture({formationStatus:'archived',positioning:'not_started'});assert.equal((await (await archivedFormation.get()).json()).counts.learners,1);
 });
 test('unauthorized OF reads are refused before any table read',async()=>{
   const f=fixture({forbidden:true});assert.equal((await f.get()).status,403);assert.equal(f.reads.length,0);

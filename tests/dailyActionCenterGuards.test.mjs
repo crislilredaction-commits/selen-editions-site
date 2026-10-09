@@ -4,6 +4,7 @@ import test from "node:test";
 
 const page = await readFile(new URL("../app/client/daily/a-faire/page.tsx", import.meta.url), "utf8");
 const route = await readFile(new URL("../app/api/client/daily/action-center/route.ts", import.meta.url), "utf8");
+const dashboard = await readFile(new URL("../components/daily/DailyDashboardOverviewV2.tsx", import.meta.url), "utf8");
 const workspaceRoute = await readFile(new URL("../app/api/client/daily/workspace/route.ts", import.meta.url), "utf8");
 const assignmentRls = await readFile(new URL("../supabase/migrations/20260830065500_harden_daily_organisation_assignment_rls.sql", import.meta.url), "utf8");
 const checklistAssignmentRls = await readFile(new URL("../supabase/migrations/20260830064500_enforce_daily_checklist_assignment_rls.sql", import.meta.url), "utf8");
@@ -30,6 +31,26 @@ test("les actions Qualité ouvertes ou planifiées alimentent réellement À fai
 test("les actions Qualité terminées ne sont pas demandées par le centre À faire", () => {
   assert.doesNotMatch(route, /\.in\(\"status\",\[[^\]]*\"implemented\"/);
   assert.doesNotMatch(route, /\.in\(\"status\",\[[^\]]*\"closed\"/);
+});
+
+test("les tâches actives excluent les parents métier terminaux et ne sont jamais mises en cache", () => {
+  assert.match(route, /\.not\("status","in","\(archived,cancelled,canceled,deleted,removed,obsolete,abandoned,completed,done,closed\)"\)/);
+  assert.match(route, /\.range\(from,from\+pageSize-1\)/);
+  assert.match(route, /\.order\("start_date",\{ascending:true\}\)\.order\("id",\{ascending:true\}\)/);
+  assert.match(route, /if\(page\.length<pageSize\)return\{data:rows,error:null\}/);
+  assert.match(route, /isDailyTaskParentActive\(session\.status\)/);
+  assert.doesNotMatch(route, /isDailyTaskParentActive\(one\(session\.daily_formations\)\?\.status\)/);
+  assert.match(route, /sessionsById\.has\(session\.id\?\?""\)/);
+  assert.match(route, /const session=one\(enrolment\.daily_sessions\);if\(!session\|\|!sessionsById\.has\(session\.id\?\?""\)\|\|\(need\.planned_accommodations/);
+  assert.match(route, /Cache-Control":"private, no-store, max-age=0"/);
+});
+
+test("un retour navigateur recharge immédiatement les compteurs depuis la source canonique", () => {
+  for (const source of [page, dashboard]) {
+    assert.match(source, /pageshow/);
+    assert.match(source, /event\.persisted/);
+    assert.match(source, /window\.location\.reload\(\)/);
+  }
 });
 
 test("la veille métier crée une seule action mensuelle tant que le mois n'est pas renseigné", () => {

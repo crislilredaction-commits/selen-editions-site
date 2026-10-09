@@ -3,6 +3,14 @@ import { filterCurrentOwnPositioningEvidence } from "@/lib/server/dailyCurrentPo
 export const ACTIVE_ENROLMENT_STATUSES = new Set(["pending", "confirmed", "active", "completed"]);
 export const DONE_CHECKLIST_STATUSES = new Set(["validated", "not_applicable"]);
 export const DONE_POSITIONING_STATUSES = new Set(["reviewed", "completed", "validated", "done"]);
+const TERMINAL_TASK_PARENT_STATUSES = new Set([
+  "archived", "cancelled", "canceled", "deleted", "removed", "obsolete",
+  "abandoned", "completed", "done", "closed",
+]);
+
+export function isDailyTaskParentActive(status: string | null | undefined) {
+  return !status || !TERMINAL_TASK_PARENT_STATUSES.has(status.trim().toLowerCase());
+}
 
 type CompletionStats = {
   percentage: number;

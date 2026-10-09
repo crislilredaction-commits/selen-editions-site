@@ -66,6 +66,14 @@ export default function DailyActionCenterPage() {
     return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+    const refreshRestoredPage = (event: PageTransitionEvent) => {
+      if (event.persisted) window.location.reload();
+    };
+    window.addEventListener("pageshow", refreshRestoredPage);
+    return () => window.removeEventListener("pageshow", refreshRestoredPage);
+  }, []);
+
   const actions = useMemo(() => {
     const rows = data?.actions ?? [];
     return filter === "all" ? rows : rows.filter((item) => item.kind === filter);
