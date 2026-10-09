@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { loadTypeScript } from './helpers/loadTypeScript.mjs';
 import { harness } from './helpers/dailyOwnPositioningHarness.mjs';
 
-function fixture({positioning='completed',prerequisites='met',enrolmentStatus='pending',sessionStatus='ready',forbidden=false}={}) {
+function fixture({positioning='completed',prerequisites='met',enrolmentStatus='pending',sessionStatus='ready',formationStatus='validated',forbidden=false}={}) {
   const organisationId='org-own',userId='user-own';
-  const session={id:'session-own',organisation_id:organisationId,status:sessionStatus,trainer_ids:['trainer-own'],daily_formations:{title:'Formation QA'}};
+  const session={id:'session-own',organisation_id:organisationId,status:sessionStatus,trainer_ids:['trainer-own'],daily_formations:{title:'Formation QA',status:formationStatus}};
   const enrolment={id:'enrolment-own',organisation_id:organisationId,session_id:session.id,status:enrolmentStatus,positioning_status:positioning,prerequisites_status:prerequisites,daily_learners:{first_name:'Alice',last_name:'Martin'},daily_sessions:session};
   const rows={daily_sessions:[session],daily_session_enrolments:[enrolment,{...enrolment,id:'enrolment-foreign',organisation_id:'org-other'}],daily_session_checklist_items:[],daily_enrolment_support_needs:[],daily_onboarding:[{user_id:userId,support_tasks:[],quality_tracking_enabled:false}],organisations:[{id:organisationId,qualiopi_status:'none'}],daily_business_watch_entries:[],daily_quality_actions:[],daily_formations:[],client_reminders:[]};
   const reads=[];
@@ -53,6 +53,7 @@ test('closed enrolments and archived sessions do not create positioning actions'
     const f=fixture({enrolmentStatus:status,positioning:'not_started'});assert.equal((await (await f.get()).json()).counts.learners,0);
   }
   const f=fixture({sessionStatus:'archived',positioning:'not_started'});assert.equal((await (await f.get()).json()).counts.learners,0);
+  const archivedFormation=fixture({formationStatus:'archived',positioning:'not_started'});assert.equal((await (await archivedFormation.get()).json()).counts.learners,0);
 });
 test('unauthorized OF reads are refused before any table read',async()=>{
   const f=fixture({forbidden:true});assert.equal((await f.get()).status,403);assert.equal(f.reads.length,0);
