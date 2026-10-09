@@ -11,8 +11,8 @@ function fixture({positioning='completed',prerequisites='met',enrolmentStatus='p
   const reads=[];
   const admin={from(table){
     assert.ok(Object.hasOwn(rows,table),`Unexpected table ${table}`);reads.push(table);
-    const filters=[];let single=false;
-    const query={select(){return query},eq(k,v){filters.push(row=>row[k]===v);return query},neq(k,v){filters.push(row=>row[k]!==v);return query},in(k,v){filters.push(row=>v.includes(row[k]));return query},not(k,op,value){assert.equal(op,'in');const values=value.slice(1,-1).split(',');filters.push(row=>!values.includes(row[k]));return query},gte(k,v){filters.push(row=>row[k]>=v);return query},lt(k,v){filters.push(row=>row[k]<v);return query},lte(k,v){filters.push(row=>row[k]<=v);return query},order(){return query},limit(){return query},maybeSingle(){single=true;return query},then(resolve,reject){const data=rows[table].filter(row=>filters.every(predicate=>predicate(row)));return Promise.resolve({data:single?data[0]??null:data,error:null}).then(resolve,reject)}};
+    const filters=[];let single=false,rangeStart=null,rangeEnd=null;
+    const query={select(){return query},eq(k,v){filters.push(row=>row[k]===v);return query},neq(k,v){filters.push(row=>row[k]!==v);return query},in(k,v){filters.push(row=>v.includes(row[k]));return query},not(k,op,value){assert.equal(op,'in');const values=value.slice(1,-1).split(',');filters.push(row=>!values.includes(row[k]));return query},gte(k,v){filters.push(row=>row[k]>=v);return query},lt(k,v){filters.push(row=>row[k]<v);return query},lte(k,v){filters.push(row=>row[k]<=v);return query},order(){return query},limit(){return query},range(start,end){rangeStart=start;rangeEnd=end;return query},maybeSingle(){single=true;return query},then(resolve,reject){let data=rows[table].filter(row=>filters.every(predicate=>predicate(row)));if(rangeStart!==null&&rangeEnd!==null)data=data.slice(rangeStart,rangeEnd+1);return Promise.resolve({data:single?data[0]??null:data,error:null}).then(resolve,reject)}};
     return query;
   }};
   const completion=harness().load('lib/server/dailySessionCompletion.ts');

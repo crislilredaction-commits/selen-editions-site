@@ -20,6 +20,7 @@ function sessionLabel(session:SessionRelation|null|undefined){const formation=on
 function learnerLabel(enrolment:EnrolmentRelation){const learner=one(enrolment.daily_learners);return [learner?.first_name,learner?.last_name].filter(Boolean).join(" ").trim()||"Apprenant"}
 function monthBounds(){const now=new Date();const start=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),1));const end=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth()+1,1));return{start:start.toISOString().slice(0,10),end:end.toISOString().slice(0,10)}}
 function quarterBounds(){const now=new Date();const quarterStartMonth=Math.floor(now.getUTCMonth()/3)*3;const start=new Date(Date.UTC(now.getUTCFullYear(),quarterStartMonth,1));const end=new Date(Date.UTC(now.getUTCFullYear(),quarterStartMonth+3,1));return{start:start.toISOString(),end:end.toISOString()}}
+async function loadActiveSessions(admin:any,organisationId:string){const rows:any[]=[];const pageSize=500;for(let from=0;;from+=pageSize){const{data,error}=await admin.from("daily_sessions").select("id,internal_reference,start_date,end_date,status,trainer_ids,daily_formations(title)").eq("organisation_id",organisationId).not("status","in","(archived,cancelled,canceled,deleted,removed,obsolete,abandoned,completed,done,closed)").order("start_date",{ascending:true}).range(from,from+pageSize-1);if(error)return{data:null,error};const page=data??[];rows.push(...page);if(page.length<pageSize)return{data:rows,error:null}}}
 
 export async function GET(req:Request){
  const context=await getDailyOrganisationReadContext(req,["sessions","trainings"]);if(!context.ok)return NextResponse.json({error:context.error},{status:context.status});
@@ -28,7 +29,7 @@ export async function GET(req:Request){
  const quarter=quarterBounds();
  const nowIso=new Date().toISOString();
  const[sessionsR,checklistR,enrolmentsR,needsR,onboardingR,organisationR,businessWatchR,qualityActionsR,qualityReviewR,registrationsR,qualiopiRemindersR]=await Promise.all([
-  context.admin.from("daily_sessions").select("id,internal_reference,start_date,end_date,status,trainer_ids,daily_formations(title)").eq("organisation_id",context.organisationId).not("status","in","(archived,cancelled,canceled,deleted,removed,obsolete,abandoned,completed,done,closed)").order("start_date",{ascending:true}),
+  loadActiveSessions(context.admin,context.organisationId),
   context.admin.from("daily_session_checklist_items").select("id,session_id,label,status,responsibility,due_at,note").eq("organisation_id",context.organisationId).neq("responsibility","selen"),
   context.admin.from("daily_session_enrolments").select("id,session_id,status,positioning_status,prerequisites_status,daily_learners(first_name,last_name),daily_sessions(id,internal_reference,start_date,end_date,status,daily_formations(title))").eq("organisation_id",context.organisationId).not("status","in","(cancelled,declined,completed,abandoned)"),
   context.admin.from("daily_enrolment_support_needs").select("id,enrolment_id,has_specific_needs,needs_description,planned_accommodations,contact_requested,daily_session_enrolments(id,session_id,status,daily_learners(first_name,last_name),daily_sessions(id,internal_reference,start_date,end_date,status,daily_formations(title)))").eq("organisation_id",context.organisationId).eq("has_specific_needs",true),

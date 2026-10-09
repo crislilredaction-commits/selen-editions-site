@@ -35,6 +35,8 @@ test("les actions Qualité terminées ne sont pas demandées par le centre À fa
 
 test("les tâches actives excluent les parents métier terminaux et ne sont jamais mises en cache", () => {
   assert.match(route, /\.not\("status","in","\(archived,cancelled,canceled,deleted,removed,obsolete,abandoned,completed,done,closed\)"\)/);
+  assert.match(route, /\.range\(from,from\+pageSize-1\)/);
+  assert.match(route, /if\(page\.length<pageSize\)return\{data:rows,error:null\}/);
   assert.match(route, /isDailyTaskParentActive\(session\.status\)/);
   assert.doesNotMatch(route, /isDailyTaskParentActive\(one\(session\.daily_formations\)\?\.status\)/);
   assert.match(route, /sessionsById\.has\(session\.id\?\?""\)/);
