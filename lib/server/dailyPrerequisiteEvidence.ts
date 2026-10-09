@@ -50,7 +50,7 @@ export function prerequisiteRequirements(formation: Json): PrerequisiteRequireme
     const id = text(row.id);
     const label = text(row.label);
     if (!id || !label || id.length > 160 || label.length > 500) throw new PrerequisiteEvidenceError(`Le prérequis ${index + 1} est invalide. Contactez l’organisme de formation.`, 409);
-    return { id, label, description: text(row.description), required: true };
+    return { id, label, description: text(row.description), required: row.required !== false };
   });
   if (!rows.length || new Set(rows.map((row) => row.id)).size !== rows.length) throw new PrerequisiteEvidenceError("Les prérequis obligatoires de cette formation sont incohérents. Contactez l’organisme de formation.", 409);
   return rows;
@@ -65,7 +65,7 @@ function validBytes(bytes: Buffer, mime: string) {
 export async function preparePrerequisiteEvidence(body: Json, formData: FormData | null, formation: Json, scope: string): Promise<PrerequisiteEvidenceSubmission | null> {
   const requirements = prerequisiteRequirements(formation);
   if (!requirements.length) return null;
-  if (!formData) throw new PrerequisiteEvidenceError("Joignez tous les justificatifs de prérequis avant d’envoyer votre candidature.");
+  if (!formData && requirements.some((requirement) => requirement.required !== false)) throw new PrerequisiteEvidenceError("Joignez les justificatifs obligatoires avant d’envoyer votre candidature.");
   const id = text(body.submission_id).toLowerCase();
   if (!uuid.test(id)) throw new PrerequisiteEvidenceError("Actualisez le dossier avant de transmettre vos justificatifs.");
   const subjects = positioningSubjects(body);
@@ -73,8 +73,11 @@ export async function preparePrerequisiteEvidence(body: Json, formData: FormData
   for (let participantIndex = 0; participantIndex < subjects.length; participantIndex++) {
     for (let requirementIndex = 0; requirementIndex < requirements.length; requirementIndex++) {
       const requirement = requirements[requirementIndex];
-      const file = formData.get(`prerequisite_file_${participantIndex}_${requirementIndex}`);
-      if (!(file instanceof File) || file.size === 0) throw new PrerequisiteEvidenceError(`Joignez le justificatif « ${requirement.label} » pour chaque apprenant.`);
+      const file = formData?.get(`prerequisite_file_${participantIndex}_${requirementIndex}`);
+      if (!(file instanceof File) || file.size === 0) {
+        if (requirement.required === false) continue;
+        throw new PrerequisiteEvidenceError(`Joignez le justificatif obligatoire « ${requirement.label} » pour chaque apprenant.`);
+      }
       if (file.size > PREREQUISITE_EVIDENCE_MAX_FILE_BYTES) throw new PrerequisiteEvidenceError("Chaque justificatif doit peser moins de 2 Mo.", 413);
       if (!(PREREQUISITE_EVIDENCE_MIME_TYPES as readonly string[]).includes(file.type)) throw new PrerequisiteEvidenceError("Les justificatifs doivent être au format PDF, JPG ou PNG.");
       const bytes = Buffer.from(await file.arrayBuffer());
