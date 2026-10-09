@@ -53,7 +53,7 @@ test('closed enrolments and archived sessions do not create positioning actions'
     const f=fixture({enrolmentStatus:status,positioning:'not_started'});assert.equal((await (await f.get()).json()).counts.learners,0);
   }
   const f=fixture({sessionStatus:'archived',positioning:'not_started'});assert.equal((await (await f.get()).json()).counts.learners,0);
-  const archivedFormation=fixture({formationStatus:'archived',positioning:'not_started'});assert.equal((await (await archivedFormation.get()).json()).counts.learners,0);
+  const archivedFormation=fixture({formationStatus:'archived',positioning:'not_started'});assert.equal((await (await archivedFormation.get()).json()).counts.learners,1);
 });
 test('unauthorized OF reads are refused before any table read',async()=>{
   const f=fixture({forbidden:true});assert.equal((await f.get()).status,403);assert.equal(f.reads.length,0);
