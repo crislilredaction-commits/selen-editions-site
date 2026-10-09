@@ -23,11 +23,11 @@ export default function PrerequisiteEvidenceFiles({ rows, onChange }: {
   if (!rows.length) return null;
   return <section style={{ display: "grid", gap: 12, margin: "18px 0", padding: 18, border: "1px solid var(--sepia-mid)" }}>
     <h2 style={{ margin: 0 }}>Justificatifs de prérequis</h2>
-    <p style={{ margin: 0 }}>Joignez une preuve pour chaque prérequis et pour chaque apprenant. Le dépôt est obligatoire, mais la validation reste effectuée humainement par Selen.</p>
+    <p style={{ margin: 0 }}>Joignez une preuve pour chaque prérequis et pour chaque apprenant. Les pièces obligatoires doivent être jointes ; les autres sont facultatives. Leur validation reste effectuée humainement par Selen.</p>
     {rows.map((row) => {
       const subjectName = [row.subject.first_name, row.subject.last_name].filter(Boolean).join(" ") || `Apprenant ${row.participantIndex + 1}`;
       return <label key={row.key} style={{ display: "grid", gap: 7 }}>
-        <strong>{row.requirement.label} · {subjectName} *</strong>
+        <strong>{row.requirement.label} · {subjectName}{row.requirement.required === false ? " (facultatif)" : " *"}</strong>
         {row.requirement.description ? <span>{row.requirement.description}</span> : null}
         <input
           type="file"
@@ -45,7 +45,7 @@ export default function PrerequisiteEvidenceFiles({ rows, onChange }: {
           }}
         />
         {errors[row.key] ? <small role="alert">{errors[row.key]}</small> : null}
-        <small>{row.file ? `Joint : ${row.file.name}` : "Justificatif à joindre obligatoirement."}</small>
+        <small>{row.file ? `Joint : ${row.file.name}` : row.requirement.required === false ? "Justificatif facultatif." : "Justificatif à joindre obligatoirement."}</small>
       </label>;
     })}
     <small>PDF, JPG ou PNG, 2 Mo maximum par fichier. L’ensemble des documents privés du dossier doit rester inférieur à 4 Mo.</small>
