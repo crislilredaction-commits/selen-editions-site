@@ -48,3 +48,8 @@ test("simultaneous learner profile creation reuses only a matching identity", ()
   assert.match(source, /text\(concurrent\.last_name\)\.toLowerCase\(\)/);
   assert.match(source, /resolvedIds\.includes\(concurrent\.id\)/);
 });
+
+test("bulk enrolment rejects duplicate emails before creating profiles", () => {
+  assert.match(source, /new Set\(proposedEmails\)\.size !== proposedEmails\.length/);
+  assert.match(source, /proposedEmails\.includes\(email\(learner\.email\)\)/);
+});
