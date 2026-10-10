@@ -42,6 +42,23 @@ function EvidenceDownload({ id, name }: { id: string; name: string }) {
   return <><button type="button" onClick={() => void download()} disabled={busy} aria-label={`Télécharger ${name}`} style={{ textDecoration: "underline" }}>{busy ? "Téléchargement…" : "Télécharger"}</button>{error ? <span role="alert"> {error}</span> : null}</>;
 }
 
+function AbandonmentForm({ enrolmentId, busy, onConfirm }: { enrolmentId: string; busy: boolean; onConfirm: (enrolmentId: string, date: string, reason: string) => Promise<void> }) {
+  const [open, setOpen] = useState(false);
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [reason, setReason] = useState("");
+  if (!open) return <button type="button" onClick={() => setOpen(true)}>Confirmer un abandon</button>;
+  return <form onSubmit={event => { event.preventDefault(); if (date && reason.trim() && !busy) void onConfirm(enrolmentId, date, reason.trim()); }} style={{ display: "grid", gap: ".65rem", marginTop: ".85rem" }}>
+    <strong>Abandon définitif de cette inscription</strong>
+    <label>Date de l’abandon <input type="date" required value={date} onChange={event => setDate(event.target.value)} /></label>
+    <label>Motif <textarea required value={reason} onChange={event => setReason(event.target.value)} style={{ display: "block", width: "100%", minHeight: 70 }} /></label>
+    <p>La confirmation arrête les accès et actions futures. Les preuves antérieures sont conservées.</p>
+    <div style={{ display: "flex", gap: ".75rem", flexWrap: "wrap" }}>
+      <button type="submit" disabled={busy || !date || !reason.trim()}>{busy ? "Confirmation…" : "Confirmer définitivement"}</button>
+      <button type="button" disabled={busy} onClick={() => { setOpen(false); setReason(""); }}>Annuler</button>
+    </div>
+  </form>;
+}
+
 export default function DailySessionDetailPage() {
   const params = useParams<{ sessionId: string }>();
   const sessionId = params.sessionId;
