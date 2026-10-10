@@ -147,7 +147,7 @@ export default function DailySessionDetailPage() {
         {session.schedule_blocks?.length ? <details style={{ marginTop: ".75rem" }}><summary>Planning détaillé ({session.schedule_blocks.length} créneau(x))</summary><ul style={{ paddingLeft: "1.25rem" }}>{session.schedule_blocks.map((block, index) => <li key={index}>{block.date || "Date à définir"} · {block.start || "?"} – {block.end || "?"}{block.note ? ` · ${block.note}` : ""}</li>)}</ul></details> : null}
         {session.companies?.filter(company => company.name?.trim()).length ? <details style={{ marginTop: ".75rem" }}><summary>Entreprises rattachées ({session.companies.filter(company => company.name?.trim()).length})</summary><ul style={{ paddingLeft: "1.25rem" }}>{session.companies.filter(company => company.name?.trim()).map((company, index) => <li key={index} style={{ overflowWrap: "anywhere" }}><strong>{company.name}</strong>{company.email ? ` · ${company.email}` : ""}</li>)}</ul></details> : null}
       </section>
-      <section style={panel}><h2>Accès aux espaces</h2><p>{session.daily_portal_access_tokens?.length ?? 0} accès recensés.</p></section>
+      <section style={panel}><h2>Accès aux espaces</h2><p>{session.daily_portal_access_tokens?.length ?? 0} accès recensés, dont {session.daily_portal_access_tokens?.filter(access => Boolean(access.viewed_at)).length ?? 0} consultés.</p></section>
       <section style={panel} aria-label="Envois et convocations">
         <h2 style={{ fontSize: "1.25rem", fontWeight: 700 }}>Envois et convocations</h2>
         <p>Suivi des destinataires et des convocations enregistrés pour cette session.</p>
