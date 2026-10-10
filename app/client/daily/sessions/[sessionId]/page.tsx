@@ -97,6 +97,7 @@ export default function DailySessionDetailPage() {
           const assessmentCount = evidence.assessmentResponses.filter(item => item.enrolment_id === row.id).length;
           return <article key={row.id} style={panel}>
             <h3 style={{ fontSize: "1.1rem", fontWeight: 700, overflowWrap: "anywhere" }}>{[learner?.first_name, learner?.last_name].filter(Boolean).join(" ") || learner?.email || "Apprenant"}</h3>
+            {row.status === "abandoned" ? <p role="status">Abandon confirmé : preuves antérieures conservées.</p> : null}
             {learner?.email ? <p style={{ overflowWrap: "anywhere" }}>{learner.email}</p> : null}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 180px), 1fr))", gap: ".65rem", marginTop: "1rem" }}>
               {([["Inscription", row.status], ["Positionnement", row.positioning_status], ["Évaluation des acquis", assessmentCount || documents.some(doc => doc.document_type === "learning_assessment_evidence") ? "submitted" : "pending"]] as const).map(([label, value]) =>
