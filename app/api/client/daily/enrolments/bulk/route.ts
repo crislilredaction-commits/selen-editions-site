@@ -70,8 +70,20 @@ export async function POST(req: Request) {
       phone: text(row.phone) || null, company_name: text(body.company_name),
       job_title: text(row.job_title) || null, created_by: context.user.id,
     }).select("id").single();
-    if (createError || !learner) creationFailures.push(email(row.email));
-    else resolvedIds.push(learner.id);
+    if (createError || !learner) {
+      if (createError?.code === "23505") {
+        const { data: concurrent, error: concurrentError } = await admin.from("daily_learners")
+          .select("id,first_name,last_name").eq("organisation_id", context.organisationId)
+          .eq("email", email(row.email)).maybeSingle();
+        if (!concurrentError && concurrent &&
+          text(concurrent.first_name).toLowerCase() === text(row.first_name).toLowerCase() &&
+          text(concurrent.last_name).toLowerCase() === text(row.last_name).toLowerCase()) {
+          if (!resolvedIds.includes(concurrent.id)) resolvedIds.push(concurrent.id);
+          continue;
+        }
+      }
+      creationFailures.push(email(row.email));
+    } else resolvedIds.push(learner.id);
   }
   for (const learnerId of resolvedIds) {
     const { data: existing, error: lookupError } = await admin.from("daily_session_enrolments")
