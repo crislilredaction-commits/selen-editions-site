@@ -50,6 +50,7 @@ export default function DailySessionDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [uploadingKey, setUploadingKey] = useState("");
+  const [abandoningKey, setAbandoningKey] = useState("");
   const [message, setMessage] = useState("");
   useEffect(() => {
     let active = true;
