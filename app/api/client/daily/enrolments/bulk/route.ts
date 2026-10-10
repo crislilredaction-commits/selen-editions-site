@@ -134,10 +134,12 @@ export async function POST(req: Request) {
     newState: { session_id: sessionId, results, creationFailures },
   });
   const accessFailed = results.filter(result => result.accessStatus && !["sent", "already_sent"].includes(result.accessStatus));
+  const enrolmentFailed = results.filter(result => result.status === "failed").length + creationFailures.length;
   return NextResponse.json({
     results, creationFailures, created: results.filter(result => result.status === "created").length,
     alreadyEnrolled: results.filter(result => result.status === "already_enrolled").length,
-    failed: results.filter(result => result.status === "failed").length + creationFailures.length + accessFailed.length,
+    enrolmentFailed, accessFailedCount: accessFailed.length,
+    failed: enrolmentFailed + accessFailed.length,
     accessFailed: accessFailed.map(result => ({ learnerId: result.learnerId, enrolmentId: result.enrolmentId, status: result.accessStatus })),
   });
 }
