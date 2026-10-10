@@ -9,7 +9,7 @@ type Learner = { id: string; first_name?: string | null; last_name?: string | nu
 type Enrolment = { id: string; learner_id: string; status: string; positioning_status?: string | null; prerequisites_status?: string | null; daily_learners?: Learner | Learner[] | null };
 type Document = { id: string; enrolment_id: string; document_type: string; status: string; logical_name?: string | null };
 type Evidence = { enrolments: Enrolment[]; documents: Document[]; assessmentResponses: { enrolment_id: string; submitted_at: string }[] };
-type Session = { id: string; internal_reference?: string | null; start_date?: string | null; end_date?: string | null; modality?: string; location_address?: string | null; remote_url?: string | null; daily_formations?: { title?: string | null } | { title?: string | null }[] | null };
+type Session = { id: string; internal_reference?: string | null; start_date?: string | null; end_date?: string | null; modality?: string; location_address?: string | null; remote_url?: string | null; schedule_blocks?: { date: string; start: string; end: string; note?: string | null }[]; companies?: { name?: string | null; email?: string | null; participants?: unknown[] }[]; max_participants?: number | null; daily_formations?: { title?: string | null } | { title?: string | null }[] | null };
 
 const panel: React.CSSProperties = { border: "1px solid var(--sepia-mid)", borderRadius: 16, padding: "1.25rem", background: "var(--paper)", minWidth: 0 };
 function status(value?: string | null) {
@@ -82,6 +82,13 @@ export default function DailySessionDetailPage() {
         <p>{evidence.enrolments.length} apprenant(s) inscrit(s)</p>
         <Link href={`/client/daily/documents-avant-formation?session_id=${encodeURIComponent(session.id)}`}>Documents avant formation →</Link>
       </header>
+      <section style={panel} aria-label="Organisation de la session">
+        <h2 style={{ fontSize: "1.25rem", fontWeight: 700 }}>Organisation et intervenants</h2>
+        <p>Capacité prévue : {session.max_participants ?? "Non renseignée"}</p>
+        {session.remote_url ? <p>Lien de formation à distance : <a href={session.remote_url} target="_blank" rel="noopener noreferrer" style={{ overflowWrap: "anywhere", textDecoration: "underline" }}>Ouvrir la salle virtuelle</a></p> : null}
+        {session.schedule_blocks?.length ? <details style={{ marginTop: ".75rem" }}><summary>Planning détaillé ({session.schedule_blocks.length} créneau(x))</summary><ul style={{ paddingLeft: "1.25rem" }}>{session.schedule_blocks.map((block, index) => <li key={index}>{block.date || "Date à définir"} · {block.start || "?"} – {block.end || "?"}{block.note ? ` · ${block.note}` : ""}</li>)}</ul></details> : null}
+        {session.companies?.filter(company => company.name?.trim()).length ? <details style={{ marginTop: ".75rem" }}><summary>Entreprises rattachées ({session.companies.filter(company => company.name?.trim()).length})</summary><ul style={{ paddingLeft: "1.25rem" }}>{session.companies.filter(company => company.name?.trim()).map((company, index) => <li key={index} style={{ overflowWrap: "anywhere" }}><strong>{company.name}</strong>{company.email ? ` · ${company.email}` : ""}</li>)}</ul></details> : null}
+      </section>
       <section style={{ display: "grid", gap: "1rem" }} aria-label="Parcours administratifs des apprenants">
         <h2 style={{ fontSize: "1.3rem", fontWeight: 700 }}>Apprenants et parcours administratifs</h2>
         {evidence.enrolments.length === 0 ? <p style={panel}>Aucun apprenant inscrit pour le moment.</p> : evidence.enrolments.map(row => {
