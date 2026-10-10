@@ -184,8 +184,8 @@ export default function DailySessionDetailPage() {
           const learner = learnerOf(row);
           const documents = evidence.documents.filter(doc => doc.enrolment_id === row.id);
           const assessmentCount = evidence.assessmentResponses.filter(item => item.enrolment_id === row.id).length;
-          return <article key={row.id} style={panel}>
-            <h3 style={{ fontSize: "1.1rem", fontWeight: 700, overflowWrap: "anywhere" }}>{[learner?.first_name, learner?.last_name].filter(Boolean).join(" ") || learner?.email || "Apprenant"}</h3>
+          return <details key={row.id} style={panel}>
+            <summary style={{ cursor: "pointer", fontWeight: 700, fontSize: "1.1rem", overflowWrap: "anywhere" }}>{[learner?.first_name, learner?.last_name].filter(Boolean).join(" ") || learner?.email || "Apprenant"} · {["abandoned", "cancelled", "declined"].includes(row.status) ? "Dossier clôturé" : status(row.status)}</summary>
             {["abandoned", "cancelled", "declined"].includes(row.status) ? <p role="status">Inscription clôturée ({row.status}) : preuves antérieures conservées.</p> : null}
             {learner?.email ? <p style={{ overflowWrap: "anywhere" }}>{learner.email}</p> : null}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 180px), 1fr))", gap: ".65rem", marginTop: "1rem" }}>
