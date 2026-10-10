@@ -27,7 +27,8 @@ test("concurrent duplicate enrolments recover the existing enrolment and check a
 test("failed access delivery is reported separately from enrolment creation", () => {
   assert.match(source, /const accessFailed = results\.filter/);
   assert.match(source, /accessFailed: accessFailed\.map/);
-  assert.match(source, /creationFailures\.length \+ accessFailed\.length/);
+  assert.match(source, /failed: enrolmentFailed \+ accessFailed\.length/);
+  assert.match(source, /enrolmentFailed, accessFailedCount: accessFailed\.length/);
 });
 
 test("assistance audit failure does not discard completed enrolment results", () => {
