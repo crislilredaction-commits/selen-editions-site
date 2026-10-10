@@ -16,11 +16,20 @@ export async function POST(req: Request) {
   if (!body || typeof body !== "object") return NextResponse.json({ error: "Requête invalide." }, { status: 400 });
   const sessionId = text(body.session_id);
   const learnerIds: unknown[] = body.learner_ids;
+  const newLearners: unknown[] = body.new_learners ?? [];
   const partyError = validateContractingParty(body);
   if (partyError) return NextResponse.json({ error: partyError }, { status: 400 });
-  if (!UUID.test(sessionId) || !Array.isArray(learnerIds) || learnerIds.length < 1 || learnerIds.length > 30 ||
+  if (!UUID.test(sessionId) || !Array.isArray(learnerIds) || !Array.isArray(newLearners) || learnerIds.length + newLearners.length < 1 || learnerIds.length + newLearners.length > 30 ||
     learnerIds.some(id => typeof id !== "string" || !UUID.test(id)) || new Set(learnerIds).size !== learnerIds.length) {
     return NextResponse.json({ error: "Sélectionnez de 1 à 30 apprenants distincts et une session valide." }, { status: 400 });
+  }
+  const proposed = newLearners.map(value => value && typeof value === "object" ? value as Record<string, unknown> : {});
+  if (proposed.some(row => !text(row.first_name) || !text(row.last_name) || !email(row.email).includes("@"))) {
+    return NextResponse.json({ error: "Chaque nouveau salarié doit avoir un prénom, un nom et un email valide." }, { status: 400 });
+  }
+  const proposedEmails = proposed.map(row => email(row.email));
+  if (new Set(proposedEmails).size !== proposedEmails.length) {
+    return NextResponse.json({ error: "Emails en double parmi les nouveaux salariés." }, { status: 400 });
   }
   const admin = context.admin;
   const [{ data: session, error: sessionError }, { data: learners, error: learnersError }] = await Promise.all([
@@ -29,10 +38,28 @@ export async function POST(req: Request) {
   ]);
   if (sessionError || learnersError) return NextResponse.json({ error: "Vérification des apprenants impossible." }, { status: 500 });
   if (!session || (learners ?? []).length !== learnerIds.length) return NextResponse.json({ error: "Session ou apprenant extérieur à votre organisme." }, { status: 404 });
+  if (proposedEmails.length) {
+    const { data: duplicates, error: duplicateError } = await admin.from("daily_learners").select("id,email")
+      .eq("organisation_id", context.organisationId).in("email", proposedEmails);
+    if (duplicateError) return NextResponse.json({ error: "Vérification des emails impossible." }, { status: 500 });
+    if (duplicates?.length) return NextResponse.json({ error: "Un salarié existe déjà avec cet email. Sélectionnez sa fiche existante." }, { status: 409 });
+  }
   const missingEmail = (learners ?? []).find(learner => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email(learner.email)));
   if (missingEmail) return NextResponse.json({ error: "Chaque apprenant doit avoir un email valide avant l'envoi des accès.", learnerId: missingEmail.id }, { status: 400 });
   const results: Array<{ learnerId: string; status: string; enrolmentId?: string; accessStatus?: string }> = [];
-  for (const learnerId of learnerIds as string[]) {
+  const resolvedIds = [...learnerIds as string[]];
+  const creationFailures: string[] = [];
+  for (const row of proposed) {
+    const { data: learner, error: createError } = await admin.from("daily_learners").insert({
+      organisation_id: context.organisationId, first_name: text(row.first_name),
+      last_name: text(row.last_name), email: email(row.email),
+      phone: text(row.phone) || null, company_name: text(body.company_name),
+      job_title: text(row.job_title) || null, created_by: context.user.id,
+    }).select("id").single();
+    if (createError || !learner) creationFailures.push(email(row.email));
+    else resolvedIds.push(learner.id);
+  }
+  for (const learnerId of resolvedIds) {
     const { data: existing, error: lookupError } = await admin.from("daily_session_enrolments")
       .select("id").eq("organisation_id", context.organisationId).eq("session_id", sessionId).eq("learner_id", learnerId).maybeSingle();
     if (lookupError) return NextResponse.json({ error: "Vérification des doublons impossible.", results }, { status: 500 });
@@ -65,8 +92,8 @@ export async function POST(req: Request) {
     newState: { session_id: sessionId, results },
   });
   return NextResponse.json({
-    results, created: results.filter(result => result.status === "created").length,
+    results, creationFailures, created: results.filter(result => result.status === "created").length,
     alreadyEnrolled: results.filter(result => result.status === "already_enrolled").length,
-    failed: results.filter(result => result.status === "failed" || result.accessStatus === "send_failed").length,
+    failed: results.filter(result => result.status === "failed" || result.accessStatus === "send_failed").length + creationFailures.length,
   });
 }
