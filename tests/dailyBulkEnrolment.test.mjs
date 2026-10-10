@@ -17,3 +17,15 @@ test("bulk enrolment caps batch size and validates email", () => {
   assert.match(source, /learnerIds\.length \+ newLearners\.length > 30/);
   assert.match(source, /missingEmail/);
 });
+
+test("concurrent duplicate enrolments recover the existing enrolment and check access", () => {
+  assert.match(source, /insertError\?\.code === "23505"/);
+  assert.match(source, /data: concurrent, error: concurrentError/);
+  assert.match(source, /enrolmentId: concurrent\.id/);
+  assert.match(source, /status: "already_enrolled", enrolmentId: concurrent\.id, accessStatus/);
+});
+test("failed access delivery is reported separately from enrolment creation", () => {
+  assert.match(source, /const accessFailed = results\.filter/);
+  assert.match(source, /accessFailed: accessFailed\.map/);
+  assert.match(source, /creationFailures\.length \+ accessFailed\.length/);
+});
