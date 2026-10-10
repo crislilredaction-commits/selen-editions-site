@@ -144,6 +144,7 @@ export default function DailySessionDetailPage() {
         <p>Prérequis terminés : {activeEnrolments.filter(row => completedStatuses.includes(row.prerequisites_status ?? "")).length} / {activeEnrolments.length} · Positionnements terminés : {activeEnrolments.filter(row => completedStatuses.includes(row.positioning_status ?? "")).length} / {activeEnrolments.length} (inscriptions actives uniquement)</p>
         <Link href={`/client/daily/documents-avant-formation?session_id=${encodeURIComponent(session.id)}`}>Documents avant formation →</Link>
       </header>
+      <nav aria-label="Rubriques du dossier" style={{ display: "flex", flexWrap: "wrap", gap: ".75rem" }}>{([["organisation", "Organisation"], ["acces", "Accès"], ["envois", "Envois"], ["conventions", "Conventions"], ["apprenants", "Apprenants"]] as const).map(([id, label]) => <a key={id} href={`#${id}`} style={{ padding: ".45rem .7rem", border: "1px solid var(--sepia-mid)", borderRadius: 9, textDecoration: "underline" }}>{label}</a>)}</nav>
       <section id="organisation" style={panel} aria-label="Organisation de la session">
         <h2 style={{ fontSize: "1.25rem", fontWeight: 700 }}>Organisation et intervenants</h2>
         <p>Capacité prévue : {session.max_participants ?? "Non renseignée"}</p>
