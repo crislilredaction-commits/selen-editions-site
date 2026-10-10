@@ -158,7 +158,7 @@ export default function DailySessionDetailPage() {
             {["abandoned", "cancelled", "declined"].includes(row.status) ? <p role="status">Inscription clôturée ({row.status}) : preuves antérieures conservées.</p> : null}
             {learner?.email ? <p style={{ overflowWrap: "anywhere" }}>{learner.email}</p> : null}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 180px), 1fr))", gap: ".65rem", marginTop: "1rem" }}>
-              {([["Inscription", row.status], ["Positionnement", row.positioning_status], ["Évaluation reçue", assessmentCount || documents.some(doc => doc.document_type === "learning_assessment_evidence") ? "submitted" : "pending"]] as const).map(([label, value]) =>
+              {([["Inscription", row.status], ["Positionnement", row.positioning_status], ["Prérequis", row.prerequisites_status], ["Évaluation reçue", assessmentCount || documents.some(doc => doc.document_type === "learning_assessment_evidence") ? "submitted" : "pending"]] as const).map(([label, value]) =>
                 <div key={label} style={{ padding: ".75rem", border: "1px solid var(--sepia-mid)", borderRadius: 10, minWidth: 0 }}>
                   <strong>{label}</strong><p>{status(value)}</p>
                 </div>)}
