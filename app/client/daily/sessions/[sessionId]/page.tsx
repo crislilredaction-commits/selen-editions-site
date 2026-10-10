@@ -162,7 +162,9 @@ export default function DailySessionDetailPage() {
         <p>Suivi des destinataires et des convocations enregistrés pour cette session.</p>
         <p>{session.daily_registration_recipients?.length ?? 0} envoi(s) d’inscription et {session.daily_convocations?.length ?? 0} convocation(s).</p>
         <p>Envois en erreur : {session.daily_registration_recipients?.filter(recipient => ["failed", "blocked", "rejected"].includes(recipient.status ?? "") || Boolean(recipient.last_error && !recipient.sent_at)).length ?? 0} · Convocations envoyées : {session.daily_convocations?.filter(convocation => Boolean(convocation.sent_at)).length ?? 0}</p>
-        <div style={{ display: "grid", gap: ".75rem", marginTop: ".75rem" }}>
+        <details style={{ marginTop: ".75rem" }}>
+          <summary style={{ cursor: "pointer", fontWeight: 600 }}>Afficher les destinataires et leurs statuts</summary>
+          <div style={{ display: "grid", gap: ".75rem", marginTop: ".75rem" }}>
           {(session.daily_registration_recipients ?? []).map(recipient => <div key={recipient.id} style={{ border: "1px solid var(--sepia-mid)", borderRadius: 10, padding: ".75rem", overflowWrap: "anywhere" }}>
             <strong>{recipient.recipient_name || recipient.recipient_email || recipient.recipient_type}</strong>
             <p>Envoi d’inscription : {status(recipient.status)}{recipient.sent_at ? ` · Envoyé le ${recipient.sent_at.slice(0, 10)}` : ""}</p>
@@ -173,7 +175,8 @@ export default function DailySessionDetailPage() {
             <p>{status(convocation.status)}{convocation.sent_at ? ` · Envoyée le ${convocation.sent_at.slice(0, 10)}` : ""}</p>
           </div>)}
           {!session.daily_registration_recipients?.length && !session.daily_convocations?.length ? <p>Aucun envoi ou convocation recensé.</p> : null}
-        </div>
+          </div>
+        </details>
       </section>
       <section id="conventions" style={panel} aria-label="Conventions et signatures">
         <h2 style={{ fontSize: "1.25rem", fontWeight: 700 }}>Conventions et signatures</h2>
