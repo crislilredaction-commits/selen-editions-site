@@ -32,6 +32,53 @@ export type Article = {
 // date de publication, mise à la une.
 export const articles: Article[] = [
   {
+    "slug": "devenir-formateur-independant-2026",
+    "category": "Gestion quotidienne",
+    "title": "Devenir formateur indépendant : félicitations, vous venez de débloquer le niveau administratif !",
+    "excerpt": "Le guide de survie du formateur indépendant : clients, NDA, Qualiopi, documents, rentabilité et BPF, avec de vraies astuces et quelques boss à affronter.",
+    "publishedAt": "2026-10-10",
+    "coverImage": "/plum.png",
+    "coverAlt": "Une plume de rédaction sur fond parchemin",
+    "featured": true,
+    "readingTime": "9 min",
+    "introduction": "Vous avez décidé de devenir formateur indépendant. Vous vous imaginez face à un groupe captivé, transmettant votre expertise avec passion. Magnifique. Mais avant de savourer cette liberté, vous venez de débloquer un univers parallèle : celui de l'administration de la formation professionnelle. Ses habitants parlent NDA, BPF et Qualiopi, et possèdent parfois plusieurs versions du même formulaire. Ne fuyez pas : voici votre guide de progression, avec quelques raccourcis pour éviter les combats inutiles.",
+    "sections": [
+      {
+        "title": "🎯 Niveau 1 : transformer votre expertise en véritable formation",
+        "body": "Votre mission : créer une formation que vos clients voudront acheter et que vos apprenants pourront réellement utiliser. Gérard, commercial redoutable, vendrait un parasol à un Breton en novembre. Sa formation « Les secrets de la vente » promet de « rester motivé » et « être convaincant ». Merci Gérard. Mais que fait un participant lorsque son client dit « c'est trop cher » ? Le pouvoir spécial : concevoir à l'envers. Définissez ce que l'apprenant saura faire, imaginez une évaluation pratique pour le vérifier, puis bâtissez les séquences utiles. Par exemple : répondre à une objection commerciale, s'exercer lors d'une simulation, apprendre à questionner, reformuler et argumenter. Vous éviterez 87 diapositives qui n'apprennent rien à personne."
+      },
+      {
+        "title": "🛒 Niveau 2 : trouver un client avant de fabriquer un empire",
+        "body": "Votre mission : vérifier qu'une vraie personne est prête à payer. Logo, site, charte graphique, logiciel, nouveau logo… trois mois plus tard, vous avez une très belle identité visuelle et zéro client. Lancez plutôt l'enquête des cinq clients : demandez à cinq entreprises cibles quelle difficulté leur fait perdre du temps, ce qu'elles ont déjà essayé, et quelles conséquences concrètes ce problème entraîne. Ne demandez pas simplement si votre formation semble intéressante. Les compliments sont gratuits ; les achats, nettement moins. Cherchez un problème fréquent, coûteux ou particulièrement pénible à résoudre."
+      },
+      {
+        "title": "📜 Niveau 3 : affronter le gardien du NDA",
+        "body": "Votre mission : déclarer votre activité au bon moment. Une fois l'entreprise immatriculée et votre première prestation de formation professionnelle contractualisée, vous devez normalement déposer la déclaration d'activité dans les trois mois suivant la conclusion de votre première convention ou de votre premier contrat de formation professionnelle. La démarche se fait auprès de l'administration compétente, notamment par Mon activité formation. Oui, il faut donc déjà un premier contrat pour demander le numéro : l'énigme est prévue par les textes. Attention, le numéro de déclaration d'activité (NDA) n'est ni un agrément de l'État ni une médaille de qualité. Votre objet magique : un dossier de première vente prêt à l'avance avec programme, modèle contractuel adapté, modalités de réalisation et d'évaluation, conditions commerciales. Ainsi, quand un client veut commencer lundi, vous ne découvrez pas le Code du travail vendredi à 18 h."
+      },
+      {
+        "title": "🐉 Niveau 4 : Qualiopi, le dragon aux indicateurs",
+        "body": "Votre mission : savoir si vous devez vraiment affronter le dragon dès maintenant. Qualiopi n'est pas obligatoire pour toute prestation de formation. La certification est notamment exigée pour accéder aux financements publics ou mutualisés relevant de son champ ; les dispositifs comme le CPF peuvent comporter d'autres conditions particulières. Si vos clients financent directement vos formations sans ces fonds, vous pouvez généralement démarrer sans certification. Avant d'investir, faites l'épreuve du trésor : combien de clients auraient besoin de ces financements ? Quel chiffre d'affaires additionnel pouvez-vous raisonnablement prévoir ? Additionnez le coût des audits, de la préparation et du temps de suivi. Acheter la certification sans stratégie commerciale, c'est un peu acheter un camion frigorifique avant de savoir si vous vendrez des glaces. Même sans Qualiopi, prenez de bonnes habitudes : besoins, objectifs, suivi, évaluations et traitement des retours, sans créer un musée du justificatif."
+      },
+      {
+        "title": "🗂️ Niveau 5 : échapper au labyrinthe des documents",
+        "body": "Mardi, 9 h 12. Un client vous demande l'attestation de Sophie. À 9 h 47, vous explorez toujours « Formation_final_V3_BIS ». Le raccourci : organiser les dossiers par session et conserver une architecture constante. Avant : contractualisation, programme, inscription, besoins et positionnement. Pendant : preuves de réalisation adaptées, suivi et éventuels ajustements. Après : évaluations, attestations, retours, facturation et clôture. Surtout, votre dossier doit raconter ce qui s'est passé : qui a reçu quoi, quand, qui doit signer et quelle action reste en attente. Mini-défi : si l'on vous demande demain la preuve qu'un participant a effectivement suivi une session, pouvez-vous la retrouver en moins de deux minutes ? Sinon, voilà un chantier utile, même sans audit en vue."
+      },
+      {
+        "title": "💸 Niveau 6 : découvrir que 700 € ne font pas 100 € de l'heure",
+        "body": "Vous facturez 700 € une journée de sept heures : 100 € l'heure, pensez-vous. Sauf qu'il y a aussi quatre heures de préparation, deux heures d'échanges avec le client, deux heures d'administration et une heure de correction. Au total : seize heures consacrées à la prestation, soit 43,75 € de chiffre d'affaires par heure réellement travaillée, avant charges, impôts et frais. Le cheat code : chronométrez vos cinq premières missions et distinguez animation, préparation, relation client, déplacement et administratif. Vous verrez quelles prestations sont rentables, quels tarifs revoir et quelles tâches simplifier. Une tâche non facturée séparément n'est pas gratuite. Vous avez aussi le droit d'avoir une vie après les feuilles d'émargement."
+      },
+      {
+        "title": "📊 Niveau 7 : le BPF, ce boss annuel qu'on préfère voir venir",
+        "body": "Les organismes de formation déclarés doivent transmettre chaque année leur bilan pédagogique et financier (BPF), qui retrace notamment l'activité réalisée. L'absence de transmission peut rendre caduque la déclaration d'activité. Plutôt que de devenir détective privé de vos propres factures, enregistrez dès chaque session les données nécessaires : prestations, heures, stagiaires et éléments financiers pertinents, correctement qualifiés. Le bouclier anti-panique : ne préparez pas un tableau spécial BPF en urgence une fois par an ; faites en sorte que le suivi courant permette d'en extraire les chiffres."
+      },
+      {
+        "title": "🏆 Niveau final : construire une activité qui ne vous dévore pas",
+        "body": "Avec cinq sessions, tout semble gérable. Avec quinze sessions, plusieurs clients et des échéances qui se croisent, c'est une autre histoire. Le secret n'est pas de travailler toujours plus, mais de ne pas réinventer l'organisation à chaque formation. Standardisez la création des dossiers et les tâches récurrentes ; automatisez ce qui est répétitif lorsque c'est pertinent ; conservez une validation humaine pour les décisions importantes. Chez Selen Éditions, nous défendons cette idée simple : l'administratif doit soutenir le formateur, pas devenir son activité principale. Votre inventaire de départ : une offre évaluée en pratique, une cible commerciale réelle, un statut adapté, des modèles contractuels, un calendrier pour le NDA, une stratégie de financement, un classement reproductible, un suivi de rentabilité et des données fiables pour le BPF."
+      }
+    ],
+    "conclusion": "Vous avez terminé le tutoriel. Votre prochaine mission : décrocher vos premières formations sans laisser l'administration devenir votre métier à plein temps. Vous avez choisi ce métier pour transmettre, pas pour devenir champion du monde de la relance de signatures. Et si vous évitez « Suivi_definitif_V8_corrigé.xlsx », vous avez déjà gagné quelques points d'expérience. Article d'information générale, à adapter à votre situation et aux règles applicables en octobre 2026."
+  },
+  {
     slug: "qualiopi-decret-2026-728-preuves",
     category: "Qualiopi",
     title:
