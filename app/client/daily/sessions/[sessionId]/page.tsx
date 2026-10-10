@@ -104,7 +104,7 @@ export default function DailySessionDetailPage() {
                   <strong>{label}</strong><p>{status(value)}</p>
                 </div>)}
             </div>
-            <p style={{ marginTop: ".85rem" }}>Preuves de positionnement et d’évaluation recensées : {documents.length}. Les autres pièces administratives ne sont pas encore intégrées à ce récapitulatif.</p>
+            <p style={{ marginTop: ".85rem" }}>Positionnement : {documents.filter(doc => doc.document_type === "positioning_evidence").length} preuve(s). Évaluation finale : {documents.filter(doc => doc.document_type === "learning_assessment_evidence").length} document(s) et {assessmentCount} réponse(s) au questionnaire. Les autres pièces administratives ne sont pas encore intégrées à ce récapitulatif.</p>
             {documents.length ? <details style={{ marginTop: "1rem" }}><summary>Preuves recensées ({documents.length})</summary><ul style={{ paddingLeft: "1.25rem" }}>{documents.map(doc => <li key={doc.id} style={{ overflowWrap: "anywhere" }}>{doc.logical_name || doc.document_type} · {status(doc.status)} · <EvidenceDownload id={doc.id} name={doc.logical_name || doc.document_type} /></li>)}</ul></details> : null}
             <Link href={`/client/daily/apprenants?learner=${encodeURIComponent(row.learner_id)}`} style={{ display: "inline-block", marginTop: ".85rem" }}>Ouvrir la fiche apprenant →</Link>
           </article>;
