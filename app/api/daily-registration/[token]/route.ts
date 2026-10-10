@@ -120,12 +120,12 @@ async function existingVerifiedPrerequisiteKeys(
     if (error) throw new PrerequisiteEvidenceError("Vérification des justificatifs existants indisponible.", 500);
     if (!owner || owner.status !== "submitted") return verified;
   }
-  let query = admin.from("daily_prerequisite_evidence").select("participant_index,requirement_id,status");
+  let query = admin.from("daily_prerequisite_evidence").select("participant_key,requirement_id,status");
   query = kind === "formation" ? query.eq("registration_request_id", submissionId) : query.eq("registration_response_id", submissionId);
   const { data: evidence, error } = await query;
   if (error) throw new PrerequisiteEvidenceError("Vérification des justificatifs existants indisponible.", 500);
   for (const row of evidence ?? []) {
-    if (row.status === "verified") verified.add(`${row.participant_index}:${row.requirement_id}`);
+    if (row.status === "verified" && row.participant_key) verified.add(`${row.participant_key}:${row.requirement_id}`);
   }
   return verified;
 }

@@ -41,7 +41,7 @@ test("preuve refusée : remplacement versionné dans le même dossier, nouvelle 
   const firstDocument = h.db.daily_documents.find((row) => row.document_type === "prerequisite_application_evidence");
   h.db.daily_prerequisite_evidence.push({
     id: uuid(70), registration_request_id: ids.submission, registration_response_id: null,
-    participant_index: 0, requirement_id: "diploma", requirement_label: "Diplôme",
+    participant_index: 0, participant_key: firstDocument.metadata.participant_key, requirement_id: "diploma", requirement_label: "Diplôme",
     document_id: firstDocument.id, status: "rejected", submitted_at: "2026-10-05T17:00:00Z",
     reviewed_by: uuid(71), reviewed_at: "2026-10-05T17:30:00Z", review_comment: "Pièce illisible", updated_at: "2026-10-05T17:30:00Z",
   });
@@ -69,8 +69,8 @@ test("une correction remplace seulement la pièce refusée et conserve la pièce
   assert.equal((await h.post(form(h, {}, [pdf("positionnement")], [[0, 0, pdf("diplome")], [0, 1, pdf("experience")]]))).status, 200);
   const [diploma, experience] = h.db.daily_documents.filter((row) => row.document_type === "prerequisite_application_evidence");
   h.db.daily_prerequisite_evidence.push(
-    { id: uuid(70), registration_request_id: ids.submission, registration_response_id: null, participant_index: 0, requirement_id: "diploma", requirement_label: "Diplôme", document_id: diploma.id, status: "verified", submitted_at: "2026-10-05T17:00:00Z", reviewed_by: uuid(71), reviewed_at: "2026-10-05T17:30:00Z", review_comment: "Conforme", updated_at: "2026-10-05T17:30:00Z" },
-    { id: uuid(72), registration_request_id: ids.submission, registration_response_id: null, participant_index: 0, requirement_id: "experience", requirement_label: "Expérience", document_id: experience.id, status: "rejected", submitted_at: "2026-10-05T17:00:00Z", reviewed_by: uuid(71), reviewed_at: "2026-10-05T17:30:00Z", review_comment: "Illisible", updated_at: "2026-10-05T17:30:00Z" },
+    { id: uuid(70), registration_request_id: ids.submission, registration_response_id: null, participant_index: 0, participant_key: diploma.metadata.participant_key, requirement_id: "diploma", requirement_label: "Diplôme", document_id: diploma.id, status: "verified", submitted_at: "2026-10-05T17:00:00Z", reviewed_by: uuid(71), reviewed_at: "2026-10-05T17:30:00Z", review_comment: "Conforme", updated_at: "2026-10-05T17:30:00Z" },
+    { id: uuid(72), registration_request_id: ids.submission, registration_response_id: null, participant_index: 0, participant_key: experience.metadata.participant_key, requirement_id: "experience", requirement_label: "Expérience", document_id: experience.id, status: "rejected", submitted_at: "2026-10-05T17:00:00Z", reviewed_by: uuid(71), reviewed_at: "2026-10-05T17:30:00Z", review_comment: "Illisible", updated_at: "2026-10-05T17:30:00Z" },
   );
   const response = await h.post(form(h, { signature_data: "data:image/png;base64,bm91dmVsbGU=" }, [pdf("positionnement")], [[0, 1, pdf("experience-corrigee")]]));
   assert.equal(response.status, 200, await response.clone().text());
