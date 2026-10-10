@@ -41,3 +41,10 @@ test("closed registrations are excluded from access delivery", () => {
   assert.match(source, /CLOSED_ENROLMENT_STATUSES\.has\(existing\.status\)/);
   assert.match(source, /CLOSED_ENROLMENT_STATUSES\.has\(concurrent\.status\)/);
 });
+
+test("simultaneous learner profile creation reuses only a matching identity", () => {
+  assert.match(source, /createError\?\.code === "23505"/);
+  assert.match(source, /text\(concurrent\.first_name\)\.toLowerCase\(\)/);
+  assert.match(source, /text\(concurrent\.last_name\)\.toLowerCase\(\)/);
+  assert.match(source, /resolvedIds\.includes\(concurrent\.id\)/);
+});
