@@ -25,7 +25,7 @@ export async function GET(request: Request, { params }: Params) {
   const [{ data: enrolments, error: enrolmentsError }, { data: documents, error: documentsError }, { data: assessmentResponses, error: responsesError }] = await Promise.all([
     context.admin
       .from("daily_session_enrolments")
-      .select("id,status,positioning_status,learner_id,daily_learners(id,first_name,last_name,email)")
+      .select("id,status,positioning_status,prerequisites_status,learner_id,daily_learners(id,first_name,last_name,email)")
       .eq("organisation_id", context.organisationId)
       .eq("session_id", sessionId)
       .order("created_at", { ascending: true }),
