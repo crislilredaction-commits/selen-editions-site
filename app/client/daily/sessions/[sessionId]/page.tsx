@@ -180,6 +180,7 @@ export default function DailySessionDetailPage() {
       </section>
       <section style={{ display: "grid", gap: "1rem" }} aria-label="Parcours administratifs des apprenants">
         <h2 style={{ fontSize: "1.3rem", fontWeight: 700 }}>Apprenants et parcours administratifs</h2>
+        <p>Ouvre le dossier d’un apprenant pour consulter ses étapes, justificatifs et actions. Les dossiers clôturés restent accessibles pour l’historique.</p>
         {evidence.enrolments.length === 0 ? <p style={panel}>Aucun apprenant inscrit pour le moment.</p> : evidence.enrolments.map(row => {
           const learner = learnerOf(row);
           const documents = evidence.documents.filter(doc => doc.enrolment_id === row.id);
