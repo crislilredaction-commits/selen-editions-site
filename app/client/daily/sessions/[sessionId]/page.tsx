@@ -157,6 +157,7 @@ export default function DailySessionDetailPage() {
       <section id="envois" style={panel} aria-label="Envois et convocations">
         <h2 style={{ fontSize: "1.25rem", fontWeight: 700 }}>Envois et convocations</h2>
         <p>Suivi des destinataires et des convocations enregistrés pour cette session.</p>
+        <p>{session.daily_registration_recipients?.length ?? 0} envoi(s) d’inscription et {session.daily_convocations?.length ?? 0} convocation(s).</p>
         <div style={{ display: "grid", gap: ".75rem", marginTop: ".75rem" }}>
           {(session.daily_registration_recipients ?? []).map(recipient => <div key={recipient.id} style={{ border: "1px solid var(--sepia-mid)", borderRadius: 10, padding: ".75rem", overflowWrap: "anywhere" }}>
             <strong>{recipient.recipient_name || recipient.recipient_email || recipient.recipient_type}</strong>
