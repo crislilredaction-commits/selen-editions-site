@@ -25,7 +25,7 @@ export async function POST(req: Request) {
   const { data: session, error: sessionError } = await admin.from("daily_sessions")
     .select("start_date").eq("id", enrolment.session_id).eq("organisation_id", context.organisationId).maybeSingle();
   if (sessionError || !session) return NextResponse.json({ error: "Session introuvable." }, { status: 404 });
-  if (session.start_date && date.getTime() >= new Date(session.start_date).getTime())
+  if (session.start_date && Date.now() >= new Date(session.start_date).getTime())
     return NextResponse.json({ error: "La session a commencé : utilisez la procédure d'abandon avec conservation des preuves." }, { status: 409 });
   const { data: updated, error: updateError } = await admin.from("daily_session_enrolments")
     .update({ status: "cancelled", updated_at: new Date().toISOString() })
