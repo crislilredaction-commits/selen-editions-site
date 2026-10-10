@@ -129,6 +129,13 @@ export default function DailySessionDetailPage() {
                   <strong>{label}</strong><p>{status(value)}</p>
                 </div>)}
             </div>
+            {!["abandoned", "cancelled", "declined"].includes(row.status) ? <div style={{ display: "flex", flexWrap: "wrap", gap: ".75rem", marginTop: ".85rem" }}>
+              {(["positioning", "learning_assessment"] as const).map(kind => <label key={kind} style={{ display: "grid", gap: ".3rem", minWidth: 0 }}>
+                <strong>{kind === "positioning" ? "Importer un positionnement" : "Importer une évaluation finale"}</strong>
+                <input type="file" accept="application/pdf,image/jpeg,image/png" disabled={Boolean(uploadingKey)} onChange={event => { void uploadEvidence(row.id, kind, event.target.files?.[0] ?? null); event.currentTarget.value = ""; }} />
+                {uploadingKey === `${row.id}:${kind}` ? <small>Import en cours…</small> : null}
+              </label>)}
+            </div> : null}
             <p style={{ marginTop: ".85rem" }}>Positionnement : {documents.filter(doc => doc.document_type === "positioning_evidence").length} preuve(s). Évaluation finale : {documents.filter(doc => doc.document_type === "learning_assessment_evidence").length} document(s) et {assessmentCount} réponse(s) au questionnaire. Les autres pièces administratives ne sont pas encore intégrées à ce récapitulatif.</p>
             <p style={{ marginTop: ".5rem" }}>Prérequis, signatures et autres démarches : consulter la fiche apprenant pour les informations disponibles. Le suivi consolidé sera ajouté ici après raccordement aux données fiables.</p>
             {documents.length ? <details style={{ marginTop: "1rem" }}><summary>Preuves recensées ({documents.length})</summary><ul style={{ paddingLeft: "1.25rem" }}>{documents.map(doc => <li key={doc.id} style={{ overflowWrap: "anywhere" }}>{doc.logical_name || doc.document_type} · {status(doc.status)} · <EvidenceDownload id={doc.id} name={doc.logical_name || doc.document_type} /></li>)}</ul></details> : null}
