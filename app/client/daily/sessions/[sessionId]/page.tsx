@@ -144,7 +144,7 @@ export default function DailySessionDetailPage() {
         <p>Prérequis terminés : {activeEnrolments.filter(row => completedStatuses.includes(row.prerequisites_status ?? "")).length} / {activeEnrolments.length} · Positionnements terminés : {activeEnrolments.filter(row => completedStatuses.includes(row.positioning_status ?? "")).length} / {activeEnrolments.length} (inscriptions actives uniquement)</p>
         <Link href={`/client/daily/documents-avant-formation?session_id=${encodeURIComponent(session.id)}`}>Documents avant formation →</Link>
       </header>
-      <section style={panel} aria-label="Organisation de la session">
+      <section id="organisation" style={panel} aria-label="Organisation de la session">
         <h2 style={{ fontSize: "1.25rem", fontWeight: 700 }}>Organisation et intervenants</h2>
         <p>Capacité prévue : {session.max_participants ?? "Non renseignée"}</p>
         <p>Entreprises rattachées : {session.companies?.filter(company => company.name?.trim()).length ?? 0} · Destinataires administratifs : {session.daily_registration_recipients?.length ?? 0}</p>
@@ -152,8 +152,8 @@ export default function DailySessionDetailPage() {
         {session.schedule_blocks?.length ? <details style={{ marginTop: ".75rem" }}><summary>Planning détaillé ({session.schedule_blocks.length} créneau(x))</summary><ul style={{ paddingLeft: "1.25rem" }}>{session.schedule_blocks.map((block, index) => <li key={index}>{block.date || "Date à définir"} · {block.start || "?"} – {block.end || "?"}{block.note ? ` · ${block.note}` : ""}</li>)}</ul></details> : null}
         {session.companies?.filter(company => company.name?.trim()).length ? <details style={{ marginTop: ".75rem" }}><summary>Entreprises rattachées ({session.companies.filter(company => company.name?.trim()).length})</summary><ul style={{ paddingLeft: "1.25rem" }}>{session.companies.filter(company => company.name?.trim()).map((company, index) => <li key={index} style={{ overflowWrap: "anywhere" }}><strong>{company.name}</strong>{company.email ? ` · ${company.email}` : ""}</li>)}</ul></details> : null}
       </section>
-      <section style={panel}><h2>Accès aux espaces</h2><p>{session.daily_portal_access_tokens?.length ?? 0} accès recensés, dont {session.daily_portal_access_tokens?.filter(access => Boolean(access.viewed_at)).length ?? 0} consultés.</p>{session.daily_portal_access_tokens?.length ? <details><summary>Consulter les destinataires</summary><ul>{session.daily_portal_access_tokens.map(access => <li key={access.id} style={{ overflowWrap: "anywhere" }}>{access.entity_name || access.entity_email || access.portal_type} · {access.portal_type} · {access.viewed_at ? "Consulté" : "Non consulté"}</li>)}</ul></details> : null}</section>
-      <section style={panel} aria-label="Envois et convocations">
+      <section id="acces" style={panel}><h2>Accès aux espaces</h2><p>{session.daily_portal_access_tokens?.length ?? 0} accès recensés, dont {session.daily_portal_access_tokens?.filter(access => Boolean(access.viewed_at)).length ?? 0} consultés.</p>{session.daily_portal_access_tokens?.length ? <details><summary>Consulter les destinataires</summary><ul>{session.daily_portal_access_tokens.map(access => <li key={access.id} style={{ overflowWrap: "anywhere" }}>{access.entity_name || access.entity_email || access.portal_type} · {access.portal_type} · {access.viewed_at ? "Consulté" : "Non consulté"}</li>)}</ul></details> : null}</section>
+      <section id="envois" style={panel} aria-label="Envois et convocations">
         <h2 style={{ fontSize: "1.25rem", fontWeight: 700 }}>Envois et convocations</h2>
         <p>Suivi des destinataires et des convocations enregistrés pour cette session.</p>
         <div style={{ display: "grid", gap: ".75rem", marginTop: ".75rem" }}>
@@ -169,7 +169,7 @@ export default function DailySessionDetailPage() {
           {!session.daily_registration_recipients?.length && !session.daily_convocations?.length ? <p>Aucun envoi ou convocation recensé.</p> : null}
         </div>
       </section>
-      <section style={panel} aria-label="Conventions et signatures">
+      <section id="conventions" style={panel} aria-label="Conventions et signatures">
         <h2 style={{ fontSize: "1.25rem", fontWeight: 700 }}>Conventions et signatures</h2>
         {!session.daily_conventions?.length ? <p>Aucune convention recensée pour cette session.</p> : <div style={{ display: "grid", gap: ".85rem", marginTop: ".85rem" }}>
           {session.daily_conventions.map(convention => <details key={convention.id} style={{ border: "1px solid var(--sepia-mid)", borderRadius: 10, padding: ".75rem", minWidth: 0 }}>
@@ -178,7 +178,7 @@ export default function DailySessionDetailPage() {
           </details>)}
         </div>}
       </section>
-      <section style={{ display: "grid", gap: "1rem" }} aria-label="Parcours administratifs des apprenants">
+      <section id="apprenants" style={{ display: "grid", gap: "1rem" }} aria-label="Parcours administratifs des apprenants">
         <h2 style={{ fontSize: "1.3rem", fontWeight: 700 }}>Apprenants et parcours administratifs</h2>
         <p>Ouvre le dossier d’un apprenant pour consulter ses étapes, justificatifs et actions. Les dossiers clôturés restent accessibles pour l’historique.</p>
         {evidence.enrolments.length === 0 ? <p style={panel}>Aucun apprenant inscrit pour le moment.</p> : evidence.enrolments.map(row => {
