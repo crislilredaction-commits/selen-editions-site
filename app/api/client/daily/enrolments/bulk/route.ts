@@ -6,6 +6,7 @@ import { logAgentAssistanceAction } from "@/lib/server/agentAssistance";
 
 const email = (value: unknown) => typeof value === "string" ? value.trim().toLowerCase() : "";
 const text = (value: unknown) => typeof value === "string" ? value.trim() : "";
+const CLOSED_ENROLMENT_STATUSES = new Set(["cancelled", "declined", "abandoned", "completed"]);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Inscription groupée d'apprenants existants ou nouveaux : une inscription et un accès par personne. */
@@ -74,9 +75,13 @@ export async function POST(req: Request) {
   }
   for (const learnerId of resolvedIds) {
     const { data: existing, error: lookupError } = await admin.from("daily_session_enrolments")
-      .select("id").eq("organisation_id", context.organisationId).eq("session_id", sessionId).eq("learner_id", learnerId).maybeSingle();
+      .select("id,status").eq("organisation_id", context.organisationId).eq("session_id", sessionId).eq("learner_id", learnerId).maybeSingle();
     if (lookupError) { results.push({ learnerId, status: "failed" }); continue; }
     if (existing) {
+      if (CLOSED_ENROLMENT_STATUSES.has(existing.status)) {
+        results.push({ learnerId, status: "failed" });
+        continue;
+      }
       let accessStatus = "send_failed";
       try {
         const access = await ensureAndSendLearnerPortalAccess(admin, {
@@ -100,8 +105,12 @@ export async function POST(req: Request) {
     if (insertError || !enrolment) {
       if (insertError?.code === "23505") {
         const { data: concurrent, error: concurrentError } = await admin.from("daily_session_enrolments")
-          .select("id").eq("organisation_id", context.organisationId).eq("session_id", sessionId).eq("learner_id", learnerId).maybeSingle();
+          .select("id,status").eq("organisation_id", context.organisationId).eq("session_id", sessionId).eq("learner_id", learnerId).maybeSingle();
         if (!concurrentError && concurrent) {
+          if (CLOSED_ENROLMENT_STATUSES.has(concurrent.status)) {
+            results.push({ learnerId, status: "failed" });
+            continue;
+          }
           let accessStatus = "send_failed";
           try {
             const access = await ensureAndSendLearnerPortalAccess(admin, {
