@@ -147,6 +147,22 @@ export default function DailySessionDetailPage() {
         {session.schedule_blocks?.length ? <details style={{ marginTop: ".75rem" }}><summary>Planning détaillé ({session.schedule_blocks.length} créneau(x))</summary><ul style={{ paddingLeft: "1.25rem" }}>{session.schedule_blocks.map((block, index) => <li key={index}>{block.date || "Date à définir"} · {block.start || "?"} – {block.end || "?"}{block.note ? ` · ${block.note}` : ""}</li>)}</ul></details> : null}
         {session.companies?.filter(company => company.name?.trim()).length ? <details style={{ marginTop: ".75rem" }}><summary>Entreprises rattachées ({session.companies.filter(company => company.name?.trim()).length})</summary><ul style={{ paddingLeft: "1.25rem" }}>{session.companies.filter(company => company.name?.trim()).map((company, index) => <li key={index} style={{ overflowWrap: "anywhere" }}><strong>{company.name}</strong>{company.email ? ` · ${company.email}` : ""}</li>)}</ul></details> : null}
       </section>
+      <section style={panel} aria-label="Envois et convocations">
+        <h2 style={{ fontSize: "1.25rem", fontWeight: 700 }}>Envois et convocations</h2>
+        <p>Suivi des destinataires et des convocations enregistrés pour cette session.</p>
+        <div style={{ display: "grid", gap: ".75rem", marginTop: ".75rem" }}>
+          {(session.daily_registration_recipients ?? []).map(recipient => <div key={recipient.id} style={{ border: "1px solid var(--sepia-mid)", borderRadius: 10, padding: ".75rem", overflowWrap: "anywhere" }}>
+            <strong>{recipient.recipient_name || recipient.recipient_email || recipient.recipient_type}</strong>
+            <p>Envoi d’inscription : {status(recipient.status)}{recipient.sent_at ? ` · Envoyé le ${recipient.sent_at.slice(0, 10)}` : ""}</p>
+            {recipient.last_error ? <p role="alert">Dernière erreur : {recipient.last_error}</p> : null}
+          </div>)}
+          {(session.daily_convocations ?? []).map(convocation => <div key={convocation.id} style={{ border: "1px solid var(--sepia-mid)", borderRadius: 10, padding: ".75rem", overflowWrap: "anywhere" }}>
+            <strong>Convocation · {convocation.recipient_name || convocation.company_name || convocation.recipient_type}</strong>
+            <p>{status(convocation.status)}{convocation.sent_at ? ` · Envoyée le ${convocation.sent_at.slice(0, 10)}` : ""}</p>
+          </div>)}
+          {!session.daily_registration_recipients?.length && !session.daily_convocations?.length ? <p>Aucun envoi ou convocation recensé.</p> : null}
+        </div>
+      </section>
       <section style={panel} aria-label="Conventions et signatures">
         <h2 style={{ fontSize: "1.25rem", fontWeight: 700 }}>Conventions et signatures</h2>
         {!session.daily_conventions?.length ? <p>Aucune convention recensée pour cette session.</p> : <div style={{ display: "grid", gap: ".85rem", marginTop: ".85rem" }}>
