@@ -38,12 +38,12 @@ export async function POST(req: Request) {
   ]);
   if (sessionError || learnersError) return NextResponse.json({ error: "Vérification des apprenants impossible." }, { status: 500 });
   if (!session || (learners ?? []).length !== learnerIds.length) return NextResponse.json({ error: "Session ou apprenant extérieur à votre organisme." }, { status: 404 });
-  const existingByEmail = new Map<string, string>();
+  const existingByEmail = new Map<string, { id: string; first_name: string; last_name: string }>();
   if (proposedEmails.length) {
-    const { data: duplicates, error: duplicateError } = await admin.from("daily_learners").select("id,email")
+    const { data: duplicates, error: duplicateError } = await admin.from("daily_learners").select("id,email,first_name,last_name")
       .eq("organisation_id", context.organisationId).in("email", proposedEmails);
     if (duplicateError) return NextResponse.json({ error: "Vérification des emails impossible." }, { status: 500 });
-    for (const person of duplicates ?? []) existingByEmail.set(email(person.email), person.id);
+    for (const person of duplicates ?? []) existingByEmail.set(email(person.email), person);
   }
   if ((learners ?? []).some(learner => proposedEmails.includes(email(learner.email)))) {
     return NextResponse.json({ error: "Un salarié est présent à la fois dans la sélection et les nouveaux profils." }, { status: 409 });
@@ -54,8 +54,15 @@ export async function POST(req: Request) {
   const resolvedIds = [...learnerIds as string[]];
   const creationFailures: string[] = [];
   for (const row of proposed) {
-    const reusedId = existingByEmail.get(email(row.email));
-    if (reusedId) { if (!resolvedIds.includes(reusedId)) resolvedIds.push(reusedId); continue; }
+    const reused = existingByEmail.get(email(row.email));
+    if (reused) {
+      if (text(reused.first_name).toLowerCase() !== text(row.first_name).toLowerCase() || text(reused.last_name).toLowerCase() !== text(row.last_name).toLowerCase()) {
+        creationFailures.push(email(row.email));
+        continue;
+      }
+      if (!resolvedIds.includes(reused.id)) resolvedIds.push(reused.id);
+      continue;
+    }
     const { data: learner, error: createError } = await admin.from("daily_learners").insert({
       organisation_id: context.organisationId, first_name: text(row.first_name),
       last_name: text(row.last_name), email: email(row.email),
