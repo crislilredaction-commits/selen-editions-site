@@ -108,5 +108,6 @@ export async function POST(req: Request) {
     results, creationFailures, created: results.filter(result => result.status === "created").length,
     alreadyEnrolled: results.filter(result => result.status === "already_enrolled").length,
     failed: results.filter(result => result.status === "failed" || result.accessStatus === "send_failed").length + creationFailures.length,
+    accessFailed: results.filter(result => result.accessStatus === "send_failed").map(result => ({ learnerId: result.learnerId, enrolmentId: result.enrolmentId })),
   });
 }
