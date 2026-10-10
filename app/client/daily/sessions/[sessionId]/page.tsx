@@ -147,6 +147,15 @@ export default function DailySessionDetailPage() {
         {session.schedule_blocks?.length ? <details style={{ marginTop: ".75rem" }}><summary>Planning détaillé ({session.schedule_blocks.length} créneau(x))</summary><ul style={{ paddingLeft: "1.25rem" }}>{session.schedule_blocks.map((block, index) => <li key={index}>{block.date || "Date à définir"} · {block.start || "?"} – {block.end || "?"}{block.note ? ` · ${block.note}` : ""}</li>)}</ul></details> : null}
         {session.companies?.filter(company => company.name?.trim()).length ? <details style={{ marginTop: ".75rem" }}><summary>Entreprises rattachées ({session.companies.filter(company => company.name?.trim()).length})</summary><ul style={{ paddingLeft: "1.25rem" }}>{session.companies.filter(company => company.name?.trim()).map((company, index) => <li key={index} style={{ overflowWrap: "anywhere" }}><strong>{company.name}</strong>{company.email ? ` · ${company.email}` : ""}</li>)}</ul></details> : null}
       </section>
+      <section style={panel} aria-label="Conventions et signatures">
+        <h2 style={{ fontSize: "1.25rem", fontWeight: 700 }}>Conventions et signatures</h2>
+        {!session.daily_conventions?.length ? <p>Aucune convention recensée pour cette session.</p> : <div style={{ display: "grid", gap: ".85rem", marginTop: ".85rem" }}>
+          {session.daily_conventions.map(convention => <details key={convention.id} style={{ border: "1px solid var(--sepia-mid)", borderRadius: 10, padding: ".75rem", minWidth: 0 }}>
+            <summary style={{ cursor: "pointer", overflowWrap: "anywhere" }}>{convention.company_name || convention.recipient_name || convention.recipient_type || "Convention"} · {status(convention.status)} · {convention.daily_convention_signatures?.length ?? 0} signataire(s)</summary>
+            {convention.daily_convention_signatures?.length ? <ul style={{ paddingLeft: "1.25rem" }}>{convention.daily_convention_signatures.map(signature => <li key={signature.id} style={{ overflowWrap: "anywhere" }}>{signature.signatory_name || signature.signatory_type} : {status(signature.status)}{signature.signed_at ? ` · Signé le ${signature.signed_at.slice(0, 10)}` : ""}</li>)}</ul> : <p>Signataires non renseignés.</p>}
+          </details>)}
+        </div>}
+      </section>
       <section style={{ display: "grid", gap: "1rem" }} aria-label="Parcours administratifs des apprenants">
         <h2 style={{ fontSize: "1.3rem", fontWeight: 700 }}>Apprenants et parcours administratifs</h2>
         {evidence.enrolments.length === 0 ? <p style={panel}>Aucun apprenant inscrit pour le moment.</p> : evidence.enrolments.map(row => {
