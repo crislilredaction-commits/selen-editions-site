@@ -88,7 +88,7 @@ function LearnersPage(){
     </div>)}
     <button type="button" style={ghost} disabled={saving||bulkSelected.length+bulkNew.length>=30} onClick={()=>setBulkNew(current=>[...current,{first_name:"",last_name:"",email:""}])}>+ Ajouter un salarié</button>
    </fieldset>
-   <button type="submit" disabled={saving||!bulkSession||!bulkCompany.trim()||bulkSelected.length+bulkNew.length===0} style={compact}>{saving?"Inscription en cours…":`Inscrire ${bulkSelected.length+bulkNew.length} salarié(s)`}</button>
+   <button type="submit" disabled={saving||!bulkSession||!bulkCompany.trim()||bulkSelected.length+bulkNew.length===0||bulkSelected.length+bulkNew.length>30} style={compact}>{saving?"Inscription en cours…":`Inscrire ${bulkSelected.length+bulkNew.length} salarié(s)`}</button>
   </form>
   <form onSubmit={enrol} style={{...card,border:"2px solid var(--rust)",boxShadow:"0 7px 20px rgba(77,47,27,.09)"}}>
    <p className="gazette-label">Inscription manuelle</p><h2>Créer l'inscription</h2>
