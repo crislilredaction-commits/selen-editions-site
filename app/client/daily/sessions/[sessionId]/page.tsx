@@ -168,7 +168,7 @@ export default function DailySessionDetailPage() {
           {(session.daily_registration_recipients ?? []).map(recipient => <div key={recipient.id} style={{ border: "1px solid var(--sepia-mid)", borderRadius: 10, padding: ".75rem", overflowWrap: "anywhere" }}>
             <strong>{recipient.recipient_name || recipient.recipient_email || recipient.recipient_type}</strong>
             <p>Envoi d’inscription : {status(recipient.status)}{recipient.sent_at ? ` · Envoyé le ${recipient.sent_at.slice(0, 10)}` : ""}</p>
-            {recipient.last_error ? <p role="alert">Dernière erreur : {recipient.last_error}</p> : null}
+            {recipient.last_error && !recipient.sent_at ? <p role="alert">Dernière erreur d’envoi : {recipient.last_error}</p> : null}
           </div>)}
           {(session.daily_convocations ?? []).map(convocation => <div key={convocation.id} style={{ border: "1px solid var(--sepia-mid)", borderRadius: 10, padding: ".75rem", overflowWrap: "anywhere" }}>
             <strong>Convocation · {convocation.recipient_name || convocation.company_name || convocation.recipient_type}</strong>
