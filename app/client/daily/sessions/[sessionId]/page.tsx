@@ -15,6 +15,9 @@ const panel: React.CSSProperties = { border: "1px solid var(--sepia-mid)", borde
 function status(value?: string | null) {
   if (!value || value === "pending" || value === "not_started") return "À venir";
   if (value === "submitted") return "Reçue";
+  if (value === "abandoned") return "Abandonnée";
+  if (value === "cancelled") return "Annulée";
+  if (value === "declined") return "Refusée";
   if (["completed", "validated", "approved", "signed", "done"].includes(value)) return "Terminé";
   if (["rejected", "failed", "blocked", "cancelled", "abandoned", "declined"].includes(value)) return "Bloqué";
   return "En cours";
