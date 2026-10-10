@@ -206,7 +206,7 @@ export default function DailySessionDetailPage() {
             {documents.length ? <details style={{ marginTop: "1rem" }}><summary>Preuves recensées ({documents.length})</summary><ul style={{ paddingLeft: "1.25rem" }}>{documents.map(doc => <li key={doc.id} style={{ overflowWrap: "anywhere" }}>{doc.logical_name || doc.document_type} · {status(doc.status)} · <EvidenceDownload id={doc.id} name={doc.logical_name || doc.document_type} /></li>)}</ul></details> : null}
             {!["abandoned", "cancelled", "declined"].includes(row.status) ? <div style={{ marginTop: ".9rem" }}><AbandonmentForm enrolmentId={row.id} busy={abandoningKey === row.id} onConfirm={confirmAbandonment} /></div> : null}
             <Link href={`/client/daily/apprenants?learner=${encodeURIComponent(row.learner_id)}`} style={{ display: "inline-block", marginTop: ".85rem" }}>Ouvrir la fiche apprenant →</Link>
-          </article>;
+          </details>;
         })}
       </section>
     </> : null}
