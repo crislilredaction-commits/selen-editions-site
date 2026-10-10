@@ -14,7 +14,8 @@ type Session = { id: string; internal_reference?: string | null; start_date?: st
 const panel: React.CSSProperties = { border: "1px solid var(--sepia-mid)", borderRadius: 16, padding: "1.25rem", background: "var(--paper)", minWidth: 0 };
 function status(value?: string | null) {
   if (!value || value === "pending" || value === "not_started") return "À venir";
-  if (["completed", "validated", "approved", "signed", "done", "submitted"].includes(value)) return "Terminé";
+  if (value === "submitted") return "Reçue";
+  if (["completed", "validated", "approved", "signed", "done"].includes(value)) return "Terminé";
   if (["rejected", "failed", "blocked", "cancelled", "abandoned", "declined"].includes(value)) return "Bloqué";
   return "En cours";
 }
