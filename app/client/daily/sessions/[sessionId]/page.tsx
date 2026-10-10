@@ -49,6 +49,8 @@ export default function DailySessionDetailPage() {
   const [evidence, setEvidence] = useState<Evidence | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [uploadingKey, setUploadingKey] = useState("");
+  const [message, setMessage] = useState("");
   useEffect(() => {
     let active = true;
     async function load() {
