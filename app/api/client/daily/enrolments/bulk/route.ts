@@ -20,6 +20,7 @@ export async function POST(req: Request) {
   const newLearners: unknown[] = body.new_learners ?? [];
   const partyError = validateContractingParty(body);
   if (partyError) return NextResponse.json({ error: partyError }, { status: 400 });
+  if (!text(body.company_name)) return NextResponse.json({ error: "Le nom de l’entreprise commanditaire est obligatoire." }, { status: 400 });
   if (!UUID.test(sessionId) || !Array.isArray(learnerIds) || !Array.isArray(newLearners) || learnerIds.length + newLearners.length < 1 || learnerIds.length + newLearners.length > 30 ||
     learnerIds.some(id => typeof id !== "string" || !UUID.test(id)) || new Set(learnerIds).size !== learnerIds.length) {
     return NextResponse.json({ error: "Sélectionnez de 1 à 30 apprenants distincts et une session valide." }, { status: 400 });
