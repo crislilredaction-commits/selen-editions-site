@@ -128,11 +128,17 @@ export async function POST(req: Request) {
     } catch (error) { console.error("Daily : accès apprenant collectif non envoyé", error); }
     results.push({ learnerId, status: "created", enrolmentId: enrolment.id, accessStatus });
   }
-  if (context.assisted && context.assistance) await logAgentAssistanceAction({
-    supabase: admin, req, assistance: context.assistance,
-    action: "daily_bulk_enrolment_create", actionLabel: "Inscription collective pour l'OF",
-    newState: { session_id: sessionId, results, creationFailures },
-  });
+  if (context.assisted && context.assistance) {
+    try {
+      await logAgentAssistanceAction({
+        supabase: admin, req, assistance: context.assistance,
+        action: "daily_bulk_enrolment_create", actionLabel: "Inscription collective pour l'OF",
+        newState: { session_id: sessionId, results, creationFailures },
+      });
+    } catch (error) {
+      console.error("Daily : journalisation assistance inscription collective impossible", error);
+    }
+  }
   const accessFailed = results.filter(result => result.accessStatus && !["sent", "already_sent"].includes(result.accessStatus));
   const enrolmentFailed = results.filter(result => result.status === "failed").length + creationFailures.length;
   return NextResponse.json({
