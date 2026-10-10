@@ -98,7 +98,23 @@ export async function POST(req: Request) {
       created_by: context.user.id,
     }).select("id").single();
     if (insertError || !enrolment) {
-      results.push({ learnerId, status: insertError?.code === "23505" ? "already_enrolled" : "failed" });
+      if (insertError?.code === "23505") {
+        const { data: concurrent, error: concurrentError } = await admin.from("daily_session_enrolments")
+          .select("id").eq("organisation_id", context.organisationId).eq("session_id", sessionId).eq("learner_id", learnerId).maybeSingle();
+        if (!concurrentError && concurrent) {
+          let accessStatus = "send_failed";
+          try {
+            const access = await ensureAndSendLearnerPortalAccess(admin, {
+              enrolmentId: concurrent.id, origin: new URL(req.url).origin,
+              createdBy: context.user.id, source: "manual_enrolment", organisationId: context.organisationId,
+            });
+            accessStatus = access.status;
+          } catch (error) { console.error("Daily : accès apprenant concurrent impossible", error); }
+          results.push({ learnerId, status: "already_enrolled", enrolmentId: concurrent.id, accessStatus });
+          continue;
+        }
+      }
+      results.push({ learnerId, status: "failed" });
       continue;
     }
     let accessStatus = "send_failed";
