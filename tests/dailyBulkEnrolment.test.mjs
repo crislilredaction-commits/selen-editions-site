@@ -59,3 +59,9 @@ test("company contact email is validated when supplied", () => {
   assert.match(source, /email\(body\.company_contact_email\)/);
   assert.match(source, /L’email du contact entreprise est invalide/);
 });
+
+test("bulk form preserves partial-failure feedback after refreshing learners", () => {
+  const page = readFileSync(new URL("../app/client/daily/apprenants/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /const load=useCallback\(async\(preserveFeedback=false\)=>\{if\(!preserveFeedback\)setError\(" "\.trim\(\)\)/);
+  assert.match(page, /await load\(true\)\}catch\(error\)/);
+});
