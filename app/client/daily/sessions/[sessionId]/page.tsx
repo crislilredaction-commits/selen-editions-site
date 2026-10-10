@@ -125,6 +125,8 @@ export default function DailySessionDetailPage() {
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Confirmation impossible."); }
     finally { setAbandoningKey(""); }
   }
+  const activeEnrolments = evidence?.enrolments.filter(row => !["abandoned", "cancelled", "declined"].includes(row.status)) ?? [];
+  const completedStatuses = ["completed", "validated", "approved", "done"];
   const formation = session?.daily_formations;
   const title = Array.isArray(formation) ? formation[0]?.title : formation?.title;
   return <main style={{ maxWidth: 1120, margin: "0 auto", padding: "clamp(1rem, 3vw, 2rem)", display: "grid", gap: "1.25rem", minWidth: 0 }}>
@@ -138,7 +140,8 @@ export default function DailySessionDetailPage() {
         <p>{session.internal_reference || "Sans référence"} · {session.start_date || "Date à définir"}{session.end_date ? ` au ${session.end_date}` : ""}</p>
         <p>{session.modality || "Modalité à définir"}{session.location_address ? ` · ${session.location_address}` : ""}</p>
         <p>{evidence.enrolments.length} dossier(s) apprenant(s) suivi(s), dont {evidence.enrolments.filter(row => row.status === "abandoned").length} abandon(s) conservé(s) dans l’historique.</p>
-        <p>Prérequis terminés : {evidence.enrolments.filter(row => ["completed", "validated", "approved", "done"].includes(row.prerequisites_status ?? "")).length} / {evidence.enrolments.length} · Positionnements terminés : {evidence.enrolments.filter(row => ["completed", "validated", "approved", "done"].includes(row.positioning_status ?? "")).length} / {evidence.enrolments.length}</p>
+        <p>Inscriptions actives : {activeEnrolments.length} · Dossiers clôturés : {evidence.enrolments.length - activeEnrolments.length}</p>
+        <p>Prérequis terminés : {activeEnrolments.filter(row => completedStatuses.includes(row.prerequisites_status ?? "")).length} / {activeEnrolments.length} · Positionnements terminés : {activeEnrolments.filter(row => completedStatuses.includes(row.positioning_status ?? "")).length} / {activeEnrolments.length} (inscriptions actives uniquement)</p>
         <Link href={`/client/daily/documents-avant-formation?session_id=${encodeURIComponent(session.id)}`}>Documents avant formation →</Link>
       </header>
       <section style={panel} aria-label="Organisation de la session">
