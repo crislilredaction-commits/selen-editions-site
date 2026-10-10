@@ -8,7 +8,7 @@ const email = (value: unknown) => typeof value === "string" ? value.trim().toLow
 const text = (value: unknown) => typeof value === "string" ? value.trim() : "";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Inscription groupée d'apprenants existants : une inscription et un accès par personne. */
+/** Inscription groupée d'apprenants existants ou nouveaux : une inscription et un accès par personne. */
 export async function POST(req: Request) {
   const context = await getDailyOrganisationContext(req, "sessions", { allowAssistanceWrite: true });
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
@@ -24,7 +24,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Sélectionnez de 1 à 30 apprenants distincts et une session valide." }, { status: 400 });
   }
   const proposed = newLearners.map(value => value && typeof value === "object" ? value as Record<string, unknown> : {});
-  if (proposed.some(row => !text(row.first_name) || !text(row.last_name) || !email(row.email).includes("@"))) {
+  if (proposed.some(row => !text(row.first_name) || !text(row.last_name) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email(row.email)))) {
     return NextResponse.json({ error: "Chaque nouveau salarié doit avoir un prénom, un nom et un email valide." }, { status: 400 });
   }
   const proposedEmails = proposed.map(row => email(row.email));
@@ -34,7 +34,7 @@ export async function POST(req: Request) {
   const admin = context.admin;
   const [{ data: session, error: sessionError }, { data: learners, error: learnersError }] = await Promise.all([
     admin.from("daily_sessions").select("id").eq("id", sessionId).eq("organisation_id", context.organisationId).maybeSingle(),
-    admin.from("daily_learners").select("id,email").eq("organisation_id", context.organisationId).in("id", learnerIds),
+    learnerIds.length ? admin.from("daily_learners").select("id,email").eq("organisation_id", context.organisationId).in("id", learnerIds) : Promise.resolve({ data: [], error: null }),
   ]);
   if (sessionError || learnersError) return NextResponse.json({ error: "Vérification des apprenants impossible." }, { status: 500 });
   if (!session || (learners ?? []).length !== learnerIds.length) return NextResponse.json({ error: "Session ou apprenant extérieur à votre organisme." }, { status: 404 });
@@ -43,6 +43,9 @@ export async function POST(req: Request) {
       .eq("organisation_id", context.organisationId).in("email", proposedEmails);
     if (duplicateError) return NextResponse.json({ error: "Vérification des emails impossible." }, { status: 500 });
     if (duplicates?.length) return NextResponse.json({ error: "Un salarié existe déjà avec cet email. Sélectionnez sa fiche existante." }, { status: 409 });
+  }
+  if ((learners ?? []).some(learner => proposedEmails.includes(email(learner.email)))) {
+    return NextResponse.json({ error: "Un salarié est présent à la fois dans la sélection et les nouveaux profils." }, { status: 409 });
   }
   const missingEmail = (learners ?? []).find(learner => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email(learner.email)));
   if (missingEmail) return NextResponse.json({ error: "Chaque apprenant doit avoir un email valide avant l'envoi des accès.", learnerId: missingEmail.id }, { status: 400 });
@@ -62,7 +65,7 @@ export async function POST(req: Request) {
   for (const learnerId of resolvedIds) {
     const { data: existing, error: lookupError } = await admin.from("daily_session_enrolments")
       .select("id").eq("organisation_id", context.organisationId).eq("session_id", sessionId).eq("learner_id", learnerId).maybeSingle();
-    if (lookupError) return NextResponse.json({ error: "Vérification des doublons impossible.", results }, { status: 500 });
+    if (lookupError) { results.push({ learnerId, status: "failed" }); continue; }
     if (existing) { results.push({ learnerId, status: "already_enrolled", enrolmentId: existing.id }); continue; }
     const { data: enrolment, error: insertError } = await admin.from("daily_session_enrolments").insert({
       organisation_id: context.organisationId, session_id: sessionId, learner_id: learnerId,
@@ -89,7 +92,7 @@ export async function POST(req: Request) {
   if (context.assisted && context.assistance) await logAgentAssistanceAction({
     supabase: admin, req, assistance: context.assistance,
     action: "daily_bulk_enrolment_create", actionLabel: "Inscription collective pour l'OF",
-    newState: { session_id: sessionId, results },
+    newState: { session_id: sessionId, results, creationFailures },
   });
   return NextResponse.json({
     results, creationFailures, created: results.filter(result => result.status === "created").length,
