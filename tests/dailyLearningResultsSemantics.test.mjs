@@ -49,7 +49,7 @@ test("certificat de réalisation: Acquis et Non acquis suivent la sémantique m�
 test("abandons: un état explicite existe de la base à l’interface", () => {
   assert.match(abandonmentMigration, /'abandoned'::text/);
   assert.match(learnersRoute, /"abandoned"/);
-  assert.match(learnersPage, /value="abandoned">Abandon<\/option>/);
+  assert.match(learnersPage, /value="abandoned" disabled>Abandon \(via procédure dédiée\)<\/option>/);
 });
 
 test("abandons: une annulation ne compte jamais comme abandon", () => {
