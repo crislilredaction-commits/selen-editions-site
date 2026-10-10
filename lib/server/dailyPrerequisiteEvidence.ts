@@ -16,6 +16,7 @@ type PreparedFile = {
   name: string;
   subject: PrerequisiteSubject;
   participantIndex: number;
+  participantKey: string;
   requirement: PrerequisiteRequirement;
   requirementIndex: number;
 };
@@ -26,6 +27,10 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export class PrerequisiteEvidenceError extends Error {
   constructor(message: string, public status = 400) { super(message); }
+}
+
+export function prerequisiteParticipantKey(subject: PrerequisiteSubject) {
+  return hash(subject.email.trim().toLowerCase());
 }
 
 export type PrerequisiteEvidenceSubmission = {
@@ -81,14 +86,14 @@ export async function preparePrerequisiteEvidence(
       const requirement = requirements[requirementIndex];
       const file = formData?.get(`prerequisite_file_${participantIndex}_${requirementIndex}`);
       if (!(file instanceof File) || file.size === 0) {
-        if (requirement.required === false || existingVerified.has(`${participantIndex}:${requirement.id}`)) continue;
+        if (requirement.required === false || existingVerified.has(`${prerequisiteParticipantKey(subjects[participantIndex])}:${requirement.id}`)) continue;
         throw new PrerequisiteEvidenceError(`Joignez le justificatif obligatoire « ${requirement.label} » pour chaque apprenant.`);
       }
       if (file.size > PREREQUISITE_EVIDENCE_MAX_FILE_BYTES) throw new PrerequisiteEvidenceError("Chaque justificatif doit peser moins de 2 Mo.", 413);
       if (!(PREREQUISITE_EVIDENCE_MIME_TYPES as readonly string[]).includes(file.type)) throw new PrerequisiteEvidenceError("Les justificatifs doivent être au format PDF, JPG ou PNG.");
       const bytes = Buffer.from(await file.arrayBuffer());
       if (!validBytes(bytes, file.type)) throw new PrerequisiteEvidenceError("Le contenu d’un justificatif ne correspond pas à son format PDF, JPG ou PNG.");
-      files.push({ bytes, sha256: hash(bytes), mime: file.type, name: file.name, subject: subjects[participantIndex], participantIndex, requirement, requirementIndex });
+      files.push({ bytes, sha256: hash(bytes), mime: file.type, name: file.name, subject: subjects[participantIndex], participantIndex, participantKey: prerequisiteParticipantKey(subjects[participantIndex]), requirement, requirementIndex });
     }
   }
   const fingerprint = hash(JSON.stringify(stable({
@@ -101,20 +106,21 @@ export async function preparePrerequisiteEvidence(
   return { id, fingerprint, organisationId: text(formation.organisation_id), formationId: text(formation.id), files };
 }
 
-export function prerequisiteEvidenceDocumentId(submission: PrerequisiteEvidenceSubmission, participantIndex: number, requirementId: string) {
-  const value = hash(`${submission.id}:${submission.fingerprint}:${participantIndex}:${requirementId}`).slice(0, 32);
+export function prerequisiteEvidenceDocumentId(submission: PrerequisiteEvidenceSubmission, participantKey: string, requirementId: string) {
+  const value = hash(`${submission.id}:${submission.fingerprint}:${participantKey}:${requirementId}`).slice(0, 32);
   return `${value.slice(0,8)}-${value.slice(8,12)}-4${value.slice(13,16)}-8${value.slice(17,20)}-${value.slice(20)}`;
 }
 
 export async function persistPrerequisiteEvidence(admin: SupabaseClient, submission: PrerequisiteEvidenceSubmission, kind: "formation" | "session", sessionId: string | null, options: { stagedReplacement?: boolean } = {}) {
   for (const file of submission.files) {
-    const id = prerequisiteEvidenceDocumentId(submission, file.participantIndex, file.requirement.id);
+    const id = prerequisiteEvidenceDocumentId(submission, file.participantKey, file.requirement.id);
     const extension = file.mime === "application/pdf" ? "pdf" : file.mime === "image/png" ? "png" : "jpg";
     const path = `daily/${submission.organisationId}/prerequisite-applications/${submission.formationId}/${submission.id}/${id}.${extension}`;
     const metadata = {
       source: "daily_prerequisite_evidence",
       submission_fingerprint: submission.fingerprint,
       participant_index: file.participantIndex,
+      participant_key: file.participantKey,
       subject_first_name: file.subject.first_name,
       subject_last_name: file.subject.last_name,
       subject_email: file.subject.email,
@@ -134,7 +140,7 @@ export async function persistPrerequisiteEvidence(admin: SupabaseClient, submiss
         if (data.document_type !== "prerequisite_application_evidence" || data.linked_object_type !== (kind === "formation" ? "registration_request" : "registration_response") ||
           data.linked_object_id !== submission.id || data.session_id !== sessionId || data.bucket !== "documents" || data.storage_path !== path ||
           data.sha256 !== file.sha256 || data.mime_type !== file.mime || data.is_current !== !options.stagedReplacement || data.status === "archived" ||
-          saved?.source !== metadata.source || saved?.submission_fingerprint !== submission.fingerprint || saved?.participant_index !== file.participantIndex ||
+          saved?.source !== metadata.source || saved?.submission_fingerprint !== submission.fingerprint || saved?.participant_index !== file.participantIndex || saved?.participant_key !== file.participantKey ||
           saved?.requirement_id !== file.requirement.id || saved?.staged_replacement !== (options.stagedReplacement === true) || String(saved?.subject_email ?? "").toLowerCase() !== file.subject.email) {
           throw new PrerequisiteEvidenceError("Ce justificatif ne correspond pas à votre candidature.", 409);
         }
