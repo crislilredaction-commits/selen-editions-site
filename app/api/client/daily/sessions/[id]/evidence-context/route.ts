@@ -28,7 +28,6 @@ export async function GET(request: Request, { params }: Params) {
       .select("id,status,positioning_status,learner_id,daily_learners(id,first_name,last_name,email)")
       .eq("organisation_id", context.organisationId)
       .eq("session_id", sessionId)
-      .not("status", "in", "(declined,cancelled)")
       .order("created_at", { ascending: true }),
     context.admin
       .from("daily_documents")
