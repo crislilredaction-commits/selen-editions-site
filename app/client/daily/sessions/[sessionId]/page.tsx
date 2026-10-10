@@ -20,6 +20,27 @@ function status(value?: string | null) {
 }
 function learnerOf(row: Enrolment) { return Array.isArray(row.daily_learners) ? row.daily_learners[0] : row.daily_learners; }
 
+function EvidenceDownload({ id, name }: { id: string; name: string }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  async function download() {
+    setBusy(true); setError("");
+    let url: string | null = null;
+    try {
+      const response = await assistanceFetch(`/api/client/daily/uploads?id=${encodeURIComponent(id)}`, { cache: "no-store" });
+      if (!response.ok) throw new Error("Document indisponible.");
+      const blob = await response.blob();
+      url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const type = blob.type;
+      const extension = type.includes("wordprocessingml") ? "docx" : type.includes("msword") ? "doc" : type.includes("png") ? "png" : type.includes("jpeg") ? "jpg" : "pdf";
+      link.href = url; link.download = `preuve-${id}.${extension}`; link.click();
+    } catch { setError("Téléchargement impossible."); }
+    finally { if (url) { const objectUrl = url; window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000); } setBusy(false); }
+  }
+  return <><button type="button" onClick={() => void download()} disabled={busy} aria-label={`Télécharger ${name}`} style={{ textDecoration: "underline" }}>{busy ? "Téléchargement…" : "Télécharger"}</button>{error ? <span role="alert"> {error}</span> : null}</>;
+}
+
 export default function DailySessionDetailPage() {
   const params = useParams<{ sessionId: string }>();
   const sessionId = params.sessionId;
@@ -77,7 +98,7 @@ export default function DailySessionDetailPage() {
                 </div>)}
             </div>
             <p style={{ marginTop: ".85rem" }}>Preuves de positionnement et d’évaluation recensées : {documents.length}. Les autres pièces administratives ne sont pas encore intégrées à ce récapitulatif.</p>
-            {documents.length ? <details style={{ marginTop: "1rem" }}><summary>Preuves recensées ({documents.length})</summary><ul style={{ paddingLeft: "1.25rem" }}>{documents.map(doc => <li key={doc.id} style={{ overflowWrap: "anywhere" }}>{doc.logical_name || doc.document_type} · {status(doc.status)}</li>)}</ul></details> : null}
+            {documents.length ? <details style={{ marginTop: "1rem" }}><summary>Preuves recensées ({documents.length})</summary><ul style={{ paddingLeft: "1.25rem" }}>{documents.map(doc => <li key={doc.id} style={{ overflowWrap: "anywhere" }}>{doc.logical_name || doc.document_type} · {status(doc.status)} · <EvidenceDownload id={doc.id} name={doc.logical_name || doc.document_type} /></li>)}</ul></details> : null}
             <Link href={`/client/daily/apprenants?learner=${encodeURIComponent(row.learner_id)}`} style={{ display: "inline-block", marginTop: ".85rem" }}>Ouvrir la fiche apprenant →</Link>
           </article>;
         })}
