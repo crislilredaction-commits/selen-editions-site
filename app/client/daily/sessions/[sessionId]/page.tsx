@@ -71,6 +71,26 @@ export default function DailySessionDetailPage() {
     void load();
     return () => { active = false; };
   }, [sessionId]);
+  async function uploadEvidence(enrolmentId: string, kind: "positioning" | "learning_assessment", file: File | null) {
+    if (!file) return;
+    const key = `${enrolmentId}:${kind}`;
+    setUploadingKey(key); setError(""); setMessage("");
+    try {
+      const form = new FormData();
+      form.set("session_id", sessionId);
+      form.set("enrolment_id", enrolmentId);
+      form.set("kind", kind);
+      form.set("file", file);
+      const response = await assistanceFetch("/api/client/daily/evidence", { method: "POST", body: form });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Import impossible.");
+      const refreshed = await assistanceFetch(`/api/client/daily/sessions/${encodeURIComponent(sessionId)}/evidence-context`, { cache: "no-store" });
+      if (!refreshed.ok) throw new Error("Import enregistré, mais actualisation indisponible.");
+      setEvidence(await refreshed.json());
+      setMessage("Preuve enregistrée dans le dossier de l’apprenant.");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Import impossible."); }
+    finally { setUploadingKey(""); }
+  }
   const formation = session?.daily_formations;
   const title = Array.isArray(formation) ? formation[0]?.title : formation?.title;
   return <main style={{ maxWidth: 1120, margin: "0 auto", padding: "clamp(1rem, 3vw, 2rem)", display: "grid", gap: "1.25rem", minWidth: 0 }}>
