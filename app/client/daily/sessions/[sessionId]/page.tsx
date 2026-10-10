@@ -109,6 +109,22 @@ export default function DailySessionDetailPage() {
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Import impossible."); }
     finally { setUploadingKey(""); }
   }
+  async function confirmAbandonment(enrolmentId: string, date: string, reason: string) {
+    setAbandoningKey(enrolmentId); setError(""); setMessage("");
+    try {
+      const response = await assistanceFetch("/api/client/daily/enrolments/abandon", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId, enrolment_id: enrolmentId, occurred_at: date, reason }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Confirmation impossible.");
+      const refreshed = await assistanceFetch(`/api/client/daily/sessions/${encodeURIComponent(sessionId)}/evidence-context`, { cache: "no-store" });
+      if (!refreshed.ok) throw new Error("Abandon enregistré, mais actualisation indisponible.");
+      setEvidence(await refreshed.json());
+      setMessage("Abandon confirmé. Historique et preuves conservés.");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Confirmation impossible."); }
+    finally { setAbandoningKey(""); }
+  }
   const formation = session?.daily_formations;
   const title = Array.isArray(formation) ? formation[0]?.title : formation?.title;
   return <main style={{ maxWidth: 1120, margin: "0 auto", padding: "clamp(1rem, 3vw, 2rem)", display: "grid", gap: "1.25rem", minWidth: 0 }}>
