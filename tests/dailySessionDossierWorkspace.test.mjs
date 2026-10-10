@@ -121,7 +121,9 @@ test("D4 rafraîchit l'horloge du planning tant que la page reste ouverte", () =
 test("D4 conserve l'accès aux preuves et actions sur les sessions terminées", () => {
   assert.match(sessionsManager, /sessions={endedSessions}[\s\S]*openEvidence={openEvidence}/);
   assert.match(sessionsManager, />Modifier<\/button>/);
-  assert.match(sessionsManager, />Preuves apprenants<\/button>/);
+  assert.match(sessionsManager, /\/client\/daily\/sessions\/\$\{encodeURIComponent\(session\.id\)\}/);
+  assert.match(sessionsManager, />Dossier et preuves apprenants<\/Link>/);
+  assert.doesNotMatch(sessionsManager, /props\.evidenceSessionId === session\.id \? <EvidencePanel/);
   assert.match(sessionsManager, />Dupliquer<\/button>/);
   assert.match(sessionsManager, />Archiver<\/button>/);
 });
