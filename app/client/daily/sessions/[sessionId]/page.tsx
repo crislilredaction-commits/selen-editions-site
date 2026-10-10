@@ -97,6 +97,7 @@ export default function DailySessionDetailPage() {
     <Link href="/client/daily/sessions">← Retour aux sessions</Link>
     {loading ? <p role="status">Chargement du dossier de session…</p> : null}
     {error ? <p role="alert" style={{ color: "#a32b26" }}>{error}</p> : null}
+    {message ? <p role="status">{message}</p> : null}
     {session && evidence ? <>
       <header style={panel}>
         <h1 style={{ fontSize: "1.7rem", fontWeight: 750 }}>{title || "Dossier de session"}</h1>
