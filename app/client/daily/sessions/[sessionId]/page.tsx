@@ -138,6 +138,7 @@ export default function DailySessionDetailPage() {
         <p>{session.internal_reference || "Sans référence"} · {session.start_date || "Date à définir"}{session.end_date ? ` au ${session.end_date}` : ""}</p>
         <p>{session.modality || "Modalité à définir"}{session.location_address ? ` · ${session.location_address}` : ""}</p>
         <p>{evidence.enrolments.length} dossier(s) apprenant(s) suivi(s), dont {evidence.enrolments.filter(row => row.status === "abandoned").length} abandon(s) conservé(s) dans l’historique.</p>
+        <p>Prérequis terminés : {evidence.enrolments.filter(row => ["completed", "validated", "approved", "done"].includes(row.prerequisites_status ?? "")).length} / {evidence.enrolments.length} · Positionnements terminés : {evidence.enrolments.filter(row => ["completed", "validated", "approved", "done"].includes(row.positioning_status ?? "")).length} / {evidence.enrolments.length}</p>
         <Link href={`/client/daily/documents-avant-formation?session_id=${encodeURIComponent(session.id)}`}>Documents avant formation →</Link>
       </header>
       <section style={panel} aria-label="Organisation de la session">
