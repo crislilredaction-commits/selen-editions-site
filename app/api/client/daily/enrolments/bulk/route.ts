@@ -76,7 +76,19 @@ export async function POST(req: Request) {
     const { data: existing, error: lookupError } = await admin.from("daily_session_enrolments")
       .select("id").eq("organisation_id", context.organisationId).eq("session_id", sessionId).eq("learner_id", learnerId).maybeSingle();
     if (lookupError) { results.push({ learnerId, status: "failed" }); continue; }
-    if (existing) { results.push({ learnerId, status: "already_enrolled", enrolmentId: existing.id }); continue; }
+    if (existing) {
+      let accessStatus = "send_failed";
+      try {
+        const access = await ensureAndSendLearnerPortalAccess(admin, {
+          enrolmentId: existing.id, origin: new URL(req.url).origin,
+          createdBy: context.user.id, source: "manual_enrolment",
+          organisationId: context.organisationId,
+        });
+        accessStatus = access.status;
+      } catch (error) { console.error("Daily : vérification accès apprenant existant impossible", error); }
+      results.push({ learnerId, status: "already_enrolled", enrolmentId: existing.id, accessStatus });
+      continue;
+    }
     const { data: enrolment, error: insertError } = await admin.from("daily_session_enrolments").insert({
       organisation_id: context.organisationId, session_id: sessionId, learner_id: learnerId,
       contracting_party_type: body.contracting_party_type, status: "pending",
@@ -94,6 +106,7 @@ export async function POST(req: Request) {
       const access = await ensureAndSendLearnerPortalAccess(admin, {
         enrolmentId: enrolment.id, origin: new URL(req.url).origin,
         createdBy: context.user.id, source: "manual_enrolment",
+        organisationId: context.organisationId,
       });
       accessStatus = access.status;
     } catch (error) { console.error("Daily : accès apprenant collectif non envoyé", error); }
