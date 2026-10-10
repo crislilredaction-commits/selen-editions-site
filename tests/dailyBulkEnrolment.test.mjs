@@ -14,6 +14,6 @@ test("bulk enrolment prevents duplicate requests and sends per learner", () => {
   assert.match(source, /results\.push\(\{ learnerId, status: "created"/);
 });
 test("bulk enrolment caps batch size and validates email", () => {
-  assert.match(source, /learnerIds\.length > 30/);
+  assert.match(source, /learnerIds\.length \+ newLearners\.length > 30/);
   assert.match(source, /missingEmail/);
 });
