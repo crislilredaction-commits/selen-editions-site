@@ -29,3 +29,9 @@ test("failed access delivery is reported separately from enrolment creation", ()
   assert.match(source, /accessFailed: accessFailed\.map/);
   assert.match(source, /creationFailures\.length \+ accessFailed\.length/);
 });
+
+test("assistance audit failure does not discard completed enrolment results", () => {
+  assert.match(source, /try \{\s*await logAgentAssistanceAction\(/);
+  assert.match(source, /catch \(error\) \{\s*console\.error\("Daily : journalisation assistance inscription collective impossible"/);
+  assert.match(source, /return NextResponse\.json\(\{/);
+});
