@@ -53,3 +53,8 @@ test("bulk enrolment rejects duplicate emails before creating profiles", () => {
   assert.match(source, /new Set\(proposedEmails\)\.size !== proposedEmails\.length/);
   assert.match(source, /proposedEmails\.includes\(email\(learner\.email\)\)/);
 });
+
+test("company contact email is validated when supplied", () => {
+  assert.match(source, /email\(body\.company_contact_email\)/);
+  assert.match(source, /L’email du contact entreprise est invalide/);
+});
