@@ -62,6 +62,6 @@ test("company contact email is validated when supplied", () => {
 
 test("bulk form preserves partial-failure feedback after refreshing learners", () => {
   const page = readFileSync(new URL("../app/client/daily/apprenants/page.tsx", import.meta.url), "utf8");
-  assert.match(page, /const load=useCallback\(async\(preserveFeedback=false\)=>\{if\(!preserveFeedback\)setError\(" "\.trim\(\)\)/);
+  assert.ok(page.includes('const load=useCallback(async(preserveFeedback=false)=>{if(!preserveFeedback)setError("")'));
   assert.match(page, /await load\(true\)\}catch\(error\)/);
 });
