@@ -78,7 +78,7 @@ export default function DailySessionDetailPage() {
             </div>
             <p style={{ marginTop: ".85rem" }}>Preuves de positionnement et d’évaluation recensées : {documents.length}. Les autres pièces administratives ne sont pas encore intégrées à ce récapitulatif.</p>
             {documents.length ? <details style={{ marginTop: "1rem" }}><summary>Preuves recensées ({documents.length})</summary><ul style={{ paddingLeft: "1.25rem" }}>{documents.map(doc => <li key={doc.id} style={{ overflowWrap: "anywhere" }}>{doc.logical_name || doc.document_type} · {status(doc.status)}</li>)}</ul></details> : null}
-            <Link href={`/client/daily/apprenants?learner_id=${encodeURIComponent(row.learner_id)}`} style={{ display: "inline-block", marginTop: ".85rem" }}>Consulter la fiche apprenant →</Link>
+            <Link href="/client/daily/apprenants" style={{ display: "inline-block", marginTop: ".85rem" }}>Ouvrir la gestion des apprenants →</Link>
           </article>;
         })}
       </section>
