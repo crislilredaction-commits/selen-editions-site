@@ -173,6 +173,7 @@ export default function DailySessionDetailPage() {
       </section>
       <section id="conventions" style={panel} aria-label="Conventions et signatures">
         <h2 style={{ fontSize: "1.25rem", fontWeight: 700 }}>Conventions et signatures</h2>
+        <p>{session.daily_conventions?.length ?? 0} convention(s) recensée(s) · {session.daily_conventions?.reduce((total, convention) => total + (convention.daily_convention_signatures?.filter(signature => signature.status === "signed").length ?? 0), 0) ?? 0} signature(s) enregistrée(s).</p>
         {!session.daily_conventions?.length ? <p>Aucune convention recensée pour cette session.</p> : <div style={{ display: "grid", gap: ".85rem", marginTop: ".85rem" }}>
           {session.daily_conventions.map(convention => <details key={convention.id} style={{ border: "1px solid var(--sepia-mid)", borderRadius: 10, padding: ".75rem", minWidth: 0 }}>
             <summary style={{ cursor: "pointer", overflowWrap: "anywhere" }}>{convention.company_name || convention.recipient_name || convention.recipient_type || "Convention"} · {status(convention.status)} · {convention.daily_convention_signatures?.length ?? 0} signataire(s)</summary>
