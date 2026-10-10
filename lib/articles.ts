@@ -32,6 +32,49 @@ export type Article = {
 // date de publication, mise à la une.
 export const articles: Article[] = [
   {
+    "slug": "preuves-qualiopi-enquete-documents-formation",
+    "title": "Qualiopi : enquête sur les preuves disparues 🕵️",
+    "category": "Qualiopi",
+    "excerpt": "Une convention introuvable, une présence impossible à prouver, des évaluations oubliées : cinq enquêtes pour retrouver les bonnes preuves Qualiopi sans collectionner les classeurs.",
+    "publishedAt": "2026-10-10",
+    "coverImage": "/plum.png",
+    "coverAlt": "Une plume sur fond parchemin, illustration de la Gazette Selen",
+    "featured": true,
+    "readingTime": "8 min",
+    "introduction": "Mardi, 9 h 17. Le café est chaud. Puis un mail demande les preuves de la session du 14 mars. Vous connaissez la formation : tout s'est bien passé. Mais votre dossier contient une convention non signée, trois questionnaires de satisfaction et « Nouveau document (7).pdf ». Bienvenue dans l'affaire des preuves disparues. Enquête sur cinq pièges qui rendent un audit inutilement stressant, avec des solutions applicables sans ouvrir quatorze tableaux Excel.",
+    "sections": [
+      {
+        "title": "🔎 Affaire n° 1 : le crime du document parfait",
+        "body": "Lieu du crime : le dossier Qualiopi. Pièce à conviction : une magnifique procédure de positionnement de six pages. L'auditeur demande : « Comment l'avez-vous appliquée sur cette session ? » Silence. La procédure explique ce qui devrait arriver ; la preuve montre ce qui s'est réellement passé. L'astuce Selen : posez trois questions pour chaque pratique importante. Qu'avions-nous prévu ? Qu'avons-nous fait ? Comment savons-nous que cela a fonctionné ? Exemple : besoin de positionnement identifié, questionnaire analysé, adaptation décidée, progression évaluée. Ne multipliez pas les PDF pour impressionner ; conservez des traces qui permettent d'expliquer vos décisions."
+      },
+      {
+        "title": "🔎 Affaire n° 2 : Sophie, présente partout sauf dans les preuves",
+        "body": "Le formateur se souvient très bien de Sophie, de ses questions et même de son anecdote sur Kevin, son collègue qui interprète librement les horaires. Pourtant, impossible de retrouver son justificatif de présence. Pour démontrer la réalisation, choisissez des traces adaptées à la modalité : émargement en présentiel, et, à distance, activités réalisées, travaux rendus, traces de suivi ou d'interactions. Un lien envoyé ne prouve pas, à lui seul, le suivi effectif. Le conseil : vérifiez la complétude des justificatifs au fil de la session, lorsque les oublis peuvent encore être corrigés. Ne créez jamais de fausse signature rétroactive. Si une pièce manque, documentez l'incident, recherchez les traces réellement disponibles et prenez une mesure corrective."
+      },
+      {
+        "title": "🔎 Affaire n° 3 : le questionnaire de satisfaction qui ne servait à rien",
+        "body": "Vingt-quatre questionnaires, 96 % de satisfaction et des smileys heureux. Mais une participante signale des exercices trop difficiles pour les débutants. Son commentaire a été classé sans suite. Verdict : recueillir un avis n'est pas encore améliorer la formation. Faites l'expérience du retour négatif : quand a-t-il été reçu, qui l'a examiné, quelle décision a été prise, qu'a-t-on changé et comment en vérifier l'effet ? Une critique analysée vaut parfois plus que vingt félicitations enterrées dans un dossier. Le taux de satisfaction ne remplace pas l'analyse ni le suivi des actions pertinentes."
+      },
+      {
+        "title": "🔎 Affaire n° 4 : le mystérieux dossier aux 146 fichiers",
+        "body": "« Convocation.pdf », « Convocation_finale.pdf », « Convocation_finale_definitive_BONNE_VERSION.pdf » : laquelle a été envoyée ? Le bon classement ne consiste pas seulement à ranger par type de fichier, mais à rattacher chaque document à une session et à l'événement réel qui l'a produit. Exemple fictif : 2 mars, convention transmise ; 4 mars, signée ; 5 mars, convocations envoyées ; 10 mars, positionnements analysés ; 14 mars, session réalisée ; 16 mars, évaluations exploitées ; 18 mars, pièces de fin transmises. Associez, quand c'est utile, une trace d'envoi ou de validation. Votre dossier doit raconter l'histoire de la formation, pas seulement abriter une collection de PDF."
+      },
+      {
+        "title": "🔎 Affaire n° 5 : la preuve qui en disait beaucoup trop",
+        "body": "Un organisme conserve de nombreux détails personnels, voire médicaux, pour montrer qu'un besoin particulier a été pris en compte. Mais la protection des données exige de limiter les informations collectées à ce qui est nécessaire ; les données de santé appellent une vigilance particulière. Il est souvent suffisant de tracer le besoin d'aménagement, l'adaptation étudiée ou réalisée et le suivi, sans enregistrer une biographie confidentielle. Avant chaque collecte, demandez-vous : « Ai-je réellement besoin de cette information pour justifier ce qui a été fait ? » Plus de données n'est pas synonyme de meilleure preuve."
+      },
+      {
+        "title": "🕵️ Le test des 90 secondes",
+        "body": "Choisissez une session terminée au hasard, lancez un chronomètre et essayez de retrouver : le programme applicable, la convention ou le contrat, les éléments pertinents sur les besoins et le positionnement, les justificatifs de réalisation, les évaluations et les suites données aux retours. Six éléments retrouvés rapidement ? Votre classement semble pratique, mais leur cohérence reste à vérifier. Trois à cinq ? Quelques zones d'ombre. Deux ou moins ? Votre ordinateur possède probablement une vie secrète. Ces 90 secondes sont un défi d'organisation inventé par Selen, pas une exigence Qualiopi."
+      },
+      {
+        "title": "💼 Le dossier parfait n'existe pas. Le dossier explicable, oui.",
+        "body": "Une absence, une adaptation imprévue ou une évaluation insatisfaisante font parfois partie d'une session. Il ne faut ni les cacher ni inventer des traces. Une difficulté réellement repérée, traitée et suivie peut démontrer une capacité de pilotage. Cela n'efface toutefois pas automatiquement une éventuelle non-conformité. L'objectif reste de pouvoir expliquer les décisions prises, les dates et les preuves existantes. Chez Selen Éditions, nous préférons un suivi sincère et exploitable à une montagne de modèles vides."
+      }
+    ],
+    "conclusion": "Fin de l'enquête : pour chaque preuve, sachez répondre à quatre questions : quoi, quand, pour qui et comment le sait-on ? Ajoutez-en une cinquième : qu'en avons-nous fait ? La convention est retrouvée, les évaluations sont exploitées, le café est froid mais l'affaire est résolue. Quant au fichier « FINAL_V3_BIS », il peut enfin prendre sa retraite. L'équipe Selen Éditions. Cet article donne des conseils généraux ; les preuves attendues dépendent des indicateurs Qualiopi applicables et des modalités des prestations. Il n'existe pas de liste universelle de documents obligatoire pour chaque session."
+  },
+  {
     "slug": "devenir-formateur-independant-2026",
     "category": "Gestion quotidienne",
     "title": "Devenir formateur indépendant : félicitations, vous venez de débloquer le niveau administratif !",
