@@ -35,3 +35,9 @@ test("assistance audit failure does not discard completed enrolment results", ()
   assert.match(source, /catch \(error\) \{\s*console\.error\("Daily : journalisation assistance inscription collective impossible"/);
   assert.match(source, /return NextResponse\.json\(\{/);
 });
+
+test("closed registrations are excluded from access delivery", () => {
+  assert.match(source, /CLOSED_ENROLMENT_STATUSES/);
+  assert.match(source, /CLOSED_ENROLMENT_STATUSES\.has\(existing\.status\)/);
+  assert.match(source, /CLOSED_ENROLMENT_STATUSES\.has\(concurrent\.status\)/);
+});
