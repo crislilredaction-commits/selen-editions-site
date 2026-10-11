@@ -162,6 +162,12 @@ export async function ensureAndSendLearnerPortalAccess(admin: AdminClient, input
 
   const portalUrl = `${input.origin}/daily/portail/learner/${encodeURIComponent(access.token)}`;
   const communicationType = source === "post_signature" ? "learner_start_pack_available" : "learner_portal_access";
+  if (force) {
+    const cooldownStart = new Date(Date.now() - 60_000).toISOString();
+    const { data: recent, error: recentError } = await admin.from("daily_communications").select("id,status,sent_at,provider_message_id,created_at").eq("organisation_id", enrolment.organisation_id).eq("session_id", session.id).eq("enrolment_id", enrolment.id).eq("communication_type", communicationType).eq("recipient_email", email).contains("metadata", { portal_access_id: access.id, auth_protected: true }).in("status", ["queued", "sent", "delivered"]).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (recentError) throw recentError;
+    if (recent?.created_at && recent.created_at >= cooldownStart) return { enrolmentId: enrolment.id, learnerId: learner.id, email, portalAccessId: access.id, status: provenDelivery(recent), communicationId: recent.id, portalUrl };
+  }
   if (!force) {
     const { data: previous, error: previousError } = await admin
       .from("daily_communications")
