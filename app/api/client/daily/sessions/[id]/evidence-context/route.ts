@@ -22,30 +22,64 @@ export async function GET(request: Request, { params }: Params) {
   if (sessionError) return NextResponse.json({ error: sessionError.message }, { status: 500 });
   if (!session || session.status === "archived") return NextResponse.json({ error: "Session introuvable ou archivée." }, { status: 404 });
 
-  const [{ data: enrolments, error: enrolmentsError }, { data: documents, error: documentsError }, { data: assessmentResponses, error: responsesError }] = await Promise.all([
+  const [
+    { data: enrolments, error: enrolmentsError },
+    { data: documents, error: documentsError },
+    { data: assessmentResponses, error: responsesError },
+    { data: attendanceSlots, error: slotsError },
+    { data: attendanceRecords, error: recordsError },
+    { data: learningAssessments, error: assessmentsError },
+    { data: learnerFeedback, error: feedbackError },
+    { data: communications, error: communicationsError },
+  ] = await Promise.all([
     context.admin
       .from("daily_session_enrolments")
-      .select("id,status,positioning_status,learner_id,daily_learners(id,first_name,last_name,email)")
+      .select("id,status,positioning_status,prerequisites_status,learner_id,daily_learners(id,first_name,last_name,email)")
       .eq("organisation_id", context.organisationId)
       .eq("session_id", sessionId)
-      .not("status", "in", "(declined,cancelled)")
       .order("created_at", { ascending: true }),
     context.admin
       .from("daily_documents")
-      .select("id,formation_id,enrolment_id,document_type,status,logical_name,created_at,metadata")
+      .select("id,formation_id,enrolment_id,document_type,status,logical_name,version,published_at,validated_at,signed_at,created_at,metadata")
       .eq("organisation_id", context.organisationId)
       .eq("session_id", sessionId)
       .eq("is_current", true)
-      .in("document_type", ["positioning_evidence", "learning_assessment_evidence"])
       .order("created_at", { ascending: false }),
     context.admin
       .from("daily_learning_assessment_responses")
       .select("id,enrolment_id,submitted_at")
       .eq("organisation_id", context.organisationId)
       .eq("session_id", sessionId),
+    context.admin
+      .from("daily_attendance_slots")
+      .select("id,status")
+      .eq("organisation_id", context.organisationId)
+      .eq("session_id", sessionId),
+    context.admin
+      .from("daily_attendance_records")
+      .select("id,enrolment_id,status,signed_at,validated_at")
+      .eq("organisation_id", context.organisationId)
+      .eq("session_id", sessionId),
+    context.admin
+      .from("daily_learning_assessments")
+      .select("id,enrolment_id,outcome,score,score_max,assessed_at")
+      .eq("organisation_id", context.organisationId)
+      .eq("session_id", sessionId),
+    context.admin
+      .from("daily_learner_feedback_responses")
+      .select("id,enrolment_id,overall_rating,submitted_at")
+      .eq("organisation_id", context.organisationId)
+      .eq("session_id", sessionId),
+    context.admin
+      .from("daily_communications")
+      .select("id,enrolment_id,status,sent_at,delivered_at,failed_at,failure_reason,subject")
+      .eq("organisation_id", context.organisationId)
+      .eq("session_id", sessionId)
+      .order("created_at", { ascending: false }),
   ]);
 
-  const firstError = enrolmentsError ?? documentsError ?? responsesError;
+  const firstError = enrolmentsError ?? documentsError ?? responsesError ?? slotsError ?? recordsError ??
+    assessmentsError ?? feedbackError ?? communicationsError;
   if (firstError) return NextResponse.json({ error: firstError.message }, { status: 500 });
 
   try {
@@ -53,9 +87,17 @@ export async function GET(request: Request, { params }: Params) {
       admin: context.admin, organisationId: context.organisationId,
       formations: [session.daily_formations], documents: documents ?? [],
     });
-    return NextResponse.json({ session, enrolments: enrolments ?? [],
+    return NextResponse.json({
+      session,
+      enrolments: enrolments ?? [],
       documents: currentDocuments.map(({ metadata: _metadata, formation_id: _formationId, ...document }) => document),
-      assessmentResponses: assessmentResponses ?? [] });
+      assessmentResponses: assessmentResponses ?? [],
+      attendanceSlots: attendanceSlots ?? [],
+      attendanceRecords: attendanceRecords ?? [],
+      learningAssessments: learningAssessments ?? [],
+      learnerFeedback: learnerFeedback ?? [],
+      communications: communications ?? [],
+    });
   } catch {
     return NextResponse.json({ error: "Vérification de la version du positionnement indisponible." }, { status: 500 });
   }

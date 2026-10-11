@@ -121,7 +121,9 @@ test("D4 rafraîchit l'horloge du planning tant que la page reste ouverte", () =
 test("D4 conserve l'accès aux preuves et actions sur les sessions terminées", () => {
   assert.match(sessionsManager, /sessions={endedSessions}[\s\S]*openEvidence={openEvidence}/);
   assert.match(sessionsManager, />Modifier<\/button>/);
-  assert.match(sessionsManager, />Preuves apprenants<\/button>/);
+  assert.match(sessionsManager, /\/client\/daily\/sessions\/\$\{encodeURIComponent\(session\.id\)\}/);
+  assert.match(sessionsManager, />Dossier et preuves apprenants<\/Link>/);
+  assert.doesNotMatch(sessionsManager, /props\.evidenceSessionId === session\.id \? <EvidencePanel/);
   assert.match(sessionsManager, />Dupliquer<\/button>/);
   assert.match(sessionsManager, />Archiver<\/button>/);
 });
@@ -134,3 +136,54 @@ test("le lot reste une agrégation en lecture sans nouvelle source métier", () 
   assert.doesNotMatch(route, /daily_mission_order_signature_timeline/);
   assert.doesNotMatch(route, /daily_session_canonical_states/);
 });
+
+const sessionDetailPath = new URL("../app/client/daily/sessions/[sessionId]/page.tsx", import.meta.url);
+const evidenceContextPath = new URL("../app/api/client/daily/sessions/[id]/evidence-context/route.ts", import.meta.url);
+const [sessionDetail, evidenceContext] = await Promise.all([
+  readFile(sessionDetailPath, "utf8"),
+  readFile(evidenceContextPath, "utf8"),
+]);
+
+test("le dossier détaillé consolide les sources canoniques par apprenant sans nouvelle table", () => {
+  for (const source of [
+    "daily_session_enrolments",
+    "daily_documents",
+    "daily_learning_assessment_responses",
+    "daily_attendance_slots",
+    "daily_attendance_records",
+    "daily_learning_assessments",
+    "daily_learner_feedback_responses",
+    "daily_communications",
+  ]) assert.match(evidenceContext, new RegExp(`from\\("${source}"\\)`));
+  assert.doesNotMatch(evidenceContext, /\.insert\(|\.upsert\(|\.update\(/);
+});
+
+test("chaque lecture du dossier détaillé reste bornée à l'organisme et à la session autorisée", () => {
+  const scopedQueries = evidenceContext.match(/context\.admin[\s\S]*?(?=context\.admin|\]\);)/g) || [];
+  assert.ok(scopedQueries.length >= 8);
+  for (const query of scopedQueries) {
+    assert.match(query, /\.eq\("organisation_id", context\.organisationId\)/);
+    assert.match(query, /\.eq\("session_id", sessionId\)|\.eq\("id", sessionId\)/);
+  }
+});
+
+test("le dossier apprenant expose pièces émargements évaluation satisfaction et communications", () => {
+  assert.match(sessionDetail, /Suivi par partie prenante/);
+  assert.match(sessionDetail, /Organisme de formation/);
+  assert.match(sessionDetail, /Formateur/);
+  assert.match(sessionDetail, /Selen/);
+  assert.match(sessionDetail, /Émargement/);
+  assert.match(sessionDetail, /Évaluation finale/);
+  assert.match(sessionDetail, /Satisfaction/);
+  assert.match(sessionDetail, /Pièces administratives courantes/);
+  assert.match(sessionDetail, /Historique des communications/);
+  assert.doesNotMatch(sessionDetail, /ne sont pas encore intégrées|sera ajouté ici après raccordement/);
+});
+
+test("les dossiers clôturés restent visibles et les indicateurs actifs les excluent", () => {
+  assert.match(sessionDetail, /evidence\.enrolments\.map\(row =>/);
+  assert.match(sessionDetail, /\["abandoned", "cancelled", "declined"\]\.includes\(row\.status\)/);
+  assert.match(sessionDetail, /preuves antérieures conservées/);
+  assert.match(sessionDetail, /const activeEnrolments = evidence\?\.enrolments\.filter/);
+});
+
