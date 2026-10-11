@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import DailyFriendlyBanner from "@/components/daily/DailyFriendlyBanner";
+import DailyGrimoire from "@/components/daily/DailyGrimoire";
 
 export default function DailyClientLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -77,6 +78,8 @@ export default function DailyClientLayout({ children }: { children: React.ReactN
       ) : null}
 
       <div className={!isStandaloneFlow ? `daily-client-gazette${routeClasses ? ` ${routeClasses}` : ""}` : undefined}>{children}</div>
+
+      {!isStandaloneFlow ? <DailyGrimoire role={pathname.startsWith("/client/daily/formateur") ? "trainer" : "organisation"} /> : null}
 
       {showClaimLink ? (
         <footer aria-label="Réclamations Selen Daily" style={claimFooterStyle} className="border-t border-[#b28a62]/35">

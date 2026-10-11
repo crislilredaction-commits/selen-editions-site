@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import DailyGrimoire from "@/components/daily/DailyGrimoire";
 
 export default async function DailyStakeholderPortalLayout({
   children,
@@ -10,10 +11,12 @@ export default async function DailyStakeholderPortalLayout({
   const { role, token } = await params;
   const isLearner = role === "apprenant" || role === "learner";
   const isTrainer = role === "formateur" || role === "trainer";
+  const portalBasePath = `/daily/portail/${role}/${token}`;
 
   return (
     <>
       {children}
+      {isLearner || isTrainer ? <DailyGrimoire role={isLearner ? "learner" : "trainer"} portalBasePath={portalBasePath} raised /> : null}
       <aside className="daily-portal-actions-panel" style={s.panel} aria-label="Actions du portail">
         <div className="daily-portal-actions-content" style={s.content}>
           <div style={s.copy}>
