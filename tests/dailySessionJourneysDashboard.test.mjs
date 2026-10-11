@@ -12,7 +12,7 @@ test("the OF dashboard journey stays scoped to the authenticated organisation", 
 });
 
 test("session cards use canonical enrolments, checklist states and responsibilities", () => {
-  assert.match(route, /const enrolmentCounts=new Map/);
+  assert.match(route, /not\\("status","in","\\(cancelled,declined,abandoned\\)"\\)/);\n  assert.match(route, /if\\(enrolment.status==="completed"\\)continue/);\n  assert.match(route, /const enrolmentCounts=new Map/);
   assert.match(route, /const checklistBySession=new Map/);
   assert.match(route, /actorLabel/);
   assert.match(route, /state:completed\?"completed":current\?"current":"upcoming"/);
