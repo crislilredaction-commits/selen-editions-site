@@ -39,6 +39,9 @@ test("les tâches actives excluent les parents métier terminaux et ne sont jama
   assert.match(route, /\.order\("start_date",\{ascending:true\}\)\.order\("id",\{ascending:true\}\)/);
   assert.match(route, /if\(page\.length<pageSize\)return\{data:rows,error:null\}/);
   assert.match(route, /isDailyTaskParentActive\(session\.status\)/);
+  assert.match(route, /function loadClosedSessionDossiers/);
+  assert.match(route, /from\("daily_session_dossiers"\)\.select\("session_id,status"\).*\.range\(from,from\+pageSize-1\)/);
+  assert.match(route, /!closedSessionIds\.has\(session\.id\)/);
   assert.doesNotMatch(route, /isDailyTaskParentActive\(one\(session\.daily_formations\)\?\.status\)/);
   assert.match(route, /sessionsById\.has\(session\.id\?\?""\)/);
   assert.match(route, /const session=one\(enrolment\.daily_sessions\);if\(!session\|\|!sessionsById\.has\(session\.id\?\?""\)\|\|\(need\.planned_accommodations/);
