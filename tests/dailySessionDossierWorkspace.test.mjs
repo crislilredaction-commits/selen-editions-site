@@ -155,7 +155,7 @@ test("le dossier détaillé consolide les sources canoniques par apprenant sans 
     "daily_learner_feedback_responses",
     "daily_communications",
   ]) assert.match(evidenceContext, new RegExp(`from\\("${source}"\\)`));
-  assert.doesNotMatch(evidenceContext, /\\.insert\\(|\\.upsert\\(|\\.update\\(/);
+  assert.doesNotMatch(evidenceContext, /\.insert\(|\.upsert\(|\.update\(/);
 });
 
 test("chaque lecture du dossier détaillé reste bornée à l'organisme et à la session autorisée", () => {
