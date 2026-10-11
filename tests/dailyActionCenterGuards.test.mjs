@@ -85,8 +85,8 @@ test("les bilans annuels formateur soumis et non complétés remontent au dirige
 });
 
 test("une inscription abandonnée ne remonte plus dans les actions apprenant", () => {
-  assert.match(route, /\.not\(\"status\",\"in\",\"\(cancelled,declined,completed,abandoned\)\"\)/);
-  assert.match(route, /\[\"cancelled\",\"declined\",\"completed\",\"abandoned\"\]\.includes\(enrolment\.status\?\?\"\"\)/);
+  assert.match(route, /\.not\(\"status\",\"in\",\"\(cancelled,declined,abandoned\)\"\)/);
+  assert.match(route, /if\(enrolment\.status===\"completed\"\)continue/);
 });
 
 test("les mutations workspace sensibles vérifient les capacités avant le RPC ou l'écriture", () => {
