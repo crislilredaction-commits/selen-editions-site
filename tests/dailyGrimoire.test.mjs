@@ -31,7 +31,8 @@ test("les liens du Grimoire visent uniquement les parcours Daily existants", () 
 });
 
 test("le bouton flottant est installé sur l'espace OF et les portails apprenant/formateur", () => {
-  assert.match(clientLayout, /<DailyGrimoire role=\{pathname\.startsWith\("\/client\/daily\/formateur"\) \? "trainer" : "organisation"\}/);
+  assert.match(clientLayout, /pathname === "\/client\/daily\/formateur" \|\| pathname\.startsWith\("\/client\/daily\/formateur\/"\)/);
+  assert.doesNotMatch(clientLayout, /pathname\.startsWith\("\/client\/daily\/formateur"\) \? "trainer"/);
   assert.match(portalLayout, /isLearner \|\| isTrainer/);
   assert.match(portalLayout, /portalBasePath=\{portalBasePath\} raised/);
   assert.match(grimoire, /position:fixed/);

@@ -79,7 +79,7 @@ export default function DailyClientLayout({ children }: { children: React.ReactN
 
       <div className={!isStandaloneFlow ? `daily-client-gazette${routeClasses ? ` ${routeClasses}` : ""}` : undefined}>{children}</div>
 
-      {!isStandaloneFlow ? <DailyGrimoire role={pathname.startsWith("/client/daily/formateur") ? "trainer" : "organisation"} /> : null}
+      {!isStandaloneFlow ? <DailyGrimoire role={pathname === "/client/daily/formateur" || pathname.startsWith("/client/daily/formateur/") ? "trainer" : "organisation"} /> : null}
 
       {showClaimLink ? (
         <footer aria-label="Réclamations Selen Daily" style={claimFooterStyle} className="border-t border-[#b28a62]/35">
