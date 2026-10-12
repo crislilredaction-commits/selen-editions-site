@@ -42,6 +42,13 @@ type DeliveryMode = "scheduled" | "date_to_plan" | "asynchronous";
 
 const fundingOptions = ["personnel", "entreprise", "opco", "cpf", "autre"] as const;
 const modalities = ["presentiel", "distanciel", "mixte"] as const;
+const SCALE_1_5_LEGEND = [
+  "1 = pas du tout à l’aise",
+  "2 = peu à l’aise",
+  "3 = moyennement à l’aise",
+  "4 = à l’aise",
+  "5 = tout à fait à l’aise",
+] as const;
 
 function initialMode() {
   if (typeof window === "undefined") return "beneficiary";
@@ -176,6 +183,26 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
 
   function updateParticipant(index: number, patch: Partial<Participant>) {
     setParticipants((current) => current.map((participant, itemIndex) => itemIndex === index ? { ...participant, ...patch } : participant));
+  }
+
+  function startNewParticipation() {
+    try {
+      window.localStorage.removeItem(`selen-daily-registration-receipt-${token}`);
+      window.localStorage.removeItem(`selen-daily-registration-${token}`);
+    } catch { /* Le nouveau dossier reste utilisable sans stockage local. */ }
+    setSubmissionId(crypto.randomUUID());
+    setPriorSubmission(false);
+    setSaved(false);
+    setReplacementSubmitted(false);
+    setStep(0);
+    setForm({});
+    setParticipants([{ first_name: "", last_name: "", email: "" }]);
+    setFilledDocuments({});
+    setPrerequisiteDocuments({});
+    setSignatureConsent(false);
+    setSignatureData("");
+    setError("");
+    setAutosaveStatus("idle");
   }
 
   function buildNeedAnswers() {
@@ -384,7 +411,7 @@ export default function DailyRegistrationPage({ params }: { params: Promise<{ to
           <p style={s.autosave}>{autosaveStatus === "saving" ? "Enregistrement..." : autosaveStatus === "saved" ? "Enregistré" : autosaveStatus === "error" ? "Le brouillon n'a pas pu être enregistré" : ""}</p>
         </article>
 
-        {priorSubmission ? <p style={s.callout}>Votre candidature a été retrouvée. Si l’organisme vous a demandé de corriger un justificatif refusé, renseignez les mêmes informations et réponses, choisissez la même session et joignez toutes les pièces demandées. Votre candidature sera conservée et les justificatifs corrigés seront vérifiés à nouveau.</p> : null}
+        {priorSubmission ? <div style={s.callout}><p style={{ marginTop: 0 }}>Votre candidature précédente a été retrouvée. Si l’organisme vous a demandé de corriger un justificatif refusé, renseignez les mêmes informations et réponses, choisissez la même session et joignez toutes les pièces demandées.</p><p>Si vous participez une nouvelle fois à cette formation, créez un dossier distinct : la candidature précédente et ses preuves resteront conservées.</p><button type="button" className="btn-ghost" onClick={startNewParticipation}><span>Commencer une nouvelle participation</span></button></div> : null}
 
         {registrationKind === "formation" ? (
           <article style={s.sessionCard}>
@@ -549,7 +576,7 @@ function PositioningQuestionField({ question, value, onChange }: { question: Pos
       <legend style={s.questionLegend}>{question.label}{question.required !== false ? " *" : ""}</legend>
       {question.help_text ? <p style={s.muted}>{question.help_text}</p> : null}
       {question.type === "free_text" ? <textarea style={{ ...s.input, minHeight: 96 }} value={value} onChange={(event) => onChange(event.target.value)} /> : null}
-      {question.type === "scale_1_5" ? <div style={s.choiceGrid}>{[1, 2, 3, 4, 5].map((score) => <button key={score} type="button" className={value === String(score) ? "btn-ink" : "btn-ghost"} onClick={() => onChange(String(score))}><span>{score}</span></button>)}</div> : null}
+      {question.type === "scale_1_5" ? <div style={s.stack}><p style={s.scaleLegend}>Auto-évaluez votre aisance pour cette compétence : {SCALE_1_5_LEGEND.join(" · ")}.</p><div style={s.choiceGrid} role="radiogroup" aria-label={`Auto-évaluation de 1 à 5 — ${question.label}`}>{[1, 2, 3, 4, 5].map((score) => <button key={score} type="button" role="radio" aria-checked={value === String(score)} aria-label={SCALE_1_5_LEGEND[score - 1]} className={value === String(score) ? "btn-ink" : "btn-ghost"} onClick={() => onChange(String(score))}><span>{score}</span></button>)}</div></div> : null}
       {question.type === "single_choice" ? <div style={s.choiceGrid}>{options.map((option) => <label key={option} style={s.choice}><input type="radio" checked={value === option} onChange={() => onChange(option)} />{option}</label>)}</div> : null}
       {question.type === "multiple_choice" ? <div style={s.choiceGrid}>{options.map((option) => <label key={option} style={s.choice}><input type="checkbox" checked={selectedValues.includes(option)} onChange={() => toggleOption(option)} />{option}</label>)}</div> : null}
     </fieldset>
@@ -584,6 +611,7 @@ const s: Record<string, React.CSSProperties> = {
   sessionChoiceSelected: { borderColor: "#6a8a4a", background: "rgba(106,138,74,.1)" },
   title: { color: "var(--ink)", margin: 0 }, sectionTitle: { color: "var(--ink)", margin: 0 },
   muted: { color: "var(--ink-soft)", lineHeight: 1.6 },
+  scaleLegend: { color: "var(--ink-soft)", lineHeight: 1.5, margin: 0, fontSize: ".92rem" },
   notice: { border: "1px solid rgba(106,138,74,0.45)", background: "rgba(106,138,74,0.08)", color: "#496532", padding: "0.75rem", lineHeight: 1.5 },
   callout: { borderLeft: "4px solid var(--ocre-gold)", background: "rgba(201,160,85,0.1)", color: "var(--ink)", padding: "0.8rem", lineHeight: 1.55, margin: 0 },
   confirmation: { border: "1px solid rgba(106,138,74,.45)", background: "rgba(106,138,74,.08)", color: "var(--ink)", padding: ".8rem", lineHeight: 1.55, margin: 0 },

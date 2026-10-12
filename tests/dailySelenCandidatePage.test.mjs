@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
 import {loadTypeScript} from './helpers/loadTypeScript.mjs';
 import {harness,ids} from './helpers/dailyOwnPositioningHarness.mjs';
 
@@ -32,6 +33,11 @@ async function view({company=false,loseFirstReply=false,companySubjects=null,sta
  const attachProof=(file,participantIndex=0)=>{const files=find(n=>n.type===PrerequisiteFiles);const row=files.props.rows.find(row=>row.participantIndex===participantIndex);assert.ok(row);files.props.onChange(row.key,file);render();};
  return{h,requests,storage,submit,sign,render,nodes,find,attachProof};
 }
+test('positioning scale explains every score from 1 to 5 accessibly',async()=>{
+ const source=await readFile(new URL('../app/daily-inscription/[token]/page.tsx',import.meta.url),'utf8');
+ for(const label of ['1 = pas du tout à l’aise','2 = peu à l’aise','3 = moyennement à l’aise','4 = à l’aise','5 = tout à fait à l’aise'])assert.match(source,new RegExp(label));
+ assert.match(source,/role="radiogroup"/);assert.match(source,/role="radio"/);assert.match(source,/aria-checked=/);
+});
 function assertPrivateDraftCleared(storage) {
  assert.equal(storage.has('selen-daily-registration-candidate-token'),false);
  assert.deepEqual([...storage.entries()],[['selen-daily-registration-receipt-candidate-token',JSON.stringify({submissionId:ids.submission})]]);

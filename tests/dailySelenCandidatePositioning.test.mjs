@@ -49,6 +49,13 @@ test('concurrent Selen retries insert one candidature and send one simulated con
  const h=setup();const responses=await Promise.all([h.post(h.payload()),h.post(h.payload())]);
  assert.deepEqual(responses.map(r=>r.status),[200,200]);assert.equal(h.db.daily_formation_registration_requests.length,1);assert.equal(h.sends.length,1);
 });
+test('same person can submit two independent participations with distinct transmission IDs',async()=>{
+ const h=setup();const first=h.payload(),second=h.payload({submission_id:uuid(61)});
+ assert.equal((await h.post(first)).status,200);assert.equal((await h.post(second)).status,200);
+ assert.deepEqual(h.db.daily_formation_registration_requests.map(row=>row.id),[ids.submission,uuid(61)]);
+ assert.equal(h.db.daily_formation_registration_requests.every(row=>row.respondent_email===h.subject.email),true);
+ assert.equal(h.sends.length,2);
+});
 test('changed answers cannot reuse a received transmission ID',async()=>{
  const h=setup();await h.post(h.payload());assert.equal((await h.post(changeAnswer(h.payload(),'text','Autre besoin'))).status,409);assert.equal(h.db.daily_formation_registration_requests.length,1);assert.equal(h.sends.length,1);
 });
