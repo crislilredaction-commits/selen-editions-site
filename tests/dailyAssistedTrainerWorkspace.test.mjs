@@ -36,7 +36,8 @@ test("l'ouverture crée un jeton A10 court et strictement limité à l'accès ch
   assert.match(route, /portal_access_id: portal\.id/);
   assert.match(route, /parent_assistance_token_id/);
   assert.match(route, /CHILD_TOKEN_MINUTES = 15/);
-  assert.match(preview, /scopedAccessId !== accessId/);
+  assert.match(preview, /scope === "portal_preview" && scopedAccessId === accessId/);
+  assert.match(preview, /!exactPortalPreview && !delegatedWorkspace/);
   assert.match(preview, /session\.organisation_id, assistance\.organisation_id|eq\("organisation_id", assistance\.organisation_id\)/);
 });
 
