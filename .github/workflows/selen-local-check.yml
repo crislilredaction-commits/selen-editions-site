@@ -11,6 +11,10 @@ on:
     branches:
       - main
       - "fix/**"
+      - "feat/**"
+  pull_request:
+    branches:
+      - main
 
 concurrency:
   group: selen-local-check-${{ github.workflow }}-${{ github.ref }}
@@ -21,8 +25,8 @@ permissions:
 
 jobs:
   build-and-test:
-    runs-on: [self-hosted, Linux, X64, selen-local]
-    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
 
     steps:
       - name: Checkout requested ref
@@ -39,13 +43,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run tests
-        run: npm test
-
-      - name: Typecheck
-        run: npm run typecheck --if-present
-
-      - name: Build
+      - name: Full CI validation
         env:
           # Build-only placeholders: no live Stripe/Supabase service is contacted by the build.
           STRIPE_SECRET_KEY: sk_test_build_only
@@ -53,4 +51,4 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: https://build-only.invalid
           NEXT_PUBLIC_SUPABASE_ANON_KEY: build-only-placeholder
           SUPABASE_SERVICE_ROLE_KEY: build-only-placeholder
-        run: npm run build
+        run: npm run ci
