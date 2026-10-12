@@ -29,3 +29,15 @@ test("A10 conserve le contexte d'assistance dans le type serveur", () => {
   assert.match(assistance, /status, expires_at, metadata/);
   assert.match(assistance, /metadata\?\.scope && assistance\.metadata\.scope !== "daily_workspace"/);
 });
+
+
+test("A10 n'utilise jamais le profil formateur personnel de l'agent en assistance OF", () => {
+  const route = read("app/api/client/daily/trainer-profile/route.ts");
+  const page = read("app/client/daily/formateur/page.tsx");
+  assert.match(route, /delegated\.ok&&delegated\.assisted/);
+  assert.match(route, /eq\("organisation_id",delegated\.organisationId\)/);
+  assert.match(route, /eq\("portal_type","trainer"\)/);
+  assert.match(page, /assistanceFetch\("\/api\/client\/daily\/trainer-profile"/);
+  assert.match(page, /Votre propre profil formateur n’est jamais utilisé/);
+  assert.match(page, /withAssistanceToken/);
+});
