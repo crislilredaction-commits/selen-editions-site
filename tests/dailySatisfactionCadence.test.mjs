@@ -8,6 +8,7 @@ const cronRoute = await readFile(new URL("../app/api/cron/daily-satisfaction/rou
 const vercelConfig = JSON.parse(await readFile(new URL("../vercel.json", import.meta.url), "utf8"));
 const endEvaluations = await readFile(new URL("../lib/server/dailyEndEvaluations.ts", import.meta.url), "utf8");
 const uniquenessMigration = await readFile(new URL("../supabase/migrations/20261008073500_daily_satisfaction_active_followup_uniqueness.sql", import.meta.url), "utf8");
+const inactiveCleanupMigration = await readFile(new URL("../supabase/migrations/20261011211500_daily_satisfaction_inactive_enrolment_cleanup.sql", import.meta.url), "utf8");
 
 for (const [label, source] of [["apprenants", learner], ["parties prenantes", stakeholder]]) {
   test(`${label}: deux relances seulement à J+2 et J+4`, () => {
@@ -43,6 +44,20 @@ test("les sessions annulées sont exclues et la tâche téléphone résiste aux 
   assert.match(uniquenessMigration, /create unique index if not exists daily_quality_actions_active_satisfaction_phone_unique/);
   assert.match(uniquenessMigration, /source_type = 'satisfaction_phone_followup'/);
   assert.match(uniquenessMigration, /status in \('open', 'planned'\)/);
+});
+
+test("une inscription devenue inactive clôt la relance téléphone et révoque son jeton sans supprimer l’historique", () => {
+  assert.match(inactiveCleanupMigration, /after update of status or delete on public\.daily_session_enrolments/);
+  assert.match(inactiveCleanupMigration, /new\.status in \('cancelled', 'declined', 'abandoned'\)/);
+  assert.match(inactiveCleanupMigration, /source_type = 'satisfaction_phone_followup'/);
+  assert.match(inactiveCleanupMigration, /status = 'closed'/);
+  assert.match(inactiveCleanupMigration, /daily_learner_feedback_tokens/);
+  assert.match(inactiveCleanupMigration, /status = 'revoked'/);
+  assert.match(inactiveCleanupMigration, /set search_path = ''/);
+  assert.match(inactiveCleanupMigration, /organisation_id = v_organisation_id/);
+  assert.match(inactiveCleanupMigration, /session_id = v_session_id/);
+  assert.match(inactiveCleanupMigration, /not exists[\s\S]*daily_session_enrolments/);
+  assert.doesNotMatch(inactiveCleanupMigration, /delete from/i);
 });
 
 test("Vercel déclenche quotidiennement le lot satisfaction complet", () => {
