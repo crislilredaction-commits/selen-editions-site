@@ -19,7 +19,7 @@ test("session cards use canonical enrolments, checklist states and responsibilit
   assert.match(route, /actorLabel/);
   assert.match(route, /"not_applicable"/);
   assert.match(route, /state:completed\?"completed":current\?"current":"upcoming"/);
-  assert.match(route, /return NextResponse\.json\(\{actions,sessionJourneys,counts:/);
+  assert.match(route, /return NextResponse\.json\(\{actions:visibleActions,sessionJourneys,counts:/);
 });
 
 test("session cards are collapsed, keep completed steps visible and lock future steps", () => {
