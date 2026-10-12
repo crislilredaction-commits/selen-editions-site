@@ -4,6 +4,9 @@ import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import LoadingMascot from "@/components/ui/LoadingMascot";
+import { assistanceFetch, withAssistanceToken } from "@/components/AgentAssistanceBanner";
+
+type AssistedTrainer = { id:string; display_name?:string|null; professional_email?:string|null; sessions:Array<{id:string;internal_reference?:string|null;start_date?:string|null;end_date?:string|null;title?:string|null;portal_access_id?:string|null}> };
 
 type Profile = {
   id: string;
@@ -20,6 +23,7 @@ const inputClass = "w-full border border-[#b28a62]/45 bg-[#fffdf8] px-3 py-2.5 t
 
 export default function TrainerHome() {
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [assistedTrainers, setAssistedTrainers] = useState<AssistedTrainer[] | null>(null);
   const [exempt, setExempt] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -28,10 +32,13 @@ export default function TrainerHome() {
 
   useEffect(() => {
     void (async () => {
-      const response = await fetch("/api/client/daily/trainer-profile", { cache: "no-store" });
+      const response = await assistanceFetch("/api/client/daily/trainer-profile", { cache: "no-store" });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) setError(body.error ?? "Profil indisponible.");
-      else {
+      else if (body.assistance) {
+        setAssistedTrainers(body.trainers ?? []);
+        setProfile(null);
+      } else {
         setProfile(body.profile ?? null);
         setExempt(Boolean(body.annual_review_exempt));
       }
@@ -71,6 +78,25 @@ export default function TrainerHome() {
   }
 
   if (loading) return <LoadingMascot message="Sélion prépare votre profil formateur…" />;
+
+  if (assistedTrainers) return (
+    <main className="mx-auto max-w-6xl px-4 pb-12 pt-6 md:px-6 md:pt-8">
+      <section className="gazette-card p-6 md:p-9">
+        <div className="gazette-band" />
+        <span className="gazette-label">Selen Daily · Mode assistance Studio</span>
+        <h1 className="mt-5 font-['Playfair_Display'] text-4xl font-bold text-[#3e2a1f]">Espace formateur de cet organisme</h1>
+        <p className="mt-4 max-w-3xl leading-7 text-[#5a4031]">Choisissez le formateur et la session à consulter. Votre propre profil formateur n’est jamais utilisé dans ce mode. La consultation déléguée reste en lecture seule et journalisée.</p>
+      </section>
+      {error ? <div className="mt-5 border border-[#8a4b24] bg-[#f8efdf] p-4 text-[#8a4b24]">{error}</div> : null}
+      <div className="mt-6 grid gap-5">
+        {assistedTrainers.length===0 ? <div className="gazette-card p-6">Aucun formateur affecté à une session active de cet organisme.</div> : assistedTrainers.map(trainer=><section key={trainer.id} className="gazette-card p-5 md:p-7">
+          <h2 className="text-2xl font-bold text-[#3e2a1f]">{trainer.display_name||trainer.professional_email||"Formateur"}</h2>
+          {trainer.professional_email ? <p className="mt-1 text-sm text-[#6e4a32]">{trainer.professional_email}</p> : null}
+          <div className="mt-4 grid gap-2">{trainer.sessions.map(session=>session.portal_access_id ? <a key={session.id} href={withAssistanceToken(`/daily/assistance/portail/${session.portal_access_id}`)} className="border border-[#b28a62]/35 bg-[#fffaf0]/55 px-4 py-3 text-[#3e2a1f] no-underline hover:bg-[#efe3cf]/65"><strong>{session.title||session.internal_reference||"Session"}</strong><span className="ml-2 text-sm text-[#6e4a32]">{session.start_date||""}</span></a> : <div key={session.id} className="border border-[#b28a62]/25 px-4 py-3 text-[#6e4a32]"><strong>{session.title||session.internal_reference||"Session"}</strong> · aucun accès formateur actif pour cette session</div>)}</div>
+        </section>)}
+      </div>
+    </main>
+  );
 
   return (
     <main className="mx-auto max-w-6xl px-4 pb-12 pt-6 md:px-6 md:pt-8">

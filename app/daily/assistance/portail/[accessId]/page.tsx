@@ -37,8 +37,11 @@ export default async function DelegatedPortalPreview({ params, searchParams }: P
   const token = String((await searchParams).assistanceToken ?? "").trim();
   const admin = getAdminSupabase();
   const assistance = await verifyAgentAssistance(admin, token);
+  const scope = String(assistance?.metadata?.scope ?? "");
   const scopedAccessId = String(assistance?.metadata?.portal_access_id ?? "");
-  if (!assistance || assistance.metadata?.scope !== "portal_preview" || scopedAccessId !== accessId) {
+  const exactPortalPreview = scope === "portal_preview" && scopedAccessId === accessId;
+  const delegatedWorkspace = scope === "daily_workspace";
+  if (!assistance || (!exactPortalPreview && !delegatedWorkspace)) {
     notFound();
   }
 
