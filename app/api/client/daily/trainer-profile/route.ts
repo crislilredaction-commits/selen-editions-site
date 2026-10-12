@@ -25,7 +25,7 @@ export async function GET(req:Request){
     const choices=(trainers??[]).map(trainer=>{
       const assigned=sessionRows.filter(s=>Array.isArray(s.trainer_ids)&&s.trainer_ids.map(String).includes(String(trainer.id)));
       const portals=(accesses??[]).filter(a=>assigned.some(s=>s.id===a.session_id)&&(!a.expires_at||new Date(a.expires_at).getTime()>now)&&(a.entity_key===`trainer:${trainer.id}`||normalized(a.entity_email)===normalized(trainer.professional_email)));
-      return{...trainer,sessions:assigned.map(s=>({id:s.id,internal_reference:s.internal_reference,start_date:s.start_date,end_date:s.end_date,title:Array.isArray(s.daily_formations)?s.daily_formations[0]?.title:s.daily_formations?.title,portal_access_id:portals.find(a=>a.session_id===s.id)?.id??null}))};
+      return{...trainer,sessions:assigned.map(s=>({id:s.id,internal_reference:s.internal_reference,start_date:s.start_date,end_date:s.end_date,title:Array.isArray(s.daily_formations)?s.daily_formations[0]?.title:(s.daily_formations as {title?:string|null}|null)?.title,portal_access_id:portals.find(a=>a.session_id===s.id)?.id??null}))};
     }).filter(t=>t.sessions.length>0);
     return NextResponse.json({assistance:true,trainers:choices});
   }
