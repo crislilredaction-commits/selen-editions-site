@@ -6,11 +6,15 @@ on:
       ref:
         description: "Branche ou commit à tester"
         required: true
-        default: "fix/daily-manual-enrolment-party-session-20260927"
+        default: "main"
   push:
     branches:
       - main
       - "fix/**"
+
+concurrency:
+  group: selen-local-check-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
@@ -22,7 +26,7 @@ jobs:
 
     steps:
       - name: Checkout requested ref
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
           clean: true
