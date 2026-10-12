@@ -11,7 +11,7 @@ const checklistAssignmentRls = await readFile(new URL("../supabase/migrations/20
 
 test("le centre À faire conserve les actions Qualité exposées par l'API", () => {
   assert.match(route, /kind:\"quality\"/);
-  assert.match(route, /quality:actions\.filter\(x=>x\.kind===\"quality\"\)\.length/);
+  assert.match(route, /quality:visibleActions\.filter\(x=>x\.kind===\"quality\"\)\.length/);
   assert.match(page, /\| \"quality\"/);
   assert.match(page, /quality\?: number/);
   assert.match(page, /quality: \"Suivi Qualité\"/);
