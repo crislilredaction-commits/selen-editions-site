@@ -6,8 +6,8 @@ const read = (path) => fs.readFileSync(new URL(`../${path}`, import.meta.url), "
 
 test("A10 lie la prévisualisation au token d'assistance et au portail exact", () => {
   const page = read("app/daily/assistance/portail/[accessId]/page.tsx");
-  assert.match(page, /metadata\?\.scope !== "portal_preview"/);
-  assert.match(page, /scopedAccessId !== accessId/);
+  assert.match(page, /scope === "portal_preview" && scopedAccessId === accessId/);
+  assert.match(page, /scope === "daily_workspace"/);
   assert.match(page, /\.eq\("organisation_id", assistance\.organisation_id\)/);
   assert.match(page, /\.in\("portal_type", \["learner", "trainer"\]\)/);
   assert.match(page, /\.neq\("status", "archived"\)/);
