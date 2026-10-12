@@ -7,7 +7,7 @@ function fixture({positioning='completed',prerequisites='met',enrolmentStatus='p
   const organisationId='org-own',userId='user-own';
   const session={id:'session-own',organisation_id:organisationId,status:sessionStatus,trainer_ids:['trainer-own'],daily_formations:{title:'Formation QA',status:formationStatus}};
   const enrolment={id:'enrolment-own',organisation_id:organisationId,session_id:session.id,status:enrolmentStatus,positioning_status:positioning,prerequisites_status:prerequisites,daily_learners:{first_name:'Alice',last_name:'Martin'},daily_sessions:session};
-  const rows={daily_sessions:[session],daily_session_dossiers:[],daily_session_enrolments:[enrolment,{...enrolment,id:'enrolment-foreign',organisation_id:'org-other'}],daily_session_checklist_items:[],daily_enrolment_support_needs:[],daily_onboarding:[{user_id:userId,support_tasks:[],quality_tracking_enabled:false}],organisations:[{id:organisationId,qualiopi_status:'none'}],daily_business_watch_entries:[],daily_quality_actions:[],daily_formations:[],client_reminders:[]};
+  const rows={daily_sessions:[session],daily_session_dossiers:[],daily_session_enrolments:[enrolment,{...enrolment,id:'enrolment-foreign',organisation_id:'org-other'}],daily_session_checklist_items:[],daily_enrolment_support_needs:[],daily_onboarding:[{user_id:userId,support_tasks:[],quality_tracking_enabled:false}],organisations:[{id:organisationId,qualiopi_status:'none'}],daily_business_watch_entries:[],daily_quality_actions:[],daily_formations:[],client_reminders:[],daily_action_dismissals:[],daily_formation_registration_requests:[]};
   const reads=[];
   const admin={from(table){
     assert.ok(Object.hasOwn(rows,table),`Unexpected table ${table}`);reads.push(table);
