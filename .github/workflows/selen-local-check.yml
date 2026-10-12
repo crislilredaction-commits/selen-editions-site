@@ -12,6 +12,9 @@ on:
       - main
       - "fix/**"
       - "feat/**"
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -19,7 +22,7 @@ permissions:
 jobs:
   build-and-test:
     runs-on: [self-hosted, Linux, X64, selen-local]
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Checkout requested ref
