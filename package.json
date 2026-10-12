@@ -60,7 +60,8 @@
     "test:client-bureau-setup": "node --test tests/clientBureauPersistentSetupAccess.test.mjs",
     "test:auth-recovery": "node --test tests/passwordRecoveryFlow.test.mjs",
     "test:daily-agent-task-notifications-a6": "node --test tests/dailyAgentTaskNotificationsA6.test.mjs tests/dailyAgentTaskDelivery.test.mjs tests/dailyAgentTaskMarkerSql.test.mjs",
-    "test:daily-bulk-enrolment": "node --test tests/dailyBulkEnrolment.test.mjs tests/dailyIndividualCancellation.test.mjs"
+    "test:daily-bulk-enrolment": "node --test tests/dailyBulkEnrolment.test.mjs tests/dailyIndividualCancellation.test.mjs",
+    "ci": "npm test && npm run typecheck && npm run build"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.2",
@@ -83,5 +84,8 @@
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "engines": {
+    "node": ">=20 <25"
   }
 }
