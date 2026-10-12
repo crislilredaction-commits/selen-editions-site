@@ -11,6 +11,7 @@ on:
     branches:
       - main
       - "fix/**"
+      - "feat/**"
 
 permissions:
   contents: read
