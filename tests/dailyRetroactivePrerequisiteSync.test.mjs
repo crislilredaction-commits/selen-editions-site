@@ -54,3 +54,5 @@ test("les statuts manuels non satisfaits ne sont jamais écrasés", async (t) =>
   await db.exec(followup);
   assert.equal((await db.query("select prerequisites_status from public.daily_session_enrolments where id=$1",[uuid(12)])).rows[0].prerequisites_status,"not_met");
 });
+
+// Regression coverage for a later rejection is tracked in the follow-up migration.
