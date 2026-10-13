@@ -16,8 +16,9 @@ export function assertDelegatedRegistrationDecision(
 ) {
   if (
     assistance.organisation_id !== organisationId ||
-    assistance.metadata?.scope !== "daily_workspace" ||
+    (assistance.metadata?.scope && assistance.metadata.scope !== "daily_workspace") ||
     !assistance.agent_user_id ||
+    new Date(assistance.expires_at).getTime() <= Date.now() ||
     !confirmed ||
     !["accepted", "refused"].includes(decision)
   ) {
