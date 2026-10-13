@@ -21,7 +21,8 @@ export async function deliverLearnerEmail(admin: any, input: {
   const id = input.force ? randomUUID() : emailDeliveryId(input.key);
   let savedMessage: Message | undefined;
   const result = (status: DeliveryStatus) => ({ status, communicationId: id });
-  const { data: claim, error: claimError } = await admin.from("daily_communications").insert({ ...input.row, id, subject: input.preparationSubject ?? "Notification apprenant en préparation", status: "queued" }).select("id").single();
+  // text_body is NOT NULL in production, including while the message is prepared.
+  const { data: claim, error: claimError } = await admin.from("daily_communications").insert({ ...input.row, id, subject: input.preparationSubject ?? "Notification apprenant en préparation", text_body: "", status: "queued" }).select("id").single();
   if (!claimError && !claim) return result("send_failed");
   if (claimError) {
     if (claimError.code !== "23505") return result("send_failed");

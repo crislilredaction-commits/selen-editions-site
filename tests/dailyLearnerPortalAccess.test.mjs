@@ -174,6 +174,26 @@ test("provider rejection prevents email delivery and any sent announcement", asy
   assert.equal(h.db.daily_communications[0].sent_at, undefined);
 });
 
+test("manual resend satisfies the production text_body constraint before Auth and preserves the enrolment", async () => {
+  const { harness } = await import('./helpers/dailyAcceptanceHarness.mjs');
+  const h = harness({ materialized: true });
+  const enrolmentBefore = JSON.stringify(h.enrolment);
+  const result = await h.ensure({ source: 'manual_resend', force: true });
+  assert.equal(result.status, 'sent');
+  assert.equal(h.auth.length, 1);
+  assert.equal(h.sends.length, 1);
+  assert.equal(h.sends[0].message.to, h.learner.email);
+  assert.equal(h.db.daily_portal_access_tokens.length, 1);
+  assert.equal(JSON.stringify(h.enrolment), enrolmentBefore);
+  const [communication] = h.db.daily_communications;
+  assert.equal(communication.enrolment_id, h.enrolment.id);
+  assert.equal(communication.status, 'sent');
+  assert.ok(communication.provider_message_id);
+  assert.ok(communication.sent_at);
+  assert.equal(communication.text_body, h.sends[0].message.text);
+  assert.equal(communication.html_body, h.sends[0].message.html);
+});
+
 test("post-signature availability sends one distinct trace and reuses it on retry", async () => {
   const { harness } = await import('./helpers/dailyAcceptanceHarness.mjs');
   const h = harness({ materialized: true });
