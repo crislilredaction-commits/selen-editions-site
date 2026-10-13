@@ -137,7 +137,7 @@ export async function GET(req: Request) {
 
     const { data: formations, error: formationError } = await access.admin
       .from("daily_formations")
-      .select("id,organisation_id,title,allowed_trainer_ids")
+      .select("id,organisation_id,title,allowed_trainer_ids,previous_version_id")
       .eq("organisation_id", access.organisationId)
       .neq("status", "archived");
     if (formationError) throw new Error(formationError.message);
@@ -158,11 +158,14 @@ export async function GET(req: Request) {
     // Historical sessions may belong to an archived version of the same programme.
     // Discovery is read-only: the existing decision RPC must still enforce formation scope.
     const { data: historicalFormations, error: historicalFormationError } = await access.admin
-      .from("daily_formations").select("id,title,status")
+      .from("daily_formations").select("id,title,status,previous_version_id,version")
       .eq("organisation_id", access.organisationId).eq("status", "archived");
     if (historicalFormationError) throw new Error(historicalFormationError.message);
     const activeTitles = new Set(visibleFormations.map(formation => formation.title.trim().toLocaleLowerCase("fr")));
-    const historicalCandidates = (historicalFormations ?? []).filter(formation => activeTitles.has(String(formation.title ?? "").trim().toLocaleLowerCase("fr")));
+    // Only direct predecessors of an active version qualify for reconciliation discovery.
+    // A matching title alone is not evidence that two programmes are related.
+    const activePredecessorIds = new Set(visibleFormations.map(formation => (formation as FormationRow & { previous_version_id?: string | null }).previous_version_id).filter(Boolean));
+    const historicalCandidates = (historicalFormations ?? []).filter(formation => activePredecessorIds.has(formation.id) && activeTitles.has(String(formation.title ?? "").trim().toLocaleLowerCase("fr")));
     const historicalIds = historicalCandidates.map(formation => formation.id);
     const { data: historicalSessions, error: historicalSessionError } = historicalIds.length
       ? await access.admin.from("daily_sessions").select("id,formation_id,internal_reference,start_date,end_date,status")
