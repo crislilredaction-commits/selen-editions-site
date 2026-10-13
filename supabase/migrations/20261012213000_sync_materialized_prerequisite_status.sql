@@ -1,6 +1,14 @@
 -- Synchronize the learner task state only for accepted, fully verified dossiers.
 -- The trigger runs inside the materialization transaction, after each mapping is written.
-create table if not exists public.daily_auto_prerequisite_reviews (\n  enrolment_id uuid primary key references public.daily_session_enrolments(id) on delete cascade,\n  registration_request_id uuid not null references public.daily_formation_registration_requests(id) on delete cascade,\n  created_at timestamptz not null default now()\n);\nalter table public.daily_auto_prerequisite_reviews enable row level security;\nrevoke all on public.daily_auto_prerequisite_reviews from public, anon, authenticated;\n\ncreate or replace function public.daily_sync_materialized_prerequisite_status()
+create table if not exists public.daily_auto_prerequisite_reviews (
+  enrolment_id uuid primary key references public.daily_session_enrolments(id) on delete cascade,
+  registration_request_id uuid not null references public.daily_formation_registration_requests(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+alter table public.daily_auto_prerequisite_reviews enable row level security;
+revoke all on public.daily_auto_prerequisite_reviews from public, anon, authenticated;
+
+create or replace function public.daily_sync_materialized_prerequisite_status()
 returns trigger
 language plpgsql
 set search_path = ''
@@ -9,7 +17,8 @@ declare
   contract jsonb;
   request_status text;
   participant jsonb;
-  requirement jsonb;\n  updated_rows integer;
+  requirement jsonb;
+  updated_rows integer;
 begin
   select r.prerequisite_contract, r.decision_status
     into contract, request_status
