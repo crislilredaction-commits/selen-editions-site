@@ -351,10 +351,12 @@ export default function TrainerSessionFollowupPage() {
 
 function TrainerPedagogicalTools({sessionId,enrolments}:{sessionId:string;enrolments:Enrolment[]}) {
   const [slots,setSlots]=useState<any[]>([]),[records,setRecords]=useState<any[]>([]),[documents,setDocuments]=useState<any[]>([]),[busy,setBusy]=useState(false),[message,setMessage]=useState("");
+  const [loadError,setLoadError]=useState("");
   const externalEvaluationRequestId=useRef(crypto.randomUUID());
-  async function refresh(){const r=await fetch(`/api/client/daily/trainer-session-workspace?session_id=${encodeURIComponent(sessionId)}`,{cache:"no-store"});const d=await r.json().catch(()=>({}));if(r.ok){setSlots(d.slots??[]);setRecords(d.records??[]);setDocuments(d.documents??[])}}
-  useEffect(()=>{void refresh()},[sessionId]);
+  async function refresh(signal?:AbortSignal){try{const r=await fetch(`/api/client/daily/trainer-session-workspace?session_id=${encodeURIComponent(sessionId)}`,{cache:"no-store",signal});const d=await r.json().catch(()=>({}));if(signal?.aborted)return;if(!r.ok){setLoadError(d.error??"Suivi des présences indisponible.");return}setSlots(d.slots??[]);setRecords(d.records??[]);setDocuments(d.documents??[]);setLoadError("")}catch{if(!signal?.aborted)setLoadError("Suivi des présences indisponible.")}}
+  useEffect(()=>{const controller=new AbortController();void refresh(controller.signal);return()=>controller.abort()},[sessionId]);
   async function upload(event:React.FormEvent<HTMLFormElement>){event.preventDefault();setBusy(true);setMessage("");const fd=new FormData(event.currentTarget);fd.set("session_id",sessionId);if(fd.get("kind")==="external_evaluation")fd.set("request_id",externalEvaluationRequestId.current);const r=await fetch("/api/client/daily/trainer-session-workspace",{method:"POST",body:fd});const d=await r.json().catch(()=>({}));setBusy(false);setMessage(r.ok?"Document enregistré dans la session.":d.error??"Import impossible.");if(r.ok){(event.currentTarget as HTMLFormElement).reset();externalEvaluationRequestId.current=crypto.randomUUID();await refresh()}}
+  if(loadError)return <div role="alert"><p>{loadError}</p><button type="button" onClick={()=>void refresh()}>Réessayer le chargement des présences</button></div>;
   return <div style={{display:"grid",gap:12,marginBottom:16}}>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:8}}>
       <div style={styles.metricCard}><span style={styles.metricLabel}>Créneaux d’émargement</span><strong>{slots.length}</strong></div>

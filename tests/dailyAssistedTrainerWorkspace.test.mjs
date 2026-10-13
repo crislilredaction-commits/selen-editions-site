@@ -42,7 +42,7 @@ test("l'ouverture crée un jeton A10 court et strictement limité à l'accès ch
 });
 
 test("la sortie du mode assistance rend de nouveau le parcours formateur normal", () => {
-  assert.match(layout, /if \(assisted && pathname !== ASSISTANCE_CHOOSER\)/);
+  assert.match(layout, /if \(assisted && pathname !== ASSISTANCE_CHOOSER && pathname !== `\$\{ASSISTANCE_CHOOSER\}\/session`\)/);
   assert.match(layout, /setReady\(true\)/);
 });
 

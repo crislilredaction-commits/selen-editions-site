@@ -18,7 +18,7 @@ export default function TrainerWorkspaceLayout({ children }: { children: React.R
     const queryToken = currentUrl.searchParams.get("assistanceToken")?.trim() || "";
     const assisted = Boolean(queryToken || getStoredAssistanceToken());
 
-    if (assisted && pathname !== ASSISTANCE_CHOOSER) {
+    if (assisted && pathname !== ASSISTANCE_CHOOSER && pathname !== `${ASSISTANCE_CHOOSER}/session`) {
       const destination = new URL(ASSISTANCE_CHOOSER, window.location.origin);
       if (queryToken) destination.searchParams.set("assistanceToken", queryToken);
       const returnTo = currentUrl.searchParams.get("assistanceReturnTo")?.trim();
