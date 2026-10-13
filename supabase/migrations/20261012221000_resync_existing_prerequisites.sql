@@ -39,7 +39,7 @@ begin
   end if;
   return new;
 end;
-$;
+$$;
 
 revoke all on function public.daily_resync_prerequisites_after_review()
   from public, anon, authenticated;
