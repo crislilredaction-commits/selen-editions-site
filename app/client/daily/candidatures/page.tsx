@@ -43,6 +43,7 @@ type RegistrationRequest = {
   positioning_documents?: Array<{ id: string; name: string }>;
   positioning_responses?: Array<{ label: string; lines: string[] }>;
   can_decide: boolean;
+  read_only?: boolean;
   can_materialize?: boolean;
   decisions: DecisionRow[];
 };
@@ -245,6 +246,7 @@ export default function RegistrationRequestsPage() {
       </header>
 
       {error ? <p role="alert" style={s.error}>{error}</p> : null}
+      {requests.some(request => request.read_only) ? <p role="status" style={s.muted}>Consultation en délégation Studio : les décisions sont réservées au responsable de l’organisme.</p> : null}
       {waitingAnalysis.length ? <p role="status" style={s.muted}>{waitingAnalysis.length} candidature(s) sont encore en cours d’analyse par Selen et ne peuvent pas encore être décidées.</p> : null}
       {message ? <p role="status" style={s.success}>{message}</p> : null}
 
@@ -282,8 +284,8 @@ export default function RegistrationRequestsPage() {
                 </select> : <p style={s.muted}>Créez d’abord une session compatible : l’acceptation doit produire immédiatement l’inscription et la préformation.</p>}
               </div>
               <div style={s.actions}>
-                <button type="button" disabled={busyId === request.id || !(selectedSessions[request.id] ?? "")} style={s.accept} onClick={() => void decide(request, "accepted")}>{busyId === request.id ? "Enregistrement…" : "Accepter et créer l’inscription"}</button>
-                <button type="button" disabled={busyId === request.id} style={s.refuse} onClick={() => void decide(request, "refused")}>Refuser la candidature</button>
+                <button type="button" disabled={!request.can_decide || busyId === request.id || !(selectedSessions[request.id] ?? "")} style={s.accept} onClick={() => void decide(request, "accepted")}>{busyId === request.id ? "Enregistrement…" : "Accepter et créer l’inscription"}</button>
+                <button type="button" disabled={!request.can_decide || busyId === request.id} style={s.refuse} onClick={() => void decide(request, "refused")}>Refuser la candidature</button>
               </div>
             </article>
           ))}
