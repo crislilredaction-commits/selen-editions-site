@@ -32,6 +32,49 @@ export type Article = {
 // date de publication, mise à la une.
 export const articles: Article[] = [
   {
+    "slug": "facturation-electronique-2026-formateurs-independants",
+    "category": "Gestion quotidienne",
+    "title": "Facturation électronique : votre PDF va-t-il finir au musée ?",
+    "excerpt": "Depuis septembre 2026, la facture électronique chamboule les habitudes. Franchise en base, exonération formation, plateformes et échéances : le guide anti-panique des formateurs.",
+    "publishedAt": "2026-10-13",
+    "coverImage": "/plum.png",
+    "coverAlt": "Plume sur fond parchemin, Gazette Selen",
+    "featured": true,
+    "readingTime": "8 min",
+    "introduction": "Gérard est formateur indépendant. Il crée ses factures sur ordinateur, les enregistre en PDF et les envoie par mail. Simple, efficace… sauf quand il oublie la pièce jointe. Puis arrive septembre 2026, et son fournisseur annonce une nouvelle facturation électronique. « Mais mes factures sont déjà électroniques ! » Pas exactement, Gérard. Bienvenue dans la réforme où deux formateurs qui ne facturent pas la TVA peuvent avoir des obligations différentes.",
+    "sections": [
+      {
+        "title": "📬 Le PDF de Gérard n'est pas une facture électronique au sens de la réforme",
+        "body": "Une facture électronique soumise à la réforme doit circuler dans un format structuré ou mixte autorisé, via une plateforme agréée, directement ou grâce à une solution compatible. Un PDF ordinaire joint à un mail n'est pas suffisant pour les opérations concernées. Votre vieux PDF n'est pas interdit dans toutes les situations ; il ne peut simplement pas remplacer le nouveau circuit lorsqu'il devient obligatoire. Source officielle : https://www.economie.gouv.fr/tout-savoir-sur-la-facturation-electronique-pour-les-entreprises."
+      },
+      {
+        "title": "📅 Deux dates à noter, sans attendre la veille",
+        "body": "Depuis le 1er septembre 2026, les entreprises établies en France et assujetties à la TVA, y compris en franchise en base, doivent pouvoir recevoir les factures électroniques concernées. Les grandes entreprises et ETI ont commencé à les émettre pour les opérations entrant dans le dispositif. À compter du 1er septembre 2027, l'obligation d'émission s'étendra notamment aux PME, TPE et micro-entreprises. Le 9 octobre 2026, le ministère annonçait qu'au 4 octobre, 75 % des entreprises déclarant la TVA avaient désigné une plateforme de réception. Si vous n'avez encore rien prévu, vous n'êtes manifestement pas le seul, mais il est temps de regarder votre situation. Sources : https://www.economie.gouv.fr/actualites/facturation-electronique-entre-entreprises-coup-denvoi-de-la-reforme ; https://presse.economie.gouv.fr/facturation-electronique-le-premier-comite-dresse-le-bilan-du-deploiement-et-engage-la-preparation-de-2027/."
+      },
+      {
+        "title": "🎭 Trois formateurs, trois situations fiscales",
+        "body": "Gérard est micro-entrepreneur en franchise en base de TVA : il ne facture pas de TVA, mais il reste assujetti et concerné par le nouveau dispositif pour ses opérations dans le champ. Sophie possède l'attestation permettant l'exonération spécifique de ses prestations de formation professionnelle continue, au titre de l'article 261, 4-4° a du CGI : les opérations effectivement exonérées, dispensées de facturation fiscale et relevant des articles 261 à 261 E sont exclues de l'obligation d'émission électronique et d'e-reporting au titre de ces opérations. Elle peut néanmoins être tenue de recevoir les factures électroniques de ses fournisseurs concernés. Karim réalise à la fois des formations exonérées et du conseil : il doit qualifier chaque prestation séparément. La vraie question n'est donc pas « Est-ce que je mets de la TVA sur ma facture ? » mais « Pourquoi n'en mets-je pas, et quelle opération est-ce que je facture ? ». Les règles spécifiques à chaque situation doivent être vérifiées. Source : https://www.economie.gouv.fr/tout-savoir-sur-la-facturation-electronique-pour-les-entreprises."
+      },
+      {
+        "title": "🕵️ NDA et exonération : les faux jumeaux",
+        "body": "Le numéro de déclaration d'activité d'un formateur (NDA) n'est pas l'attestation fiscale d'exonération de TVA. Pour un organisme privé, l'exonération spécifique de formation professionnelle continue suppose le respect de conditions réglementaires, notamment l'attestation administrative. Ne déduisez jamais votre statut TVA du seul NDA, et ne considérez pas que toute activité de conseil devient exonérée parce que vous êtes formateur. Le bon réflexe : distinguer franchise en base, exonération au titre de l'article 261 et activités éventuellement soumises au droit commun. En cas de doute, demandez confirmation au service des impôts ou à votre comptable."
+      },
+      {
+        "title": "🎮 Mini-jeu : qui passe par la nouvelle tuyauterie ?",
+        "body": "Situation A : vous êtes micro-entrepreneur en franchise en base et facturez du conseil à une société française : en principe, facture électronique B2B à l'échéance applicable en 2027. Situation B : vous facturez un particulier : pas de facture électronique B2B à lui transmettre, mais selon l'opération des obligations d'e-reporting peuvent s'appliquer. Situation C : une prestation de formation réellement exonérée sous l'article 261, et dispensée de facturation fiscale : elle est exclue de l'émission électronique et de l'e-reporting correspondants. Situation D : un grand fournisseur doit vous envoyer une facture électronique : vérifiez votre capacité à la recevoir sur une plateforme agréée. Score parfait ? Vous méritez une pause café, pas un abonnement de plus."
+      },
+      {
+        "title": "🧰 La boîte à outils anti-panique",
+        "body": "1. Identifiez votre régime fiscal et classez les prestations selon leur traitement réel. 2. Vérifiez que vous pouvez recevoir les factures électroniques via une plateforme agréée ; consultez la liste officielle plutôt qu'un argumentaire commercial. 3. Interrogez votre logiciel existant avant de payer un nouvel abonnement. 4. Vérifiez les données d'identification de vos clients professionnels, notamment les SIREN. 5. Documentez en une page qui reçoit, contrôle, archive et corrige les factures. Pour un formateur qui émet peu de factures, une solution proportionnée vaut mieux qu'une usine à gaz avec abonnement premium et tableau de bord intergalactique. Sources : https://www.economie.gouv.fr/actualites/facturation-electronique-la-liste-des-101-premieres-plateformes-agreees-est-disponible ; https://www.economie.gouv.fr/entreprises/quest-ce-que-lannuaire-de-la-facturation-electronique."
+      },
+      {
+        "title": "🎁 Le bonus Selen : la réforme ne réglera pas vos impayés",
+        "body": "Profitez de votre réorganisation pour examiner les dix dernières factures : combien ont été réglées à temps ? Combien ont nécessité une relance ? Avez-vous reçu un bon de commande et les bonnes coordonnées comptables avant la prestation ? Un format électronique n'empêchera pas le client de payer tard. Une démarche utile consiste à confirmer l'adresse de facturation, la référence de commande et les délais de paiement dès la contractualisation, puis à suivre les échéances. La réforme est une occasion de simplifier votre travail, pas une raison de collectionner les outils."
+      }
+    ],
+    "conclusion": "Gérard a compris : la franchise en base et l'exonération spécifique de formation ne sont pas interchangeables ; la réception est déjà concernée depuis septembre 2026 et l'émission des petites structures suit en 2027 pour les opérations pertinentes. Son PDF « Facture_2026_finale.pdf » n'est pas mort, mais il n'est plus roi partout. Avant de souscrire quoi que ce soit, vérifiez votre régime, vos opérations et votre plateforme. Et si vous vous y prenez avant la veille de l'échéance, c'est presque une révolution administrative. L'équipe Selen Éditions. Article d'information générale au 13 octobre 2026 ; les obligations dépendent du régime fiscal et des opérations concernées."
+  },
+  {
     "slug": "preuves-qualiopi-enquete-documents-formation",
     "title": "Qualiopi : enquête sur les preuves disparues 🕵️",
     "category": "Qualiopi",
