@@ -307,8 +307,8 @@ export default function RegistrationRequestsPage() {
               </div>
               {!request.can_decide ? <p role="status" style={s.muted}>Décision bloquée : consultation en délégation Studio. Connecte-toi au compte responsable de cet organisme pour accepter ou refuser une candidature.</p> : null}
               <div style={s.actions}>
-                <button type="button" disabled={busyId === request.id} style={s.accept} onClick={() => void decide(request, "accepted")}>{busyId === request.id ? "Enregistrement…" : "Accepter et créer l’inscription"}</button>
-                <button type="button" disabled={busyId === request.id} style={s.refuse} onClick={() => void decide(request, "refused")}>Refuser la candidature</button>
+                <button type="button" disabled={!request.can_decide || busyId === request.id || !(selectedSessions[request.id] ?? "")} style={s.accept} onClick={() => void decide(request, "accepted")}>{busyId === request.id ? "Enregistrement…" : "Accepter et créer l’inscription"}</button>
+                <button type="button" disabled={!request.can_decide || busyId === request.id} style={s.refuse} onClick={() => void decide(request, "refused")}>Refuser la candidature</button>
               </div>
             </article>
           ))}
