@@ -66,7 +66,7 @@ function participantCount(value: unknown) {
 }
 function sessionLabel(session: SessionRow) {
   const dates = session.start_date ? `${new Date(`${session.start_date}T12:00:00`).toLocaleDateString("fr-FR")}${session.end_date && session.end_date !== session.start_date ? ` → ${new Date(`${session.end_date}T12:00:00`).toLocaleDateString("fr-FR")}` : ""}` : "dates à préciser";
-  return `${session.internal_reference || "Session"} · ${dates}`;
+  return `${session.internal_reference || "Session"} · ${dates}${session.end_date && session.end_date < new Date().toISOString().slice(0, 10) ? " · session passée (régularisation)" : ""}`;
 }
 
 export default function RegistrationRequestsPage() {
@@ -81,6 +81,7 @@ export default function RegistrationRequestsPage() {
   const [pdfBusy, setPdfBusy] = useState<Record<string, boolean>>({});
   const [pdfErrors, setPdfErrors] = useState<Record<string, string>>({});
   const isManager = actorTypes.includes("organisation");
+  const isAssistedReadOnly = requests.some((request) => request.read_only);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -118,6 +119,7 @@ export default function RegistrationRequestsPage() {
   const history = useMemo(() => requests.filter((request) => request.decision_status === "accepted" || request.decision_status === "refused"), [requests]);
 
   async function decide(request: RegistrationRequest, decision: "accepted" | "refused") {
+    if (!request.can_decide) return setError("En délégation Studio, la décision est réservée au compte responsable de l’organisme. Quittez la délégation pour agir depuis ce compte.");
     const actorType: ActorType = "organisation";
     const wording = decision === "accepted"
       ? `Accepter la candidature de ${request.applicant_label} après analyse Selen ?`
@@ -247,6 +249,7 @@ export default function RegistrationRequestsPage() {
       </header>
 
       {error ? <p role="alert" style={s.error}>{error}</p> : null}
+      {isAssistedReadOnly ? <p role="status" style={s.muted}>Mode délégation Studio : consultation uniquement. Les boutons de décision sont désactivés pour protéger les inscriptions. Le responsable OF doit décider depuis son compte.</p> : null}
       {requests.some(request => request.read_only) ? <p role="status" style={s.muted}>Consultation en délégation Studio : les décisions sont réservées au responsable de l’organisme.</p> : null}
       {waitingAnalysis.length ? <p role="status" style={s.muted}>{waitingAnalysis.length} candidature(s) sont encore en cours d’analyse par Selen et ne peuvent pas encore être décidées.</p> : null}
       {message ? <p role="status" style={s.success}>{message}</p> : null}
@@ -278,7 +281,7 @@ export default function RegistrationRequestsPage() {
               </div>
               {summaryDetails(request)}
               <div style={s.materializeBox}>
-                <strong>Session de l’inscription</strong>
+                <strong>Session de l’inscription (sessions passées comprises pour régularisation)</strong>
                 {sessions.filter((session) => session.formation_id === request.formation_id).length ? <select value={selectedSessions[request.id] ?? ""} onChange={(event) => setSelectedSessions((current) => ({ ...current, [request.id]: event.target.value }))} style={s.select}>
                   <option value="">Choisir une session</option>
                   {sessions.filter((session) => session.formation_id === request.formation_id).map((session) => <option key={session.id} value={session.id}>{sessionLabel(session)}</option>)}
