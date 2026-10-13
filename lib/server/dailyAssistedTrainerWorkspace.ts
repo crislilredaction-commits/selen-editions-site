@@ -26,12 +26,13 @@ export async function readDailyAssistedTrainerSession(scope: Scope, trainerId: s
   const trainer = trainers.find((row: any) => row.id === trainerId);
   const session = sessions.find((row: any) => row.id === sessionId && ids(row.trainer_ids).includes(trainerId));
   if (!trainer || !session) return null;
-  const [enrolments, slots, records] = await Promise.all([
+  const [enrolments, slots, records, documents] = await Promise.all([
     scope.admin.from("daily_session_enrolments").select("id,learner_id,status,daily_learners(first_name,last_name,email)").eq("organisation_id", scope.organisationId).eq("session_id", sessionId).not("status", "in", "(declined,cancelled,abandoned)"),
     scope.admin.from("daily_attendance_slots").select("id,slot_date,starts_at,ends_at,label,status").eq("organisation_id", scope.organisationId).eq("session_id", sessionId).neq("status", "cancelled").order("slot_date").order("starts_at"),
     scope.admin.from("daily_attendance_records").select("id,slot_id,enrolment_id,status,signed_at").eq("organisation_id", scope.organisationId).eq("session_id", sessionId),
+    scope.admin.from("daily_documents").select("id,document_type,logical_name,mime_type,created_at,enrolment_id,status,version").eq("organisation_id", scope.organisationId).eq("session_id", sessionId).eq("is_current", true).neq("status", "archived").in("document_type", ["trainer_resource", "attendance_paper_evidence", "learning_assessment_evidence"]).order("created_at", { ascending: false }),
   ]);
-  const error = enrolments.error ?? slots.error ?? records.error;
+  const error = enrolments.error ?? slots.error ?? records.error ?? documents.error;
   if (error) throw new Error(error.message);
   const enrolmentIds = new Set((enrolments.data ?? []).map((row: any) => row.id));
   const slotIds = new Set((slots.data ?? []).map((row: any) => row.id));
@@ -42,5 +43,5 @@ export async function readDailyAssistedTrainerSession(scope: Scope, trainerId: s
     return { ...slot, phase };
   });
   return { trainer, session, enrolments: enrolments.data ?? [], slots: visibleSlots,
-    records: (records.data ?? []).filter((row: any) => enrolmentIds.has(row.enrolment_id) && slotIds.has(row.slot_id)), readOnly: true as const };
+    records: (records.data ?? []).filter((row: any) => enrolmentIds.has(row.enrolment_id) && slotIds.has(row.slot_id)), documents: (documents.data ?? []).filter((row: any) => !row.enrolment_id || enrolmentIds.has(row.enrolment_id)), readOnly: true as const };
 }
