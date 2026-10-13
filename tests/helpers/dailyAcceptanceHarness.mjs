@@ -75,7 +75,7 @@ export function harness(options = {}) {
     const module={exports:{}};
     const source=fs.readFileSync(path,'utf8');
     vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText, {
-      module,exports:module.exports,URL,Date,console:{error(){}},process:{env:{RESEND_API_KEY:options.missingProvider ? '' : 'mock-only'}},
+      module,exports:module.exports,URL,Error,Date,console:{error(){}},process:{env:{RESEND_API_KEY:options.missingProvider ? '' : 'mock-only'}},
       fetch() { throw new Error('Network forbidden'); },
       require(name) {
         if(name === 'node:crypto') return crypto;
@@ -87,7 +87,7 @@ export function harness(options = {}) {
           return {data:provider === 'no_id' ? {} : {id:`resend-${sends.length}`},error:null};
         }}}};
         if(name === '@/lib/server/dailyPortalAuthEntry') return {buildDailyPortalAuthEntryUrl:async input => {auth.push(input); if(options.authFailure) throw new Error('mock Auth failure'); return `https://site.test/client/activation?token_hash=mock&next=${input.token}`;}};
-        if(['@/lib/server/dailyAcceptanceEmail','@/lib/server/dailyLearnerEmailDelivery','@/lib/server/dailyLearnerPortalAccess'].includes(name)) return load(name.replace('@/','')+'.ts');
+        if(['@/lib/server/dailyAcceptanceEmail','@/lib/server/dailyLearnerEmailDelivery','@/lib/server/dailyLearnerPortalAccess','@/lib/server/dailyDelegatedRegistrationDecision'].includes(name)) return load(name.replace('@/','')+'.ts');
         if(name === '@/lib/server/clientNdaAccess') return {getAdminSupabase:() => admin};
         if(name === '@/lib/server/dailyOrganisationContext') return {getDailyOrganisationReadContext:async () => ({ok:true,assisted:false})};
         if(name === '@/lib/server/dailyClientWorkspace') return {getDailyClientWorkspace:async () => ({ok:true,user:{id:'owner'},workspace:{membership:{organisation_id:'org',roles:options.nonManager ? [] : ['manager']}}})};

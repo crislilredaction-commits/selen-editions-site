@@ -5,11 +5,13 @@ import { assistanceFetch } from "@/components/AgentAssistanceBanner";
 import { projectCandidatureSummary, candidatureSummaryFilename } from "@/lib/daily/candidatureSummary";
 import LoadingMascot from "@/components/ui/LoadingMascot";
 
-type ActorType = "organisation";
+type ActorType = "organisation" | "studio_agent";
 type DecisionStatus = "pending" | "ready_for_of" | "accepted" | "refused";
 type DecisionRow = {
   id: string;
   actor_type: ActorType;
+  actor_user_id?: string;
+  actor_label?: string | null;
   decision: "accepted" | "refused";
   comment?: string | null;
   decided_at: string;
@@ -45,10 +47,12 @@ type RegistrationRequest = {
   positioning_responses?: Array<{ label: string; lines: string[] }>;
   can_decide: boolean;
   read_only?: boolean;
+  delegated?: boolean;
+  can_retry_access?: boolean;
   can_materialize?: boolean;
   decisions: DecisionRow[];
 };
-type ResponseBody = { learner_access?: { status: string; email?: string }[]; materialization_error?: string; requests?: RegistrationRequest[]; sessions?: SessionRow[]; historical_sessions?: (SessionRow & { formation_title: string; requires_reconciliation: boolean })[]; actor_types?: ActorType[]; materialized?: boolean; error?: string };
+type ResponseBody = { learner_access?: { status: string; email?: string }[]; materialization_error?: string; requests?: RegistrationRequest[]; sessions?: SessionRow[]; historical_sessions?: (SessionRow & { formation_title: string; source_formation_ids?: string[]; requires_reconciliation: boolean })[]; actor_types?: ActorType[]; materialized?: boolean; error?: string };
 
 function emailFeedback(body: ResponseBody) {
   const labels: Record<string, string> = { sent: "email envoyé", already_sent: "email déjà envoyé", pending: "email en attente de confirmation", missing_email: "adresse apprenant manquante", send_failed: "échec de l’email", invalid_scope: "email non envoyé : périmètre incompatible", not_found: "email non envoyé : inscription introuvable" };
@@ -72,7 +76,7 @@ function sessionLabel(session: SessionRow) {
 export default function RegistrationRequestsPage() {
   const [requests, setRequests] = useState<RegistrationRequest[]>([]);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
-  const [historicalSessions, setHistoricalSessions] = useState<(SessionRow & { formation_title: string; requires_reconciliation: boolean })[]>([]);
+  const [historicalSessions, setHistoricalSessions] = useState<(SessionRow & { formation_title: string; source_formation_ids?: string[]; requires_reconciliation: boolean })[]>([]);
   const [actorTypes, setActorTypes] = useState<ActorType[]>([]);
   const [selectedSessions, setSelectedSessions] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -83,6 +87,7 @@ export default function RegistrationRequestsPage() {
   const [pdfErrors, setPdfErrors] = useState<Record<string, string>>({});
   const isManager = actorTypes.includes("organisation");
   const isAssistedReadOnly = requests.some((request) => request.read_only);
+  const isDelegated = actorTypes.includes("studio_agent");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -121,11 +126,11 @@ export default function RegistrationRequestsPage() {
   const history = useMemo(() => requests.filter((request) => request.decision_status === "accepted" || request.decision_status === "refused"), [requests]);
 
   async function decide(request: RegistrationRequest, decision: "accepted" | "refused") {
-    if (!request.can_decide) return setError("En délégation Studio, la décision est réservée au compte responsable de l’organisme. Quittez la délégation pour agir depuis ce compte.");
-    const actorType: ActorType = "organisation";
+    if (!request.can_decide) return setError("Cette candidature ne peut pas recevoir de décision dans son état actuel.");
+    const actorType: ActorType = isDelegated ? "studio_agent" : "organisation";
     const wording = decision === "accepted"
-      ? `Accepter la candidature de ${request.applicant_label} après analyse Selen ?`
-      : `Refuser définitivement la candidature de ${request.applicant_label} après analyse Selen ?`;
+      ? `Accepter la candidature de ${request.applicant_label} après analyse Selen${isDelegated ? " pour le compte de cet organisme, avec votre identité Studio enregistrée" : ""} ?`
+      : `Refuser définitivement la candidature de ${request.applicant_label} après analyse Selen${isDelegated ? " pour le compte de cet organisme, avec votre identité Studio enregistrée" : ""} ?`;
     const chosenSession = selectedSessions[request.id] ?? "";
     const historical = decision === "accepted" ? historicalSessions.find(session => session.id === chosenSession) : undefined;
     if (historical && !window.confirm("Session historique : " + sessionLabel(historical) + ". Confirmez-vous que cette ancienne version du programme convient et que la candidature doit être régularisée sur cette session passée ?")) return;
@@ -141,7 +146,7 @@ export default function RegistrationRequestsPage() {
       const response = await assistanceFetch("/api/client/daily/registration-requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ request_id: request.id, actor_type: actorType, decision, comment, ...(decision === "accepted" ? { session_id: selectedSessions[request.id] ?? "" } : {}), ...(historical ? { action: "accept_historical", reason, confirm_historical: true } : {}) }),
+        body: JSON.stringify({ request_id: request.id, actor_type: actorType, decision, comment, confirm_delegated: isDelegated, ...(decision === "accepted" ? { session_id: selectedSessions[request.id] ?? "" } : {}), ...(historical ? { action: "accept_historical", reason, confirm_historical: true } : {}) }),
       });
       const body = await response.json().catch(() => ({})) as ResponseBody;
       if (!response.ok) throw new Error(body.error ?? "Décision impossible.");
@@ -161,6 +166,8 @@ export default function RegistrationRequestsPage() {
   async function materialize(request: RegistrationRequest) {
     const sessionId = selectedSessions[request.id] ?? "";
     if (!sessionId) return setError("Choisissez la session dans laquelle inscrire le candidat.");
+    if (!request.can_materialize) return setError("Cette inscription ne peut pas être matérialisée dans son état actuel.");
+    if (isDelegated && !window.confirm("Créer l’inscription dans cette session pour le compte de l’organisme, avec votre identité Studio enregistrée ?")) return;
     setBusyId(request.id);
     setError("");
     setMessage("");
@@ -168,7 +175,7 @@ export default function RegistrationRequestsPage() {
       const response = await assistanceFetch("/api/client/daily/registration-requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "materialize", request_id: request.id, session_id: sessionId }),
+        body: JSON.stringify({ action: "materialize", request_id: request.id, session_id: sessionId, confirm_delegated: isDelegated }),
       });
       const body = await response.json().catch(() => ({})) as ResponseBody;
       if (!response.ok) throw new Error(body.error ?? "Inscription impossible.");
@@ -182,9 +189,10 @@ export default function RegistrationRequestsPage() {
   }
 
   async function retryEmail(request: RegistrationRequest) {
+    if (isDelegated && !window.confirm("Vérifier et, si nécessaire, renvoyer les accès de cette inscription pour le compte de l’organisme ? Votre identité Studio sera enregistrée.")) return;
     setBusyId(request.id); setError(""); setMessage("");
     try {
-      const response = await assistanceFetch("/api/client/daily/registration-requests", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "send_learner_access", request_id: request.id }) });
+      const response = await assistanceFetch("/api/client/daily/registration-requests", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "send_learner_access", request_id: request.id, confirm_delegated: isDelegated }) });
       const body = await response.json() as ResponseBody;
       if (!response.ok) throw new Error(body.error || "Envoi impossible.");
       setMessage(emailFeedback(body));
@@ -251,13 +259,14 @@ export default function RegistrationRequestsPage() {
         <div>
           <p style={s.kicker}>Selen Daily · Candidatures</p>
           <h1 style={s.h1}>Décidez après l’analyse Selen</h1>
-          <p style={s.lead}>Selen analyse d’abord le dossier, le positionnement et les prérequis. La décision finale d’accepter ou de refuser appartient ensuite au responsable de l’organisme.</p>
+          <p style={s.lead}>Selen analyse d’abord le dossier, le positionnement et les prérequis. Le responsable de l’organisme ou un agent Studio habilité peut ensuite accepter ou refuser la candidature.</p>
         </div>
         <div style={s.metric}><strong>{pending.length}</strong><span>à décider</span></div>
       </header>
 
       {error ? <p role="alert" style={s.error}>{error}</p> : null}
       {isAssistedReadOnly ? <p role="status" style={s.muted}>Mode délégation Studio : consultation uniquement. Les boutons de décision sont désactivés pour protéger les inscriptions. Le responsable OF doit décider depuis son compte.</p> : null}
+      {isDelegated ? <p role="status" style={s.muted}>Vous agissez pour cet organisme. Les décisions et régularisations seront attribuées à votre compte Studio et conservées dans l’historique.</p> : null}
       {requests.some(request => request.read_only) ? <p role="status" style={s.muted}>Consultation en délégation Studio : les décisions sont réservées au responsable de l’organisme.</p> : null}
       {waitingAnalysis.length ? <p role="status" style={s.muted}>{waitingAnalysis.length} candidature(s) sont encore en cours d’analyse par Selen et ne peuvent pas encore être décidées.</p> : null}
       {message ? <p role="status" style={s.success}>{message}</p> : null}
@@ -288,24 +297,24 @@ export default function RegistrationRequestsPage() {
                 {request.adaptation_needed ? <span style={s.attention}><strong>Attention :</strong> besoin d'adaptation signalé</span> : null}
               </div>
               {summaryDetails(request)}
-              {historicalSessions.filter(session => session.formation_title.trim().toLocaleLowerCase("fr") === request.formation_title.trim().toLocaleLowerCase("fr")).length ? (
+              {historicalSessions.filter(session => session.source_formation_ids?.includes(request.formation_id)).length ? (
                 <div style={s.materializeBox}>
                   <strong>Sessions historiques d’une ancienne version de la formation</strong>
                   <p style={s.muted}>Ces sessions peuvent être sélectionnées dans le menu ci-dessous. Une confirmation explicite et un motif sont obligatoires.</p>
-                  {historicalSessions.filter(session => session.formation_title.trim().toLocaleLowerCase("fr") === request.formation_title.trim().toLocaleLowerCase("fr")).map(session => (
+                  {historicalSessions.filter(session => session.source_formation_ids?.includes(request.formation_id)).map(session => (
                     <p key={session.id} style={s.muted}>{sessionLabel(session)} · ancienne formation archivée</p>
                   ))}
                 </div>
               ) : null}
               <div style={s.materializeBox}>
                 <strong>Session de l’inscription (sessions passées comprises pour régularisation)</strong>
-                {(sessions.some((session) => session.formation_id === request.formation_id) || historicalSessions.some(session => session.formation_title.trim().toLocaleLowerCase("fr") === request.formation_title.trim().toLocaleLowerCase("fr"))) ? <select value={selectedSessions[request.id] ?? ""} onChange={(event) => setSelectedSessions((current) => ({ ...current, [request.id]: event.target.value }))} style={s.select}>
+                {(sessions.some((session) => session.formation_id === request.formation_id) || historicalSessions.some(session => session.source_formation_ids?.includes(request.formation_id))) ? <select value={selectedSessions[request.id] ?? ""} onChange={(event) => setSelectedSessions((current) => ({ ...current, [request.id]: event.target.value }))} style={s.select}>
                   <option value="">Choisir une session</option>
                   {sessions.filter((session) => session.formation_id === request.formation_id).map((session) => <option key={session.id} value={session.id}>{sessionLabel(session)}</option>)}
-                  {historicalSessions.filter(session => session.formation_title.trim().toLocaleLowerCase("fr") === request.formation_title.trim().toLocaleLowerCase("fr")).map(session => <option key={session.id} value={session.id}>Ancienne version · {sessionLabel(session)}</option>)}
+                  {historicalSessions.filter(session => session.source_formation_ids?.includes(request.formation_id)).map(session => <option key={session.id} value={session.id}>Ancienne version · {sessionLabel(session)}</option>)}
                 </select> : <p style={s.muted}>Créez d’abord une session compatible : l’acceptation doit produire immédiatement l’inscription et la préformation.</p>}
               </div>
-              {!request.can_decide ? <p role="status" style={s.muted}>Décision bloquée : consultation en délégation Studio. Connecte-toi au compte responsable de cet organisme pour accepter ou refuser une candidature.</p> : null}
+              {!request.can_decide ? <p role="status" style={s.muted}>Cette candidature ne peut pas encore recevoir de décision. Vérifiez son analyse, ses prérequis et vos habilitations.</p> : null}
               <div style={s.actions}>
                 <button type="button" disabled={!request.can_decide || busyId === request.id || !(selectedSessions[request.id] ?? "")} style={s.accept} onClick={() => void decide(request, "accepted")}>{busyId === request.id ? "Enregistrement…" : "Accepter et créer l’inscription"}</button>
                 <button type="button" disabled={!request.can_decide || busyId === request.id} style={s.refuse} onClick={() => void decide(request, "refused")}>Refuser la candidature</button>
@@ -332,7 +341,7 @@ export default function RegistrationRequestsPage() {
                   <p style={s.muted}>{request.formation_title}</p>
                   {request.materialized_at ? (
                     <p style={s.createdText}>{request.materialized_count ?? 0} inscription{(request.materialized_count ?? 0) > 1 ? "s" : ""} liée{(request.materialized_count ?? 0) > 1 ? "s" : ""} à cette candidature.</p>
-                  ) : request.decision_status === "accepted" && isManager ? (
+                  ) : request.decision_status === "accepted" && (request.can_materialize || isManager) ? (
                     <div style={s.materializeBox}>
                       <strong>Choisir la session</strong>
                       {compatibleSessions.length ? (
@@ -349,7 +358,11 @@ export default function RegistrationRequestsPage() {
                     <p style={s.muted}>Candidature acceptée. L'organisme choisira la session avant création de l'inscription.</p>
                   ) : null}
                   {summaryDetails(request)}
-                  {isManager && request.decision_status === "accepted" ? <button type="button" disabled={busyId === request.id} style={s.accept} onClick={() => void retryEmail(request)}>Vérifier / réessayer l’email apprenant</button> : null}
+                  {(isManager || request.can_retry_access) && request.decision_status === "accepted" ? <button type="button" disabled={busyId === request.id} style={s.accept} onClick={() => void retryEmail(request)}>Vérifier / réessayer l’email apprenant</button> : null}
+                  {request.decisions.map(decision => <p key={decision.id} style={s.muted}>
+                    {decision.actor_type === "studio_agent" ? `Agent Studio · ${decision.actor_label || "Agent identifié"}` : "Responsable OF"}
+                    {decision.decided_at ? ` · ${new Date(decision.decided_at).toLocaleString("fr-FR")}` : ""}
+                  </p>)}
                   {request.decisions[0]?.comment ? <p style={s.comment}>« {request.decisions[0].comment} »</p> : null}
                 </article>
               );
