@@ -8,6 +8,7 @@ export type AssistedTrainerAttendanceData = {
   enrolments: Enrolment[]; slots: Slot[];
   records: { slot_id: string; enrolment_id: string; status: string; signed_at?: string | null }[];
   documents?: { id: string; logical_name?: string | null; document_type: string }[];
+  entries?: { id: string; enrolment_id?: string | null; entry_type: string; level: string; occurred_at: string; summary: string; description?: string | null; action_taken?: string | null; status: string; author_name?: string | null }[];
   readOnly: true;
 };
 export default function AssistedTrainerAttendance({ data }: { data: AssistedTrainerAttendanceData }) {
@@ -24,5 +25,7 @@ export default function AssistedTrainerAttendance({ data }: { data: AssistedTrai
         return <tr key={enrolment.id}><th scope="row">{[learner?.first_name, learner?.last_name].filter(Boolean).join(" ") || learner?.email || "Apprenant"}</th><td>{dailyAttendanceLabel(record?.status, slot.phase)}</td><td>{record?.signed_at ? new Intl.DateTimeFormat("fr-FR", {dateStyle:"short",timeStyle:"short",timeZone:"Europe/Paris"}).format(new Date(record.signed_at)) : "Non signée"}</td></tr>;
       })}</tbody></table></div>}
     </section>)}
+    <h2 className="text-xl font-bold">Suivi pédagogique et événements</h2>
+    {!data.entries?.length ? <p>Aucune note ni événement de suivi enregistré pour cette session.</p> : <div className="grid gap-3">{data.entries.map(entry => <article key={entry.id} className="border border-[#b28a62]/35 p-4"><div className="flex flex-wrap items-center gap-2"><strong>{entry.summary}</strong><span className="text-sm">{entry.entry_type} · {entry.status}</span></div><p className="text-sm">{new Date(entry.occurred_at).toLocaleDateString("fr-FR")}{entry.author_name ? ` · ${entry.author_name}` : ""}</p>{entry.description ? <p className="mt-2 whitespace-pre-wrap">{entry.description}</p> : null}{entry.action_taken ? <p className="mt-2 whitespace-pre-wrap">Action : {entry.action_taken}</p> : null}</article>)}</div>}
   </section>;
 }
