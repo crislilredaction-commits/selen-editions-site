@@ -110,7 +110,20 @@ export default function DailyDashboardOverview() {
     && !futureSessions.some((session) => session.formation_id === formation.id),
   ), [formations, futureSessions]);
   const sortedActions = useMemo(() => {
-    const merged = [...actions];
+    const merged = actions.filter((item) => {
+      const lower = item.title.toLowerCase();
+      if (lower.includes("livret d'accueil")) return false;
+      if (item.id.startsWith("onboarding:insee") || item.id.startsWith("missing-doc:insee")) {
+        if (onboarding?.insee_document_url) return false;
+      }
+      if (item.id.startsWith("onboarding:qualiopi_certificate") || item.id.startsWith("missing-doc:qualiopi")) {
+        if (onboarding?.qualiopi_certificate_url) return false;
+      }
+      if (item.id.startsWith("onboarding:nda_or_bpf") || item.id.startsWith("missing-doc:bpf")) {
+        if (onboarding?.nda_or_bpf_document_url) return false;
+      }
+      return true;
+    });
     const existingTitles = new Set(merged.map((item) => item.title));
     for (const item of missingDocumentActions(onboarding)) if (!existingTitles.has(item.title)) merged.push(item);
     return merged.sort((a, b) => rank[a.priority] - rank[b.priority]);

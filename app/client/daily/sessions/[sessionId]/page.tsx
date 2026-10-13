@@ -138,7 +138,7 @@ export default function DailySessionDetailPage() {
     finally { setAbandoningKey(""); }
   }
   const activeEnrolments = evidence?.enrolments.filter(row => !["abandoned", "cancelled", "declined"].includes(row.status)) ?? [];
-  const completedStatuses = ["completed", "validated", "approved", "done"];
+  const completedStatuses = ["completed", "validated", "approved", "done", "reviewed", "met"];
   const formation = session?.daily_formations;
   const title = Array.isArray(formation) ? formation[0]?.title : formation?.title;
   return <main style={{ maxWidth: 1120, margin: "0 auto", padding: "clamp(1rem, 3vw, 2rem)", display: "grid", gap: "1.25rem", minWidth: 0 }}>
