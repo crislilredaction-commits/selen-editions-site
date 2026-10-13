@@ -29,7 +29,7 @@ export async function delegatedHarness() {
     alter role service_role bypassrls;
   `);
   await db.exec(await readFile(new URL('../../supabase/migrations/20261013195000_daily_historical_session_reconciliation.sql',import.meta.url),'utf8'));
-  await db.exec(await readFile(new URL('../../supabase/migrations/20261013203552_daily_studio_delegated_registration_decisions.sql',import.meta.url),'utf8'));
+  await db.exec(await readFile(new URL('../../supabase/migrations/20261013210217_daily_studio_delegated_registration_decisions.sql',import.meta.url),'utf8'));
   await db.exec('grant usage on schema public to service_role; grant all on all tables in schema public to service_role;');
   const tables=(await db.query("select tablename from pg_tables where schemaname='public'")).rows.map(row=>row.tablename);
   const flags={forceFallback:false,authError:false}; const sends=[],requests=[],rpcCalls=[];
