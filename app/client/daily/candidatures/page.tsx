@@ -48,7 +48,7 @@ type RegistrationRequest = {
   can_materialize?: boolean;
   decisions: DecisionRow[];
 };
-type ResponseBody = { learner_access?: { status: string; email?: string }[]; materialization_error?: string; requests?: RegistrationRequest[]; sessions?: SessionRow[]; actor_types?: ActorType[]; materialized?: boolean; error?: string };
+type ResponseBody = { learner_access?: { status: string; email?: string }[]; materialization_error?: string; requests?: RegistrationRequest[]; sessions?: SessionRow[]; historical_sessions?: (SessionRow & { formation_title: string; requires_reconciliation: boolean })[]; actor_types?: ActorType[]; materialized?: boolean; error?: string };
 
 function emailFeedback(body: ResponseBody) {
   const labels: Record<string, string> = { sent: "email envoyé", already_sent: "email déjà envoyé", pending: "email en attente de confirmation", missing_email: "adresse apprenant manquante", send_failed: "échec de l’email", invalid_scope: "email non envoyé : périmètre incompatible", not_found: "email non envoyé : inscription introuvable" };
@@ -72,6 +72,7 @@ function sessionLabel(session: SessionRow) {
 export default function RegistrationRequestsPage() {
   const [requests, setRequests] = useState<RegistrationRequest[]>([]);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
+  const [historicalSessions, setHistoricalSessions] = useState<(SessionRow & { formation_title: string; requires_reconciliation: boolean })[]>([]);
   const [actorTypes, setActorTypes] = useState<ActorType[]>([]);
   const [selectedSessions, setSelectedSessions] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -94,6 +95,7 @@ export default function RegistrationRequestsPage() {
       const nextSessions = body.sessions ?? [];
       setRequests(nextRequests);
       setSessions(nextSessions);
+      setHistoricalSessions(body.historical_sessions ?? []);
       setActorTypes(body.actor_types ?? []);
       setSelectedSessions((current) => {
         const next = { ...current };
@@ -280,6 +282,15 @@ export default function RegistrationRequestsPage() {
                 {request.adaptation_needed ? <span style={s.attention}><strong>Attention :</strong> besoin d'adaptation signalé</span> : null}
               </div>
               {summaryDetails(request)}
+              {historicalSessions.filter(session => session.formation_title.trim().toLocaleLowerCase("fr") === request.formation_title.trim().toLocaleLowerCase("fr")).length ? (
+                <div style={s.materializeBox}>
+                  <strong>Sessions historiques d’une ancienne version de la formation</strong>
+                  <p style={s.muted}>Ces sessions sont consultables pour identifier une régularisation, mais ne peuvent pas encore être sélectionnées : le rattachement à une autre version de formation nécessite une vérification et une confirmation spécifiques.</p>
+                  {historicalSessions.filter(session => session.formation_title.trim().toLocaleLowerCase("fr") === request.formation_title.trim().toLocaleLowerCase("fr")).map(session => (
+                    <p key={session.id} style={s.muted}>{sessionLabel(session)} · ancienne formation archivée</p>
+                  ))}
+                </div>
+              ) : null}
               <div style={s.materializeBox}>
                 <strong>Session de l’inscription (sessions passées comprises pour régularisation)</strong>
                 {sessions.filter((session) => session.formation_id === request.formation_id).length ? <select value={selectedSessions[request.id] ?? ""} onChange={(event) => setSelectedSessions((current) => ({ ...current, [request.id]: event.target.value }))} style={s.select}>
