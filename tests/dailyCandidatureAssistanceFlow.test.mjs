@@ -35,7 +35,7 @@ function fixture(token="fixture-delegation") {
     "@/components/ui/LoadingMascot":{default:()=>React.createElement("p",null,"Chargement")},
   },{window,Error,fetch:()=>assert.fail("Page bypassed scoped assistance transport")});
   const render=()=>{cursor=0;return page.default();};
-  async function mount(){render();effects.splice(0).forEach(effect=>effect());for(let i=0;i<40&&states[4];i++)await new Promise(resolve=>setImmediate(resolve));assert.equal(states[4],false);return render();}
+  async function mount(){render();effects.splice(0).forEach(effect=>effect());for(let i=0;i<40&&states[5];i++)await new Promise(resolve=>setImmediate(resolve));assert.equal(states[5],false);return render();}
   return{h,helper,calls,mount};
 }
 function walk(node){if(Array.isArray(node))return node.flatMap(walk);return node?.props?[node,...walk(node.props.children)]:[];}
