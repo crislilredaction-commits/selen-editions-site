@@ -155,6 +155,22 @@ export async function GET(req: Request) {
     ]);
     if (requestError || sessionError) throw new Error(requestError?.message ?? sessionError?.message ?? "Chargement impossible.");
 
+    // Historical sessions may belong to an archived version of the same programme.
+    // Discovery is read-only: the existing decision RPC must still enforce formation scope.
+    const { data: historicalFormations, error: historicalFormationError } = await access.admin
+      .from("daily_formations").select("id,title,status")
+      .eq("organisation_id", access.organisationId).eq("status", "archived");
+    if (historicalFormationError) throw new Error(historicalFormationError.message);
+    const activeTitles = new Set(visibleFormations.map(formation => formation.title.trim().toLocaleLowerCase("fr")));
+    const historicalCandidates = (historicalFormations ?? []).filter(formation => activeTitles.has(String(formation.title ?? "").trim().toLocaleLowerCase("fr")));
+    const historicalIds = historicalCandidates.map(formation => formation.id);
+    const { data: historicalSessions, error: historicalSessionError } = historicalIds.length
+      ? await access.admin.from("daily_sessions").select("id,formation_id,internal_reference,start_date,end_date,status")
+          .eq("organisation_id", access.organisationId).in("formation_id", historicalIds)
+          .not("status", "in", "(archived,cancelled)").order("start_date", { ascending: false })
+      : { data: [], error: null };
+    if (historicalSessionError) throw new Error(historicalSessionError.message);
+
     const requestRows = (requests ?? []) as RequestRow[];
     const requestIds = requestRows.map((row) => row.id);
     const [{ data: decisions, error: decisionError }, { data: materializations, error: materializationError }] = requestIds.length
@@ -195,6 +211,7 @@ export async function GET(req: Request) {
       actor_types: actorTypes,
       read_only: assisted,
       sessions: (sessions ?? []) as SessionRow[],
+      historical_sessions: (historicalSessions ?? []).map(session => ({ ...session, formation_title: historicalCandidates.find(formation => formation.id === session.formation_id)?.title ?? "Formation archivée", requires_reconciliation: true })),
       requests: requestRows.map((row) => {
         const { positioning_answers, ...visible } = row;
         const answers = positioning_answers as Record<string, unknown> | null;
