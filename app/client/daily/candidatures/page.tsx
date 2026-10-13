@@ -126,7 +126,12 @@ export default function RegistrationRequestsPage() {
     const wording = decision === "accepted"
       ? `Accepter la candidature de ${request.applicant_label} après analyse Selen ?`
       : `Refuser définitivement la candidature de ${request.applicant_label} après analyse Selen ?`;
+    const chosenSession = selectedSessions[request.id] ?? "";
+    const historical = decision === "accepted" ? historicalSessions.find(session => session.id === chosenSession) : undefined;
+    if (historical && !window.confirm("Session historique : " + sessionLabel(historical) + ". Confirmez-vous que cette ancienne version du programme convient et que la candidature doit être régularisée sur cette session passée ?")) return;
     if (!window.confirm(wording)) return;
+    const reason = historical ? window.prompt("Motif obligatoire de la régularisation historique (12 caractères minimum) :", "") : null;
+    if (historical && (!reason || reason.trim().length < 12)) return setError("Motif de régularisation obligatoire (12 caractères minimum).");
     const comment = window.prompt("Commentaire facultatif", "") ?? "";
     setBusyId(request.id);
     setError("");
@@ -135,7 +140,7 @@ export default function RegistrationRequestsPage() {
       const response = await assistanceFetch("/api/client/daily/registration-requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ request_id: request.id, actor_type: actorType, decision, comment, ...(decision === "accepted" ? { session_id: selectedSessions[request.id] ?? "" } : {}) }),
+        body: JSON.stringify({ request_id: request.id, actor_type: actorType, decision, comment, ...(decision === "accepted" ? { session_id: selectedSessions[request.id] ?? "" } : {}), ...(historical ? { action: "accept_historical", reason, confirm_historical: true } : {}) }),
       });
       const body = await response.json().catch(() => ({})) as ResponseBody;
       if (!response.ok) throw new Error(body.error ?? "Décision impossible.");
@@ -285,7 +290,7 @@ export default function RegistrationRequestsPage() {
               {historicalSessions.filter(session => session.formation_title.trim().toLocaleLowerCase("fr") === request.formation_title.trim().toLocaleLowerCase("fr")).length ? (
                 <div style={s.materializeBox}>
                   <strong>Sessions historiques d’une ancienne version de la formation</strong>
-                  <p style={s.muted}>Ces sessions sont consultables pour identifier une régularisation, mais ne peuvent pas encore être sélectionnées : le rattachement à une autre version de formation nécessite une vérification et une confirmation spécifiques.</p>
+                  <p style={s.muted}>Ces sessions peuvent être sélectionnées dans le menu ci-dessous. Une confirmation explicite et un motif sont obligatoires.</p>
                   {historicalSessions.filter(session => session.formation_title.trim().toLocaleLowerCase("fr") === request.formation_title.trim().toLocaleLowerCase("fr")).map(session => (
                     <p key={session.id} style={s.muted}>{sessionLabel(session)} · ancienne formation archivée</p>
                   ))}
@@ -293,9 +298,10 @@ export default function RegistrationRequestsPage() {
               ) : null}
               <div style={s.materializeBox}>
                 <strong>Session de l’inscription (sessions passées comprises pour régularisation)</strong>
-                {sessions.filter((session) => session.formation_id === request.formation_id).length ? <select value={selectedSessions[request.id] ?? ""} onChange={(event) => setSelectedSessions((current) => ({ ...current, [request.id]: event.target.value }))} style={s.select}>
+                {(sessions.some((session) => session.formation_id === request.formation_id) || historicalSessions.some(session => session.formation_title.trim().toLocaleLowerCase("fr") === request.formation_title.trim().toLocaleLowerCase("fr"))) ? <select value={selectedSessions[request.id] ?? ""} onChange={(event) => setSelectedSessions((current) => ({ ...current, [request.id]: event.target.value }))} style={s.select}>
                   <option value="">Choisir une session</option>
                   {sessions.filter((session) => session.formation_id === request.formation_id).map((session) => <option key={session.id} value={session.id}>{sessionLabel(session)}</option>)}
+                  {historicalSessions.filter(session => session.formation_title.trim().toLocaleLowerCase("fr") === request.formation_title.trim().toLocaleLowerCase("fr")).map(session => <option key={session.id} value={session.id}>Ancienne version · {sessionLabel(session)}</option>)}
                 </select> : <p style={s.muted}>Créez d’abord une session compatible : l’acceptation doit produire immédiatement l’inscription et la préformation.</p>}
               </div>
               <div style={s.actions}>
