@@ -14,13 +14,29 @@ export async function GET(request: Request) {
   const sessionId = new URL(request.url).searchParams.get("session_id") ?? "";
   const session = await getAssignedDailyTrainerSession(context, sessionId);
   if (!session) return NextResponse.json({ error: "Session non affectée à ce formateur." }, { status: 404 });
-  const [{ data: enrolments }, { data: slots }, { data: records }, { data: documents }] = await Promise.all([
+  const [enrolmentsResult, slotsResult, recordsResult, documentsResult, trainerSignaturesResult] = await Promise.all([
     context.admin.from("daily_session_enrolments").select("id,learner_id,status,daily_learners(id,first_name,last_name,email)").eq("organisation_id", context.orgId).eq("session_id", sessionId).not("status", "in", "(cancelled,declined,abandoned)"),
-    context.admin.from("daily_attendance_slots").select("*").eq("organisation_id", context.orgId).eq("session_id", sessionId).order("slot_date").order("starts_at"),
+    context.admin.from("daily_attendance_slots").select("*").eq("organisation_id", context.orgId).eq("session_id", sessionId).neq("status", "cancelled").order("slot_date").order("starts_at"),
     context.admin.from("daily_attendance_records").select("id,slot_id,enrolment_id,status,signed_at,evidence_metadata").eq("organisation_id", context.orgId).eq("session_id", sessionId),
     context.admin.from("daily_documents").select("id,document_type,logical_name,mime_type,created_at,metadata,enrolment_id,status,version").eq("organisation_id", context.orgId).eq("session_id", sessionId).eq("is_current", true).neq("status", "archived").in("document_type", ["trainer_resource", "attendance_paper_evidence", "learning_assessment_evidence"]).order("created_at", { ascending: false }),
+    context.admin.from("daily_documents").select("id,document_type,logical_name,created_at,metadata").eq("organisation_id", context.orgId).eq("session_id", sessionId).eq("document_type", "trainer_signature_evidence").eq("is_current", true).neq("status", "archived"),
   ]);
-  return NextResponse.json({ session, enrolments: enrolments ?? [], slots: slots ?? [], records: records ?? [], documents: documents ?? [] });
+  const error = enrolmentsResult.error ?? slotsResult.error ?? recordsResult.error ?? documentsResult.error ?? trainerSignaturesResult.error;
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  const enrolments = enrolmentsResult.data ?? [], slots = slotsResult.data ?? [];
+  const enrolmentIds = new Set(enrolments.map(row => row.id)), slotIds = new Set(slots.map(row => row.id));
+  const records = (recordsResult.data ?? []).filter(row => enrolmentIds.has(row.enrolment_id) && slotIds.has(row.slot_id));
+  const trainerSignatures = (trainerSignaturesResult.data ?? []).map((doc) => {
+    const meta = (doc.metadata && typeof doc.metadata === "object") ? doc.metadata as Record<string, unknown> : {};
+    return {
+      id: doc.id,
+      slot_id: String(meta.slot_id ?? ""),
+      signed_at: String(meta.signed_at ?? doc.created_at ?? ""),
+      trainer_profile_id: String(meta.trainer_profile_id ?? ""),
+      trainer_name: String(meta.trainer_name ?? doc.logical_name ?? "Formateur"),
+    };
+  }).filter((item) => item.slot_id && slotIds.has(item.slot_id));
+  return NextResponse.json({ session, enrolments, slots, records, documents: documentsResult.data ?? [], trainerSignatures, isAssisted: context.assisted });
 }
 
 export async function POST(request: Request) {
@@ -35,6 +51,63 @@ export async function POST(request: Request) {
   const file = formData.get("file");
   const session = await getAssignedDailyTrainerSession(context, sessionId);
   if (!session) return NextResponse.json({ error: "Session non affectée à ce formateur." }, { status: 404 });
+
+  if (kind === "trainer_signature") {
+    if (context.assisted) {
+      return NextResponse.json({ error: "Consultation déléguée : la signature personnelle ne peut pas être effectuée par un tiers." }, { status: 403 });
+    }
+    if (!slotId) return NextResponse.json({ error: "Créneau d’émargement requis." }, { status: 400 });
+    const { data: slot } = await context.admin.from("daily_attendance_slots").select("id,slot_date,starts_at,ends_at,label,status").eq("organisation_id", context.orgId).eq("session_id", sessionId).eq("id", slotId).maybeSingle();
+    if (!slot || slot.status === "cancelled") return NextResponse.json({ error: "Créneau invalide ou annulé." }, { status: 404 });
+
+    const { data: existing } = await context.admin.from("daily_documents").select("id").eq("organisation_id", context.orgId).eq("session_id", sessionId).eq("document_type", "trainer_signature_evidence").eq("is_current", true).neq("status", "archived").filter("metadata->>slot_id", "eq", slotId).filter("metadata->>trainer_profile_id", "eq", context.trainerId).maybeSingle();
+    if (existing) {
+      return NextResponse.json({ error: "Votre émargement est déjà enregistré pour ce créneau." }, { status: 409 });
+    }
+
+    const now = new Date().toISOString();
+    const documentId = crypto.randomUUID();
+    const metadata = {
+      source: "trainer_workspace_self_signature",
+      slot_id: slotId,
+      trainer_profile_id: context.trainerId,
+      trainer_name: context.trainerName,
+      signed_at: now,
+      slot_date: slot.slot_date,
+      starts_at: slot.starts_at,
+      ends_at: slot.ends_at,
+      slot_label: slot.label ?? null,
+    };
+
+    const { data: document, error: docError } = await context.admin.from("daily_documents").insert({
+      id: documentId,
+      organisation_id: context.orgId,
+      formation_id: session.formation_id,
+      session_id: sessionId,
+      document_type: "trainer_signature_evidence",
+      linked_object_type: "slot",
+      linked_object_id: slotId,
+      version: 1,
+      status: "active",
+      logical_name: `Émargement formateur — ${context.trainerName}`,
+      bucket: "documents",
+      storage_path: `daily/${context.orgId}/trainer/${context.trainerId}/${sessionId}/trainer_signature/${slotId}-${documentId}.json`,
+      mime_type: "application/json",
+      size_bytes: 0,
+      sha256: "",
+      created_by: context.user.id,
+      updated_by: context.user.id,
+      is_current: true,
+      metadata,
+    }).select("id").single();
+
+    if (docError || !document) {
+      return NextResponse.json({ error: docError?.message ?? "Enregistrement de la signature impossible." }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true, signature_id: document.id, signed_at: now });
+  }
+
   if (!["resource", "attendance_paper", "external_evaluation"].includes(kind)) return NextResponse.json({ error: "Type d’import invalide." }, { status: 400 });
   if (!(file instanceof File) || !file.size || file.size > 25 * 1024 * 1024) return NextResponse.json({ error: "Fichier requis, 25 Mo maximum." }, { status: 400 });
   const allowed = ["application/pdf", "image/png", "image/jpeg", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/msword"];
