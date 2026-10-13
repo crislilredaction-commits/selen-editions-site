@@ -7,6 +7,7 @@ export type AssistedTrainerAttendanceData = {
   session: { internal_reference?: string; daily_formations?: {title?: string} | {title?: string}[] };
   enrolments: Enrolment[]; slots: Slot[];
   records: { slot_id: string; enrolment_id: string; status: string; signed_at?: string | null }[];
+  documents?: { id: string; logical_name?: string | null; document_type: string }[];
   readOnly: true;
 };
 export default function AssistedTrainerAttendance({ data }: { data: AssistedTrainerAttendanceData }) {
