@@ -23,14 +23,16 @@ async function page(initialRows) {
   const state = [], effects = [], fetches = [], downloads = [], urls = [], revoked = [], timers = [];
   const real = renderer();
   const pdf = { renderCandidatureSummaryPdf(row) { if (failure === 'renderer') throw Error('renderer'); return real.renderCandidatureSummaryPdf(row); } };
+  const fetcher = async (url, options) => { assert.equal(url, '/api/client/daily/registration-requests'); assert.equal(options.method, undefined); fetches.push(url); return { ok: true, json: async () => ({ requests: rows, actor_types: ['organisation'], sessions: [{id:'session', formation_id:'formation', internal_reference:'SESSION_EXISTANTE'}] }) }; };
   const { default: Page } = loadTypeScript('app/client/daily/candidatures/page.tsx', {
     react: {
       useState(initial) { const i = cursor++; if (!(i in state)) state[i] = initial; return [state[i], value => { state[i] = typeof value === 'function' ? value(state[i]) : value; }]; },
       useEffect(fn) { effects.push(fn); }, useMemo: fn => fn(), useCallback: fn => fn,
     }, 'react/jsx-runtime': { jsx, jsxs: jsx }, '@/components/ui/LoadingMascot': { default: () => null },
+    '@/components/AgentAssistanceBanner': { assistanceFetch: fetcher },
     '@/lib/daily/candidatureSummary': projection, '@/lib/daily/candidatureSummaryPdf': pdf,
   }, {
-    fetch: async (url, options) => { assert.equal(url, '/api/client/daily/registration-requests'); assert.equal(options.method, undefined); fetches.push(url); return { ok: true, json: async () => ({ requests: rows, actor_types: ['organisation'], sessions: [{id:'session', formation_id:'formation', internal_reference:'SESSION_EXISTANTE'}] }) }; },
+    fetch: fetcher,
     Blob: class extends Blob { constructor(...args) { if (failure === 'blob') throw Error('blob'); super(...args); } },
     URL: { createObjectURL(blob) { if (failure === 'url') throw Error('url'); const url = `blob:test-${urls.length}`; urls.push({url,blob}); return url; }, revokeObjectURL(url) { revoked.push(url); } },
     document: { body: { appendChild(link) { link.attached = true; } }, createElement(tag) { assert.equal(tag,'a'); return { click() { if(failure==='download') throw Error('download'); downloads.push({href:this.href,name:this.download,attached:this.attached}); }, remove() { this.attached=false; } }; } },

@@ -248,7 +248,7 @@ export async function POST(req: Request) {
       const { data: formation, error: formationError } = await access.admin.from("daily_formations").select("organisation_id").eq("id", requestRow.formation_id).single();
       if (formationError || formation?.organisation_id !== access.organisationId) return NextResponse.json({ error: "Candidature hors de votre organisme." }, { status: 403 });
       if (requestRow.decision_status !== "accepted") return NextResponse.json({ error: "La candidature doit d'abord être acceptée." }, { status: 409 });
-      const { data: sessionScope, error: scopeError } = await access.admin.from("daily_sessions").select("id,organisation_id,formation_id").eq("id", sessionId).eq("organisation_id", access.organisationId).eq("formation_id", requestRow.formation_id).maybeSingle();
+      const { data: sessionScope, error: scopeError } = await access.admin.from("daily_sessions").select("id,organisation_id,formation_id").eq("id", sessionId).eq("organisation_id", access.organisationId).eq("formation_id", requestRow.formation_id).not("status", "in", "(archived,cancelled)").maybeSingle();
       if (scopeError || !sessionScope) return NextResponse.json({ error: "Session hors du périmètre de cette candidature." }, { status: 403 });
       const { data, error } = await access.admin.rpc("daily_materialize_registration_request", { p_request_id: requestId, p_session_id: sessionId });
       if (error) return NextResponse.json({ error: error.message }, { status: 409 });
@@ -278,6 +278,19 @@ export async function POST(req: Request) {
 
     const sessionId = typeof body.session_id === "string" ? body.session_id.trim() : "";
     if (decision === "accepted" && !sessionId) return NextResponse.json({ error: "Choisissez la session avant d’accepter la candidature." }, { status: 400 });
+    // The atomic RPC can replay an accepted request. Scope must be checked
+    // before both initial decisions and retries, including notification work.
+    const { data: requestScope, error: requestScopeError } = await access.admin.from("daily_formation_registration_requests").select("id,formation_id").eq("id", requestId).maybeSingle();
+    if (requestScopeError) throw new Error(requestScopeError.message);
+    if (!requestScope) return NextResponse.json({ error: "Candidature introuvable." }, { status: 404 });
+    const { data: formationScope, error: formationScopeError } = await access.admin.from("daily_formations").select("id").eq("id", requestScope.formation_id).eq("organisation_id", access.organisationId).maybeSingle();
+    if (formationScopeError) throw new Error(formationScopeError.message);
+    if (!formationScope) return NextResponse.json({ error: "Candidature hors de votre organisme." }, { status: 403 });
+    if (decision === "accepted") {
+      const { data: sessionScope, error: sessionScopeError } = await access.admin.from("daily_sessions").select("id").eq("id", sessionId).eq("organisation_id", access.organisationId).eq("formation_id", requestScope.formation_id).not("status", "in", "(archived,cancelled)").maybeSingle();
+      if (sessionScopeError) throw new Error(sessionScopeError.message);
+      if (!sessionScope) return NextResponse.json({ error: "Session hors du périmètre de cette candidature." }, { status: 403 });
+    }
     const rpcName = decision === "accepted" ? "daily_accept_and_materialize_registration_request" : "daily_record_registration_request_decision";
     const rpcArgs = decision === "accepted" ? {
       p_request_id: requestId,
