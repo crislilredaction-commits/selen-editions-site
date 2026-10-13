@@ -1,5 +1,4 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
-import { logAgentAssistanceAction, type AgentAssistanceContext } from "@/lib/server/agentAssistance";
+import type { AgentAssistanceContext } from "@/lib/server/agentAssistance";
 
 export type DelegatedRegistrationDecision = "accepted" | "refused";
 
@@ -27,22 +26,3 @@ export function assertDelegatedRegistrationDecision(
   return { agentUserId: assistance.agent_user_id, assistanceId: assistance.id };
 }
 
-/** Write an attributable assistance audit record. Reject if persistence fails. */
-export async function auditDelegatedRegistrationDecision(
-  supabase: SupabaseClient,
-  req: Request,
-  assistance: AgentAssistanceContext,
-  requestId: string,
-  decision: DelegatedRegistrationDecision,
-) {
-  // The canonical audit helper is used here; its persistence must be made
-  // fail-closed in the final atomic decision implementation.
-  await logAgentAssistanceAction({
-    supabase,
-    req,
-    assistance,
-    action: "daily_registration_request_decision",
-    actionLabel: decision === "accepted" ? "Candidature acceptée en délégation" : "Candidature refusée en délégation",
-    metadata: { registration_request_id: requestId, decision },
-  });
-}
