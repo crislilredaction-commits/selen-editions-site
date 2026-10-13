@@ -89,6 +89,7 @@ export function harness(options = {}) {
         if(name === '@/lib/server/dailyPortalAuthEntry') return {buildDailyPortalAuthEntryUrl:async input => {auth.push(input); if(options.authFailure) throw new Error('mock Auth failure'); return `https://site.test/client/activation?token_hash=mock&next=${input.token}`;}};
         if(['@/lib/server/dailyAcceptanceEmail','@/lib/server/dailyLearnerEmailDelivery','@/lib/server/dailyLearnerPortalAccess'].includes(name)) return load(name.replace('@/','')+'.ts');
         if(name === '@/lib/server/clientNdaAccess') return {getAdminSupabase:() => admin};
+        if(name === '@/lib/server/dailyOrganisationContext') return {getDailyOrganisationReadContext:async () => ({ok:true,assisted:false})};
         if(name === '@/lib/server/dailyClientWorkspace') return {getDailyClientWorkspace:async () => ({ok:true,user:{id:'owner'},workspace:{membership:{organisation_id:'org',roles:options.nonManager ? [] : ['manager']}}})};
         if(name === '@/lib/server/dailyEnterprisePortalAccess' && options.enterprise) return load('lib/server/dailyEnterprisePortalAccess.ts');
         if(name === '@/lib/server/dailyEnterprisePortalAccess') return {sendEnterprisePortalAccessForRegistrationRequest:async () => []};
