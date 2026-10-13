@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import { getDailyClientWorkspace } from "@/lib/server/dailyClientWorkspace";
+import { getDailyOrganisationReadContext } from "@/lib/server/dailyOrganisationContext";
 import { sendLearnerPortalAccessForRegistrationRequest } from "@/lib/server/dailyLearnerPortalAccess";
 import { sendEnterprisePortalAccessForRegistrationRequest } from "@/lib/server/dailyEnterprisePortalAccess";
 
@@ -123,9 +124,14 @@ async function provisionAcceptedAccesses(access: Awaited<ReturnType<typeof getAc
   return { learnerAccess, enterpriseAccess };
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const access = await getAccess();
+    const readContext = await getDailyOrganisationReadContext(req, ["sessions", "trainings"]);
+    if (!readContext.ok) return NextResponse.json({ error: readContext.error }, { status: readContext.status });
+    const assisted = readContext.assisted;
+    const access = assisted
+      ? { ok: true as const, admin: readContext.admin, organisationId: readContext.organisationId, user: readContext.user, isManager: true }
+      : await getAccess();
     if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
     if (!access.isManager) return NextResponse.json({ error: "Accès réservé au responsable de l’organisme." }, { status: 403 });
 
@@ -137,7 +143,7 @@ export async function GET() {
     if (formationError) throw new Error(formationError.message);
     const visibleFormations = ((formations ?? []) as FormationRow[]);
     const formationIds = visibleFormations.map((formation) => formation.id);
-    if (!formationIds.length) return NextResponse.json({ requests: [], sessions: [], actor_types: access.isManager ? ["organisation"] : ["trainer"] });
+    if (!formationIds.length) return NextResponse.json({ requests: [], sessions: [], actor_types: assisted ? [] : access.isManager ? ["organisation"] : ["trainer"] });
 
     const [{ data: requests, error: requestError }, { data: sessions, error: sessionError }] = await Promise.all([
       access.admin.from("daily_formation_registration_requests")
@@ -184,9 +190,10 @@ export async function GET() {
     const documentsById = new Map((proofDocuments ?? []).map(document => [document.id, document]));
 
     const actorTypes: ActorType[] = [];
-    if (access.isManager) actorTypes.push("organisation");
+    if (access.isManager && !assisted) actorTypes.push("organisation");
     return NextResponse.json({
       actor_types: actorTypes,
+      read_only: assisted,
       sessions: (sessions ?? []) as SessionRow[],
       requests: requestRows.map((row) => {
         const { positioning_answers, ...visible } = row;
@@ -210,8 +217,9 @@ export async function GET() {
         applicant_label: applicantLabel(row),
         formation_title: formationById.get(row.formation_id)?.title ?? "Formation",
         decisions: decisionsByRequest.get(row.id) ?? [],
-        can_decide: row.decision_status === "ready_for_of",
-        can_materialize: access.isManager && row.decision_status === "accepted" && !row.materialized_at,
+        can_decide: !assisted && row.decision_status === "ready_for_of",
+        can_materialize: !assisted && access.isManager && row.decision_status === "accepted" && !row.materialized_at,
+        read_only: assisted,
         materialized_count: materializedCount.get(row.id) ?? 0,
       }; }),
     });
@@ -222,6 +230,9 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    const readContext = await getDailyOrganisationReadContext(req, ["sessions", "trainings"]);
+    if (!readContext.ok) return NextResponse.json({ error: readContext.error }, { status: readContext.status });
+    if (readContext.assisted) return NextResponse.json({ error: "La décision appartient au responsable de l’organisme.", }, { status: 403 });
     const access = await getAccess();
     if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
     const body = await req.json().catch(() => ({}));
