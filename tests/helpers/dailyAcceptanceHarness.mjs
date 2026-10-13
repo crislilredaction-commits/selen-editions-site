@@ -34,6 +34,7 @@ export function harness(options = {}) {
         calls.push([mutation || 'read', table, payload]);
         if (mutation === 'insert') {
           if (db[table].some(r => r.id === payload.id)) return { data:null, error:{code:'23505'} };
+          if (table === 'daily_communications' && payload.text_body == null) return {data:null,error:{code:'23502',message:'text_body violates not-null constraint'}};
           if (options.claimFailure && table === 'daily_communications') return {data:null,error:{code:'write_failed'}};
           const row = { id: `new-${db[table].length}`, ...structuredClone(payload) }; db[table].push(row); return {data:row,error:null};
         }
