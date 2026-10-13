@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { assistanceFetch } from "@/components/AgentAssistanceBanner";
 import { projectCandidatureSummary, candidatureSummaryFilename } from "@/lib/daily/candidatureSummary";
 import LoadingMascot from "@/components/ui/LoadingMascot";
 
@@ -85,7 +86,7 @@ export default function RegistrationRequestsPage() {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch("/api/client/daily/registration-requests", { cache: "no-store" });
+      const response = await assistanceFetch("/api/client/daily/registration-requests", { cache: "no-store" });
       const body = await response.json().catch(() => ({})) as ResponseBody;
       if (!response.ok) throw new Error(body.error ?? "Impossible de charger les candidatures.");
       const nextRequests = body.requests ?? [];
@@ -127,7 +128,7 @@ export default function RegistrationRequestsPage() {
     setError("");
     setMessage("");
     try {
-      const response = await fetch("/api/client/daily/registration-requests", {
+      const response = await assistanceFetch("/api/client/daily/registration-requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ request_id: request.id, actor_type: actorType, decision, comment, ...(decision === "accepted" ? { session_id: selectedSessions[request.id] ?? "" } : {}) }),
@@ -154,7 +155,7 @@ export default function RegistrationRequestsPage() {
     setError("");
     setMessage("");
     try {
-      const response = await fetch("/api/client/daily/registration-requests", {
+      const response = await assistanceFetch("/api/client/daily/registration-requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "materialize", request_id: request.id, session_id: sessionId }),
@@ -173,7 +174,7 @@ export default function RegistrationRequestsPage() {
   async function retryEmail(request: RegistrationRequest) {
     setBusyId(request.id); setError(""); setMessage("");
     try {
-      const response = await fetch("/api/client/daily/registration-requests", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "send_learner_access", request_id: request.id }) });
+      const response = await assistanceFetch("/api/client/daily/registration-requests", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "send_learner_access", request_id: request.id }) });
       const body = await response.json() as ResponseBody;
       if (!response.ok) throw new Error(body.error || "Envoi impossible.");
       setMessage(emailFeedback(body));

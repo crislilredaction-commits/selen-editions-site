@@ -38,6 +38,25 @@ test('acceptance requires a session before any durable decision',async () => {
   const result=await h.post({decision:'accepted',actor_type:'organisation'});
   assert.equal(result.status,400); assert.equal(h.request.decision_status,'ready_for_of'); assert.equal(h.sends.length,0);
 });
+for(const status of ['ready_for_of','accepted']) for(const decision of ['accepted','refused']) test(`foreign OF request cannot be decided or replayed: ${status}, ${decision}`,async () => {
+  const h=harness(); h.request.decision_status=status; h.formation.organisation_id='other-of';
+  const result=await h.post({decision,actor_type:'organisation',session_id:'session'});
+  assert.equal(result.status,403); assert.equal(h.request.decision_status,status);
+  assert.equal(h.calls.filter(call=>call[0]==='rpc').length,0);
+  assert.equal(h.sends.length,0); assert.equal(h.auth.length,0);
+});
+for(const change of [{organisation_id:'other-of'},{formation_id:'other-formation'},{status:'archived'},{status:'cancelled'}]) test(`acceptance rejects an invalid session before any write: ${JSON.stringify(change)}`,async () => {
+  const h=harness(); h.request.decision_status='ready_for_of'; Object.assign(h.session,change);
+  const result=await h.post({decision:'accepted',actor_type:'organisation',session_id:'session'});
+  assert.equal(result.status,403); assert.equal(h.request.decision_status,'ready_for_of');
+  assert.equal(h.calls.filter(call=>call[0]==='rpc').length,0);
+  assert.equal(h.sends.length,0); assert.equal(h.auth.length,0);
+});
+test('legacy accepted request cannot materialize into an archived session',async()=>{
+  const h=harness(); h.session.status='archived';
+  assert.equal((await h.post({action:'materialize',session_id:'session'})).status,403);
+  assert.equal(h.calls.filter(call=>call[0]==='rpc').length,0);assert.equal(h.sends.length,0);
+});
 for(const status of ['pending','refused','rejected','ready_for_of']) test(`${status} cannot send acceptance even via manager retry`,async () => {
   const h=harness(); h.request.decision_status=status;
   assert.deepEqual(statuses(await h.send()),['invalid_scope']); await h.post({action:'send_learner_access'});
