@@ -23,7 +23,7 @@ test("session cards use canonical enrolments, checklist states and responsibilit
 });
 
 test("session cards are collapsed, keep completed steps visible and lock future steps", () => {
-  assert.match(dashboard, /<details key=\{journey\.id\}/);
+  assert.doesNotMatch(dashboard, /<SessionJourneys journeys=\{journeys\}/);
   assert.doesNotMatch(dashboard, /<details key=\{journey\.id\} open/);
   assert.match(dashboard, /step\.state==="completed"\?"line-through":""/);
   assert.match(dashboard, /"À venir 🔒"/);
@@ -33,6 +33,6 @@ test("session cards are collapsed, keep completed steps visible and lock future 
 
 test("only active actions are presented under their source session", () => {
   assert.match(dashboard, /actions\.filter\(item=>item\.sessionId===journey\.id\)/);
-  assert.match(route, /item\.responsibility==="selen"/);
+  assert.doesNotMatch(route, /actions\.push\(\{id:`dossier:\$\{item\.id\}`/);
   assert.match(dashboard, /Aucune action active pour votre organisme/);
 });
