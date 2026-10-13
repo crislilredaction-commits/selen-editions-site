@@ -129,9 +129,10 @@ export default function RegistrationRequestsPage() {
     const chosenSession = selectedSessions[request.id] ?? "";
     const historical = decision === "accepted" ? historicalSessions.find(session => session.id === chosenSession) : undefined;
     if (historical && !window.confirm("Session historique : " + sessionLabel(historical) + ". Confirmez-vous que cette ancienne version du programme convient et que la candidature doit être régularisée sur cette session passée ?")) return;
-    if (!window.confirm(wording)) return;
+    if (!window.confirm(wording)) { setMessage("Décision annulée, aucune candidature modifiée."); return; }
     const reason = historical ? window.prompt("Motif obligatoire de la régularisation historique (12 caractères minimum) :", "") : null;
     if (historical && (!reason || reason.trim().length < 12)) return setError("Motif de régularisation obligatoire (12 caractères minimum).");
+    if (decision === "accepted" && !(selectedSessions[request.id] ?? "")) return setError("Choisis une session avant de créer l’inscription.");
     const comment = window.prompt("Commentaire facultatif", "") ?? "";
     setBusyId(request.id);
     setError("");
@@ -304,6 +305,7 @@ export default function RegistrationRequestsPage() {
                   {historicalSessions.filter(session => session.formation_title.trim().toLocaleLowerCase("fr") === request.formation_title.trim().toLocaleLowerCase("fr")).map(session => <option key={session.id} value={session.id}>Ancienne version · {sessionLabel(session)}</option>)}
                 </select> : <p style={s.muted}>Créez d’abord une session compatible : l’acceptation doit produire immédiatement l’inscription et la préformation.</p>}
               </div>
+              {!request.can_decide ? <p role="status" style={s.muted}>Décision bloquée : consultation en délégation Studio. Connecte-toi au compte responsable de cet organisme pour accepter ou refuser une candidature.</p> : null}
               <div style={s.actions}>
                 <button type="button" disabled={!request.can_decide || busyId === request.id || !(selectedSessions[request.id] ?? "")} style={s.accept} onClick={() => void decide(request, "accepted")}>{busyId === request.id ? "Enregistrement…" : "Accepter et créer l’inscription"}</button>
                 <button type="button" disabled={!request.can_decide || busyId === request.id} style={s.refuse} onClick={() => void decide(request, "refused")}>Refuser la candidature</button>
