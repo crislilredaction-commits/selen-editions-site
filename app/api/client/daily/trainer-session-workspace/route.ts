@@ -14,13 +14,18 @@ export async function GET(request: Request) {
   const sessionId = new URL(request.url).searchParams.get("session_id") ?? "";
   const session = await getAssignedDailyTrainerSession(context, sessionId);
   if (!session) return NextResponse.json({ error: "Session non affectée à ce formateur." }, { status: 404 });
-  const [{ data: enrolments }, { data: slots }, { data: records }, { data: documents }] = await Promise.all([
+  const [enrolmentsResult, slotsResult, recordsResult, documentsResult] = await Promise.all([
     context.admin.from("daily_session_enrolments").select("id,learner_id,status,daily_learners(id,first_name,last_name,email)").eq("organisation_id", context.orgId).eq("session_id", sessionId).not("status", "in", "(cancelled,declined,abandoned)"),
-    context.admin.from("daily_attendance_slots").select("*").eq("organisation_id", context.orgId).eq("session_id", sessionId).order("slot_date").order("starts_at"),
+    context.admin.from("daily_attendance_slots").select("*").eq("organisation_id", context.orgId).eq("session_id", sessionId).neq("status", "cancelled").order("slot_date").order("starts_at"),
     context.admin.from("daily_attendance_records").select("id,slot_id,enrolment_id,status,signed_at,evidence_metadata").eq("organisation_id", context.orgId).eq("session_id", sessionId),
     context.admin.from("daily_documents").select("id,document_type,logical_name,mime_type,created_at,metadata,enrolment_id,status,version").eq("organisation_id", context.orgId).eq("session_id", sessionId).eq("is_current", true).neq("status", "archived").in("document_type", ["trainer_resource", "attendance_paper_evidence", "learning_assessment_evidence"]).order("created_at", { ascending: false }),
   ]);
-  return NextResponse.json({ session, enrolments: enrolments ?? [], slots: slots ?? [], records: records ?? [], documents: documents ?? [] });
+  const error = enrolmentsResult.error ?? slotsResult.error ?? recordsResult.error ?? documentsResult.error;
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  const enrolments = enrolmentsResult.data ?? [], slots = slotsResult.data ?? [];
+  const enrolmentIds = new Set(enrolments.map(row => row.id)), slotIds = new Set(slots.map(row => row.id));
+  const records = (recordsResult.data ?? []).filter(row => enrolmentIds.has(row.enrolment_id) && slotIds.has(row.slot_id));
+  return NextResponse.json({ session, enrolments, slots, records, documents: documentsResult.data ?? [] });
 }
 
 export async function POST(request: Request) {

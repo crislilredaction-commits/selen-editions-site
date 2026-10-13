@@ -17,6 +17,7 @@ type TrainerPortal = {
   accessStatus: string | null;
   lastOpenedAt: string | null;
 };
+type TrainerSpace = { trainerId:string; trainerName:string; trainerEmail:string|null; sessionId:string; sessionLabel:string; startDate:string|null; endDate:string|null };
 
 function formatDate(value: string | null) {
   if (!value) return null;
@@ -32,17 +33,24 @@ function formatDate(value: string | null) {
 
 export default function AssistedTrainerPortalChooser() {
   const [portals, setPortals] = useState<TrainerPortal[]>([]);
+  const [spaces, setSpaces] = useState<TrainerSpace[]>([]);
   const [loading, setLoading] = useState(true);
   const [openingId, setOpeningId] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
-    void assistanceFetch("/api/client/daily/assisted-trainer-portals", { cache: "no-store" })
+    void assistanceFetch("/api/client/daily/assisted-trainer-workspace", { cache: "no-store" })
       .then(async (response) => {
         const body = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(body.error ?? "Espaces formateurs indisponibles.");
-        if (!cancelled) setPortals(body.portals ?? []);
+        if (!cancelled) setSpaces(body.spaces ?? []);
+        if ((body.spaces ?? []).length === 0) {
+          const legacy = await assistanceFetch("/api/client/daily/assisted-trainer-portals", { cache: "no-store" });
+          const legacyBody = await legacy.json().catch(() => ({}));
+          if (!legacy.ok) throw new Error(legacyBody.error ?? "Espaces formateurs indisponibles.");
+          if (!cancelled) setPortals(legacyBody.portals ?? []);
+        }
       })
       .catch((cause) => {
         if (!cancelled) {
@@ -102,7 +110,7 @@ export default function AssistedTrainerPortalChooser() {
         </div>
       ) : null}
 
-      {portals.length === 0 ? (
+      {spaces.length > 0 ? <section aria-label="Sessions des formateurs de cet organisme" className="mt-6 grid gap-4 md:grid-cols-2">{spaces.map(space => <article key={`${space.trainerId}:${space.sessionId}`} className="gazette-card grid gap-4 p-6"><h2 className="text-2xl font-bold">{space.trainerName}</h2><p>{space.trainerEmail}</p><strong>{space.sessionLabel}</strong><p>{formatDate(space.startDate)}{space.endDate ? ` → ${formatDate(space.endDate)}` : ""}</p><Link className="underline" href={`/client/daily/formateur/assistance/session?trainer_id=${encodeURIComponent(space.trainerId)}&session_id=${encodeURIComponent(space.sessionId)}`}>Ouvrir le suivi de cette session</Link></article>)}</section> : portals.length === 0 ? (
         <section className="gazette-card mt-6 p-6 md:p-8">
           <h2 className="text-2xl font-bold text-[#3e2a1f]">Aucun espace formateur délégué</h2>
           <p className="mt-3 leading-7 text-[#5a4031]">
