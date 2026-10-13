@@ -59,6 +59,13 @@ begin
      set prerequisites_status = 'met'
    where e.id = new.enrolment_id
      and e.prerequisites_status = 'not_reviewed';
+  get diagnostics updated_rows = row_count;
+  if updated_rows > 0 then
+    insert into public.daily_auto_prerequisite_reviews (enrolment_id, registration_request_id)
+    values (new.enrolment_id, new.registration_request_id)
+    on conflict (enrolment_id) do update
+      set registration_request_id = excluded.registration_request_id;
+  end if;
   return new;
 end;
 $$;
