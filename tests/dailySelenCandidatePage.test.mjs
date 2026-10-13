@@ -76,10 +76,12 @@ for(const status of ['pending','ready_for_of'])test(`actual OF page consults rec
  assert.equal((await h.post(h.body({positioning_answers:{mode:'selen',questions:[{id:'goal',answer:'Apprendre à écrire'}]}}))).status,200);
  h.db.daily_formation_registration_requests[0].decision_status=status;h.formation.positioning_questions[0].label='Nouvelle version';
  const states=[],effects=[];let cursor=0,tree;const jsx=(type,props)=>({type,props});
+ const assistanceFetch=async(_url,options)=>{assert.equal(options.cache,'no-store');return h.load('app/api/client/daily/registration-requests/route.ts').GET();};
  const Page=loadTypeScript('app/client/daily/candidatures/page.tsx',{
   react:{useCallback:fn=>fn,useMemo:fn=>fn(),useEffect:fn=>effects.push(fn),useState(initial){const i=cursor++;if(!(i in states))states[i]=typeof initial==='function'?initial():initial;return[states[i],v=>states[i]=typeof v==='function'?v(states[i]):v];}},
+  '@/components/AgentAssistanceBanner':{assistanceFetch},
   'react/jsx-runtime':{jsx,jsxs:jsx},'@/components/ui/LoadingMascot':{},'@/lib/daily/candidatureSummary':loadTypeScript('lib/daily/candidatureSummary.ts'),
- },{fetch:async(_url,options)=>{assert.equal(options.cache,'no-store');return h.load('app/api/client/daily/registration-requests/route.ts').GET();}}).default;
+ },{fetch:assistanceFetch}).default;
  const render=()=>{cursor=0;tree=Page();};render();effects[0]();await new Promise(resolve=>setTimeout(resolve,25));render();
  const nodes=node=>!node||typeof node!=='object'?[]:Array.isArray(node)?node.flatMap(nodes):[node,...nodes(node.props?.children)];
  const texts=node=>typeof node==='string'?node:!node||typeof node!=='object'?'':Array.isArray(node)?node.map(texts).join(' '):texts(node.props?.children);

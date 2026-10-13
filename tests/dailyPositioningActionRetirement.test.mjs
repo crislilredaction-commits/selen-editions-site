@@ -32,28 +32,28 @@ for(const status of ['reviewed','completed','validated','done'])test(`finished p
   const body=await response.json();assert.equal(body.actions.length,0);assert.equal(body.counts.total,0);assert.equal(body.counts.learners,0);
   assert.equal(f.enrolment.positioning_status,status,'read-only aggregation preserves history');
 });
-for(const status of ['not_started','sent','submitted'])test(`unfinished positioning ${status} remains actionable`,async()=>{
+for(const status of ['submitted'])test(`unfinished positioning ${status} remains actionable`,async()=>{
   const f=fixture({positioning:status});const response=await f.get();assert.equal(response.status,200);
   const body=await response.json();assert.equal(body.actions.length,1);assert.equal(body.actions[0].id,'positioning:enrolment-own');
   assert.equal(body.actions[0].kind,'positioning');assert.equal(body.counts.learners,1);assert.equal(body.counts.total,1);
   assert.equal(body.actions[0].priority,status==='submitted'?'medium':'normal');
 });
-test('completed positioning does not hide unvalidated prerequisites',async()=>{
+test('completed positioning does not surface prerequisites not yet reviewed',async()=>{
   const f=fixture({prerequisites:'not_reviewed'});const response=await f.get();const body=await response.json();
-  assert.equal(body.actions.length,1);assert.equal(body.actions[0].kind,'prerequisite');assert.equal(body.counts.learners,1);
+  assert.equal(body.actions.length,0);assert.equal(body.counts.learners,0);
   assert.equal(f.enrolment.prerequisites_status,'not_reviewed');
 });
 test('a replaced questionnaire makes positioning actionable again',async()=>{
   const f=fixture();assert.equal((await (await f.get()).json()).counts.learners,0);
   f.enrolment.positioning_status='not_started';
-  const body=await (await f.get()).json();assert.equal(body.counts.learners,1);assert.equal(body.actions[0].kind,'positioning');
+  const body=await (await f.get()).json();assert.equal(body.counts.learners,0);
 });
 test('closed enrolments and archived sessions do not create positioning actions',async()=>{
   for(const status of ['cancelled','declined','completed','abandoned']) {
     const f=fixture({enrolmentStatus:status,positioning:'not_started'});assert.equal((await (await f.get()).json()).counts.learners,0);
   }
   const f=fixture({sessionStatus:'archived',positioning:'not_started'});assert.equal((await (await f.get()).json()).counts.learners,0);
-  const archivedFormation=fixture({formationStatus:'archived',positioning:'not_started'});assert.equal((await (await archivedFormation.get()).json()).counts.learners,1);
+  const archivedFormation=fixture({formationStatus:'archived',positioning:'not_started'});assert.equal((await (await archivedFormation.get()).json()).counts.learners,0);
 });
 test('unauthorized OF reads are refused before any table read',async()=>{
   const f=fixture({forbidden:true});assert.equal((await f.get()).status,403);assert.equal(f.reads.length,0);

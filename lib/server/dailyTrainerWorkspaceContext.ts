@@ -18,8 +18,7 @@ export async function getDailyTrainerWorkspaceContext(){
     if(owners.length===1)resolvedTrainer=owners[0];
   }
   if(!resolvedTrainer?.id)return{ok:false as const,status:403,error:"Aucun profil formateur personnel identifié. Rattachez le dirigeant à une fiche formateur."};
-  const assisted = Boolean("assisted" in workspace && workspace.assisted);
-  return{ok:true as const,admin:getAdminSupabase(),user:workspace.user,orgId:workspace.workspace.membership.organisation_id,trainerId:String(resolvedTrainer.id),trainerName:text(resolvedTrainer.display_name||resolvedTrainer.professional_email||workspace.user.email)||"Formateur",assisted};
+  return{ok:true as const,admin:getAdminSupabase(),user:workspace.user,orgId:workspace.workspace.membership.organisation_id,trainerId:String(resolvedTrainer.id),trainerName:text(resolvedTrainer.display_name||resolvedTrainer.professional_email||workspace.user.email)||"Formateur"};
 }
 
 export async function getAssignedDailyTrainerSession(context:Extract<Awaited<ReturnType<typeof getDailyTrainerWorkspaceContext>>,{ok:true}>,sessionId:string){

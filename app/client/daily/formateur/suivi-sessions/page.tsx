@@ -350,37 +350,19 @@ export default function TrainerSessionFollowupPage() {
 }
 
 function TrainerPedagogicalTools({sessionId,enrolments}:{sessionId:string;enrolments:Enrolment[]}) {
-  const [slots,setSlots]=useState<any[]>([]),[records,setRecords]=useState<any[]>([]),[documents,setDocuments]=useState<any[]>([]),[trainerSignatures,setTrainerSignatures]=useState<any[]>([]),[isAssisted,setIsAssisted]=useState(false),[busy,setBusy]=useState(false),[signingSlotId,setSigningSlotId]=useState(""),[message,setMessage]=useState("");
+  const [slots,setSlots]=useState<any[]>([]),[records,setRecords]=useState<any[]>([]),[documents,setDocuments]=useState<any[]>([]),[busy,setBusy]=useState(false),[message,setMessage]=useState("");
   const [loadError,setLoadError]=useState("");
   const externalEvaluationRequestId=useRef(crypto.randomUUID());
-  async function refresh(signal?:AbortSignal){try{const r=await fetch(`/api/client/daily/trainer-session-workspace?session_id=${encodeURIComponent(sessionId)}`,{cache:"no-store",signal});const d=await r.json().catch(()=>({}));if(signal?.aborted)return;if(!r.ok){setLoadError(d.error??"Suivi des présences indisponible.");return}setSlots(d.slots??[]);setRecords(d.records??[]);setDocuments(d.documents??[]);setTrainerSignatures(d.trainerSignatures??[]);setIsAssisted(Boolean(d.isAssisted));setLoadError("")}catch{if(!signal?.aborted)setLoadError("Suivi des présences indisponible.")}}
+  async function refresh(signal?:AbortSignal){try{const r=await fetch(`/api/client/daily/trainer-session-workspace?session_id=${encodeURIComponent(sessionId)}`,{cache:"no-store",signal});const d=await r.json().catch(()=>({}));if(signal?.aborted)return;if(!r.ok){setLoadError(d.error??"Suivi des présences indisponible.");return}setSlots(d.slots??[]);setRecords(d.records??[]);setDocuments(d.documents??[]);setLoadError("")}catch{if(!signal?.aborted)setLoadError("Suivi des présences indisponible.")}}
   useEffect(()=>{const controller=new AbortController();void refresh(controller.signal);return()=>controller.abort()},[sessionId]);
   async function upload(event:React.FormEvent<HTMLFormElement>){event.preventDefault();setBusy(true);setMessage("");const fd=new FormData(event.currentTarget);fd.set("session_id",sessionId);if(fd.get("kind")==="external_evaluation")fd.set("request_id",externalEvaluationRequestId.current);const r=await fetch("/api/client/daily/trainer-session-workspace",{method:"POST",body:fd});const d=await r.json().catch(()=>({}));setBusy(false);setMessage(r.ok?"Document enregistré dans la session.":d.error??"Import impossible.");if(r.ok){(event.currentTarget as HTMLFormElement).reset();externalEvaluationRequestId.current=crypto.randomUUID();await refresh()}}
-  async function signTrainerPresence(slotId:string){setSigningSlotId(slotId);setMessage("");const fd=new FormData();fd.set("session_id",sessionId);fd.set("kind","trainer_signature");fd.set("slot_id",slotId);const r=await fetch("/api/client/daily/trainer-session-workspace",{method:"POST",body:fd});const d=await r.json().catch(()=>({}));setSigningSlotId("");setMessage(r.ok?"Émargement formateur enregistré avec succès.":d.error??"Émargement impossible.");if(r.ok)await refresh()}
   if(loadError)return <div role="alert"><p>{loadError}</p><button type="button" onClick={()=>void refresh()}>Réessayer le chargement des présences</button></div>;
   return <div style={{display:"grid",gap:12,marginBottom:16}}>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:8}}>
       <div style={styles.metricCard}><span style={styles.metricLabel}>Créneaux d’émargement</span><strong>{slots.length}</strong></div>
       <div style={styles.metricCard}><span style={styles.metricLabel}>Présences recueillies</span><strong>{records.filter(r=>r.status==="present").length}</strong></div>
-      <div style={styles.metricCard}><span style={styles.metricLabel}>Mes émargements formateur</span><strong>{trainerSignatures.length} / {slots.length}</strong></div>
       <div style={styles.metricCard}><span style={styles.metricLabel}>Ressources / preuves</span><strong>{documents.length}</strong></div>
     </div>
-    {slots.length ? <div style={{padding:12,border:"1px solid var(--sepia-mid)",borderRadius:12,display:"grid",gap:10,background:"var(--paper)"}}>
-      <div><strong>Mon émargement formateur par créneau</strong><p style={styles.help}>Signez personnellement votre présence sur chaque créneau de formation. {isAssisted ? "En consultation déléguée Selen, l'émargement est en lecture seule." : ""}</p></div>
-      <div style={{display:"grid",gap:8}}>{slots.map(slot=>{
-        const signature=trainerSignatures.find(item=>item.slot_id===slot.id);
-        const signed=Boolean(signature);
-        return <div key={slot.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,padding:10,border:"1px solid var(--sepia-mid)",borderRadius:10,flexWrap:"wrap"}}>
-          <div>
-            <strong>{slot.slot_date} · {String(slot.starts_at).slice(0,5)}–{String(slot.ends_at).slice(0,5)} {slot.label?`(${slot.label})`:""}</strong>
-            <p style={styles.entryMeta}>{signed ? `Signé personnellement le ${new Date(signature.signed_at).toLocaleString("fr-FR")} par ${signature.trainer_name}` : slot.status === "cancelled" ? "Créneau annulé" : "Émargement formateur en attente"}</p>
-          </div>
-          <div>
-            {signed ? <span style={{fontWeight:800,color:"#4a7a4a"}}>✓ Signé</span> : isAssisted ? <span style={{fontSize:13,color:"var(--ink-soft)"}}>Lecture seule (délégation)</span> : <button type="button" disabled={Boolean(signingSlotId) || slot.status === "cancelled"} onClick={()=>void signTrainerPresence(slot.id)} style={{padding:"6px 12px",fontWeight:800}}>{signingSlotId===slot.id ? "Signature…" : "Signer mon émargement"}</button>}
-          </div>
-        </div>
-      })}</div>
-    </div> : null}
     <form onSubmit={upload} style={{display:"grid",gap:8,padding:12,border:"1px solid var(--sepia-mid)",borderRadius:12}}>
       <strong>Ressource, feuille papier ou évaluation externe</strong>
       <select name="kind" required style={styles.input}><option value="resource">Ressource pédagogique</option><option value="attendance_paper">Feuille d’émargement signée</option><option value="external_evaluation">Évaluation externe</option></select>

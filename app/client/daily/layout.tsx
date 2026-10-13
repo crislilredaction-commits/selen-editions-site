@@ -14,7 +14,7 @@ export default function DailyClientLayout({ children }: { children: React.ReactN
   const showFriendlyBanner = !isStandaloneFlow;
   const showClaimLink = !isStandaloneFlow && pathname !== "/client/daily/reclamations";
   const isQualitySection = ["/client/daily/qualite", "/client/daily/qualiopi", "/client/daily/procedures", "/client/daily/indicateurs"].includes(pathname);
-  const isDocumentSection = ["/client/daily/generateur-documents", "/client/daily/modeles-documents", "/client/daily/documents-apprenants"].includes(pathname);
+  const isDocumentSection = ["/client/daily/documents-avant-formation", "/client/daily/generateur-documents", "/client/daily/modeles-documents", "/client/daily/documents-apprenants"].includes(pathname);
   const isOrganisationSection = ["/client/daily/organisation", "/client/daily/formateurs", "/client/daily/apprenants", "/client/daily/mon-compte"].includes(pathname);
   const contextualLinks = isQualitySection
     ? [
@@ -25,7 +25,8 @@ export default function DailyClientLayout({ children }: { children: React.ReactN
       ]
     : isDocumentSection
       ? [
-          { href: "/client/daily/generateur-documents", label: "Générer un dossier" },
+          { href: "/client/daily/documents-avant-formation", label: "Documents avant formation" },
+          { href: "/client/daily/generateur-documents", label: "Exporter un dossier ZIP" },
           { href: "/client/daily/modeles-documents", label: "Modèles de documents" },
           { href: "/client/daily/documents-apprenants", label: "Ressources apprenants" },
         ]
