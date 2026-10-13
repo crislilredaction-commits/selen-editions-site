@@ -259,6 +259,24 @@ export async function POST(req: Request) {
     const requestId = typeof body.request_id === "string" ? body.request_id.trim() : "";
     if (!requestId) return NextResponse.json({ error: "Candidature manquante." }, { status: 400 });
 
+    if (body.action === "accept_historical") {
+      if (!access.isManager) return NextResponse.json({ error: "Seul le responsable de l’organisme peut régulariser une session historique." }, { status: 403 });
+      const sessionId = typeof body.session_id === "string" ? body.session_id.trim() : "";
+      const reason = typeof body.reason === "string" ? body.reason.trim().slice(0, 1800) : "";
+      if (!sessionId || reason.length < 12 || body.confirm_historical !== true) return NextResponse.json({ error: "Session, confirmation et motif de régularisation requis (12 caractères minimum)." }, { status: 400 });
+      const { data: requestScope, error: requestError } = await access.admin.from("daily_formation_registration_requests").select("formation_id").eq("id", requestId).maybeSingle();
+      if (requestError || !requestScope) return NextResponse.json({ error: "Candidature introuvable." }, { status: 404 });
+      const { data: formationScope } = await access.admin.from("daily_formations").select("id").eq("id", requestScope.formation_id).eq("organisation_id", access.organisationId).maybeSingle();
+      const { data: sessionScope } = await access.admin.from("daily_sessions").select("id").eq("id", sessionId).eq("organisation_id", access.organisationId).maybeSingle();
+      if (!formationScope || !sessionScope) return NextResponse.json({ error: "Régularisation hors de votre organisme." }, { status: 403 });
+      const { error: reconciliationError } = await access.admin.rpc("daily_accept_historical_registration_request", {
+        p_request_id: requestId, p_session_id: sessionId, p_actor_user_id: access.user.id, p_reason: reason,
+      });
+      if (reconciliationError) return NextResponse.json({ error: reconciliationError.message }, { status: 409 });
+      const { learnerAccess, enterpriseAccess } = await provisionAcceptedAccesses(access, requestId, sessionId, req);
+      return NextResponse.json({ ok: true, reconciled: true, learner_access: learnerAccess, enterprise_access: enterpriseAccess });
+    }
+
     if (body.action === "materialize") {
       if (!access.isManager) return NextResponse.json({ error: "Seul le responsable de l'organisme peut choisir la session." }, { status: 403 });
       const sessionId = typeof body.session_id === "string" ? body.session_id.trim() : "";
