@@ -21,16 +21,17 @@ export function exchangeHarness(options={}) {
   if(!columns||columns==="*")return structuredClone(row);
   const result={};let depth=0,start=0,parts=[];
   for(let i=0;i<=columns.length;i++){const c=columns[i];if(c==="(")depth++;if(c===")")depth--;if(i===columns.length||(c===","&&depth===0)){parts.push(columns.slice(start,i));start=i+1;}}
-  for(const field of parts){const key=field.split("(")[0];if(!Object.hasOwn(row,key))continue;const nested=field.indexOf("(");const value=row[key];result[key]=nested<0?structuredClone(value):Array.isArray(value)?value.map(v=>project(v,field.slice(nested+1,-1))):value?project(value,field.slice(nested+1,-1)):null;}
+  for(const field of parts){const key=field.split("(")[0].split("!")[0];if(!Object.hasOwn(row,key))continue;const nested=field.indexOf("(");const value=row[key];result[key]=nested<0?structuredClone(value):Array.isArray(value)?value.map(v=>project(v,field.slice(nested+1,-1))):value?project(value,field.slice(nested+1,-1)):null;}
   return result;
  }
  const admin={from(table){
   assert.ok(Object.hasOwn(db,table),"Unexpected table "+table);let filters=[],one=false,columns;
-  const q={select(v){columns=v;return q;},eq(k,v){filters.push(r=>r[k]===v);return q;},neq(k,v){filters.push(r=>r[k]!==v);return q;},
-   in(k,v){filters.push(r=>v.includes(r[k]));return q;},not(k,op,v){assert.equal(op,"in");filters.push(r=>!v.slice(1,-1).split(",").includes(r[k]));return q;},
-   order(){return q;},maybeSingle(){one=true;return q;},single(){one=true;return q;},
+  const q={select(v){columns=v;return q;},eq(k,v){filters.push(r=>k.split('.').reduce((value,key)=>value?.[key],r)===v);return q;},neq(k,v){filters.push(r=>r[k]!==v);return q;},
+   in(k,v){filters.push(r=>v.includes(r[k]));return q;},not(k,op,v){if(op==="is"){filters.push(r=>r[k]!==v&&r[k]!==undefined);return q;}assert.equal(op,"in");filters.push(r=>!v.slice(1,-1).split(",").includes(r[k]));return q;},
+   gte(){return q;},lt(){return q;},lte(){return q;},range(){return q;},limit(){return q;},order(){return q;},maybeSingle(){one=true;return q;},single(){one=true;return q;},
    insert(){throw Error("Business write forbidden");},update(){throw Error("Business write forbidden");},upsert(){throw Error("Business write forbidden");},delete(){throw Error("Business write forbidden");},
    then(resolve,reject){return Promise.resolve().then(()=>{reads.push({table,columns});if(options.failTable===table)return{data:null,error:{message:"fixture read failure"}};
+    if(options.supportNeedsSchema&&table==="daily_enrolment_support_needs"&&columns.split(",")[0]==="id")return{data:null,error:{message:"column daily_enrolment_support_needs.id does not exist"}};
     let rows=db[table].filter(r=>filters.every(f=>f(r))).map(r=>table==="daily_attendance_slots"?{...r,daily_attendance_records:db.daily_attendance_records.filter(v=>v.slot_id===r.id)}:r);
     rows=rows.map(r=>project(r,columns));return{data:one?rows[0]??null:rows,error:null};}).then(resolve,reject);}};
   return q;

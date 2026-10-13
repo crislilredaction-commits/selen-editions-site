@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import { getDailyClientWorkspace } from "@/lib/server/dailyClientWorkspace";
+import { getDailyOrganisationReadContext } from "@/lib/server/dailyOrganisationContext";
+import { logAgentAssistanceAction } from "@/lib/server/agentAssistance";
 import { sendLearnerPortalAccessForRegistrationRequest } from "@/lib/server/dailyLearnerPortalAccess";
 import { sendEnterprisePortalAccessForRegistrationRequest } from "@/lib/server/dailyEnterprisePortalAccess";
 
@@ -123,9 +125,14 @@ async function provisionAcceptedAccesses(access: Awaited<ReturnType<typeof getAc
   return { learnerAccess, enterpriseAccess };
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const access = await getAccess();
+    const readContext = await getDailyOrganisationReadContext(req, ["sessions", "trainings"]);
+    if (!readContext.ok) return NextResponse.json({ error: readContext.error }, { status: readContext.status });
+    const assisted = readContext.assisted && Boolean(readContext.assistance);
+    const access = assisted
+      ? { ok: true as const, admin: readContext.admin, organisationId: readContext.organisationId, user: readContext.user, isManager: true }
+      : await getAccess();
     if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
     if (!access.isManager) return NextResponse.json({ error: "Accès réservé au responsable de l’organisme." }, { status: 403 });
 
@@ -184,9 +191,12 @@ export async function GET() {
     const documentsById = new Map((proofDocuments ?? []).map(document => [document.id, document]));
 
     const actorTypes: ActorType[] = [];
-    if (access.isManager) actorTypes.push("organisation");
+    if (access.isManager && !assisted) actorTypes.push("organisation");
+    if (assisted && readContext.assistance) await logAgentAssistanceAction({ supabase: access.admin, req, assistance: readContext.assistance,
+      action: "registration_requests_read", actionLabel: "Consultation des candidatures de l’OF en assistance", metadata: { read_only: true } });
     return NextResponse.json({
       actor_types: actorTypes,
+      read_only: assisted,
       sessions: (sessions ?? []) as SessionRow[],
       requests: requestRows.map((row) => {
         const { positioning_answers, ...visible } = row;
@@ -210,8 +220,9 @@ export async function GET() {
         applicant_label: applicantLabel(row),
         formation_title: formationById.get(row.formation_id)?.title ?? "Formation",
         decisions: decisionsByRequest.get(row.id) ?? [],
-        can_decide: row.decision_status === "ready_for_of",
-        can_materialize: access.isManager && row.decision_status === "accepted" && !row.materialized_at,
+        can_decide: !assisted && row.decision_status === "ready_for_of",
+        can_materialize: !assisted && access.isManager && row.decision_status === "accepted" && !row.materialized_at,
+        read_only: assisted,
         materialized_count: materializedCount.get(row.id) ?? 0,
       }; }),
     });
@@ -222,6 +233,9 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    const readContext = await getDailyOrganisationReadContext(req, ["sessions", "trainings"]);
+    if (!readContext.ok) return NextResponse.json({ error: readContext.error }, { status: readContext.status });
+    if (readContext.assisted) return NextResponse.json({ error: "Le responsable de l’organisme prend cette décision depuis son propre compte." }, { status: 403 });
     const access = await getAccess();
     if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
     const body = await req.json().catch(() => ({}));
@@ -267,6 +281,17 @@ export async function POST(req: Request) {
 
     const sessionId = typeof body.session_id === "string" ? body.session_id.trim() : "";
     if (decision === "accepted" && !sessionId) return NextResponse.json({ error: "Choisissez la session avant d’accepter la candidature." }, { status: 400 });
+    const { data: requestScope, error: requestScopeError } = await access.admin.from("daily_formation_registration_requests").select("id,formation_id").eq("id", requestId).maybeSingle();
+    if (requestScopeError) throw new Error(requestScopeError.message);
+    if (!requestScope) return NextResponse.json({ error: "Candidature introuvable." }, { status: 404 });
+    const { data: formationScope, error: formationScopeError } = await access.admin.from("daily_formations").select("id").eq("id", requestScope.formation_id).eq("organisation_id", access.organisationId).maybeSingle();
+    if (formationScopeError) throw new Error(formationScopeError.message);
+    if (!formationScope) return NextResponse.json({ error: "Candidature hors de votre organisme." }, { status: 403 });
+    if (decision === "accepted") {
+      const { data: sessionScope, error: sessionScopeError } = await access.admin.from("daily_sessions").select("id").eq("id", sessionId).eq("organisation_id", access.organisationId).eq("formation_id", requestScope.formation_id).not("status", "in", "(archived,cancelled)").maybeSingle();
+      if (sessionScopeError) throw new Error(sessionScopeError.message);
+      if (!sessionScope) return NextResponse.json({ error: "Session hors du périmètre de cette candidature." }, { status: 403 });
+    }
     const rpcName = decision === "accepted" ? "daily_accept_and_materialize_registration_request" : "daily_record_registration_request_decision";
     const rpcArgs = decision === "accepted" ? {
       p_request_id: requestId,

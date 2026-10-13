@@ -43,6 +43,7 @@ type RegistrationRequest = {
   positioning_documents?: Array<{ id: string; name: string }>;
   positioning_responses?: Array<{ label: string; lines: string[] }>;
   can_decide: boolean;
+  read_only?: boolean;
   can_materialize?: boolean;
   decisions: DecisionRow[];
 };
@@ -110,6 +111,13 @@ export default function RegistrationRequestsPage() {
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    if (loading) return;
+    const requestedId = new URLSearchParams(window.location.search).get("request");
+    if (!requestedId) return;
+    document.getElementById(`candidature-${requestedId}`)?.scrollIntoView({ block: "start" });
+  }, [loading, requests]);
 
   const pending = useMemo(() => requests.filter((request) => request.decision_status === "ready_for_of"), [requests]);
   const waitingAnalysis = useMemo(() => requests.filter((request) => request.decision_status === "pending"), [requests]);
@@ -246,10 +254,11 @@ export default function RegistrationRequestsPage() {
 
       {error ? <p role="alert" style={s.error}>{error}</p> : null}
       {waitingAnalysis.length ? <p role="status" style={s.muted}>{waitingAnalysis.length} candidature(s) sont encore en cours d’analyse par Selen et ne peuvent pas encore être décidées.</p> : null}
+      {requests.some(request => request.read_only) ? <p role="status" style={s.muted}>Consultation en assistance. Le responsable de l’organisme prend la décision finale depuis son propre compte.</p> : null}
       {message ? <p role="status" style={s.success}>{message}</p> : null}
 
       {waitingAnalysis.length ? <section aria-label="Candidatures en cours d’analyse" style={s.list}>
-        {waitingAnalysis.map(request => <article key={request.id} style={s.card}>
+        {waitingAnalysis.map(request => <article key={request.id} id={`candidature-${request.id}`} style={{...s.card,scrollMarginTop:24}}>
           <span style={s.pendingBadge}>Analyse Selen en cours</span>
           <h2 style={s.h2}>{request.applicant_label}</h2>
           <p style={s.formation}>{request.formation_title}</p>
@@ -262,7 +271,7 @@ export default function RegistrationRequestsPage() {
       ) : (
         <section style={s.list} aria-label="Candidatures à décider">
           {pending.map((request) => (
-            <article key={request.id} style={s.card}>
+            <article key={request.id} id={`candidature-${request.id}`} style={{...s.card,scrollMarginTop:24}}>
               <div style={s.cardHead}><span style={s.pendingBadge}>À décider</span><span style={s.date}>{request.submitted_at ? new Date(request.submitted_at).toLocaleString("fr-FR") : ""}</span></div>
               <h2 style={s.h2}>{request.applicant_label}</h2>
               <p style={s.formation}>{request.formation_title}</p>
@@ -282,8 +291,8 @@ export default function RegistrationRequestsPage() {
                 </select> : <p style={s.muted}>Créez d’abord une session compatible : l’acceptation doit produire immédiatement l’inscription et la préformation.</p>}
               </div>
               <div style={s.actions}>
-                <button type="button" disabled={busyId === request.id || !(selectedSessions[request.id] ?? "")} style={s.accept} onClick={() => void decide(request, "accepted")}>{busyId === request.id ? "Enregistrement…" : "Accepter et créer l’inscription"}</button>
-                <button type="button" disabled={busyId === request.id} style={s.refuse} onClick={() => void decide(request, "refused")}>Refuser la candidature</button>
+                <button type="button" disabled={!request.can_decide || busyId === request.id || !(selectedSessions[request.id] ?? "")} style={s.accept} onClick={() => void decide(request, "accepted")}>{busyId === request.id ? "Enregistrement…" : "Accepter et créer l’inscription"}</button>
+                <button type="button" disabled={!request.can_decide || busyId === request.id} style={s.refuse} onClick={() => void decide(request, "refused")}>Refuser la candidature</button>
               </div>
             </article>
           ))}
