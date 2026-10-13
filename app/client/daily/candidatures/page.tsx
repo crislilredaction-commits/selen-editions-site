@@ -126,8 +126,9 @@ export default function RegistrationRequestsPage() {
     const wording = decision === "accepted"
       ? `Accepter la candidature de ${request.applicant_label} après analyse Selen ?`
       : `Refuser définitivement la candidature de ${request.applicant_label} après analyse Selen ?`;
-    if (!window.confirm(wording)) return;
+    if (!window.confirm(wording)) { setMessage("Décision annulée : aucune inscription créée."); return; }
     const comment = window.prompt("Commentaire facultatif", "") ?? "";
+    if (decision === "accepted" && !(selectedSessions[request.id] ?? "")) return setError("Sélectionne une session avant de créer l’inscription.");
     setBusyId(request.id);
     setError("");
     setMessage("");
@@ -299,7 +300,7 @@ export default function RegistrationRequestsPage() {
                 </select> : <p style={s.muted}>Créez d’abord une session compatible : l’acceptation doit produire immédiatement l’inscription et la préformation.</p>}
               </div>
               <div style={s.actions}>
-                <button type="button" disabled={!request.can_decide || busyId === request.id || !(selectedSessions[request.id] ?? "")} style={s.accept} onClick={() => void decide(request, "accepted")}>{busyId === request.id ? "Enregistrement…" : "Accepter et créer l’inscription"}</button>
+                <button type="button" disabled={!request.can_decide || busyId === request.id} style={s.accept} onClick={() => void decide(request, "accepted")}>{busyId === request.id ? "Enregistrement…" : "Accepter et créer l’inscription"}</button>
                 <button type="button" disabled={!request.can_decide || busyId === request.id} style={s.refuse} onClick={() => void decide(request, "refused")}>Refuser la candidature</button>
               </div>
             </article>
