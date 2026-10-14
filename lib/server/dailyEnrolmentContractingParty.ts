@@ -53,7 +53,7 @@ export async function updateDelegatedContractingParty(req: Request, context: Con
     .eq("updated_at",body.expected_updated_at).eq("status",existing.status).select("*").maybeSingle();
   if (error) return NextResponse.json({error:"Le choix n’a pas pu être enregistré. Rechargez le dossier."}, {status:500});
   if (!data) return NextResponse.json({error:"L’inscription a changé. Rechargez et vérifiez le choix actuel."}, {status:409});
-  const finalAudit = await context.admin.from("selen_agent_assistance_logs").update({action:"daily_enrolment_contracting_party_update", action_label:"Partie contractante enregistrée dans Studio", metadata:{mode:"agent_assistance", phase:"applied", session_id:existing.session_id, enrolment_id:existing.id}})
+  const finalAudit = await context.admin.from("selen_agent_assistance_logs").update({action:"daily_enrolment_contracting_party_update", action_label:"Partie contractante enregistrée dans Studio", new_state:{...after, updated_at:data.updated_at}, metadata:{mode:"agent_assistance", phase:"applied", session_id:existing.session_id, enrolment_id:existing.id}})
     .eq("id",audit.id).eq("agent_user_id",agentUserId).select("id").maybeSingle();
   if (finalAudit.error || !finalAudit.data) return NextResponse.json({error:"Le choix est enregistré, mais la clôture du journal n’est pas confirmée. Rechargez le dossier et contactez Selen.", saved:true, enrolment:data}, {status:503});
   return NextResponse.json({enrolment:data});

@@ -21,7 +21,7 @@ function fixture(){
    if(fail)return{data:null,error:{message:'Isolated failure'}};
    let matches=rows[table].filter(row=>filters.every(f=>f(row)));
    if(kind==='insert'){const inserted={id:`audit-${rows[table].length}`,...structuredClone(payload)};rows[table].push(inserted);matches=[inserted];writes.push({table,kind,payload:structuredClone(payload)});}
-   if(kind==='update')for(const match of matches){Object.assign(match,structuredClone(payload));writes.push({table,kind,payload:structuredClone(payload)});}
+   if(kind==='update')for(const match of matches){Object.assign(match,structuredClone(payload));if(table==='daily_session_enrolments')match.updated_at='2026-10-14T08:35:00.123456+00:00';writes.push({table,kind,payload:structuredClone(payload)});}
    const result=structuredClone(matches);return{data:single?result[0]??null:result,error:null};
   })().then(resolve,reject);}};return q;
  }};
@@ -36,6 +36,7 @@ test('le choix explicite en délégation modifie seulement la bonne inscription 
  assert.equal(f.row.contracting_party_type,'individual');assert.equal(f.row.status,'pending');assert.equal(f.row.funding_type,'self_funded');assert.equal(f.row.created_by,'original-author');assert.equal(f.row.learner_id,'learner-a');assert.notEqual(f.row.updated_at,openedAt);
  assert.equal(f.rows.daily_session_enrolments[1].contracting_party_type,null);
  const audit=f.rows.selen_agent_assistance_logs[0];assert.equal(audit.agent_user_id,agent);assert.notEqual(audit.agent_user_id,f.context.user.id);assert.equal(audit.metadata.phase,'applied');assert.equal(audit.old_state.contracting_party_type,null);assert.equal(audit.new_state.contracting_party_type,'individual');
+ assert.equal(audit.new_state.updated_at,f.row.updated_at); // Real SQL scope trigger owns the persisted timestamp.
  assert.equal(f.rpcCalls[0].p_token_hash,createHash('sha256').update('isolated-token').digest('hex'));
  assert.equal(f.writes[0].table,'selen_agent_assistance_logs');assert.equal(f.writes[1].table,'daily_session_enrolments');
 });
