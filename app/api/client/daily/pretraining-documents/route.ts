@@ -86,6 +86,7 @@ export async function POST(req:Request) {
   const context = await getDailyOrganisationContext(req,"sessions",{allowAssistanceWrite:true});
   if (!context.ok) return NextResponse.json({error:context.error},{status:context.status});
   const body = await req.json().catch(()=>({}));
+  if(!body || typeof body!=="object" || Array.isArray(body))return NextResponse.json({error:"Demande documentaire invalide."},{status:400});
   if(registrationAssistanceToken(req) && !context.assisted)return NextResponse.json({error:"Délégation invalide ou expirée."},{status:403});
   let actorUserId=context.user.id;
   if(context.assisted){
@@ -97,8 +98,16 @@ export async function POST(req:Request) {
   }
   const sessionId = text(body.session_id);
   if (!sessionId) return NextResponse.json({error:"Session manquante."},{status:400});
+  const targeted = Object.hasOwn(body,"enrolment_id");
+  const enrolmentId = typeof body.enrolment_id==="string" ? body.enrolment_id.trim() : "";
+  if(targeted && (!enrolmentId || body.only_missing!==true || typeof body.expected_enrolment_updated_at!=="string" || !body.expected_enrolment_updated_at.trim()))return NextResponse.json({error:"Inscription, version ouverte et conservation des pièces existantes requises."},{status:400});
   try {
-    const { session, enrolments, needs, org, trainers } = await loadSession(context.admin,context.organisationId,sessionId);
+    const { session, enrolments:sessionEnrolments, needs, org, trainers } = await loadSession(context.admin,context.organisationId,sessionId);
+    if(["archived","cancelled"].includes(session.status))return NextResponse.json({error:"Session inaccessible."},{status:404});
+    const enrolments = targeted ? sessionEnrolments.filter((row:any)=>row.id===enrolmentId) : sessionEnrolments;
+    if(targeted && !enrolments.length)return NextResponse.json({error:"Inscription inaccessible dans cette session."},{status:404});
+    if(targeted && enrolments[0].updated_at!==body.expected_enrolment_updated_at)return NextResponse.json({error:"L’inscription a changé. Rechargez le dossier avant de préparer ses documents."},{status:409});
+    if(targeted && enrolments[0].daily_learners?.organisation_id!==context.organisationId)return NextResponse.json({error:"Rattachement apprenant incohérent."},{status:409});
     const formation = session.daily_formations ?? {};
     const trainerIds = asArray(session.trainer_ids).map(text);
     const trainerNames = trainers.filter((t:any)=>trainerIds.includes(t.id)).map((t:any)=>t.display_name).filter(Boolean).join(", ");
@@ -137,11 +146,19 @@ export async function POST(req:Request) {
     // Snapshot only this session's current contractual documents after validation.
     // Keep historical enrolment documents outside the loaded enrolments untouched.
     const contractualTypes = ["training_contract", "training_agreement"];
-    const { data: contractualDocuments, error: contractualReadError } = await context.admin.from("daily_documents")
+    const { data: sessionContractualDocuments, error: contractualReadError } = await context.admin.from("daily_documents")
       .select("id,document_type,linked_object_type,linked_object_id,logical_name,metadata")
       .eq("organisation_id",context.organisationId).eq("session_id",sessionId)
       .in("document_type",contractualTypes).eq("is_current",true);
     if (contractualReadError) throw new Error(contractualReadError.message);
+    // An individual pack never retires or blocks on contracts belonging to
+    // another enrolment/company. Shared session documents are still reused.
+    const contractualDocuments = !targeted ? sessionContractualDocuments : (sessionContractualDocuments??[]).filter((document:any)=>
+      document.linked_object_type==="enrolment" && document.linked_object_id===enrolmentId
+      || document.document_type==="training_agreement" && applicableCompanies.some(company=>text(document.metadata?.company_name)
+        ? text(document.metadata.company_name)===text(company.name)
+        : document.logical_name===`convention-${safe(text(company.name)||text(company.siret))}`)
+    );
     const obsoleteDocumentIds = (contractualDocuments ?? []).filter((document:any)=> {
       if (document.document_type === "training_contract") {
         return document.linked_object_type === "enrolment" && companyEnrolmentIds.has(document.linked_object_id);
@@ -160,7 +177,7 @@ export async function POST(req:Request) {
     created.push(await generateDocument({admin:context.admin,organisationId:context.organisationId,userId:actorUserId,documentType:"welcome_booklet",linkedObjectType:"session",linkedObjectId:sessionId,logicalName:"livret-accueil-session",filenameBase:"livret-accueil",metadata:{session_id:sessionId,formation_id:session.formation_id},html:buildWelcomeBookletHtml(common,{registrationMethods:text(formation.registration_methods),accessDelays:text(formation.access_delays),accessibility:text(formation.accessibility)})}));
     created.push(await generateDocument({admin:context.admin,organisationId:context.organisationId,userId:actorUserId,documentType:"internal_regulations",linkedObjectType:"session",linkedObjectId:sessionId,logicalName:"reglement-interieur-session",filenameBase:"reglement-interieur",metadata:{session_id:sessionId,formation_id:session.formation_id},html:buildInternalRegulationsHtml(common)}));
     for (const company of applicableCompanies) {
-      const learnerNames=enrolments.filter((e:any)=>text(e.company_name)===text(company.name)&&resolveContractingPartyType(e)==="company").map((e:any)=>`${text(e.daily_learners?.first_name)} ${text(e.daily_learners?.last_name)}`.trim()).filter(Boolean).join("\n");
+      const learnerNames=sessionEnrolments.filter((e:any)=>text(e.company_name)===text(company.name)&&resolveContractingPartyType(e)==="company").map((e:any)=>`${text(e.daily_learners?.first_name)} ${text(e.daily_learners?.last_name)}`.trim()).filter(Boolean).join("\n");
       created.push(await generateDocument({admin:context.admin,organisationId:context.organisationId,userId:actorUserId,deferRetirement:true,documentType:"training_agreement",linkedObjectType:"session",linkedObjectId:sessionId,logicalName:`convention-${safe(text(company.name)||text(company.siret))}`,filenameBase:`convention-${text(company.name)||common.formationTitle}`,metadata:{session_id:sessionId,formation_id:session.formation_id,company_name:text(company.name),client_siret:text(company.siret),contractual_kind:"convention"},html:buildTrainingAgreementHtml(common,{clientName:text(company.name),clientAddress:text(company.address),clientSiret:text(company.siret),representative:text(company.contact_name),learnerNames,price:text(formation.price),objective:text(formation.global_objective),prerequisites:text(formation.prerequisites),evaluation:text(formation.evaluation_methods)})}));
     }
     const needsMap = new Map(needs.map((n:any)=>[n.enrolment_id,n]));
@@ -191,8 +208,8 @@ export async function POST(req:Request) {
         .in("document_type",contractualTypes).eq("is_current",true).in("id",retireDocumentIds);
       if (retirementError) throw new Error(retirementError.message);
     }
-    if(context.assisted && context.assistance)await logAgentAssistanceAction({supabase:context.admin,req,assistance:context.assistance,action:"pretraining_documents_prepared",actionLabel:"Préparation documentaire avant formation",metadata:{session_id:sessionId,document_ids:created.map(doc=>doc.id)}});
-    return NextResponse.json({documents:created,count:created.length});
+    if(context.assisted && context.assistance)await logAgentAssistanceAction({supabase:context.admin,req,assistance:context.assistance,action:"pretraining_documents_prepared",actionLabel:"Préparation documentaire avant formation",metadata:{session_id:sessionId,enrolment_id:enrolmentId||null,document_ids:created.map(doc=>doc.id)}});
+    return NextResponse.json({documents:created,count:created.length,enrolment_id:enrolmentId||null});
   } catch (cause) {
     return NextResponse.json({error:cause instanceof Error ? cause.message : "Génération impossible."},{status:400});
   }
