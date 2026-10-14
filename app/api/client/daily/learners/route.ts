@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getDailyOrganisationContext } from "@/lib/server/dailyOrganisationContext";
 import { ensureAndSendLearnerPortalAccess } from "@/lib/server/dailyLearnerPortalAccess";
 import { logAgentAssistanceAction } from "@/lib/server/agentAssistance";
+import { updateDelegatedContractingParty } from "@/lib/server/dailyEnrolmentContractingParty";
 
 const enrolmentStatuses=new Set(["invited","pending","confirmed","declined","cancelled","abandoned","completed"]);
 const fundingTypes=new Set(["employer","self_funded","opco","public_funder","other","unknown"]);
@@ -42,6 +43,7 @@ export async function POST(req:Request){
 }
 
 export async function PATCH(req:Request){const context=await getDailyOrganisationContext(req,"sessions",{allowAssistanceWrite:true});if(!context.ok)return NextResponse.json({error:context.error},{status:context.status});const body=await req.json().catch(()=>({}));const id=String(body.id??"");if(!id)return NextResponse.json({error:"Inscription manquante."},{status:400});const updates:Record<string,unknown>={};
+ if(body.action==="contracting_party")return updateDelegatedContractingParty(req,context,body);
  if (["contracting_party_type","company_name","company_contact_name","company_contact_email"].some(key=>key in body)) {
   const {data:existing,error:readError}=await context.admin.from("daily_session_enrolments").select("*").eq("id",id).eq("organisation_id",context.organisationId).maybeSingle();
   if(readError)return NextResponse.json({error:readError.message},{status:500});
