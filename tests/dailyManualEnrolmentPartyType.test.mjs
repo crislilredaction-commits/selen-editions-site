@@ -57,7 +57,8 @@ function fixture() {
     'next/server': {NextResponse:{json:(body,options={})=>({body,status:options.status??200})}},
     '@/lib/server/dailyOrganisationContext': {getDailyOrganisationContext:async()=>({ok:true,admin,organisationId:'org',user:{id:'user'}})},
     '@/lib/server/dailyLearnerPortalAccess': {ensureAndSendLearnerPortalAccess:async()=>{accessCalls++;return {status:'mocked'};}},
-    '@/lib/server/agentAssistance': {logAgentAssistanceAction:async()=>{}}
+    '@/lib/server/agentAssistance': {logAgentAssistanceAction:async()=>{}},
+    '@/lib/server/dailyEnrolmentContractingParty': {updateDelegatedContractingParty:()=>{throw Error('Unexpected delegated operation');}}
   });
   const request=body=>({url:'https://local.test/api',json:async()=>body});
   return { rows, post:body=>route.POST(request({action:'enrolment',learner_id:'same',...body})), patch:body=>route.PATCH(request(body)), accessCalls:()=>accessCalls };
