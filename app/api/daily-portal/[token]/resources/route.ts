@@ -121,7 +121,7 @@ export async function GET(_request: Request, { params }: Params) {
     }
   }
 
-  const visible = (documents ?? []).filter((document: Json) => isDailyPortalResourceVisible({resource:document,role:access.portal_type,sessionId:session.id,enrolmentIds:allowedEnrolmentIds,learnerIds:allowedLearnerIds}));
+  const visible = (documents ?? []).filter((document: Json) => isDailyPortalResourceVisible({resource:document,companyName:String(access.entity_name??""),role:access.portal_type,sessionId:session.id,enrolmentIds:allowedEnrolmentIds,learnerIds:allowedLearnerIds}));
 
   let pretrainingResources: Json[] = [];
   try {

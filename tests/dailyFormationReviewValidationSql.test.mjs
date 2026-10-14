@@ -18,7 +18,9 @@ test('Studio programme validation uses the saved PostgreSQL revision and commits
   await db.exec(`begin;${guard}commit;`); // Reapplying additive DDL changes no data.
   await db.exec(`
     create function public.qa_formation_updated_at() returns trigger language plpgsql as $$
-    begin new.updated_at := clock_timestamp(); return new; end $$;
+    -- PGlite's clock can return the same millisecond for consecutive updates.
+    -- The stale-screen fixture needs a distinct PostgreSQL revision, without sleeps.
+    begin new.updated_at := greatest(clock_timestamp(), old.updated_at + interval '1 millisecond'); return new; end $$;
     create trigger qa_formation_updated_at before update on public.daily_formations
       for each row execute function public.qa_formation_updated_at();
     grant select, update on public.daily_formations to service_role;

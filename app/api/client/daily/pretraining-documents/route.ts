@@ -1,6 +1,9 @@
 import { resolveContractingPartyType, validateContractingParty } from "@/lib/dailyContractingParty";
 import { NextResponse } from "next/server";
-import { getDailyOrganisationContext } from "@/lib/server/dailyOrganisationContext";
+import { renderDailyPretrainingTemplate } from "@/lib/server/dailyPretrainingTemplate";
+import { delegatedRegistrationTokenHash, getDelegatedRegistrationActor, registrationAssistanceToken } from "@/lib/server/dailyDelegatedRegistrationDecision";
+import { logAgentAssistanceAction } from "@/lib/server/agentAssistance";
+import { getDailyOrganisationBillingUserId, getDailyOrganisationContext } from "@/lib/server/dailyOrganisationContext";
 import { buildConvocationHtml, buildRegistrationPositioningHtml, buildTrainingAgreementHtml, buildTrainingContractHtml, buildTrainingProgramHtml, buildWelcomeBookletHtml, buildInternalRegulationsHtml, type DailyPretrainingCommon } from "@/lib/server/dailyPretrainingDocumentHtml";
 
 const documentTypes = ["training_program","training_agreement","training_contract","convocation","registration_positioning","welcome_booklet","internal_regulations"] as const;
@@ -15,34 +18,36 @@ function scheduleText(value: unknown) {
   }).filter(Boolean).join("\n") || "Non renseigné";
 }
 function safe(value: string) { return value.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-zA-Z0-9-_]+/g,"-").replace(/^-+|-+$/g,"").toLowerCase().slice(0,80) || "document"; }
-async function sha256(value: string) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+async function sha256Bytes(value: Uint8Array) {
+  const digest = await crypto.subtle.digest("SHA-256", value as BufferSource);
   return Array.from(new Uint8Array(digest)).map((b)=>b.toString(16).padStart(2,"0")).join("");
 }
 
 async function generateCanonicalDocument(args: {
-  deferRetirement?: boolean; admin: any; organisationId: string; userId: string; documentType: DocumentType; linkedObjectType: "session"|"enrolment"; linkedObjectId: string; logicalName: string; filenameBase: string; html: string; metadata: Record<string,unknown>;
+  onlyMissing?: boolean; template?: any; variables?: Record<string,string>; deferRetirement?: boolean; admin: any; organisationId: string; userId: string; documentType: DocumentType; linkedObjectType: "session"|"enrolment"; linkedObjectId: string; logicalName: string; filenameBase: string; html: string; metadata: Record<string,unknown>;
 }) {
   const { admin, organisationId, userId, documentType, linkedObjectType, linkedObjectId, logicalName, filenameBase, html, metadata } = args;
-  const { data: previousRows, error: previousError } = await admin.from("daily_documents").select("id,version,is_current").eq("organisation_id",organisationId).eq("document_type",documentType).eq("linked_object_type",linkedObjectType).eq("linked_object_id",linkedObjectId).eq("logical_name",logicalName).order("version",{ascending:false}).limit(1);
+  const { data: previousRows, error: previousError } = await admin.from("daily_documents").select("*").eq("organisation_id",organisationId).eq("document_type",documentType).eq("linked_object_type",linkedObjectType).eq("linked_object_id",linkedObjectId).eq("logical_name",logicalName).order("version",{ascending:false}).limit(1);
   if (previousError) throw new Error(previousError.message);
   const previous = previousRows?.[0] ?? null;
+  if(args.onlyMissing && previous?.is_current && previous.status!=="archived")return previous;
+  const rendered=await renderDailyPretrainingTemplate({admin,organisationId,template:args.template,variables:args.variables??{},html});
   const version = Number(previous?.version ?? 0) + 1;
   if (previous?.is_current && !args.deferRetirement) {
     const { error } = await admin.from("daily_documents").update({ is_current:false, updated_by:userId }).eq("id",previous.id);
     if (error) throw new Error(error.message);
   }
   const stamp = new Date().toISOString().replaceAll(":","-").replaceAll(".","-");
-  const storagePath = `daily/${organisationId}/${linkedObjectType}/${linkedObjectId}/${documentType}/${safe(filenameBase)}-v${version}-${stamp}.doc`;
-  const content = new Blob([html], { type:"application/msword;charset=utf-8" });
-  const { error: uploadError } = await admin.storage.from("documents").upload(storagePath,content,{contentType:"application/msword;charset=utf-8",upsert:false});
+  const storagePath = `daily/${organisationId}/${linkedObjectType}/${linkedObjectId}/${documentType}/${safe(filenameBase)}-v${version}-${stamp}.${rendered.extension}`;
+  const content = new Blob([rendered.bytes as BlobPart], { type:rendered.mimeType });
+  const { error: uploadError } = await admin.storage.from("documents").upload(storagePath,content,{contentType:rendered.mimeType,upsert:false});
   if (uploadError) throw new Error(uploadError.message);
-  const hash = await sha256(html);
+  const hash = await sha256Bytes(rendered.bytes);
   const { data, error } = await admin.from("daily_documents").insert({
     organisation_id:organisationId, formation_id:metadata.formation_id ?? null, session_id:metadata.session_id ?? null, learner_id:metadata.learner_id ?? null, enrolment_id:metadata.enrolment_id ?? null, document_type:documentType, linked_object_type:linkedObjectType, linked_object_id:linkedObjectId,
-    version, status:"to_check", logical_name:logicalName, bucket:"documents", storage_path:storagePath, mime_type:"application/msword",
-    size_bytes:new TextEncoder().encode(html).byteLength, sha256:hash, created_by:userId, updated_by:userId, is_current:true,
-    previous_document_id:previous?.id ?? null, metadata:{...metadata,generated_by:"daily_lot2e",generated_at:new Date().toISOString()}
+    version, status:"to_check", logical_name:logicalName, bucket:"documents", storage_path:storagePath, mime_type:rendered.mimeType,
+    size_bytes:rendered.bytes.byteLength, sha256:hash, created_by:userId, updated_by:userId, is_current:true,
+    previous_document_id:previous?.id ?? null, metadata:{...metadata,...rendered.metadata,generated_by:"daily_lot2e",generated_at:new Date().toISOString()}
   }).select("*").single();
   if (error) { await admin.storage.from("documents").remove([storagePath]); throw new Error(error.message); }
   return data;
@@ -78,10 +83,18 @@ export async function GET(req:Request) {
 }
 
 export async function POST(req:Request) {
-  const context = await getDailyOrganisationContext(req,"sessions");
+  const context = await getDailyOrganisationContext(req,"sessions",{allowAssistanceWrite:true});
   if (!context.ok) return NextResponse.json({error:context.error},{status:context.status});
-  if (context.assisted) return NextResponse.json({error:"L’assistance agent est en lecture seule."},{status:403});
   const body = await req.json().catch(()=>({}));
+  if(registrationAssistanceToken(req) && !context.assisted)return NextResponse.json({error:"Délégation invalide ou expirée."},{status:403});
+  let actorUserId=context.user.id;
+  if(context.assisted){
+    if(body.confirm_delegated!==true || !context.assistance)return NextResponse.json({error:"Confirmation de la préparation déléguée requise."},{status:400});
+    try{actorUserId=getDelegatedRegistrationActor(context.assistance,context.organisationId).agentUserId;}
+    catch{return NextResponse.json({error:"Délégation invalide ou expirée."},{status:403});}
+    const delegationCheck=await context.admin.rpc("daily_assert_document_delegation",{p_assistance_id:context.assistance.id,p_token_hash:delegatedRegistrationTokenHash(req),p_organisation_id:context.organisationId});
+    if(delegationCheck.error || delegationCheck.data!==actorUserId)return NextResponse.json({error:"Délégation invalide, expirée ou agent désactivé."},{status:403});
+  }
   const sessionId = text(body.session_id);
   if (!sessionId) return NextResponse.json({error:"Session manquante."},{status:400});
   try {
@@ -94,12 +107,24 @@ export async function POST(req:Request) {
       organisationEmail:text(org?.administrative_email), organisationPhone:text(org?.administrative_phone), formationTitle:text(formation.title), sessionReference:text(session.internal_reference),
       startDate:text(session.start_date), endDate:text(session.end_date), schedule:scheduleText(session.schedule_blocks), modality:text(session.modality), location:text(session.location_address || session.remote_url), generatedAt:new Date(),
     };
+    if(body.only_missing===true && !enrolments.length)return NextResponse.json({error:"Aucune inscription active dans cette session."},{status:409});
+    const billingUserId=await getDailyOrganisationBillingUserId(context.organisationId,context.user.id);
+    const {data:templateRows,error:templateError}=await context.admin.from("daily_document_templates").select("id,document_type,template_version,template_name,storage_path").eq("user_id",billingUserId).eq("template_source","CLIENT").eq("status","active").order("template_version",{ascending:false});
+    if(templateError)throw new Error("Lecture des modèles personnalisés impossible.");
+    const templates=new Map<string,any>();
+    for(const template of templateRows??[]){const type=template.document_type==="internal_rules"?"internal_regulations":template.document_type;if(!templates.has(type))templates.set(type,template);}
+    const variables={ORGANISME:common.organisationName,SIRET:common.organisationSiret,ADRESSE_ORGANISME:common.organisationAddress,NDA:common.organisationNda,FORMATION:common.formationTitle,DATES:[common.startDate,common.endDate].join(" → "),DUREE:text(formation.duration_hours)+" heures",HORAIRES:common.schedule,MODALITE:common.modality,MODALITES_PRATIQUES:common.location,CONTACT:[common.organisationEmail,common.organisationPhone].filter(Boolean).join(" · "),ACCESSIBILITE:text(formation.accessibility),TARIF:text(formation.price),OBJECTIF:text(formation.global_objective),PREREQUIS:text(formation.prerequisites),FORMATEUR:trainerNames,DATE_DOCUMENT:new Date().toLocaleDateString("fr-FR")};
+    const generateDocument=(args:Parameters<typeof generateCanonicalDocument>[0])=>generateCanonicalDocument({...args,onlyMissing:body.only_missing===true,template:templates.get(args.documentType),metadata:{...args.metadata,session_name:common.formationTitle+" · "+common.startDate+" → "+common.endDate},variables:{...variables,SIRET_CLIENT:text(args.metadata.client_siret),BENEFICIAIRE:text(args.metadata.learner_name),CLIENT_OU_BENEFICIAIRE:text(args.metadata.company_name||args.metadata.learner_name)}});
     const companies = asArray(session.companies) as Record<string,unknown>[];
     // The contractual party belongs to the enrolment. Never infer it from a SIRET,
     // the learner identity or the funding mode.
     for (const enrolment of enrolments) {
       const partyError = validateContractingParty(enrolment);
-      if (partyError) return NextResponse.json({error:partyError},{status:400});
+      if (partyError) {
+        const learner=enrolment.daily_learners??{};
+        const name=[text(learner.first_name),text(learner.last_name)].filter(Boolean).join(" ")||"Cette inscription";
+        return NextResponse.json({error:`${name} : ${partyError} Renseignez la partie contractante dans le dossier d’inscription de la session avant de préparer les documents.`,enrolment_id:enrolment.id},{status:400});
+      }
       if(resolveContractingPartyType(enrolment) === "company" && !companies.some(row=>text(row.name) && text(row.name)===text(enrolment.company_name))) {
         return NextResponse.json({error:"Renseignez l’entreprise commanditaire de cette inscription dans les entreprises de la session."},{status:400});
       }
@@ -129,13 +154,14 @@ export async function POST(req:Request) {
           && text(document.metadata.client_siret) === text(company.siret);
       });
     }).map((document:any)=>document.id);
+    if(body.only_missing===true && obsoleteDocumentIds.length)return NextResponse.json({error:"Des documents existants concernent une autre partie contractante. Relisez ce dossier avant de les remplacer."},{status:409});
     const created:any[] = [];
-    created.push(await generateCanonicalDocument({ admin:context.admin,organisationId:context.organisationId,userId:context.user.id,documentType:"training_program",linkedObjectType:"session",linkedObjectId:sessionId,logicalName:"programme-session",filenameBase:`programme-${common.formationTitle}`,metadata:{session_id:sessionId,formation_id:session.formation_id},html:buildTrainingProgramHtml(common,{globalObjective:text(formation.global_objective),learningObjectives:asArray(formation.learning_objectives),targetAudience:text(formation.target_audience),prerequisites:text(formation.prerequisites),durationHours:text(formation.duration_hours),durationDays:text(formation.duration_days),detailedProgram:text(formation.detailed_program),pedagogicalMethods:text(formation.pedagogical_methods),pedagogicalResources:text(formation.pedagogical_resources),evaluationMethods:text(formation.evaluation_methods),accessibility:text(formation.accessibility)}) }));
-    created.push(await generateCanonicalDocument({admin:context.admin,organisationId:context.organisationId,userId:context.user.id,documentType:"welcome_booklet",linkedObjectType:"session",linkedObjectId:sessionId,logicalName:"livret-accueil-session",filenameBase:"livret-accueil",metadata:{session_id:sessionId,formation_id:session.formation_id},html:buildWelcomeBookletHtml(common,{registrationMethods:text(formation.registration_methods),accessDelays:text(formation.access_delays),accessibility:text(formation.accessibility)})}));
-    created.push(await generateCanonicalDocument({admin:context.admin,organisationId:context.organisationId,userId:context.user.id,documentType:"internal_regulations",linkedObjectType:"session",linkedObjectId:sessionId,logicalName:"reglement-interieur-session",filenameBase:"reglement-interieur",metadata:{session_id:sessionId,formation_id:session.formation_id},html:buildInternalRegulationsHtml(common)}));
+    created.push(await generateDocument({ admin:context.admin,organisationId:context.organisationId,userId:actorUserId,documentType:"training_program",linkedObjectType:"session",linkedObjectId:sessionId,logicalName:"programme-session",filenameBase:`programme-${common.formationTitle}`,metadata:{session_id:sessionId,formation_id:session.formation_id},html:buildTrainingProgramHtml(common,{globalObjective:text(formation.global_objective),learningObjectives:asArray(formation.learning_objectives),targetAudience:text(formation.target_audience),prerequisites:text(formation.prerequisites),durationHours:text(formation.duration_hours),durationDays:text(formation.duration_days),detailedProgram:text(formation.detailed_program),pedagogicalMethods:text(formation.pedagogical_methods),pedagogicalResources:text(formation.pedagogical_resources),evaluationMethods:text(formation.evaluation_methods),accessibility:text(formation.accessibility)}) }));
+    created.push(await generateDocument({admin:context.admin,organisationId:context.organisationId,userId:actorUserId,documentType:"welcome_booklet",linkedObjectType:"session",linkedObjectId:sessionId,logicalName:"livret-accueil-session",filenameBase:"livret-accueil",metadata:{session_id:sessionId,formation_id:session.formation_id},html:buildWelcomeBookletHtml(common,{registrationMethods:text(formation.registration_methods),accessDelays:text(formation.access_delays),accessibility:text(formation.accessibility)})}));
+    created.push(await generateDocument({admin:context.admin,organisationId:context.organisationId,userId:actorUserId,documentType:"internal_regulations",linkedObjectType:"session",linkedObjectId:sessionId,logicalName:"reglement-interieur-session",filenameBase:"reglement-interieur",metadata:{session_id:sessionId,formation_id:session.formation_id},html:buildInternalRegulationsHtml(common)}));
     for (const company of applicableCompanies) {
       const learnerNames=enrolments.filter((e:any)=>text(e.company_name)===text(company.name)&&resolveContractingPartyType(e)==="company").map((e:any)=>`${text(e.daily_learners?.first_name)} ${text(e.daily_learners?.last_name)}`.trim()).filter(Boolean).join("\n");
-      created.push(await generateCanonicalDocument({admin:context.admin,organisationId:context.organisationId,userId:context.user.id,deferRetirement:true,documentType:"training_agreement",linkedObjectType:"session",linkedObjectId:sessionId,logicalName:`convention-${safe(text(company.name)||text(company.siret))}`,filenameBase:`convention-${text(company.name)||common.formationTitle}`,metadata:{session_id:sessionId,formation_id:session.formation_id,company_name:text(company.name),client_siret:text(company.siret),contractual_kind:"convention"},html:buildTrainingAgreementHtml(common,{clientName:text(company.name),clientAddress:text(company.address),clientSiret:text(company.siret),representative:text(company.contact_name),learnerNames,price:text(formation.price),objective:text(formation.global_objective),prerequisites:text(formation.prerequisites),evaluation:text(formation.evaluation_methods)})}));
+      created.push(await generateDocument({admin:context.admin,organisationId:context.organisationId,userId:actorUserId,deferRetirement:true,documentType:"training_agreement",linkedObjectType:"session",linkedObjectId:sessionId,logicalName:`convention-${safe(text(company.name)||text(company.siret))}`,filenameBase:`convention-${text(company.name)||common.formationTitle}`,metadata:{session_id:sessionId,formation_id:session.formation_id,company_name:text(company.name),client_siret:text(company.siret),contractual_kind:"convention"},html:buildTrainingAgreementHtml(common,{clientName:text(company.name),clientAddress:text(company.address),clientSiret:text(company.siret),representative:text(company.contact_name),learnerNames,price:text(formation.price),objective:text(formation.global_objective),prerequisites:text(formation.prerequisites),evaluation:text(formation.evaluation_methods)})}));
     }
     const needsMap = new Map(needs.map((n:any)=>[n.enrolment_id,n]));
     for (const enrolment of enrolments) {
@@ -143,9 +169,9 @@ export async function POST(req:Request) {
       const learnerName = `${text(learner.first_name)} ${text(learner.last_name)}`.trim();
       const need:any = needsMap.get(enrolment.id);
       const company = companies.find((row)=>text(row.name) && text(row.name)===text(enrolment.company_name));
-      if (resolveContractingPartyType(enrolment) === "individual") created.push(await generateCanonicalDocument({admin:context.admin,organisationId:context.organisationId,userId:context.user.id,deferRetirement:true,documentType:"training_contract",linkedObjectType:"enrolment",linkedObjectId:enrolment.id,logicalName:"contrat-formation-apprenant",filenameBase:`contrat-${learnerName}`,metadata:{session_id:sessionId,formation_id:session.formation_id,enrolment_id:enrolment.id,learner_id:enrolment.learner_id,learner_name:learnerName,contractual_kind:"individual_contract"},html:buildTrainingContractHtml(common,{learnerName,learnerEmail:text(learner.email),price:text(formation.price),objective:text(formation.global_objective),prerequisites:text(formation.prerequisites),evaluation:text(formation.evaluation_methods)})}));
-      created.push(await generateCanonicalDocument({admin:context.admin,organisationId:context.organisationId,userId:context.user.id,documentType:"convocation",linkedObjectType:"enrolment",linkedObjectId:enrolment.id,logicalName:"convocation-apprenant",filenameBase:`convocation-${learnerName}`,metadata:{session_id:sessionId,formation_id:session.formation_id,enrolment_id:enrolment.id,learner_id:enrolment.learner_id,learner_name:learnerName},html:buildConvocationHtml(common,{learnerName,learnerEmail:text(learner.email),trainerNames,usefulInfo:need?.planned_accommodations ? `Adaptation prévue : ${text(need.planned_accommodations)}` : ""})}));
-      created.push(await generateCanonicalDocument({admin:context.admin,organisationId:context.organisationId,userId:context.user.id,documentType:"registration_positioning",linkedObjectType:"enrolment",linkedObjectId:enrolment.id,logicalName:"inscription-positionnement",filenameBase:`inscription-positionnement-${learnerName}`,metadata:{session_id:sessionId,formation_id:session.formation_id,enrolment_id:enrolment.id,learner_id:enrolment.learner_id,learner_name:learnerName},html:buildRegistrationPositioningHtml(common,{learnerName,learnerEmail:text(learner.email),companyName:text(enrolment.company_name || learner.company_name),funding:[text(enrolment.funding_type),text(enrolment.funding_organisation)].filter(Boolean).join(" · "),prerequisites:text(formation.prerequisites),positioningStatus:text(enrolment.positioning_status),prerequisiteStatus:text(enrolment.prerequisites_status),supportNeeds:need?.has_specific_needs ? [text(need.needs_description),text(need.planned_accommodations)].filter(Boolean).join("\n") : ""})}));
+      if (resolveContractingPartyType(enrolment) === "individual") created.push(await generateDocument({admin:context.admin,organisationId:context.organisationId,userId:actorUserId,deferRetirement:true,documentType:"training_contract",linkedObjectType:"enrolment",linkedObjectId:enrolment.id,logicalName:"contrat-formation-apprenant",filenameBase:`contrat-${learnerName}`,metadata:{session_id:sessionId,formation_id:session.formation_id,enrolment_id:enrolment.id,learner_id:enrolment.learner_id,learner_name:learnerName,contractual_kind:"individual_contract"},html:buildTrainingContractHtml(common,{learnerName,learnerEmail:text(learner.email),price:text(formation.price),objective:text(formation.global_objective),prerequisites:text(formation.prerequisites),evaluation:text(formation.evaluation_methods)})}));
+      created.push(await generateDocument({admin:context.admin,organisationId:context.organisationId,userId:actorUserId,documentType:"convocation",linkedObjectType:"enrolment",linkedObjectId:enrolment.id,logicalName:"convocation-apprenant",filenameBase:`convocation-${learnerName}`,metadata:{session_id:sessionId,formation_id:session.formation_id,enrolment_id:enrolment.id,learner_id:enrolment.learner_id,learner_name:learnerName},html:buildConvocationHtml(common,{learnerName,learnerEmail:text(learner.email),trainerNames,usefulInfo:need?.planned_accommodations ? `Adaptation prévue : ${text(need.planned_accommodations)}` : ""})}));
+      created.push(await generateDocument({admin:context.admin,organisationId:context.organisationId,userId:actorUserId,documentType:"registration_positioning",linkedObjectType:"enrolment",linkedObjectId:enrolment.id,logicalName:"inscription-positionnement",filenameBase:`inscription-positionnement-${learnerName}`,metadata:{session_id:sessionId,formation_id:session.formation_id,enrolment_id:enrolment.id,learner_id:enrolment.learner_id,learner_name:learnerName},html:buildRegistrationPositioningHtml(common,{learnerName,learnerEmail:text(learner.email),companyName:text(enrolment.company_name || learner.company_name),funding:[text(enrolment.funding_type),text(enrolment.funding_organisation)].filter(Boolean).join(" · "),prerequisites:text(formation.prerequisites),positioningStatus:text(enrolment.positioning_status),prerequisiteStatus:text(enrolment.prerequisites_status),supportNeeds:need?.has_specific_needs ? [text(need.needs_description),text(need.planned_accommodations)].filter(Boolean).join("\n") : ""})}));
     }
     // No retirement on validation, rendering, upload or generation failure.
     // Updating currency alone preserves signed content, status and signature evidence.
@@ -160,11 +186,12 @@ export async function POST(req:Request) {
     const retireDocumentIds = [...new Set([...obsoleteDocumentIds,...replacedDocumentIds])].filter(id=>!createdIds.has(id));
     if (retireDocumentIds.length) {
       const { error: retirementError } = await context.admin.from("daily_documents")
-        .update({is_current:false,updated_by:context.user.id})
+        .update({is_current:false,updated_by:actorUserId})
         .eq("organisation_id",context.organisationId).eq("session_id",sessionId)
         .in("document_type",contractualTypes).eq("is_current",true).in("id",retireDocumentIds);
       if (retirementError) throw new Error(retirementError.message);
     }
+    if(context.assisted && context.assistance)await logAgentAssistanceAction({supabase:context.admin,req,assistance:context.assistance,action:"pretraining_documents_prepared",actionLabel:"Préparation documentaire avant formation",metadata:{session_id:sessionId,document_ids:created.map(doc=>doc.id)}});
     return NextResponse.json({documents:created,count:created.length});
   } catch (cause) {
     return NextResponse.json({error:cause instanceof Error ? cause.message : "Génération impossible."},{status:400});

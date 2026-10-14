@@ -6,6 +6,7 @@ export type DailyPortalResource = {
   enrolment_id?: unknown;
   learner_id?: unknown;
   metadata?: unknown;
+  status?: unknown;
 };
 
 type PortalRole = "learner" | "trainer" | "enterprise";
@@ -13,7 +14,7 @@ const text = (value: unknown) => String(value ?? "").trim();
 const object = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 
 export const DAILY_PORTAL_RESOURCE_STATUSES = ["validated", "published", "signed", "active"];
-export const DAILY_PORTAL_RESOURCE_TYPES = ["training_program", "convocation", "registration_positioning", "completion_certificate", "organisation_shared", "trainer_resource"];
+export const DAILY_PORTAL_RESOURCE_TYPES = ["training_program", "training_contract", "training_agreement", "welcome_booklet", "internal_regulations", "convocation", "registration_positioning", "completion_certificate", "organisation_shared", "trainer_resource"];
 
 export function isDailyResourceAvailable(resource: DailyPortalResource, now = new Date()) {
   const availableFrom = text(object(resource.metadata).available_from);
@@ -29,10 +30,15 @@ export function isDailyPortalResourceVisible(input: {
   enrolmentIds?: string[];
   learnerIds?: string[];
   now?: Date;
+  companyName?: string;
 }) {
   const {resource, role, sessionId, enrolmentIds = [], learnerIds = [], now = new Date()} = input;
   if (!isDailyResourceAvailable(resource, now)) return false;
   const type = text(resource.document_type);
+  if(["training_program","training_contract","training_agreement","welcome_booklet","internal_regulations","convocation","registration_positioning"].includes(type) && !["published","signed"].includes(text(resource.status)))return false;
+  if(type==="training_contract")return role==="learner" && resource.linked_object_type==="enrolment" && enrolmentIds.includes(text(resource.linked_object_id));
+  if(type==="training_agreement")return role==="enterprise" && resource.linked_object_type==="session" && text(resource.linked_object_id)===sessionId && Boolean(input.companyName?.trim()) && text(object(resource.metadata).company_name).toLowerCase()===input.companyName!.trim().toLowerCase();
+  if(["welcome_booklet","internal_regulations"].includes(type))return resource.linked_object_type==="session" && text(resource.linked_object_id)===sessionId;
   if (type === "training_program") return resource.linked_object_type === "session" && text(resource.linked_object_id) === sessionId;
   if (["convocation", "registration_positioning", "completion_certificate"].includes(type)) {
     return role === "learner" && resource.linked_object_type === "enrolment" && enrolmentIds.includes(text(resource.linked_object_id));

@@ -92,5 +92,5 @@ export async function delegatedHarness() {
   function request(body,provided=token){return new Request('https://daily.example.test/api/client/daily/registration-requests',{method:body?'POST':'GET',headers:{'Content-Type':'application/json',...(provided?{'x-selen-agent-assistance':provided}:{})},...(body?{body:JSON.stringify({request_id:ids.request,confirm_delegated:true,...body})}:{})});}
   async function fetcher(url,init){assert.equal(url,'/api/client/daily/registration-requests');const req=new Request(`https://daily.example.test${url}`,init);requests.push(req);return init?.method==='POST'?api.POST(req):api.GET(req);}
   await reset();
-  return{db,q,reset,insert,call,flags,guard,api,request,fetcher,sends,requests,rpcCalls};
+  return{db,admin,q,reset,insert,call,flags,guard,api,request,fetcher,sends,requests,rpcCalls};
 }

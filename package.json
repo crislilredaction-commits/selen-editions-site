@@ -66,9 +66,11 @@
   "dependencies": {
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.105.1",
+    "docxtemplater": "3.68.7",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
     "next": "16.1.6",
+    "pizzip": "3.2.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "resend": "^6.12.3",

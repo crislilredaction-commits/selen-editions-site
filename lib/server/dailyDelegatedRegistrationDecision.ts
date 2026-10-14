@@ -48,3 +48,4 @@ export function delegatedRegistrationTokenHash(req: Request) {
   if (!token) throw new Error("Délégation Studio manquante.");
   return createHash("sha256").update(token).digest("hex");
 }
+
