@@ -15,7 +15,7 @@ test('génération canonique Daily : documents manquants, modèles et portail',a
  create table daily_document_templates(id uuid default gen_random_uuid(),user_id uuid,document_type text,template_source text,template_name text,template_version int,storage_path text,status text);
  create table daily_enrolment_support_needs(id uuid,enrolment_id uuid,organisation_id uuid,has_specific_needs boolean,needs_description text,planned_accommodations text);
  `);
- await h.db.exec(await readFile(new URL('../supabase/migrations/20261014002713_daily_trainer_personal_signature.sql',import.meta.url),'utf8'));
+ await h.db.exec(await readFile(new URL('../supabase/migrations/20261014012515_daily_trainer_personal_signature.sql',import.meta.url),'utf8'));
  await h.db.exec('grant all on all tables in schema public to service_role');
  const storage=new Map(),audits=[];
  const allowed=(await h.q("select tablename from pg_tables where schemaname='public'")).rows.map(r=>r.tablename);

@@ -10,7 +10,7 @@ test('signature personnelle : transaction PostgreSQL et véritable endpoint',asy
  await h.db.exec(`alter table daily_trainer_profiles add column professional_email text,add column display_name text;
  create table daily_attendance_slots(id uuid primary key,organisation_id uuid,session_id uuid,slot_date date,starts_at time,ends_at time,status text);
  create table daily_audit_logs(id uuid default gen_random_uuid(),organisation_id uuid,actor_user_id uuid,actor_type text,actor_role text,object_type text,object_id uuid,action text,occurred_at timestamptz,after_data jsonb,context jsonb,origin text);`);
- await h.db.exec(await readFile(new URL('../supabase/migrations/20261014002713_daily_trainer_personal_signature.sql',import.meta.url),'utf8'));
+ await h.db.exec(await readFile(new URL('../supabase/migrations/20261014012515_daily_trainer_personal_signature.sql',import.meta.url),'utf8'));
  await h.db.exec('grant all on all tables in schema public to service_role');
  const trainer=uuid(21),slot=uuid(22),document=uuid(23),hash='d'.repeat(64);
  const path=id=>`daily/${ids.org}/trainer/${trainer}/${ids.session}/trainer_signature/${id}.png`;
