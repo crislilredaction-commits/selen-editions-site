@@ -201,13 +201,19 @@ async function syncChecklist(admin: any, organisationId: string, sessionId: stri
   const allPresent = expected > 0 && docs.length >= expected;
   const allValidated = allPresent && docs.every((doc: any) => doc.status === "validated");
   const status = allValidated ? "validated" : allPresent ? "to_review" : docs.length ? "in_progress" : "todo";
-  await admin
+  const { error } = await admin
     .from("daily_session_checklist_items")
     .update({ status })
     .eq("organisation_id", organisationId)
     .eq("session_id", sessionId)
     .eq("item_key", "posttraining_documents")
     .neq("status", "not_applicable");
+  if (error) {
+    throw new PosttrainingDocumentError(
+      "Impossible de synchroniser le suivi des documents de fin de formation.",
+      500,
+    );
+  }
 }
 
 function autoBlocked(reason: string, eligibleCertificates = 0) {

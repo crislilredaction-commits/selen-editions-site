@@ -22,3 +22,8 @@ test("AP3 rejects obsolete business parents at the canonical registration bounda
   assert.match(migration,/revoke all on function public\.daily_register_posttraining_document/);
   assert.match(migration,/grant execute on function public\.daily_register_posttraining_document[\s\S]*to service_role/);
 });
+
+test("AP3 propagates checklist update failures instead of silently claiming synchronization",()=>{
+  assert.match(implementation,/const \{ error \} = await admin[\s\S]*?\.from\("daily_session_checklist_items"\)[\s\S]*?\.neq\("status", "not_applicable"\);/);
+  assert.match(implementation,/if \(error\) \{\s*throw new PosttrainingDocumentError\(/);
+});
