@@ -17,7 +17,7 @@ const contract = (id = 'old-contract', learner = 'one') => ({id,organisation_id:
 const agreement = (company = 'A') => ({...contract(`agreement-${company}`),document_type:'training_agreement',linked_object_type:'session',linked_object_id:'session',logical_name:`convention-${company.toLowerCase()}`,metadata:{company_name:company,client_siret:'123'}});
 function fixture({enrolments = [enrolment('one','company')],companies = [{name:'A',siret:'123'}],documents = [contract()],failure} = {}) {
   const rows = structuredClone(documents), calls = [], uploads = [];
-  const tables = {daily_documents:rows,daily_sessions:[{id:'session',organisation_id:'org',companies,daily_formations:{}}],daily_session_enrolments:enrolments,daily_enrolment_support_needs:[],organisations:[{id:'org'}],daily_trainer_profiles:[]};
+  const tables = {daily_document_templates:[],daily_documents:rows,daily_sessions:[{id:'session',organisation_id:'org',companies,daily_formations:{}}],daily_session_enrolments:enrolments,daily_enrolment_support_needs:[],organisations:[{id:'org'}],daily_trainer_profiles:[]};
   let sequence = 0;
   const admin = {storage:{from(bucket) { assert.equal(bucket,'documents'); return {async upload(path) { uploads.push(path); return {error:failure==='upload'||(failure==='late-upload' && path.includes('/convocation/'))?{message:'upload failed'}:null}; },async remove() {return {error:null};}}; }},from(table) {
     assert.ok(table in tables, table);
@@ -43,7 +43,7 @@ function fixture({enrolments = [enrolment('one','company')],companies = [{name:'
     };return q;
   }};
   const renderers = Object.fromEntries(['TrainingProgram','TrainingAgreement','TrainingContract','Convocation','RegistrationPositioning','WelcomeBooklet','InternalRegulations'].map(name=>[`build${name}Html`,()=> {if(failure==='render'&&name==='Convocation') throw Error('render failed');return name;}]));
-  const route = compile('app/api/client/daily/pretraining-documents/route.ts',{'@/lib/dailyContractingParty':helper,'next/server':{NextResponse:{json:(body,options={})=>({body,status:options.status??200})}},'@/lib/server/dailyOrganisationContext':{getDailyOrganisationContext:async()=>({ok:true,admin,organisationId:'org',user:{id:'user'}})},'@/lib/server/dailyPretrainingDocumentHtml':renderers});
+  const route = compile('app/api/client/daily/pretraining-documents/route.ts',{'@/lib/dailyContractingParty':helper,'next/server':{NextResponse:{json:(body,options={})=>({body,status:options.status??200})}},'@/lib/server/dailyDelegatedRegistrationDecision':{registrationAssistanceToken:()=>'',getDelegatedRegistrationActor:()=>{throw Error('Unexpected delegation');}},'@/lib/server/agentAssistance':{logAgentAssistanceAction:async()=>{}},'@/lib/server/dailyPretrainingTemplate':{renderDailyPretrainingTemplate:async({html})=>({bytes:new TextEncoder().encode(html),mimeType:'application/msword',extension:'doc',metadata:{}})},'@/lib/server/dailyOrganisationContext':{getDailyOrganisationBillingUserId:async()=> 'user',getDailyOrganisationContext:async()=>({ok:true,admin,organisationId:'org',user:{id:'user'}})},'@/lib/server/dailyPretrainingDocumentHtml':renderers});
   return {rows,calls,uploads,clearFailure:()=>{failure=undefined;},post:()=>route.POST({json:async()=>({session_id:'session'})})};
 }
 const current = (f,type) => f.rows.filter(row=>row.is_current&&row.document_type===type);

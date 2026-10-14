@@ -121,7 +121,7 @@ async function generateDocuments(enrolments, companies) {
   const route=compile('app/api/client/daily/pretraining-documents/route.ts',{
     '@/lib/dailyContractingParty':helper,
     'next/server':{NextResponse:{json:(body,options={})=>({body,status:options.status??200})}},
-    '@/lib/server/dailyOrganisationContext':{getDailyOrganisationContext:async()=>({ok:true,admin,organisationId:'org',user:{id:'user'}})},
+    '@/lib/server/dailyDelegatedRegistrationDecision':{registrationAssistanceToken:()=>'',getDelegatedRegistrationActor:()=>{throw Error('Unexpected delegation');}},'@/lib/server/agentAssistance':{logAgentAssistanceAction:async()=>{}},'@/lib/server/dailyPretrainingTemplate':{renderDailyPretrainingTemplate:async({html})=>({bytes:new TextEncoder().encode(html),mimeType:'application/msword',extension:'doc',metadata:{}})},'@/lib/server/dailyOrganisationContext':{getDailyOrganisationBillingUserId:async()=> 'user',getDailyOrganisationContext:async()=>({ok:true,admin,organisationId:'org',user:{id:'user'}})},
     '@/lib/server/dailyPretrainingDocumentHtml':renderers
   });
   const response=await route.POST({json:async()=>({session_id:'session'})});

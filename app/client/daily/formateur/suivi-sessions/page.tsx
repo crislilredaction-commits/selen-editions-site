@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { getStoredAssistanceToken } from "@/components/AgentAssistanceBanner";
+import ApplicationSignature from "@/components/daily/ApplicationSignature";
 import SelenButton from "@/components/ui/SelenButton";
 import SelenCard, { SelenCardTitle } from "@/components/ui/SelenCard";
 
@@ -352,10 +354,20 @@ export default function TrainerSessionFollowupPage() {
 function TrainerPedagogicalTools({sessionId,enrolments}:{sessionId:string;enrolments:Enrolment[]}) {
   const [slots,setSlots]=useState<any[]>([]),[records,setRecords]=useState<any[]>([]),[documents,setDocuments]=useState<any[]>([]),[busy,setBusy]=useState(false),[message,setMessage]=useState("");
   const [loadError,setLoadError]=useState("");
+  const [trainerSignatures,setTrainerSignatures]=useState<any[]>([]),[signatureSlot,setSignatureSlot]=useState(""),[signatureData,setSignatureData]=useState(""),[signatureConsent,setSignatureConsent]=useState(false);
+  const signatureBusy=useRef(false);
   const externalEvaluationRequestId=useRef(crypto.randomUUID());
-  async function refresh(signal?:AbortSignal){try{const r=await fetch(`/api/client/daily/trainer-session-workspace?session_id=${encodeURIComponent(sessionId)}`,{cache:"no-store",signal});const d=await r.json().catch(()=>({}));if(signal?.aborted)return;if(!r.ok){setLoadError(d.error??"Suivi des présences indisponible.");return}setSlots(d.slots??[]);setRecords(d.records??[]);setDocuments(d.documents??[]);setLoadError("")}catch{if(!signal?.aborted)setLoadError("Suivi des présences indisponible.")}}
+  async function refresh(signal?:AbortSignal){try{const r=await fetch(`/api/client/daily/trainer-session-workspace?session_id=${encodeURIComponent(sessionId)}`,{cache:"no-store",signal});const d=await r.json().catch(()=>({}));if(signal?.aborted)return;if(!r.ok){setLoadError(d.error??"Suivi des présences indisponible.");return}setSlots(d.slots??[]);setRecords(d.records??[]);setDocuments(d.documents??[]);setTrainerSignatures(d.trainer_signatures??[]);setLoadError("")}catch{if(!signal?.aborted)setLoadError("Suivi des présences indisponible.")}}
   useEffect(()=>{const controller=new AbortController();void refresh(controller.signal);return()=>controller.abort()},[sessionId]);
   async function upload(event:React.FormEvent<HTMLFormElement>){event.preventDefault();setBusy(true);setMessage("");const fd=new FormData(event.currentTarget);fd.set("session_id",sessionId);if(fd.get("kind")==="external_evaluation")fd.set("request_id",externalEvaluationRequestId.current);const r=await fetch("/api/client/daily/trainer-session-workspace",{method:"POST",body:fd});const d=await r.json().catch(()=>({}));setBusy(false);setMessage(r.ok?"Document enregistré dans la session.":d.error??"Import impossible.");if(r.ok){(event.currentTarget as HTMLFormElement).reset();externalEvaluationRequestId.current=crypto.randomUUID();await refresh()}}
+  async function signPresence(){
+    if(getStoredAssistanceToken()){setMessage("La signature personnelle nécessite votre propre compte formateur, sans délégation.");return;}
+    if(signatureBusy.current || !signatureSlot || !signatureData || !signatureConsent)return;
+    const slot=slots.find(row=>row.id===signatureSlot);
+    if(!window.confirm(`Signer personnellement votre présence pour le créneau ${slot?.slot_date} ${String(slot?.starts_at).slice(0,5)}–${String(slot?.ends_at).slice(0,5)} ? La signature sera horodatée maintenant.`))return;
+    signatureBusy.current=true;setBusy(true);setMessage("");
+    try{const body=new FormData();body.set("kind","trainer_signature");body.set("session_id",sessionId);body.set("slot_id",signatureSlot);body.set("signature_data",signatureData);body.set("signature_consent","true");const response=await fetch("/api/client/daily/trainer-session-workspace",{method:"POST",body});const result=await response.json().catch(()=>({}));if(!response.ok)throw new Error(result.error||"Signature impossible.");setMessage("Votre signature personnelle est enregistrée avec son horodatage.");setSignatureSlot("");setSignatureData("");setSignatureConsent(false);await refresh();}catch(cause){setMessage(cause instanceof Error?cause.message:"Signature impossible.");}finally{signatureBusy.current=false;setBusy(false);}
+  }
   if(loadError)return <div role="alert"><p>{loadError}</p><button type="button" onClick={()=>void refresh()}>Réessayer le chargement des présences</button></div>;
   return <div style={{display:"grid",gap:12,marginBottom:16}}>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:8}}>
@@ -363,6 +375,7 @@ function TrainerPedagogicalTools({sessionId,enrolments}:{sessionId:string;enrolm
       <div style={styles.metricCard}><span style={styles.metricLabel}>Présences recueillies</span><strong>{records.filter(r=>r.status==="present").length}</strong></div>
       <div style={styles.metricCard}><span style={styles.metricLabel}>Ressources / preuves</span><strong>{documents.length}</strong></div>
     </div>
+    {slots.length?<section aria-label="Émargement personnel du formateur"><h3>Votre signature de présence</h3><p>Cette signature concerne uniquement votre présence. Son heure réelle d’enregistrement sera conservée, y compris pour un créneau passé.</p><select aria-label="Créneau à signer" value={signatureSlot} onChange={event=>{setSignatureSlot(event.target.value);setSignatureData("");setSignatureConsent(false);}}><option value="">Choisir un créneau</option>{slots.filter(slot=>!trainerSignatures.some(doc=>doc.metadata?.slot_id===slot.id)).map(slot=><option key={slot.id} value={slot.id}>{slot.slot_date} · {String(slot.starts_at).slice(0,5)}–{String(slot.ends_at).slice(0,5)}</option>)}</select>{signatureSlot?<ApplicationSignature key={signatureSlot} title="Signature de présence du formateur" ariaLabel="Zone de signature personnelle du formateur" consentText="J’atteste personnellement ma présence au créneau sélectionné et confirme cette signature." consent={signatureConsent} onConsentChange={setSignatureConsent} onSignatureChange={setSignatureData}/>:null}<button type="button" disabled={busy||!signatureSlot||!signatureData||!signatureConsent} onClick={()=>void signPresence()}>Signer ma présence</button>{trainerSignatures.map(doc=><p key={doc.id}>Créneau {slots.find(slot=>slot.id===doc.metadata?.slot_id)?.slot_date} · signature enregistrée le {new Date(doc.signed_at).toLocaleString("fr-FR")}</p>)}</section>:null}
     <form onSubmit={upload} style={{display:"grid",gap:8,padding:12,border:"1px solid var(--sepia-mid)",borderRadius:12}}>
       <strong>Ressource, feuille papier ou évaluation externe</strong>
       <select name="kind" required style={styles.input}><option value="resource">Ressource pédagogique</option><option value="attendance_paper">Feuille d’émargement signée</option><option value="external_evaluation">Évaluation externe</option></select>

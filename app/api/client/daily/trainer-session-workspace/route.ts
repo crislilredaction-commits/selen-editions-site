@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { recordDailyTrainerPersonalSignature } from "@/lib/server/dailyTrainerPersonalSignature";
 import { refreshDailyEndEvaluationsChecklist, tryEnsureDailyPosttrainingDocuments } from "@/lib/server/dailyEndEvaluationLifecycle";
 import { refreshDailyAttendanceChecklist } from "@/lib/server/dailyAttendanceChecklist";
 import { activeDailyEnrolment } from "@/lib/server/dailyEndEvaluations";
@@ -25,13 +26,16 @@ export async function GET(request: Request) {
   const enrolments = enrolmentsResult.data ?? [], slots = slotsResult.data ?? [];
   const enrolmentIds = new Set(enrolments.map(row => row.id)), slotIds = new Set(slots.map(row => row.id));
   const records = (recordsResult.data ?? []).filter(row => enrolmentIds.has(row.enrolment_id) && slotIds.has(row.slot_id));
-  return NextResponse.json({ session, enrolments, slots, records, documents: documentsResult.data ?? [] });
+  const {data:signatures,error:signatureError}=await context.admin.from("daily_documents").select("id,signed_at,metadata").eq("organisation_id",context.orgId).eq("session_id",sessionId).eq("document_type","trainer_signature_evidence").eq("status","signed").eq("is_current",true);
+  if(signatureError)return NextResponse.json({error:signatureError.message},{status:500});
+  return NextResponse.json({ session, enrolments, slots, records, documents: documentsResult.data ?? [], trainer_signatures:(signatures??[]).filter(doc=>doc.metadata?.trainer_profile_id===context.trainerId) });
 }
 
 export async function POST(request: Request) {
   const context = await getDailyTrainerWorkspaceContext();
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
   const formData = await request.formData();
+  if(formData.get("kind")==="trainer_signature")return recordDailyTrainerPersonalSignature(request,context,formData);
   const sessionId = text(formData.get("session_id"));
   const kind = text(formData.get("kind"));
   const enrolmentId = text(formData.get("enrolment_id")) || null;

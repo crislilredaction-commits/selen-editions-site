@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import * as nodeCrypto from "node:crypto";
 import vm from "node:vm";
 import ts from "typescript";
 import assert from "node:assert/strict";
@@ -40,7 +41,7 @@ export function exchangeHarness(options={}) {
  const cache={};
  function load(path,extra={}) {
   if(cache[path]&&!Object.keys(extra).length)return cache[path];const module={exports:{}};
-  const dependencies={
+  const dependencies={"node:crypto":nodeCrypto,
    "react":React,"react/jsx-runtime":jsx,"next/link":{__esModule:true,default:({children,...props})=>React.createElement("a",props,children)},
    "next/server":{NextResponse:{json:Response.json}},
    "@/lib/server/dailyOrganisationContext":{getDailyOrganisationReadContext:async()=>context},
@@ -57,7 +58,7 @@ export function exchangeHarness(options={}) {
    ...extra};
   vm.runInNewContext(ts.transpileModule(fs.readFileSync(path,"utf8"),{fileName:path,compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText,{
    module,exports:module.exports,URL,Date,Intl,Error,console,crypto:globalThis.crypto,window:options.window,fetch(){throw Error("Real network forbidden");},
-   require(name){if(Object.hasOwn(dependencies,name))return dependencies[name];if(name==="@/lib/server/dailyAssistedTrainerWorkspace")return load("lib/server/dailyAssistedTrainerWorkspace.ts");if(name==="@/lib/server/dailyTrainerWorkspaceContext")return load("lib/server/dailyTrainerWorkspaceContext.ts");if(name==="@/lib/dailyAttendanceState")return load("lib/dailyAttendanceState.ts");throw Error("Unexpected dependency "+name);}
+   require(name){if(Object.hasOwn(dependencies,name))return dependencies[name];if(name==="@/components/AgentAssistanceBanner")return {getStoredAssistanceToken:()=>""};if(name==="@/components/daily/ApplicationSignature")return{default:()=>null};if(name==="@/lib/server/dailyTrainerPersonalSignature")return load("lib/server/dailyTrainerPersonalSignature.ts");if(name==="@/lib/server/dailyAssistedTrainerWorkspace")return load("lib/server/dailyAssistedTrainerWorkspace.ts");if(name==="@/lib/server/dailyTrainerWorkspaceContext")return load("lib/server/dailyTrainerWorkspaceContext.ts");if(name==="@/lib/dailyAttendanceState")return load("lib/dailyAttendanceState.ts");throw Error("Unexpected dependency "+name);}
   },{filename:path});
   if(!Object.keys(extra).length)cache[path]=module.exports;return module.exports;
  }

@@ -7,11 +7,15 @@ export default function ApplicationSignature({
   consent,
   onConsentChange,
   onSignatureChange,
+  title = "Signature du dossier",
+  ariaLabel = "Zone de signature du dossier de candidature",
 }: {
   consentText: string;
   consent: boolean;
   onConsentChange: (value: boolean) => void;
   onSignatureChange: (value: string) => void;
+  title?: string;
+  ariaLabel?: string;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const drawingRef = useRef(false);
@@ -84,7 +88,7 @@ export default function ApplicationSignature({
   return (
     <section style={styles.wrapper}>
       <div>
-        <h3 style={styles.title}>Signature du dossier</h3>
+        <h3 style={styles.title}>{title}</h3>
         <p style={styles.muted}>Signez directement avec votre doigt ou votre souris. La signature et l&apos;heure d&apos;envoi seront conservées avec vos réponses.</p>
       </div>
       <label style={styles.check}>
@@ -93,7 +97,7 @@ export default function ApplicationSignature({
       </label>
       <canvas
         ref={canvasRef}
-        aria-label="Zone de signature du dossier de candidature"
+        aria-label={ariaLabel}
         style={styles.canvas}
         onPointerDown={startDrawing}
         onPointerMove={draw}
