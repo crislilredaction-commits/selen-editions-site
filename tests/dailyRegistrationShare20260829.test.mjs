@@ -15,7 +15,7 @@ test("le client dispose du lien court et du QR code", () => {
   assert.match(page, /Lien court/);
   assert.match(page, /Copier le lien/);
   assert.match(page, /Télécharger le QR code/);
-  assert.match(page, /J'ai intégré ce lien/);
+  assert.match(page, /Marquer comme diffusé/);
 });
 
 test("le lien et le QR sont intégrés dans la carte de la formation", () => {
