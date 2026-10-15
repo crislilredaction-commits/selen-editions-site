@@ -135,7 +135,6 @@ export async function GET(req: Request) {
     .select("session_id,learner_id,status,daily_learners(id,organisation_id,first_name,last_name,email,phone)")
     .eq("organisation_id", context.organisationId)
     .in("session_id", sessions.map((session) => session.id))
-    .not("status", "in", "(declined,cancelled,abandoned)")
     .order("id", { ascending: true });
   const enrolments: NonNullable<Awaited<ReturnType<typeof enrolmentQuery>>["data"]> = [];
   // Read every page: the API may cap a response even when no limit was requested.
@@ -147,9 +146,13 @@ export async function GET(req: Request) {
     offset += page.length;
   }
 
-  // Merge into the existing participant shape without changing the stored session.
+  // Reconcile the legacy session JSON with the canonical enrolment state at read time.
+  // Historical rows remain stored, but a matching inactive enrolment must never be
+  // presented as an active participant.
   const sessionsById = new Map(sessions.map((session) => [session.id, session]));
   const identitiesBySession = new Map<string, Set<string>>();
+  const activeIdentitiesBySession = new Map<string, Set<string>>();
+  const inactiveIdentitiesBySession = new Map<string, Set<string>>();
   function participantIdentities(value: unknown) {
     if (!value || typeof value !== "object") return [];
     const row = value as Record<string, unknown>;
@@ -157,7 +160,28 @@ export async function GET(req: Request) {
     const email = text(row, "email").toLowerCase();
     return [learnerId ? `id:${learnerId}` : "", email ? `email:${email}` : ""].filter(Boolean);
   }
+  for (const enrolment of enrolments) {
+    const learner = Array.isArray(enrolment.daily_learners) ? enrolment.daily_learners[0] : enrolment.daily_learners;
+    if (!learner || learner.id !== enrolment.learner_id || learner.organisation_id !== context.organisationId) continue;
+    const identities = participantIdentities({ ...learner, learner_id: enrolment.learner_id });
+    const target = ["declined", "cancelled", "abandoned"].includes(enrolment.status)
+      ? inactiveIdentitiesBySession : activeIdentitiesBySession;
+    const set = target.get(enrolment.session_id) ?? new Set<string>();
+    identities.forEach((identity) => set.add(identity));
+    target.set(enrolment.session_id, set);
+  }
   for (const session of sessions) {
+    const active = activeIdentitiesBySession.get(session.id) ?? new Set<string>();
+    const inactive = inactiveIdentitiesBySession.get(session.id) ?? new Set<string>();
+    const keepActiveParticipant = (participant: unknown) => {
+      const identities = participantIdentities(participant);
+      return identities.length === 0 || !identities.some((identity) => inactive.has(identity) && !active.has(identity));
+    };
+    session.beneficiaries = jsonArray(session.beneficiaries).filter(keepActiveParticipant);
+    session.individual_beneficiaries = jsonArray(session.individual_beneficiaries).filter(keepActiveParticipant);
+    session.companies = jsonArray(session.companies).map((company) => company && typeof company === "object"
+      ? { ...company, participants: jsonArray(company.participants).filter(keepActiveParticipant) }
+      : company);
     const participants = [
       ...jsonArray(session.beneficiaries),
       ...jsonArray(session.individual_beneficiaries),
@@ -166,6 +190,7 @@ export async function GET(req: Request) {
     identitiesBySession.set(session.id, new Set(participants.flatMap(participantIdentities)));
   }
   for (const enrolment of enrolments ?? []) {
+    if (["declined", "cancelled", "abandoned"].includes(enrolment.status)) continue;
     const session = sessionsById.get(enrolment.session_id);
     const learner = Array.isArray(enrolment.daily_learners) ? enrolment.daily_learners[0] : enrolment.daily_learners;
     if (!session || !learner || learner.id !== enrolment.learner_id || learner.organisation_id !== context.organisationId) continue;

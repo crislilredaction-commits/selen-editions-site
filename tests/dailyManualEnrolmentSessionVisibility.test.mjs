@@ -92,7 +92,7 @@ test("GET rattache les apprenants actifs à leur session et conserve les autres 
   assert.deepEqual(result.body.sessions[0], { ...first, beneficiaries: [{ participant_source: "daily_session_enrolments", learner_id: "l1", first_name: "Marie", last_name: "Dupont", email: "l1@example.test", phone: "0102030405" }] });
   assert.equal(result.body.sessions[1].beneficiaries[0].learner_id, "l2");
   assert.deepEqual(first.beneficiaries, []);
-  assert.deepEqual(result.queries[1].filters, [["eq", "organisation_id", "of-a"], ["in", "session_id", ["s1", "s2"]], ["not", "status", "in", "(declined,cancelled,abandoned)"]]);
+  assert.deepEqual(result.queries[1].filters, [["eq", "organisation_id", "of-a"], ["in", "session_id", ["s1", "s2"]]]);
 });
 
 test("GET exclut les inactifs, les autres OF et les orphelins", async () => {
@@ -308,11 +308,39 @@ for (const removal of ["cancelled", "declined", "abandoned", "removed"]) {
       if (removal === "removed") enrolments.length = 0;
       else enrolments.forEach((row) => { row.status = removal; });
       const final = await getSessions({ sessions, enrolments });
-      assert.deepEqual(final.body.sessions[0].beneficiaries, before.beneficiaries);
-      assert.equal(participantCount(final.body.sessions[0]), historical ? 3 : 0);
+      assert.deepEqual(final.body.sessions[0].beneficiaries, removal === "removed" ? before.beneficiaries : []);
+      assert.equal(participantCount(final.body.sessions[0]), removal === "removed" && historical ? 3 : 0);
     });
   }
 }
+
+test("GET retire un participant historique correspondant à une inscription annulée dans toutes les listes", async () => {
+  const person = (id) => ({ learner_id: id, first_name: "Marie", last_name: "Dupont", email: `${id}@example.test` });
+  const result = await getSessions({
+    sessions: [session("s1", {
+      beneficiaries: [person("beneficiary"), person("manual")],
+      individual_beneficiaries: [person("individual")],
+      companies: [{ name: "Entreprise", participants: [person("company")] }],
+    })],
+    enrolments: [
+      enrolment("s1", "beneficiary", { status: "cancelled" }),
+      enrolment("s1", "individual", { status: "declined" }),
+      enrolment("s1", "company", { status: "abandoned" }),
+    ],
+  });
+  const [row] = result.body.sessions;
+  assert.deepEqual(row.beneficiaries, [person("manual")]);
+  assert.deepEqual(row.individual_beneficiaries, []);
+  assert.deepEqual(row.companies, [{ name: "Entreprise", participants: [] }]);
+});
+
+test("GET conserve un participant lorsqu'une inscription active existe encore pour la même identité", async () => {
+  const stored = { learner_id: "learner", first_name: "Marie", last_name: "Dupont", email: "learner@example.test" };
+  const cancelled = enrolment("s1", "learner", { status: "cancelled" });
+  const active = enrolment("s1", "learner", { status: "confirmed" });
+  const result = await getSessions({ sessions: [session("s1", { beneficiaries: [stored] })], enrolments: [cancelled, active] });
+  assert.deepEqual(result.body.sessions[0].beneficiaries, [stored]);
+});
 
 test("le helper du formulaire conserve les anciens identifiants et ne retire que la provenance explicite", async () => {
   const rows = [{ name: "Historique" }, { learner_id: "old", email: "old@example.test" },
