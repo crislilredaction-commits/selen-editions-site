@@ -53,18 +53,21 @@ export default function RegistrationSharePage() {
   async function markAttached(id: string) {
     setSavingId(id);
     setError("");
-    const response = await fetch("/api/client/daily/registration-share", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, status: "attached" }),
-    });
-    const body = await response.json().catch(() => ({})) as ResponseBody;
-    if (!response.ok) setError(body.error ?? "La confirmation n'a pas pu être enregistrée.");
-    else {
-      setMessage("C'est noté : le lien d'inscription est intégré à votre communication. ✓");
+    try {
+      const response = await fetch("/api/client/daily/registration-share", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, status: "attached" }),
+      });
+      const body = await response.json().catch(() => ({})) as ResponseBody;
+      if (!response.ok) throw new Error(body.error ?? "La confirmation n'a pas pu être enregistrée.");
+      setMessage("Lien marqué comme diffusé. L'action disparaît de votre tableau de bord. ✓");
       await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Enregistrement impossible.");
+    } finally {
+      setSavingId("");
     }
-    setSavingId("");
   }
 
   if (loading) return <LoadingMascot message="Sélion prépare vos liens d'inscription…" />;
@@ -99,7 +102,7 @@ export default function RegistrationSharePage() {
                 <div style={s.cardMain}>
                   <div style={s.cardHead}>
                     <div>
-                      <span style={done ? s.doneBadge : s.badge}>{done ? "Lien diffusé ✓" : "À intégrer"}</span>
+                      <span style={done ? s.doneBadge : s.badge}>{done ? "Lien diffusé ✓" : "À diffuser"}</span>
                       <h2 style={s.h2}>{formation.title}</h2>
                       <p style={s.muted}>Programme validé · version {formation.version}</p>
                     </div>
@@ -114,11 +117,11 @@ export default function RegistrationSharePage() {
                     </div>
                   </div>
 
-                  {!done ? (
+                  {!done && formation.spontaneous_registration_task_status !== "archived" ? (
                     <div style={s.confirmBox}>
                       <p style={s.muted}>Lorsque vous avez ajouté ce lien ou le QR code à votre site ou à vos supports, confirmez-le ici pour retirer cette action de votre liste « À faire ».</p>
                       <button type="button" disabled={savingId === formation.id} style={s.confirm} onClick={() => void markAttached(formation.id)}>
-                        {savingId === formation.id ? "Enregistrement…" : "✓ J'ai intégré ce lien"}
+                        {savingId === formation.id ? "Enregistrement…" : "✓ Marquer comme diffusé"}
                       </button>
                     </div>
                   ) : null}
