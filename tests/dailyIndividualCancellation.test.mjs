@@ -38,7 +38,9 @@ test("abandon et annulation sont des procédures distinctes", () => {
 });
 
 test("les effectifs des sessions excluent annulations et abandons", () => {
-  assert.match(sessionsApi, /\(declined,cancelled,abandoned\)/);
+  assert.match(sessionsApi, /\["declined", "cancelled", "abandoned"\]\.includes\(enrolment\.status\)/);
+  assert.match(sessionsApi, /inactiveIdentitiesBySession/);
+  assert.match(sessionsApi, /keepActiveParticipant/);
 });
 
 test("la fonction de désinscription est idempotente et ferme les tâches via les triggers canoniques", () => {
