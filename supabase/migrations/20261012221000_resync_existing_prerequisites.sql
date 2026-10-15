@@ -12,6 +12,31 @@ begin
        set enrolment_id = mapping.enrolment_id
      where mapping.registration_request_id = new.registration_request_id;
   end if;
+  if new.registration_request_id is not null
+     and new.status = 'rejected'
+     and old.status = 'verified'
+     and not exists (
+       select 1 from public.daily_prerequisite_evidence replacement
+       where replacement.registration_request_id = new.registration_request_id
+         and replacement.registration_response_id is null
+         and replacement.participant_key = new.participant_key
+         and replacement.requirement_id = new.requirement_id
+         and replacement.requirement_label = new.requirement_label
+         and replacement.document_id is not null
+         and replacement.status = 'verified'
+     ) then
+    update public.daily_session_enrolments enrolment
+       set prerequisites_status = 'not_reviewed'
+      from public.daily_auto_prerequisite_reviews provenance
+     where provenance.enrolment_id = enrolment.id
+       and provenance.registration_request_id = new.registration_request_id
+       and enrolment.prerequisites_status = 'met';
+    delete from public.daily_auto_prerequisite_reviews provenance
+     where provenance.registration_request_id = new.registration_request_id
+       and exists (select 1 from public.daily_session_enrolments enrolment
+                   where enrolment.id = provenance.enrolment_id
+                     and enrolment.prerequisites_status = 'not_reviewed');
+  end if;
   return new;
 end;
 $$;
