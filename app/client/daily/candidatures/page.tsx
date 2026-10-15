@@ -137,7 +137,7 @@ export default function RegistrationRequestsPage() {
     if (!window.confirm(wording)) { setMessage("Décision annulée, aucune candidature modifiée."); return; }
     const reason = historical ? window.prompt("Motif obligatoire de la régularisation historique (12 caractères minimum) :", "") : null;
     if (historical && (!reason || reason.trim().length < 12)) return setError("Motif de régularisation obligatoire (12 caractères minimum).");
-    if (decision === "accepted" && !(selectedSessions[request.id] ?? "")) return setError("Choisis une session avant de créer l’inscription.");
+    if (decision === "accepted" && !(selectedSessions[request.id] ?? "")) return setError("Sélectionnez une session avant de créer l’inscription.");
     const comment = window.prompt("Commentaire facultatif", "") ?? "";
     setBusyId(request.id);
     setError("");
@@ -316,7 +316,7 @@ export default function RegistrationRequestsPage() {
               </div>
               {!request.can_decide ? <p role="status" style={s.muted}>Cette candidature ne peut pas encore recevoir de décision. Vérifiez son analyse, ses prérequis et vos habilitations.</p> : null}
               <div style={s.actions}>
-                <button type="button" disabled={!request.can_decide || busyId === request.id || !(selectedSessions[request.id] ?? "")} style={s.accept} onClick={() => void decide(request, "accepted")}>{busyId === request.id ? "Enregistrement…" : "Accepter et créer l’inscription"}</button>
+                <button type="button" disabled={!request.can_decide || busyId === request.id} style={s.accept} onClick={() => void decide(request, "accepted")}>{busyId === request.id ? "Enregistrement…" : "Accepter et créer l’inscription"}</button>
                 <button type="button" disabled={!request.can_decide || busyId === request.id} style={s.refuse} onClick={() => void decide(request, "refused")}>Refuser la candidature</button>
               </div>
             </article>
