@@ -31,6 +31,7 @@ export function isDailyPortalResourceVisible(input: {
   learnerIds?: string[];
   now?: Date;
   companyName?: string;
+  postsessionAvailable?: boolean;
 }) {
   const {resource, role, sessionId, enrolmentIds = [], learnerIds = [], now = new Date()} = input;
   if (!isDailyResourceAvailable(resource, now)) return false;
@@ -40,6 +41,7 @@ export function isDailyPortalResourceVisible(input: {
   if(type==="training_agreement")return role==="enterprise" && resource.linked_object_type==="session" && text(resource.linked_object_id)===sessionId && Boolean(input.companyName?.trim()) && text(object(resource.metadata).company_name).toLowerCase()===input.companyName!.trim().toLowerCase();
   if(["welcome_booklet","internal_regulations"].includes(type))return resource.linked_object_type==="session" && text(resource.linked_object_id)===sessionId;
   if (type === "training_program") return resource.linked_object_type === "session" && text(resource.linked_object_id) === sessionId;
+  if (type === "completion_certificate" && !input.postsessionAvailable) return false;
   if (["convocation", "registration_positioning", "completion_certificate"].includes(type)) {
     return role === "learner" && resource.linked_object_type === "enrolment" && enrolmentIds.includes(text(resource.linked_object_id));
   }

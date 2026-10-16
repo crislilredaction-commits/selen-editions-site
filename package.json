@@ -61,6 +61,7 @@
     "test:auth-recovery": "node --test tests/passwordRecoveryFlow.test.mjs",
     "test:daily-agent-task-notifications-a6": "node --test tests/dailyAgentTaskNotificationsA6.test.mjs tests/dailyAgentTaskDelivery.test.mjs tests/dailyAgentTaskMarkerSql.test.mjs",
     "test:daily-bulk-enrolment": "node --test tests/dailyBulkEnrolment.test.mjs tests/dailyIndividualCancellation.test.mjs",
+    "test:daily-personal-postsession-downloads": "node --test tests/dailyPersonalPostsessionDownloads.test.mjs",
     "test:daily-assisted-trainer-workspace": "node --test tests/dailyAssistedTrainerWorkspace.test.mjs"
   },
   "dependencies": {

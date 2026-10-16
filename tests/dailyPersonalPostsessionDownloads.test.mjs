@@ -63,3 +63,30 @@ test("le téléchargement central route le relevé personnel sans modifier les f
   assert.match(route, /query:"enrolment"/);
   assert.match(route, /createSignedUrl\(document\.storage_path,120\)/);
 });
+
+test("AR1 masque le certificat personnel avant la fin de session et le borne à l’inscription active", async () => {
+  const visibility = await read("lib/server/dailyPortalResourceVisibility.ts");
+  assert.match(visibility, /type === "completion_certificate" && !input\.postsessionAvailable/);
+  assert.match(visibility, /role === "learner" && resource\.linked_object_type === "enrolment"/);
+  assert.match(visibility, /enrolmentIds\.includes\(text\(resource\.linked_object_id\)\)/);
+
+  const resources = await read("app/api/daily-portal/[token]/resources/route.ts");
+  assert.match(resources, /const postsessionAvailable = isPostsessionDownloadAvailable\(session\.end_date\)/);
+  assert.match(resources, /postsessionAvailable\}\)\)/);
+  assert.match(resources, /\.not\("status", "in", "\(declined,cancelled,abandoned\)"\)/);
+});
+
+test("AR1 refuse aussi un identifiant de certificat deviné avant la fin de session", async () => {
+  const route = await read("app/api/daily-portal/[token]/document/route.ts");
+  assert.match(route, /select\("id,organisation_id,status,end_date"\)/);
+  assert.match(route, /postsessionAvailable:isPostsessionDownloadAvailable\(session\.end_date\)/);
+  assert.ok(route.indexOf("isDailyPortalResourceVisible") < route.indexOf("createSignedUrl"));
+});
+
+test("Après affiche une action dédiée au certificat finalisé ou son état d’attente", async () => {
+  const navigation = await read("components/daily/LearnerPhaseNavigation.tsx");
+  assert.match(navigation, /resources\.find\(\(doc\) => doc\.document_type === "completion_certificate"\)/);
+  assert.match(navigation, /Téléchargez votre certificat personnel finalisé/);
+  assert.match(navigation, /Il sera disponible ici après la session, une fois finalisé par votre organisme/);
+  assert.match(navigation, /encodeURIComponent\(completionCertificate\.id\)/);
+});
