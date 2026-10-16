@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import {DAILY_PORTAL_RESOURCE_STATUSES,DAILY_PORTAL_RESOURCE_TYPES,isDailyPortalResourceVisible} from "@/lib/server/dailyPortalResourceVisibility";
 import {attendanceIsSettled,isPostsessionDownloadAvailable,personalAttendanceDocumentId} from "@/lib/server/dailyPersonalAttendance";
+import {isFinalAssessmentResult,personalAssessmentResultDocumentId} from "@/lib/server/dailyPersonalAssessment";
 
 type Params = { params: Promise<{ token: string }> };
 type Json = Record<string, unknown>;
@@ -112,7 +113,12 @@ export async function GET(_request: Request, { params }: Params) {
   if (access.portal_type === "learner") {
     const { data: rows, error: enrolmentError } = await admin.from("daily_session_enrolments").select("id,learner_id,daily_learners(email)").eq("session_id", session.id).eq("organisation_id", session.organisation_id).not("status", "in", "(declined,cancelled,abandoned)");
     if (enrolmentError) return NextResponse.json({ error: enrolmentError.message }, { status: 500 });
-    matchingRows = (rows ?? []).filter((row: Json) => { const learner = Array.isArray(row.daily_learners) ? row.daily_learners[0] : row.daily_learners; return email((learner as Json | undefined)?.email) === email(access.entity_email); });
+    const entityKey = text(access.entity_key);
+    matchingRows = (rows ?? []).filter((row: Json) => {
+      if (entityKey) return entityKey === `learner:${text(row.learner_id)}`;
+      const learner = Array.isArray(row.daily_learners) ? row.daily_learners[0] : row.daily_learners;
+      return Boolean(email(access.entity_email) && email((learner as Json | undefined)?.email) === email(access.entity_email));
+    });
     allowedEnrolmentIds = matchingRows.map((row: Json) => text(row.id)).filter(Boolean);
     allowedLearnerIds = matchingRows.map((row: Json) => text(row.learner_id)).filter(Boolean);
   } else if (access.portal_type === "enterprise") {
@@ -128,12 +134,14 @@ export async function GET(_request: Request, { params }: Params) {
   const visible = (documents ?? []).filter((document: Json) => isDailyPortalResourceVisible({resource:document,companyName:String(access.entity_name??""),role:access.portal_type,sessionId:session.id,enrolmentIds:allowedEnrolmentIds,learnerIds:allowedLearnerIds,postsessionAvailable}));
 
   const personalAttendanceResources: Json[] = [];
+  const personalAssessmentResources: Json[] = [];
   if (access.portal_type === "learner" && postsessionAvailable && allowedEnrolmentIds.length) {
-    const [{ data: slots, error: slotsError }, { data: records, error: recordsError }] = await Promise.all([
+    const [{ data: slots, error: slotsError }, { data: records, error: recordsError }, { data: assessments, error: assessmentsError }] = await Promise.all([
       admin.from("daily_attendance_slots").select("id").eq("organisation_id", session.organisation_id).eq("session_id", session.id).neq("status", "cancelled"),
       admin.from("daily_attendance_records").select("slot_id,enrolment_id,status").eq("organisation_id", session.organisation_id).eq("session_id", session.id).in("enrolment_id", allowedEnrolmentIds),
+      admin.from("daily_learning_assessments").select("enrolment_id,outcome,assessed_at").eq("organisation_id", session.organisation_id).eq("session_id", session.id).in("enrolment_id", allowedEnrolmentIds),
     ]);
-    const attendanceError = slotsError ?? recordsError;
+    const attendanceError = slotsError ?? recordsError ?? assessmentsError;
     if (attendanceError) return NextResponse.json({ error: attendanceError.message }, { status: 500 });
     const slotIds = (slots ?? []).map((slot: Json) => slot.id);
     for (const row of matchingRows) {
@@ -150,6 +158,19 @@ export async function GET(_request: Request, { params }: Params) {
         created_at: session.end_date,
       });
     }
+    for (const assessment of assessments ?? []) {
+      if (!isFinalAssessmentResult(assessment.outcome, assessment.assessed_at)) continue;
+      const enrolmentId = text(assessment.enrolment_id);
+      personalAssessmentResources.push({
+        id: personalAssessmentResultDocumentId(enrolmentId),
+        document_type: "personal_assessment_result",
+        linked_object_type: "enrolment",
+        linked_object_id: enrolmentId,
+        logical_name: "Mon résultat d’évaluation finale",
+        status: "available",
+        created_at: assessment.assessed_at,
+      });
+    }
   }
 
   let pretrainingResources: Json[] = [];
@@ -159,5 +180,5 @@ export async function GET(_request: Request, { params }: Params) {
     return NextResponse.json({ error: cause instanceof Error ? cause.message : "Documents avant formation indisponibles." }, { status: 500 });
   }
 
-  return NextResponse.json({ documents: [...pretrainingResources, ...visible, ...personalAttendanceResources] });
+  return NextResponse.json({ documents: [...pretrainingResources, ...visible, ...personalAttendanceResources, ...personalAssessmentResources] });
 }
