@@ -73,9 +73,13 @@ export default function LearnerPhaseNavigation({ role, token }: Props) {
         { label: "Présences & émargement", detail: "Consultez vos créneaux et retrouvez un émargement oublié lié à cette session.", href: `/daily/portail/${role}/${token}/presence` },
       ];
     }
+    const completionCertificate = resources.find((doc) => doc.document_type === "completion_certificate");
     return [
       { label: "Évaluation de fin de formation", detail: "Retrouvez votre évaluation après la session.", href: `/daily/portail/${role}/${token}/evaluation` },
       { label: "Présences & émargement", detail: "Un émargement oublié reste accessible depuis l’historique de cette session.", href: `/daily/portail/${role}/${token}/presence` },
+      completionCertificate
+        ? { label: "Certificat de réalisation", detail: "Téléchargez votre certificat personnel finalisé.", href: `/api/daily-portal/${token}/document?id=${encodeURIComponent(completionCertificate.id)}` }
+        : { label: "Certificat de réalisation", detail: "Il sera disponible ici après la session, une fois finalisé par votre organisme." },
     ];
   }, [data, resources, role, selected, token]);
 

@@ -124,10 +124,11 @@ export async function GET(_request: Request, { params }: Params) {
     }
   }
 
-  const visible = (documents ?? []).filter((document: Json) => isDailyPortalResourceVisible({resource:document,companyName:String(access.entity_name??""),role:access.portal_type,sessionId:session.id,enrolmentIds:allowedEnrolmentIds,learnerIds:allowedLearnerIds}));
+  const postsessionAvailable = isPostsessionDownloadAvailable(session.end_date);
+  const visible = (documents ?? []).filter((document: Json) => isDailyPortalResourceVisible({resource:document,companyName:String(access.entity_name??""),role:access.portal_type,sessionId:session.id,enrolmentIds:allowedEnrolmentIds,learnerIds:allowedLearnerIds,postsessionAvailable}));
 
   const personalAttendanceResources: Json[] = [];
-  if (access.portal_type === "learner" && isPostsessionDownloadAvailable(session.end_date) && allowedEnrolmentIds.length) {
+  if (access.portal_type === "learner" && postsessionAvailable && allowedEnrolmentIds.length) {
     const [{ data: slots, error: slotsError }, { data: records, error: recordsError }] = await Promise.all([
       admin.from("daily_attendance_slots").select("id").eq("organisation_id", session.organisation_id).eq("session_id", session.id).neq("status", "cancelled"),
       admin.from("daily_attendance_records").select("slot_id,enrolment_id,status").eq("organisation_id", session.organisation_id).eq("session_id", session.id).in("enrolment_id", allowedEnrolmentIds),
