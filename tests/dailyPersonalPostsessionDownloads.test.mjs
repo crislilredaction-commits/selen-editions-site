@@ -4,6 +4,8 @@ import test from "node:test";
 import { loadTypeScript } from "./helpers/loadTypeScript.mjs";
 
 const helper = loadTypeScript("lib/server/dailyPersonalAttendance.ts");
+const assessment = loadTypeScript("lib/server/dailyPersonalAssessment.ts");
+const documentHtml = loadTypeScript("lib/server/dailyPosttrainingDocumentHtml.ts");
 const resourceVisibility = loadTypeScript("lib/server/dailyPortalResourceVisibility.ts");
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
@@ -107,4 +109,74 @@ test("Après affiche une action dédiée au certificat finalisé ou son état d�
   assert.match(navigation, /Téléchargez votre certificat personnel finalisé/);
   assert.match(navigation, /Il sera disponible ici après la session, une fois finalisé par votre organisme/);
   assert.match(navigation, /encodeURIComponent\(completionCertificate\.id\)/);
+});
+
+test("AR1 ne publie que les résultats canoniques finalisés et horodatés", () => {
+  assert.equal(assessment.isFinalAssessmentResult("achieved", "2026-10-16T09:30:00Z"), true);
+  assert.equal(assessment.isFinalAssessmentResult("partially_achieved", "2026-10-16T09:30:00Z"), true);
+  assert.equal(assessment.isFinalAssessmentResult("not_achieved", "2026-10-16T09:30:00Z"), true);
+  assert.equal(assessment.isFinalAssessmentResult("not_applicable", "2026-10-16T09:30:00Z"), true);
+  assert.equal(assessment.isFinalAssessmentResult("pending", "2026-10-16T09:30:00Z"), false);
+  assert.equal(assessment.isFinalAssessmentResult("achieved", null), false);
+});
+
+test("AR1 encode strictement l’inscription du résultat personnel", () => {
+  const enrolmentId = "11111111-2222-4333-8444-555555555555";
+  const documentId = assessment.personalAssessmentResultDocumentId(enrolmentId);
+  assert.equal(documentId, `portal:personal-assessment-result:${enrolmentId}`);
+  assert.equal(assessment.personalAssessmentResultEnrolmentId(documentId), enrolmentId);
+  assert.equal(assessment.personalAssessmentResultEnrolmentId("portal:personal-assessment-result:../../autre"), null);
+});
+
+test("le document personnel échappe les données et n’expose aucun détail interne", () => {
+  const html = documentHtml.buildPersonalAssessmentResultHtml({
+    organisationName: "OF <test>", organisationSiret: "123", organisationNda: "456",
+    formationTitle: "Formation", sessionReference: "S1", learnerName: "Ada <script>",
+    startDate: "2026-10-01", endDate: "2026-10-02", outcomeLabel: "Acquis",
+    score: 8, scoreMax: 10, method: "Quiz & pratique", assessedAt: "2026-10-03T10:00:00Z", generatedAt: new Date("2026-10-04T10:00:00Z"),
+  });
+  assert.match(html, /Ada &lt;script&gt;/);
+  assert.match(html, /8 \/ 10/);
+  assert.match(html, /Quiz &amp; pratique/);
+  assert.doesNotMatch(html, /assessed_by|notes|proofHash/);
+});
+
+test("la liste expose le résultat personnel uniquement après session et finalisation", async () => {
+  const resources = await read("app/api/daily-portal/[token]/resources/route.ts");
+  assert.match(resources, /daily_learning_assessments/);
+  assert.match(resources, /isFinalAssessmentResult\(assessment\.outcome, assessment\.assessed_at\)/);
+  assert.match(resources, /personalAssessmentResultDocumentId\(enrolmentId\)/);
+  assert.match(resources, /personal_assessment_result/);
+  assert.match(resources, /entityKey === `learner:\$\{text\(row\.learner_id\)\}`/);
+  assert.match(resources, /\.eq\("organisation_id", session\.organisation_id\)\.eq\("session_id", session\.id\)\.in\("enrolment_id", allowedEnrolmentIds\)/);
+});
+
+test("le téléchargement central route le résultat personnel ciblé", async () => {
+  const route = await read("app/api/daily-portal/[token]/document/route.ts");
+  assert.match(route, /personalAssessmentResultEnrolmentId/);
+  assert.match(route, /route:"personal-assessment-result"/);
+  assert.match(route, /query:"enrolment"/);
+});
+
+test("la route du résultat recroise jeton, inscription, identité stable et résultat final", async () => {
+  const route = await read("app/api/daily-portal/[token]/personal-assessment-result/route.ts");
+  assert.match(route, /access\.portal_type !== "learner"/);
+  assert.match(route, /\(declined,cancelled,abandoned\)/);
+  assert.match(route, /enrolment\.organisation_id !== session\.organisation_id/);
+  assert.match(route, /entityKey === `learner:\$\{text\(enrolment\.learner_id\)\}`/);
+  assert.match(route, /isPostsessionDownloadAvailable\(session\.end_date\)/);
+  assert.match(route, /isFinalAssessmentResult\(assessment\.outcome, assessment\.assessed_at\)/);
+  assert.match(route, /select\("outcome,score,score_max,method,assessed_at"\)/);
+  assert.doesNotMatch(route, /notes|assessed_by/);
+  assert.match(route, /"Cache-Control": "private, no-store"/);
+  assert.match(route, /"X-Content-Type-Options": "nosniff"/);
+  assert.doesNotMatch(route, /\.insert\(|\.update\(|\.upsert\(|\.upload\(/);
+});
+
+test("Après affiche le résultat finalisé ou son état d’attente", async () => {
+  const navigation = await read("components/daily/LearnerPhaseNavigation.tsx");
+  assert.match(navigation, /resources\.find\(\(doc\) => doc\.document_type === "personal_assessment_result"\)/);
+  assert.match(navigation, /Téléchargez votre résultat personnel finalisé/);
+  assert.match(navigation, /Il sera disponible après la session, une fois finalisé par votre organisme/);
+  assert.match(navigation, /encodeURIComponent\(personalAssessmentResult\.id\)/);
 });
