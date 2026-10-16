@@ -31,6 +31,7 @@ function docLabel(doc: Json) {
   if (doc.document_type === "completion_certificate") return "Certificat de réalisation";
   if (doc.document_type === "personal_attendance_summary") return "Mon relevé de présence";
   if (doc.document_type === "personal_assessment_result") return "Mon résultat d’évaluation finale";
+  if (doc.document_type === "personal_assessment_evidence") return "Ma copie d’évaluation finale";
   return doc.logical_name || "Document";
 }
 
@@ -76,11 +77,13 @@ export default function LearnerPhaseNavigation({ role, token }: Props) {
     }
     const completionCertificate = resources.find((doc) => doc.document_type === "completion_certificate");
     const personalAssessmentResult = resources.find((doc) => doc.document_type === "personal_assessment_result");
+    const personalAssessmentEvidence = resources.find((doc) => doc.document_type === "personal_assessment_evidence");
     return [
       { label: "Évaluation de fin de formation", detail: "Retrouvez votre évaluation après la session.", href: `/daily/portail/${role}/${token}/evaluation` },
       personalAssessmentResult
         ? { label: "Résultat de l’évaluation finale", detail: "Téléchargez votre résultat personnel finalisé.", href: `/api/daily-portal/${token}/document?id=${encodeURIComponent(personalAssessmentResult.id)}` }
         : { label: "Résultat de l’évaluation finale", detail: "Il sera disponible après la session, une fois finalisé par votre organisme." },
+      ...(personalAssessmentEvidence ? [{ label: "Copie de l’évaluation finale", detail: "Téléchargez la copie externe jointe à votre résultat finalisé.", href: `/api/daily-portal/${token}/document?id=${encodeURIComponent(personalAssessmentEvidence.id)}` }] : []),
       { label: "Présences & émargement", detail: "Un émargement oublié reste accessible depuis l’historique de cette session.", href: `/daily/portail/${role}/${token}/presence` },
       completionCertificate
         ? { label: "Certificat de réalisation", detail: "Téléchargez votre certificat personnel finalisé.", href: `/api/daily-portal/${token}/document?id=${encodeURIComponent(completionCertificate.id)}` }

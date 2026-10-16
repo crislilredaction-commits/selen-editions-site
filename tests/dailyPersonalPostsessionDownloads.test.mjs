@@ -128,6 +128,14 @@ test("AR1 encode strictement l’inscription du résultat personnel", () => {
   assert.equal(assessment.personalAssessmentResultEnrolmentId("portal:personal-assessment-result:../../autre"), null);
 });
 
+test("AR1 encode strictement la copie externe dans un identifiant virtuel", () => {
+  const documentId = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+  const virtualId = assessment.personalAssessmentEvidenceDocumentId(documentId);
+  assert.equal(virtualId, `portal:personal-assessment-evidence:${documentId}`);
+  assert.equal(assessment.personalAssessmentEvidenceSourceId(virtualId), documentId);
+  assert.equal(assessment.personalAssessmentEvidenceSourceId("portal:personal-assessment-evidence:../../autre"), null);
+});
+
 test("le document personnel échappe les données et n’expose aucun détail interne", () => {
   const html = documentHtml.buildPersonalAssessmentResultHtml({
     organisationName: "OF <test>", organisationSiret: "123", organisationNda: "456",
@@ -179,4 +187,47 @@ test("Après affiche le résultat finalisé ou son état d’attente", async () 
   assert.match(navigation, /Téléchargez votre résultat personnel finalisé/);
   assert.match(navigation, /Il sera disponible après la session, une fois finalisé par votre organisme/);
   assert.match(navigation, /encodeURIComponent\(personalAssessmentResult\.id\)/);
+});
+
+test("la liste n’expose la copie externe qu’avec le résultat canonique finalisé", async () => {
+  const resources = await read("app/api/daily-portal/[token]/resources/route.ts");
+  assert.match(resources, /document_type", "learning_assessment_evidence"/);
+  assert.match(resources, /\.eq\("is_current", true\)\.is\("archived_at", null\)/);
+  assert.match(resources, /text\(document\.learner_id\) === text\(matchingEnrolment\?\.learner_id\)/);
+  assert.match(resources, /document\.linked_object_type === "enrolment"/);
+  assert.ok(resources.indexOf("isFinalAssessmentResult(assessment.outcome, assessment.assessed_at)") < resources.indexOf("personalAssessmentEvidenceResources.push"));
+  assert.match(resources, /personalAssessmentEvidenceDocumentId\(evidence\.id\)/);
+  assert.doesNotMatch(resources, /sha256|assessed_by|notes/);
+});
+
+test("le téléchargement central route la copie externe ciblée", async () => {
+  const route = await read("app/api/daily-portal/[token]/document/route.ts");
+  assert.match(route, /personalAssessmentEvidenceSourceId/);
+  assert.match(route, /route:"personal-assessment-evidence"/);
+  assert.match(route, /query:"document"/);
+});
+
+test("la route de copie recroise jeton, document courant, inscription, identité et résultat final", async () => {
+  const route = await read("app/api/daily-portal/[token]/personal-assessment-evidence/route.ts");
+  assert.match(route, /access\.portal_type !== "learner"/);
+  assert.match(route, /isPostsessionDownloadAvailable\(session\.end_date\)/);
+  assert.match(route, /document_type", "learning_assessment_evidence"/);
+  assert.match(route, /\.eq\("is_current", true\)\.is\("archived_at", null\)/);
+  assert.match(route, /\(declined,cancelled,abandoned\)/);
+  assert.match(route, /entityKey === `learner:\$\{text\(enrolment\.learner_id\)\}`/);
+  assert.match(route, /isFinalAssessmentResult\(assessment\.outcome, assessment\.assessed_at\)/);
+  assert.match(route, /evidence\.bucket !== "documents"/);
+  assert.match(route, /startsWith\(`daily\/\$\{session\.organisation_id\}\//);
+  assert.match(route, /createSignedUrl\(text\(evidence\.storage_path\), 120/);
+  assert.match(route, /"Cache-Control": "private, no-store"/);
+  assert.doesNotMatch(route, /sha256|assessed_by|notes/);
+  assert.doesNotMatch(route, /\.insert\(|\.update\(|\.upsert\(|\.upload\(/);
+});
+
+test("Après propose la copie seulement lorsqu’un fichier personnel finalisé existe", async () => {
+  const navigation = await read("components/daily/LearnerPhaseNavigation.tsx");
+  assert.match(navigation, /resources\.find\(\(doc\) => doc\.document_type === "personal_assessment_evidence"\)/);
+  assert.match(navigation, /Téléchargez la copie externe jointe à votre résultat finalisé/);
+  assert.match(navigation, /\.\.\.\(personalAssessmentEvidence \? \[/);
+  assert.match(navigation, /encodeURIComponent\(personalAssessmentEvidence\.id\)/);
 });
