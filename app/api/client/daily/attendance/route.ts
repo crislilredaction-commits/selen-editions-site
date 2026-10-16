@@ -68,7 +68,7 @@ async function loadSessionOverview(
   const [{ data: slots, error: slotsError }, { data: enrolments, error: enrolmentsError }, { data: communications, error: communicationsError }] = await Promise.all([
     admin
       .from("daily_attendance_slots")
-      .select("id,slot_key,slot_date,starts_at,ends_at,mode,label,status,created_at,daily_attendance_access_tokens(id,access_type,enrolment_id,channel,status,expires_at,last_used_at),daily_attendance_records(id,enrolment_id,status,signed_at,validated_at)")
+      .select("id,slot_key,slot_date,starts_at,ends_at,mode,label,status,created_at,daily_attendance_access_tokens(id,access_type,enrolment_id,channel,status,expires_at,last_used_at),daily_attendance_records(id,enrolment_id,status,signed_at,validated_at,validated_by,evidence_metadata,updated_at)")
       .eq("organisation_id", organisationId)
       .eq("session_id", sessionId)
       .order("slot_date", { ascending: true })
@@ -330,6 +330,24 @@ export async function POST(req: Request) {
     if (!slotId || !enrolmentId || !["absent", "excused", "pending"].includes(status)) {
       return NextResponse.json({ error: "Données d'absence invalides." }, { status: 400 });
     }
+    const { data: currentRecord, error: currentRecordError } = await context.admin
+      .from("daily_attendance_records")
+      .select("evidence_metadata")
+      .eq("organisation_id", context.organisationId)
+      .eq("session_id", sessionId)
+      .eq("slot_id", slotId)
+      .eq("enrolment_id", enrolmentId)
+      .maybeSingle();
+    if (currentRecordError) return NextResponse.json({ error: currentRecordError.message }, { status: 500 });
+    const currentMetadata = currentRecord?.evidence_metadata && typeof currentRecord.evidence_metadata === "object"
+      ? currentRecord.evidence_metadata as Record<string, unknown>
+      : {};
+    const currentReview = currentMetadata.late_review && typeof currentMetadata.late_review === "object"
+      ? currentMetadata.late_review as Record<string, unknown>
+      : {};
+    if (currentMetadata.late_attendance === true && currentReview.state === "awaiting_validation") {
+      return NextResponse.json({ error: "Validez ou rejetez d’abord la preuve de régularisation soumise." }, { status: 409 });
+    }
     const { error } = await context.admin
       .from("daily_attendance_records")
       .update({ status, updated_at: new Date().toISOString() })
@@ -342,6 +360,81 @@ export async function POST(req: Request) {
     await refreshDailyAttendanceChecklist(context.admin, context.organisationId, sessionId);
     await tryEnsurePosttrainingDocuments(context.admin, context.organisationId, context.user.id, sessionId);
     return NextResponse.json({ ok: true });
+  }
+
+  if (action === "review_late_attendance") {
+    const slotId = text(body, "slot_id");
+    const enrolmentId = text(body, "enrolment_id");
+    const decision = text(body, "decision");
+    const reason = text(body, "reason");
+    if (!slotId || !enrolmentId || !["validate", "reject"].includes(decision)) {
+      return NextResponse.json({ error: "Décision de validation invalide." }, { status: 400 });
+    }
+    if (decision === "reject" && reason.length < 3) {
+      return NextResponse.json({ error: "Le motif du rejet est obligatoire." }, { status: 400 });
+    }
+    const { data: current, error: currentError } = await context.admin
+      .from("daily_attendance_records")
+      .select("id,status,signed_at,validated_at,validated_by,evidence_metadata,updated_at")
+      .eq("organisation_id", context.organisationId)
+      .eq("session_id", sessionId)
+      .eq("slot_id", slotId)
+      .eq("enrolment_id", enrolmentId)
+      .maybeSingle();
+    if (currentError) return NextResponse.json({ error: currentError.message }, { status: 500 });
+    if (!current) return NextResponse.json({ error: "Émargement introuvable." }, { status: 404 });
+    const metadata = current.evidence_metadata && typeof current.evidence_metadata === "object"
+      ? current.evidence_metadata as Record<string, unknown>
+      : {};
+    const review = metadata.late_review && typeof metadata.late_review === "object"
+      ? metadata.late_review as Record<string, unknown>
+      : {};
+    if (metadata.late_attendance !== true || current.status !== "pending" || !current.signed_at || review.state !== "awaiting_validation") {
+      return NextResponse.json({ error: "Cette régularisation n’est plus en attente de validation." }, { status: 409 });
+    }
+    const decidedAt = new Date().toISOString();
+    const reviewerId = context.assisted ? context.assistance.agent_user_id : context.user.id;
+    const reviewerEmail = context.assisted ? context.assistance.agent_email : context.user.email;
+    const version = Number(review.version) || 1;
+    const versions = (Array.isArray(review.versions) ? review.versions : []).map((item) => {
+      if (!item || typeof item !== "object" || Number((item as Record<string, unknown>).version) !== version) return item;
+      return {
+        ...(item as Record<string, unknown>),
+        decision: decision === "validate" ? "validated" : "rejected",
+        decided_at: decidedAt,
+        decided_by: reviewerId,
+        decided_by_email: reviewerEmail,
+        reason: decision === "reject" ? reason : null,
+      };
+    });
+    const nextMetadata = {
+      ...metadata,
+      late_review: {
+        ...review,
+        state: decision === "validate" ? "validated" : "rejected",
+        rejection_reason: decision === "reject" ? reason : null,
+        decided_at: decidedAt,
+        decided_by: reviewerId,
+        decided_by_email: reviewerEmail,
+        reviewer_mode: context.assisted ? "studio_assistance" : "daily_organisation",
+        versions,
+      },
+    };
+    const patch = decision === "validate"
+      ? { status: "present", validated_at: decidedAt, validated_by: reviewerId, evidence_metadata: nextMetadata, updated_at: decidedAt }
+      : { status: "pending", validated_at: null, validated_by: null, evidence_metadata: nextMetadata, updated_at: decidedAt };
+    const { data: updated, error: updateError } = await context.admin
+      .from("daily_attendance_records")
+      .update(patch)
+      .eq("id", current.id)
+      .eq("updated_at", current.updated_at)
+      .select("id")
+      .maybeSingle();
+    if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
+    if (!updated) return NextResponse.json({ error: "La régularisation a changé entre-temps. Rechargez la page." }, { status: 409 });
+    await refreshDailyAttendanceChecklist(context.admin, context.organisationId, sessionId);
+    await tryEnsurePosttrainingDocuments(context.admin, context.organisationId, context.user.id, sessionId);
+    return NextResponse.json({ ok: true, reviewState: decision === "validate" ? "validated" : "rejected", decidedAt, version });
   }
 
   return NextResponse.json({ error: "Action d'émargement inconnue." }, { status: 400 });

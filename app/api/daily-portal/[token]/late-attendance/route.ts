@@ -105,7 +105,7 @@ export async function POST(request: Request, { params }: Params) {
 
   const { data: current, error: recordReadError } = await admin
     .from("daily_attendance_records")
-    .select("status,signed_at")
+    .select("id,status,signed_at,signature_storage_path,signature_sha256,proof_sha256,evidence_metadata,updated_at")
     .eq("slot_id", slot.id)
     .eq("enrolment_id", enrolment.id)
     .maybeSingle();
@@ -113,6 +113,15 @@ export async function POST(request: Request, { params }: Params) {
   if (current?.status === "present") return NextResponse.json({ ok: true, alreadySigned: true, signedAt: current.signed_at });
   if (current?.status && current.status !== "pending") {
     return NextResponse.json({ error: "Ce créneau possède déjà un statut de présence. L’organisme doit le vérifier avant toute modification." }, { status: 409 });
+  }
+  const currentMetadata = current?.evidence_metadata && typeof current.evidence_metadata === "object"
+    ? current.evidence_metadata as Record<string, unknown>
+    : {};
+  const currentReview = currentMetadata.late_review && typeof currentMetadata.late_review === "object"
+    ? currentMetadata.late_review as Record<string, unknown>
+    : {};
+  if (currentReview.state === "awaiting_validation") {
+    return NextResponse.json({ error: "Votre régularisation est déjà en attente de validation par l’organisme." }, { status: 409 });
   }
 
   const signedAt = new Date().toISOString();
@@ -134,12 +143,24 @@ export async function POST(request: Request, { params }: Params) {
   const { error: uploadError } = await admin.storage.from("documents").upload(storagePath, signature, { contentType: "image/png", upsert: false });
   if (uploadError) return NextResponse.json({ error: "La preuve de signature n’a pas pu être conservée." }, { status: 500 });
 
-  const { error: recordError } = await admin.from("daily_attendance_records").upsert({
+  const previousVersions = Array.isArray(currentReview.versions) ? currentReview.versions : [];
+  const version = Math.max(0, Number(currentReview.version) || 0) + 1;
+  const versions = [...previousVersions, {
+    version,
+    signed_at: signedAt,
+    signature_storage_path: storagePath,
+    signature_sha256: signatureSha256,
+    proof_sha256: proofSha256,
+    submitted_by: authData.user.id,
+    submitted_at: signedAt,
+    decision: "awaiting_validation",
+  }];
+  const recordPayload = {
     organisation_id: session.organisation_id,
     session_id: session.id,
     slot_id: slot.id,
     enrolment_id: enrolment.id,
-    status: "present",
+    status: "pending",
     consent_text: DAILY_ATTENDANCE_CONSENT,
     signature_storage_path: storagePath,
     signature_sha256: signatureSha256,
@@ -148,6 +169,7 @@ export async function POST(request: Request, { params }: Params) {
     ip_address: ipAddress,
     user_agent: userAgent,
     evidence_metadata: {
+      ...currentMetadata,
       channel: "authenticated_portal",
       access_type: "learner_portal",
       late_attendance: true,
@@ -155,12 +177,32 @@ export async function POST(request: Request, { params }: Params) {
       slot_starts_at: slot.starts_at,
       slot_ends_at: slot.ends_at,
       recorded_at: signedAt,
+      late_review: {
+        state: "awaiting_validation",
+        version,
+        submitted_at: signedAt,
+        submitted_by: authData.user.id,
+        rejection_reason: null,
+        versions,
+      },
     },
     updated_at: signedAt,
-  }, { onConflict: "slot_id,enrolment_id" });
-  if (recordError) {
+  };
+  const recordWrite = current
+    ? await admin.from("daily_attendance_records")
+      .update(recordPayload)
+      .eq("id", current.id)
+      .eq("updated_at", current.updated_at)
+      .select("id")
+      .maybeSingle()
+    : await admin.from("daily_attendance_records")
+      .insert(recordPayload)
+      .select("id")
+      .maybeSingle();
+  if (recordWrite.error || !recordWrite.data) {
     await admin.storage.from("documents").remove([storagePath]);
-    return NextResponse.json({ error: recordError.message }, { status: 500 });
+    if (!recordWrite.error) return NextResponse.json({ error: "L’émargement a changé entre-temps. Rechargez la page." }, { status: 409 });
+    return NextResponse.json({ error: recordWrite.error.code === "23505" ? "L’émargement a changé entre-temps. Rechargez la page." : recordWrite.error.message }, { status: recordWrite.error.code === "23505" ? 409 : 500 });
   }
 
   await admin.from("daily_session_checklist_items")
@@ -170,5 +212,5 @@ export async function POST(request: Request, { params }: Params) {
     .eq("item_key", "attendance_followup")
     .eq("status", "todo");
 
-  return NextResponse.json({ ok: true, signedAt, late: true });
+  return NextResponse.json({ ok: true, signedAt, late: true, reviewState: "awaiting_validation", version });
 }

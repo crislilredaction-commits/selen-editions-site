@@ -7,6 +7,12 @@ function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function awaitingLateReview(record: { evidence_metadata?: unknown } | null | undefined) {
+  const metadata = record?.evidence_metadata && typeof record.evidence_metadata === "object" ? record.evidence_metadata as Record<string, unknown> : {};
+  const review = metadata.late_review && typeof metadata.late_review === "object" ? metadata.late_review as Record<string, unknown> : {};
+  return metadata.late_attendance === true && review.state === "awaiting_validation";
+}
+
 function one<T>(value: T | T[] | null | undefined): T | null {
   if (Array.isArray(value)) return value[0] ?? null;
   return value ?? null;
@@ -59,7 +65,7 @@ export async function POST(req: Request) {
       .maybeSingle(),
     context.admin
       .from("daily_attendance_records")
-      .select("status")
+      .select("status,evidence_metadata")
       .eq("organisation_id", context.organisationId)
       .eq("session_id", sessionId)
       .eq("slot_id", slotId)
@@ -75,6 +81,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Inscription inactive." }, { status: 404 });
   }
   if (record?.status !== "pending") return NextResponse.json({ error: "Cette présence est déjà traitée ; aucune relance n’est nécessaire." }, { status: 409 });
+  if (awaitingLateReview(record)) return NextResponse.json({ error: "Cette preuve est déjà en attente de validation ; aucune relance n’est nécessaire." }, { status: 409 });
 
   const learner = one(enrolment.daily_learners as { first_name?: string | null; last_name?: string | null; email?: string | null } | { first_name?: string | null; last_name?: string | null; email?: string | null }[] | null);
   const email = text(learner?.email).toLowerCase();
@@ -189,13 +196,13 @@ export async function POST(req: Request) {
 
   const { data: attendanceBeforeSend } = await context.admin
     .from("daily_attendance_records")
-    .select("status")
+    .select("status,evidence_metadata")
     .eq("organisation_id", context.organisationId)
     .eq("session_id", sessionId)
     .eq("slot_id", slotId)
     .eq("enrolment_id", enrolmentId)
     .maybeSingle();
-  if (attendanceBeforeSend?.status !== "pending") {
+  if (attendanceBeforeSend?.status !== "pending" || awaitingLateReview(attendanceBeforeSend)) {
     const cancelledAt = new Date().toISOString();
     await Promise.all([
       context.admin.from("daily_attendance_access_tokens").update({ status: "revoked" }).eq("id", access.id).eq("organisation_id", context.organisationId),

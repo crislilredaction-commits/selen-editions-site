@@ -28,6 +28,7 @@ export default function LateAttendanceForm({ role, token, slotId }: Props) {
         if (found.phase !== "closed") throw new Error("Ce créneau n’est pas encore terminé.");
         if (record?.status === "present") throw new Error("Votre présence est déjà enregistrée pour ce créneau.");
         if (record?.status && record.status !== "pending") throw new Error("Ce créneau possède déjà un statut de présence qui doit être vérifié par l’organisme.");
+        if (record?.reviewState === "awaiting_validation") throw new Error("Votre régularisation est déjà en attente de validation par l’organisme.");
         setSlot(found);
       }).catch((cause) => setError(cause instanceof Error ? cause.message : "Créneau indisponible."));
   }, [slotId, token]);
@@ -99,7 +100,7 @@ export default function LateAttendanceForm({ role, token, slotId }: Props) {
     const body = await response.json().catch(() => ({}));
     setSaving(false);
     if (!response.ok) return setError(body.error ?? "Régularisation impossible.");
-    setNotice(`Présence enregistrée le ${new Date(body.signedAt).toLocaleString("fr-FR")}. Cette date réelle est conservée dans la preuve d’émargement.`);
+    setNotice(`Régularisation soumise le ${new Date(body.signedAt).toLocaleString("fr-FR")} et en attente de validation. Cette date réelle est conservée dans la preuve d’émargement.`);
   }
 
   return <main style={{ maxWidth: 700, margin: "0 auto", padding: "2rem 1rem 5rem", color: "var(--ink)" }}>
@@ -110,6 +111,7 @@ export default function LateAttendanceForm({ role, token, slotId }: Props) {
     {notice ? <p style={{ padding: 12, border: "1px solid #7a8" }}>{notice}</p> : null}
     {slot && !notice ? <section style={{ padding: 16, border: "1px solid var(--sepia-mid)", background: "var(--paper)" }}>
       <p><strong>Créneau concerné :</strong> {new Date(`${slot.date}T12:00:00`).toLocaleDateString("fr-FR")} · {String(slot.startsAt).slice(0,5)} à {String(slot.endsAt).slice(0,5)}</p>
+      {(slot.attendance ?? [])[0]?.reviewState === "rejected" ? <p role="alert" style={{ padding: 10, border: "1px solid #a64" }}><strong>Preuve précédente refusée.</strong> {(slot.attendance ?? [])[0]?.rejectionReason || "Veuillez soumettre une nouvelle signature."}</p> : null}
       <label style={{ display: "flex", gap: 10, alignItems: "flex-start", margin: "1rem 0", lineHeight: 1.5 }}><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} style={{ width: 22, height: 22 }} /><span>{CONSENT_TEXT}</span></label>
       <p style={{ fontWeight: 800 }}>Signez dans le cadre :</p>
       <canvas ref={canvasRef} aria-label="Zone de signature" onPointerDown={start} onPointerMove={move} onPointerUp={() => { drawing.current = false; }} onPointerCancel={() => { drawing.current = false; }} style={{ display: "block", width: "100%", height: SIGNATURE_HEIGHT, border: "1px solid var(--sepia-mid)", background: "#fffaf0", touchAction: "none" }} />

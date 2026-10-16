@@ -6,7 +6,9 @@ import { dailyAttendanceLabel, dailyAttendanceSummary } from "@/lib/dailyAttenda
 
 type Session = { id: string; internal_reference?: string | null; start_date?: string | null; end_date?: string | null; daily_formations?: { title?: string } | { title?: string }[] | null };
 type ScheduleBlock = { date?: string; start?: string; end?: string; note?: string };
-type Slot = { id: string; slot_date: string; starts_at: string; ends_at: string; mode: string; status: string; daily_attendance_records?: { enrolment_id: string; status: string }[] };
+type LateReview = { state?: string; version?: number; rejection_reason?: string | null; submitted_at?: string | null };
+type AttendanceRecord = { enrolment_id: string; status: string; signed_at?: string | null; validated_at?: string | null; evidence_metadata?: { late_attendance?: boolean; late_review?: LateReview } | null };
+type Slot = { id: string; slot_date: string; starts_at: string; ends_at: string; mode: string; status: string; daily_attendance_records?: AttendanceRecord[] };
 type Enrolment = { id: string; status: string; daily_learners?: { first_name?: string | null; last_name?: string | null; email?: string | null } | { first_name?: string | null; last_name?: string | null; email?: string | null }[] | null };
 type Communication = { id: string; enrolment_id: string; communication_type: string; status: string; sent_at?: string | null; created_at: string; metadata?: { attendance_slot_id?: string } | null };
 type Overview = { session: { modality?: string | null; distance_mode?: string | null; schedule_blocks?: ScheduleBlock[] | null }; slots: Slot[]; enrolments: Enrolment[]; communications: Communication[] };
@@ -125,6 +127,15 @@ export default function DailyPresencePage() {
     await loadOverview(sessionId);
   }
 
+  function reviewLateAttendance(slotId: string, enrolmentId: string, decision: "validate" | "reject") {
+    const reason = decision === "reject" ? window.prompt("Motif du rejet (visible par l’apprenant) :")?.trim() ?? "" : "";
+    if (decision === "reject" && reason.length < 3) {
+      setError("Le motif du rejet est obligatoire.");
+      return;
+    }
+    void run({ action: "review_late_attendance", slot_id: slotId, enrolment_id: enrolmentId, decision, reason });
+  }
+
   const blocks = overview?.session.schedule_blocks ?? [];
 
   return <main style={{ maxWidth: 1100, margin: "0 auto", padding: "2rem 1rem 4rem", color: "#3f2b1d" }}>
@@ -177,13 +188,16 @@ export default function DailyPresencePage() {
       {slot.mode !== "distanciel_asynchrone" && slot.status !== "closed" ? <button disabled={busy} onClick={() => void run({ action: "create_link", slot_id: slot.id })} style={{ padding: ".55rem" }}>{slot.mode === "presentiel" ? "Créer et afficher le QR" : "Créer le lien à partager dans le chat"}</button> : null}
       <div style={{ marginTop: ".8rem" }}>{overview.enrolments.map((enrolment) => {
         const record = slot.daily_attendance_records?.find((row) => row.enrolment_id === enrolment.id);
+        const review = record?.evidence_metadata?.late_review;
+        const awaitingReview = record?.evidence_metadata?.late_attendance === true && record.status === "pending" && review?.state === "awaiting_validation";
         const reminders = overview.communications.filter((item) => item.enrolment_id === enrolment.id && item.communication_type === "attendance_reminder" && item.metadata?.attendance_slot_id === slot.id);
         const lastReminder = reminders.map((item) => item.sent_at ?? item.created_at).sort().at(-1);
         return <div key={enrolment.id} style={{ display: "flex", gap: ".6rem", alignItems: "center", flexWrap: "wrap", padding: ".55rem 0", borderTop: "1px solid #ead8bc" }}>
-          <strong style={{ minWidth: 180 }}>{learnerName(enrolment)}</strong><span>{dailyAttendanceLabel(record?.status, slot.status === "closed" ? "closed" : "open")}</span>
+          <strong style={{ minWidth: 180 }}>{learnerName(enrolment)}</strong><span>{awaitingReview ? `En attente de validation · version ${review?.version ?? 1}` : dailyAttendanceLabel(record?.status, slot.status === "closed" ? "closed" : "open")}</span>
+          {awaitingReview && record?.signed_at ? <small>Soumise le {new Date(record.signed_at).toLocaleString("fr-FR")}</small> : null}
           {reminders.length ? <small>{reminders.length} relance{reminders.length > 1 ? "s" : ""}{lastReminder ? ` · dernière ${new Date(lastReminder).toLocaleString("fr-FR")}` : ""}</small> : null}
           {slot.mode === "distanciel_asynchrone" && slot.status !== "closed" ? <button disabled={busy} onClick={() => void run({ action: "create_link", slot_id: slot.id, enrolment_id: enrolment.id })}>Lien individuel</button> : null}
-          {record?.status !== "present" ? <><button disabled={busy} onClick={() => void run({ action: "set_absence", slot_id: slot.id, enrolment_id: enrolment.id, status: "absent" })}>Absent</button><button disabled={busy} onClick={() => void run({ action: "set_absence", slot_id: slot.id, enrolment_id: enrolment.id, status: "excused" })}>Justifiée</button></> : null}
+          {awaitingReview ? <><button disabled={busy} onClick={() => reviewLateAttendance(slot.id, enrolment.id, "validate")}>Valider la preuve</button><button disabled={busy} onClick={() => reviewLateAttendance(slot.id, enrolment.id, "reject")}>Rejeter et rouvrir</button></> : record?.status !== "present" ? <><button disabled={busy} onClick={() => void run({ action: "set_absence", slot_id: slot.id, enrolment_id: enrolment.id, status: "absent" })}>Absent</button><button disabled={busy} onClick={() => void run({ action: "set_absence", slot_id: slot.id, enrolment_id: enrolment.id, status: "excused" })}>Justifiée</button></> : null}
         </div>;
       })}</div>
       {slot.status !== "closed" ? <button disabled={busy} onClick={() => void run({ action: "close_slot", slot_id: slot.id })} style={{ marginTop: ".8rem" }}>Clore le créneau</button> : null}
