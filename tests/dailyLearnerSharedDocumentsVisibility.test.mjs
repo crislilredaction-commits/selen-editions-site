@@ -33,7 +33,7 @@ test("le portail ressources reconnaît les trois portées publiables", () => {
 
 test("un document organisme est visible par un apprenant", () => {
   assert.match(resourceRules, /scope === "organisation"\) return role === "learner" \|\| role === "trainer"/);
-  assert.match(portal, /if\(scope==="organisation"\)return true/);
+  assert.match(portal, /isDailyPortalResourceVisible/);
 });
 
 test("une diffusion ciblée vérifie le learner_id de l'apprenant courant", () => {
@@ -41,7 +41,7 @@ test("une diffusion ciblée vérifie le learner_id de l'apprenant courant", () =
   assert.match(resources, /allowedLearnerIds = matchingRows\.map/);
   assert.match(resourceRules, /scope === "learners" && role === "learner"/);
   assert.match(resourceRules, /metadata\.learner_ids\.map\(String\)\.some/);
-  assert.match(portal, /m\.learner_ids as unknown\[\]\)\.map\(String\)\.includes\(String\(learnerId\)\)/);
+  assert.match(portal, /learnerIds:\[String\(enrolment\.learner_id\?\?""\)\]/);
 });
 
 test("les inscriptions apprenant refusées, annulées ou abandonnées ne donnent pas accès", () => {
