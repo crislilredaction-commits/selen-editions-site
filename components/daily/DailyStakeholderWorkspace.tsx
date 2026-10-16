@@ -14,6 +14,7 @@ const docLabel = (doc: Json) =>
   doc.document_type === "registration_positioning" ? "Mon dossier d'inscription / positionnement" :
   doc.document_type === "training_program" ? "Programme de formation" :
   doc.document_type === "completion_certificate" ? "Certificat de réalisation" :
+  doc.document_type === "personal_attendance_summary" ? "Mon relevé de présence" :
   doc.logical_name || "Document";
 
 function phase(session: Json | undefined) {

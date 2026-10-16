@@ -29,6 +29,7 @@ function docLabel(doc: Json) {
   if (doc.document_type === "registration_positioning") return "Inscription / positionnement";
   if (doc.document_type === "training_program") return "Programme de formation";
   if (doc.document_type === "completion_certificate") return "Certificat de réalisation";
+  if (doc.document_type === "personal_attendance_summary") return "Mon relevé de présence";
   return doc.logical_name || "Document";
 }
 

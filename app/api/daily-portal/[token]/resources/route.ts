@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import {DAILY_PORTAL_RESOURCE_STATUSES,DAILY_PORTAL_RESOURCE_TYPES,isDailyPortalResourceVisible} from "@/lib/server/dailyPortalResourceVisibility";
+import {attendanceIsSettled,isPostsessionDownloadAvailable,personalAttendanceDocumentId} from "@/lib/server/dailyPersonalAttendance";
 
 type Params = { params: Promise<{ token: string }> };
 type Json = Record<string, unknown>;
@@ -100,16 +101,18 @@ export async function GET(_request: Request, { params }: Params) {
   if (["revoked", "expired"].includes(String(access.status ?? ""))) return NextResponse.json({ error: "Cet accès n’est plus actif." }, { status: 403 });
   if (access.expires_at && new Date(access.expires_at).getTime() < Date.now()) return NextResponse.json({ error: "Ce lien a expiré." }, { status: 410 });
 
-  const { data: session, error: sessionError } = await admin.from("daily_sessions").select("id,organisation_id,companies").eq("id", access.session_id).neq("status", "archived").maybeSingle();
+  const { data: session, error: sessionError } = await admin.from("daily_sessions").select("id,organisation_id,companies,end_date").eq("id", access.session_id).neq("status", "archived").maybeSingle();
   if (sessionError || !session) return NextResponse.json({ error: sessionError?.message ?? "Session introuvable." }, { status: sessionError ? 500 : 404 });
   const { data: documents, error: documentError } = await admin.from("daily_documents").select("id,document_type,linked_object_type,linked_object_id,logical_name,version,status,mime_type,created_at,metadata,session_id,enrolment_id,learner_id").eq("organisation_id", session.organisation_id).eq("is_current", true).in("status", DAILY_PORTAL_RESOURCE_STATUSES).in("document_type", DAILY_PORTAL_RESOURCE_TYPES).order("created_at", { ascending: false });
   if (documentError) return NextResponse.json({ error: documentError.message }, { status: 500 });
 
   let allowedEnrolmentIds: string[] = [];
   let allowedLearnerIds: string[] = [];
+  let matchingRows: Json[] = [];
   if (access.portal_type === "learner") {
-    const { data: rows } = await admin.from("daily_session_enrolments").select("id,learner_id,daily_learners(email)").eq("session_id", session.id).eq("organisation_id", session.organisation_id).not("status", "in", "(declined,cancelled,abandoned)");
-    const matchingRows = (rows ?? []).filter((row: Json) => { const learner = Array.isArray(row.daily_learners) ? row.daily_learners[0] : row.daily_learners; return email((learner as Json | undefined)?.email) === email(access.entity_email); });
+    const { data: rows, error: enrolmentError } = await admin.from("daily_session_enrolments").select("id,learner_id,daily_learners(email)").eq("session_id", session.id).eq("organisation_id", session.organisation_id).not("status", "in", "(declined,cancelled,abandoned)");
+    if (enrolmentError) return NextResponse.json({ error: enrolmentError.message }, { status: 500 });
+    matchingRows = (rows ?? []).filter((row: Json) => { const learner = Array.isArray(row.daily_learners) ? row.daily_learners[0] : row.daily_learners; return email((learner as Json | undefined)?.email) === email(access.entity_email); });
     allowedEnrolmentIds = matchingRows.map((row: Json) => text(row.id)).filter(Boolean);
     allowedLearnerIds = matchingRows.map((row: Json) => text(row.learner_id)).filter(Boolean);
   } else if (access.portal_type === "enterprise") {
@@ -123,6 +126,31 @@ export async function GET(_request: Request, { params }: Params) {
 
   const visible = (documents ?? []).filter((document: Json) => isDailyPortalResourceVisible({resource:document,companyName:String(access.entity_name??""),role:access.portal_type,sessionId:session.id,enrolmentIds:allowedEnrolmentIds,learnerIds:allowedLearnerIds}));
 
+  const personalAttendanceResources: Json[] = [];
+  if (access.portal_type === "learner" && isPostsessionDownloadAvailable(session.end_date) && allowedEnrolmentIds.length) {
+    const [{ data: slots, error: slotsError }, { data: records, error: recordsError }] = await Promise.all([
+      admin.from("daily_attendance_slots").select("id").eq("organisation_id", session.organisation_id).eq("session_id", session.id).neq("status", "cancelled"),
+      admin.from("daily_attendance_records").select("slot_id,enrolment_id,status").eq("organisation_id", session.organisation_id).eq("session_id", session.id).in("enrolment_id", allowedEnrolmentIds),
+    ]);
+    const attendanceError = slotsError ?? recordsError;
+    if (attendanceError) return NextResponse.json({ error: attendanceError.message }, { status: 500 });
+    const slotIds = (slots ?? []).map((slot: Json) => slot.id);
+    for (const row of matchingRows) {
+      const enrolmentId = text(row.id);
+      const ownRecords = (records ?? []).filter((record: Json) => text(record.enrolment_id) === enrolmentId);
+      if (!attendanceIsSettled(slotIds, ownRecords)) continue;
+      personalAttendanceResources.push({
+        id: personalAttendanceDocumentId(enrolmentId),
+        document_type: "personal_attendance_summary",
+        linked_object_type: "enrolment",
+        linked_object_id: enrolmentId,
+        logical_name: "Mon relevé de présence",
+        status: "available",
+        created_at: session.end_date,
+      });
+    }
+  }
+
   let pretrainingResources: Json[] = [];
   try {
     pretrainingResources = await loadLearnerPretrainingResources(admin, session.id, access as Json);
@@ -130,5 +158,5 @@ export async function GET(_request: Request, { params }: Params) {
     return NextResponse.json({ error: cause instanceof Error ? cause.message : "Documents avant formation indisponibles." }, { status: 500 });
   }
 
-  return NextResponse.json({ documents: [...pretrainingResources, ...visible] });
+  return NextResponse.json({ documents: [...pretrainingResources, ...visible, ...personalAttendanceResources] });
 }
