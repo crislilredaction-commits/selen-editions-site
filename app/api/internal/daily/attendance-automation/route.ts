@@ -12,6 +12,12 @@ const PARIS_TIME_ZONE = "Europe/Paris";
 
 type Phase = "start" | "end";
 
+function awaitingLateReview(record: { evidence_metadata?: unknown } | null | undefined) {
+  const metadata = record?.evidence_metadata && typeof record.evidence_metadata === "object" ? record.evidence_metadata as Record<string, unknown> : {};
+  const review = metadata.late_review && typeof metadata.late_review === "object" ? metadata.late_review as Record<string, unknown> : {};
+  return metadata.late_attendance === true && review.state === "awaiting_validation";
+}
+
 type Learner = {
   first_name?: string | null;
   last_name?: string | null;
@@ -144,7 +150,7 @@ export async function GET(req: Request) {
       .in("session_id", sessionIds),
     admin
       .from("daily_attendance_records")
-      .select("slot_id,enrolment_id,status")
+      .select("slot_id,enrolment_id,status,evidence_metadata")
       .in("slot_id", slotIds),
     admin
       .from("daily_communications")
@@ -184,7 +190,7 @@ export async function GET(req: Request) {
 
     for (const enrolment of enrolments.filter((row) => row.session_id === slot.session_id && activeEnrolment(row.status))) {
       const attendance = records.find((row) => row.slot_id === slot.id && row.enrolment_id === enrolment.id);
-      if (!attendance || attendance.status !== "pending") {
+      if (!attendance || attendance.status !== "pending" || awaitingLateReview(attendance)) {
         skipped += 1;
         continue;
       }
@@ -218,13 +224,13 @@ export async function GET(req: Request) {
 
       const { data: currentAttendance, error: currentAttendanceError } = await admin
         .from("daily_attendance_records")
-        .select("status")
+        .select("status,evidence_metadata")
         .eq("organisation_id", slot.organisation_id)
         .eq("session_id", slot.session_id)
         .eq("slot_id", slot.id)
         .eq("enrolment_id", enrolment.id)
         .maybeSingle();
-      if (currentAttendanceError || currentAttendance?.status !== "pending") {
+      if (currentAttendanceError || currentAttendance?.status !== "pending" || awaitingLateReview(currentAttendance)) {
         skipped += 1;
         details.push({ slot_id: slot.id, enrolment_id: enrolment.id, phase, status: currentAttendanceError ? "attendance_recheck_failed" : "already_resolved" });
         continue;
@@ -330,13 +336,13 @@ export async function GET(req: Request) {
 
       const { data: attendanceBeforeSend } = await admin
         .from("daily_attendance_records")
-        .select("status")
+        .select("status,evidence_metadata")
         .eq("organisation_id", slot.organisation_id)
         .eq("session_id", slot.session_id)
         .eq("slot_id", slot.id)
         .eq("enrolment_id", enrolment.id)
         .maybeSingle();
-      if (attendanceBeforeSend?.status !== "pending") {
+      if (attendanceBeforeSend?.status !== "pending" || awaitingLateReview(attendanceBeforeSend)) {
         const cancelledAt = new Date().toISOString();
         await Promise.all([
           admin.from("daily_attendance_access_tokens").update({ status: "revoked" }).eq("id", tokenRow.id),
