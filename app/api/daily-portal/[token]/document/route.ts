@@ -2,13 +2,13 @@ import {NextResponse} from "next/server";
 import {getAdminSupabase} from "@/lib/server/clientNdaAccess";
 import {DAILY_PORTAL_RESOURCE_STATUSES,DAILY_PORTAL_RESOURCE_TYPES,isDailyPortalResourceVisible} from "@/lib/server/dailyPortalResourceVisibility";
 import {isPostsessionDownloadAvailable,personalAttendanceEnrolmentId} from "@/lib/server/dailyPersonalAttendance";
-import {personalAssessmentResultEnrolmentId} from "@/lib/server/dailyPersonalAssessment";
+import {personalAssessmentEvidenceSourceId,personalAssessmentResultEnrolmentId} from "@/lib/server/dailyPersonalAssessment";
 
 type Params={params:Promise<{token:string}>};type JsonRecord=Record<string,unknown>;
 const text=(value:unknown)=>String(value??"").trim();const normalizedEmail=(value:unknown)=>text(value).toLowerCase();
 function isExpired(value:unknown){const date=text(value);return Boolean(date&&new Date(date).getTime()<Date.now())}
 function relatedLearner(value:unknown):JsonRecord|null{return Array.isArray(value)?value[0]&&typeof value[0]==="object"?value[0] as JsonRecord:null:value&&typeof value==="object"?value as JsonRecord:null}
-function virtualDocumentTarget(documentId:string){const assessmentEnrolmentId=personalAssessmentResultEnrolmentId(documentId);if(assessmentEnrolmentId)return{route:"personal-assessment-result",sourceId:assessmentEnrolmentId,query:"enrolment"};const enrolmentId=personalAttendanceEnrolmentId(documentId);if(enrolmentId)return{route:"personal-attendance",sourceId:enrolmentId,query:"enrolment"};const match=/^portal:(convention|regulations|welcome):(.+)$/.exec(documentId);if(!match)return null;return{route:match[1]==="welcome"?"convocation":"convention",sourceId:match[2],query:"id"}}
+function virtualDocumentTarget(documentId:string){const evidenceId=personalAssessmentEvidenceSourceId(documentId);if(evidenceId)return{route:"personal-assessment-evidence",sourceId:evidenceId,query:"document"};const assessmentEnrolmentId=personalAssessmentResultEnrolmentId(documentId);if(assessmentEnrolmentId)return{route:"personal-assessment-result",sourceId:assessmentEnrolmentId,query:"enrolment"};const enrolmentId=personalAttendanceEnrolmentId(documentId);if(enrolmentId)return{route:"personal-attendance",sourceId:enrolmentId,query:"enrolment"};const match=/^portal:(convention|regulations|welcome):(.+)$/.exec(documentId);if(!match)return null;return{route:match[1]==="welcome"?"convocation":"convention",sourceId:match[2],query:"id"}}
 
 export async function GET(request:Request,{params}:Params){
   const{token}=await params;const clean=text(token),documentId=new URL(request.url).searchParams.get("id")??"";if(!clean||!documentId)return NextResponse.json({error:"Lien invalide."},{status:400});

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import {DAILY_PORTAL_RESOURCE_STATUSES,DAILY_PORTAL_RESOURCE_TYPES,isDailyPortalResourceVisible} from "@/lib/server/dailyPortalResourceVisibility";
 import {attendanceIsSettled,isPostsessionDownloadAvailable,personalAttendanceDocumentId} from "@/lib/server/dailyPersonalAttendance";
-import {isFinalAssessmentResult,personalAssessmentResultDocumentId} from "@/lib/server/dailyPersonalAssessment";
+import {isFinalAssessmentResult,personalAssessmentEvidenceDocumentId,personalAssessmentResultDocumentId} from "@/lib/server/dailyPersonalAssessment";
 
 type Params = { params: Promise<{ token: string }> };
 type Json = Record<string, unknown>;
@@ -135,13 +135,15 @@ export async function GET(_request: Request, { params }: Params) {
 
   const personalAttendanceResources: Json[] = [];
   const personalAssessmentResources: Json[] = [];
+  const personalAssessmentEvidenceResources: Json[] = [];
   if (access.portal_type === "learner" && postsessionAvailable && allowedEnrolmentIds.length) {
-    const [{ data: slots, error: slotsError }, { data: records, error: recordsError }, { data: assessments, error: assessmentsError }] = await Promise.all([
+    const [{ data: slots, error: slotsError }, { data: records, error: recordsError }, { data: assessments, error: assessmentsError }, { data: assessmentEvidence, error: assessmentEvidenceError }] = await Promise.all([
       admin.from("daily_attendance_slots").select("id").eq("organisation_id", session.organisation_id).eq("session_id", session.id).neq("status", "cancelled"),
       admin.from("daily_attendance_records").select("slot_id,enrolment_id,status").eq("organisation_id", session.organisation_id).eq("session_id", session.id).in("enrolment_id", allowedEnrolmentIds),
       admin.from("daily_learning_assessments").select("enrolment_id,outcome,assessed_at").eq("organisation_id", session.organisation_id).eq("session_id", session.id).in("enrolment_id", allowedEnrolmentIds),
+      admin.from("daily_documents").select("id,enrolment_id,learner_id,linked_object_type,linked_object_id,logical_name,mime_type,created_at").eq("organisation_id", session.organisation_id).eq("session_id", session.id).eq("document_type", "learning_assessment_evidence").eq("is_current", true).is("archived_at", null).in("enrolment_id", allowedEnrolmentIds),
     ]);
-    const attendanceError = slotsError ?? recordsError ?? assessmentsError;
+    const attendanceError = slotsError ?? recordsError ?? assessmentsError ?? assessmentEvidenceError;
     if (attendanceError) return NextResponse.json({ error: attendanceError.message }, { status: 500 });
     const slotIds = (slots ?? []).map((slot: Json) => slot.id);
     for (const row of matchingRows) {
@@ -170,6 +172,23 @@ export async function GET(_request: Request, { params }: Params) {
         status: "available",
         created_at: assessment.assessed_at,
       });
+      const matchingEnrolment = matchingRows.find((row: Json) => text(row.id) === enrolmentId);
+      const evidence = (assessmentEvidence ?? []).find((document: Json) =>
+        text(document.enrolment_id) === enrolmentId
+        && text(document.learner_id) === text(matchingEnrolment?.learner_id)
+        && document.linked_object_type === "enrolment"
+        && text(document.linked_object_id) === enrolmentId
+      );
+      if (evidence) personalAssessmentEvidenceResources.push({
+        id: personalAssessmentEvidenceDocumentId(evidence.id),
+        document_type: "personal_assessment_evidence",
+        linked_object_type: "enrolment",
+        linked_object_id: enrolmentId,
+        logical_name: evidence.logical_name || "Ma copie d’évaluation finale",
+        status: "available",
+        mime_type: evidence.mime_type ?? null,
+        created_at: evidence.created_at ?? assessment.assessed_at,
+      });
     }
   }
 
@@ -180,5 +199,5 @@ export async function GET(_request: Request, { params }: Params) {
     return NextResponse.json({ error: cause instanceof Error ? cause.message : "Documents avant formation indisponibles." }, { status: 500 });
   }
 
-  return NextResponse.json({ documents: [...pretrainingResources, ...visible, ...personalAttendanceResources, ...personalAssessmentResources] });
+  return NextResponse.json({ documents: [...pretrainingResources, ...visible, ...personalAttendanceResources, ...personalAssessmentResources, ...personalAssessmentEvidenceResources] });
 }

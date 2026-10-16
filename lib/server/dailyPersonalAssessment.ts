@@ -21,6 +21,16 @@ export function personalAssessmentResultEnrolmentId(documentId: unknown) {
   return match?.[1] ?? null;
 }
 
+export function personalAssessmentEvidenceDocumentId(documentId: unknown) {
+  const id = text(documentId);
+  return id ? `portal:personal-assessment-evidence:${id}` : "";
+}
+
+export function personalAssessmentEvidenceSourceId(documentId: unknown) {
+  const match = /^portal:personal-assessment-evidence:([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i.exec(text(documentId));
+  return match?.[1] ?? null;
+}
+
 export function assessmentOutcomeLabel(outcome: unknown) {
   if (outcome === "achieved") return "Acquis";
   if (outcome === "partially_achieved") return "Partiellement acquis";
