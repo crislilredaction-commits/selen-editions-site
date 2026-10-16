@@ -4,6 +4,7 @@ import test from "node:test";
 import { loadTypeScript } from "./helpers/loadTypeScript.mjs";
 
 const helper = loadTypeScript("lib/server/dailyPersonalAttendance.ts");
+const resourceVisibility = loadTypeScript("lib/server/dailyPortalResourceVisibility.ts");
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
 test("AR1 n’ouvre le relevé personnel qu’après la date de fin à Paris", () => {
@@ -81,6 +82,23 @@ test("AR1 refuse aussi un identifiant de certificat deviné avant la fin de sess
   assert.match(route, /select\("id,organisation_id,status,end_date"\)/);
   assert.match(route, /postsessionAvailable:isPostsessionDownloadAvailable\(session\.end_date\)/);
   assert.ok(route.indexOf("isDailyPortalResourceVisible") < route.indexOf("createSignedUrl"));
+});
+
+test("AR1 applique la même règle canonique aux métadonnées du portail racine", async () => {
+  const route = await read("app/api/daily-portal/[token]/route.ts");
+  assert.match(route, /isDailyPortalResourceVisible/);
+  assert.match(route, /activeLearnerEnrolment as JsonRecord\|null/);
+  assert.match(route, /postsessionAvailable:isPostsessionDownloadAvailable\(session\.end_date\)/);
+  assert.ok(route.indexOf("if(access.portal_type===\"learner\"&&!activeLearnerEnrolment)") < route.indexOf("loadLearnerDocuments(supabase,session"));
+  assert.doesNotMatch(route, /if\(scope===\"organisation\"\)return true/);
+});
+
+test("AR1 refuse le certificat avant session puis l’autorise pour la seule inscription active", () => {
+  const resource = {document_type:"completion_certificate",linked_object_type:"enrolment",linked_object_id:"enrolment-1",status:"published"};
+  const input = {resource,role:"learner",sessionId:"session-1",enrolmentIds:["enrolment-1"]};
+  assert.equal(resourceVisibility.isDailyPortalResourceVisible(input), false);
+  assert.equal(resourceVisibility.isDailyPortalResourceVisible({...input,postsessionAvailable:true}), true);
+  assert.equal(resourceVisibility.isDailyPortalResourceVisible({...input,enrolmentIds:["enrolment-2"],postsessionAvailable:true}), false);
 });
 
 test("Après affiche une action dédiée au certificat finalisé ou son état d’attente", async () => {

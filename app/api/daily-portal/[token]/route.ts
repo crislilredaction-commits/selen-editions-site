@@ -1,22 +1,21 @@
 import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
+import {DAILY_PORTAL_RESOURCE_STATUSES,isDailyPortalResourceVisible} from "@/lib/server/dailyPortalResourceVisibility";
+import {isPostsessionDownloadAvailable} from "@/lib/server/dailyPersonalAttendance";
 
 type Params={params:Promise<{token:string}>};type JsonRecord=Record<string,unknown>;
-const learnerDocumentStatuses=["validated","published","signed","active"];
+const learnerWorkspaceDocumentTypes=["training_program","convocation","registration_positioning","completion_certificate","organisation_shared"];
 const cleanToken=(v?:string|null)=>String(v??"").trim();const normalizedEmail=(v:unknown)=>String(v??"").trim().toLowerCase();
 function fullName(first?:unknown,last?:unknown){return[first,last].map(v=>String(v??"").trim()).filter(Boolean).join(" ")}
 function asArray(v:unknown):JsonRecord[]{return Array.isArray(v)?v.filter(x=>x&&typeof x==="object") as JsonRecord[]:[]}
 function portalRole(v:string){return v==="learner"?"apprenant":v==="enterprise"?"entreprise":"formateur"}
 function isExpired(v?:string|null){return Boolean(v&&new Date(v).getTime()<Date.now())}
 function relatedLearner(v:unknown):JsonRecord|null{return Array.isArray(v)?v[0]&&typeof v[0]==="object"?v[0] as JsonRecord:null:v&&typeof v==="object"?v as JsonRecord:null}
-function meta(v:unknown):JsonRecord{return v&&typeof v==="object"&&!Array.isArray(v)?v as JsonRecord:{}}
 
-async function loadLearnerDocuments(supabase:ReturnType<typeof getAdminSupabase>,access:JsonRecord,organisationId:string){
- if(access.portal_type!=="learner")return[];const entityEmail=normalizedEmail(access.entity_email);if(!entityEmail)return[];
- const{data:enrolments,error:enrolmentError}=await supabase.from("daily_session_enrolments").select("id,learner_id,status,daily_learners(id,email)").eq("session_id",access.session_id).eq("organisation_id",organisationId).not("status","in","(declined,cancelled,abandoned)");if(enrolmentError)throw enrolmentError;
- const enrolment=(enrolments??[]).find(row=>normalizedEmail(relatedLearner(row.daily_learners)?.email)===entityEmail);const enrolmentId=enrolment?.id??null,learnerId=enrolment?.learner_id??null;
- const{data:documents,error:documentError}=await supabase.from("daily_documents").select("id,document_type,linked_object_type,linked_object_id,logical_name,version,status,mime_type,created_at,metadata").eq("organisation_id",organisationId).eq("is_current",true).in("status",learnerDocumentStatuses).in("document_type",["training_program","convocation","registration_positioning","completion_certificate","organisation_shared"]).order("created_at",{ascending:false});if(documentError)throw documentError;
- return(documents??[]).filter(document=>{if(document.document_type==="training_program")return document.linked_object_type==="session"&&document.linked_object_id===access.session_id;if(["convocation","registration_positioning","completion_certificate"].includes(String(document.document_type)))return Boolean(enrolmentId&&document.linked_object_type==="enrolment"&&document.linked_object_id===enrolmentId);const m=meta(document.metadata),scope=String(m.distribution_scope??"");if(scope==="organisation")return true;if(scope==="session")return String(m.session_id??"")===String(access.session_id??"");if(scope==="learners")return String(m.session_id??"")===String(access.session_id??"")&&Boolean(learnerId)&&Array.isArray(m.learner_ids)&&(m.learner_ids as unknown[]).map(String).includes(String(learnerId));return false})
+async function loadLearnerDocuments(supabase:ReturnType<typeof getAdminSupabase>,session:JsonRecord,enrolment:JsonRecord|null){
+ if(!enrolment)return[];
+ const{data:documents,error:documentError}=await supabase.from("daily_documents").select("id,document_type,linked_object_type,linked_object_id,logical_name,version,status,mime_type,created_at,metadata").eq("organisation_id",session.organisation_id).eq("is_current",true).in("status",DAILY_PORTAL_RESOURCE_STATUSES).in("document_type",learnerWorkspaceDocumentTypes).order("created_at",{ascending:false});if(documentError)throw documentError;
+ return(documents??[]).filter(document=>isDailyPortalResourceVisible({resource:document,role:"learner",sessionId:String(session.id??""),enrolmentIds:[String(enrolment.id??"")],learnerIds:[String(enrolment.learner_id??"")],postsessionAvailable:isPostsessionDownloadAvailable(session.end_date)}))
 }
 
 export async function GET(_request:Request,{params}:Params){
@@ -34,7 +33,7 @@ export async function GET(_request:Request,{params}:Params){
  const activeLearnerEnrolment=access.portal_type==="learner"?(enrolmentsR.data??[]).find(row=>{const linked=relatedLearner(row.daily_learners);return entityKey===`learner:${row.learner_id}`||Boolean(linked&&((entityEmail&&normalizedEmail(linked.email)===entityEmail)||(entityName&&fullName(linked.first_name,linked.last_name).toLowerCase()===entityName)))})??null:null;
  if(access.portal_type==="learner"&&!activeLearnerEnrolment){await supabase.from("daily_portal_access_tokens").update({status:"revoked",updated_at:new Date().toISOString()}).eq("id",access.id);return NextResponse.json({error:"Cette inscription n’est plus active."},{status:403})}
  if(access.status==="pending")await supabase.from("daily_portal_access_tokens").update({status:"viewed",viewed_at:new Date().toISOString()}).eq("id",access.id);
- let learnerDocuments:JsonRecord[]=[];try{learnerDocuments=await loadLearnerDocuments(supabase,access,String(session.organisation_id??"")) as JsonRecord[]}catch(cause){return NextResponse.json({error:cause instanceof Error?cause.message:"Documents indisponibles."},{status:500})}
+ let learnerDocuments:JsonRecord[]=[];try{learnerDocuments=await loadLearnerDocuments(supabase,session as JsonRecord,activeLearnerEnrolment as JsonRecord|null) as JsonRecord[]}catch(cause){return NextResponse.json({error:cause instanceof Error?cause.message:"Documents indisponibles."},{status:500})}
  // This public URL is independent of the existing formation and private-document DTOs.
  let publicProgramPdfUrl:string|undefined;
  if(access.portal_type==="learner"&&session.formation_id&&session.organisation_id){
