@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import {DAILY_PORTAL_RESOURCE_STATUSES,isDailyPortalResourceVisible} from "@/lib/server/dailyPortalResourceVisibility";
 import {isPostsessionDownloadAvailable} from "@/lib/server/dailyPersonalAttendance";
+import {positioningSourceDocumentId} from "@/lib/daily/ownPositioning";
 
 type Params={params:Promise<{token:string}>};type JsonRecord=Record<string,unknown>;
 const learnerWorkspaceDocumentTypes=["training_program","convocation","registration_positioning","completion_certificate","organisation_shared"];
@@ -37,10 +38,26 @@ export async function GET(_request:Request,{params}:Params){
  // The learner portal URL is authorized by its active private access token.
  let publicProgramPdfUrl:string|undefined;
  if(access.portal_type==="learner"&&session.formation_id&&session.organisation_id){
-  const{data:formation,error:formationError}=await supabase.from("daily_formations").select("id,organisation_id,status,creation_mode,public_registration_enabled,public_registration_token").eq("id",session.formation_id).eq("organisation_id",session.organisation_id).maybeSingle();
+  const{data:formation,error:formationError}=await supabase.from("daily_formations").select("id,organisation_id,status,creation_mode,public_registration_enabled,public_registration_token,detailed_program_document_url").eq("id",session.formation_id).eq("organisation_id",session.organisation_id).maybeSingle();
   if(formationError)return NextResponse.json({error:formationError.message},{status:500});
   if(formation&&formation.id===session.formation_id&&formation.organisation_id===session.organisation_id&&formation.status==="validated"&&["selen_form","program_import"].includes(formation.creation_mode??"selen_form")){
-   publicProgramPdfUrl=`/api/daily-portal/${encodeURIComponent(clean)}/program-pdf`;
+   let available=formation.creation_mode!=="program_import";
+   if(formation.creation_mode==="program_import"){
+    const sourceId=positioningSourceDocumentId(formation.detailed_program_document_url);
+    if(sourceId){
+     const{data:source,error:sourceError}=await supabase.from("daily_documents")
+      .select("id,bucket,storage_path,is_current,status,archived_at,formation_id")
+      .eq("id",sourceId).eq("organisation_id",session.organisation_id)
+      .eq("document_type","training_program_source")
+      .eq("linked_object_type","organisation").eq("linked_object_id",session.organisation_id)
+      .maybeSingle();
+     if(sourceError)return NextResponse.json({error:sourceError.message},{status:500});
+     available=Boolean(source&&source.is_current&&!source.archived_at&&source.status!=="archived"
+      &&(!source.formation_id||source.formation_id===formation.id)
+      &&source.bucket==="documents"&&source.storage_path?.startsWith("daily/"+session.organisation_id+"/"));
+    }
+   }
+   if(available)publicProgramPdfUrl=`/api/daily-portal/${encodeURIComponent(clean)}/program-pdf`;
   }
  }
  const responseRows=responsesR.data??[],conventionRows=conventionsR.data??[];const individualLearners=asArray(session.individual_beneficiaries),companyLearners=asArray(session.beneficiaries),companies=asArray(session.companies);const learner=[...individualLearners,...companyLearners].find(p=>{const email=normalizedEmail(p.email),name=fullName(p.first_name,p.last_name).toLowerCase();return(entityEmail&&email===entityEmail)||(entityName&&name===entityName)})??null;const company=companies.find(item=>{const email=normalizedEmail(item.email),name=String(item.name??"").trim().toLowerCase();return(entityEmail&&email===entityEmail)||(entityName&&name===entityName)})??null;
