@@ -60,10 +60,14 @@ for (const mode of ['selen_form',null,undefined]) test(`GET public programme / m
 for(const [name,options] of [
   ['wrong OF',{formation:{organisation_id:'other'}}],['wrong id',{formation:{id:'other'}}],['absent',{absent:true}],
   ...['draft','review','archived'].map(status=>[status,{formation:{status}}]),
-  ['import',{formation:{creation_mode:'program_import'}}],
   
   ['missing session formation',{session:{formation_id:null}}],['missing OF',{session:{organisation_id:null}}],
 ]) test(`GET no fallback: ${name}`,async()=>{const h=fixture(options);const r=await h.get();assert.equal(r.status,200);assert.equal(Object.hasOwn(await r.json(),'publicProgramPdfUrl'),false);});
+test('validated imported program exposes private link to active learner',async()=>{
+  const h=fixture({formation:{creation_mode:'program_import'}});
+  const r=await h.get();assert.equal(r.status,200);
+  assert.equal((await r.json()).publicProgramPdfUrl,url);
+});
 for(const role of ['enterprise','trainer']) test(`no public programme read for ${role}`,async()=>{const h=fixture({access:{portal_type:role}});const r=await h.get();assert.equal(r.status,200);assert.equal(Object.hasOwn(await r.json(),'publicProgramPdfUrl'),false);assert.ok(!h.calls.some(c=>c.table==='daily_formations'));});
 for(const [name,options,status,mutation] of [
   ['revoked',{access:{status:'revoked'}},403,null],['expired',{access:{status:'expired'}},403,null],

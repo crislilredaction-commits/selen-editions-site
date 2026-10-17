@@ -20,7 +20,8 @@ function setup({ role="learner", status="active", enrolmentStatus="active", form
  const {GET}=loadTypeScript("app/api/daily-portal/[token]/program-pdf/route.ts",{
   "next/server":{NextResponse:Response},
   "@/lib/server/clientNdaAccess":{getAdminSupabase:()=>admin},
-  "@/lib/server/dailyRegistrationProgramPdf":{renderRegistrationProgramPdf:()=>new Uint8Array([37,80,68,70,45])}
+  "@/lib/server/dailyRegistrationProgramPdf":{renderRegistrationProgramPdf:()=>new Uint8Array([37,80,68,70,45])},
+  "@/lib/daily/ownPositioning":{positioningSourceDocumentId:()=>null}
  },{Response,fetch:()=>assert.fail("Network forbidden")});
  return {get:()=>GET(null,{params:Promise.resolve({token:"portal-secret"})}),calls};
 }
