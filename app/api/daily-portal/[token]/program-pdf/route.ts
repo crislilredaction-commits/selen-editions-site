@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import { renderRegistrationProgramPdf } from "@/lib/server/dailyRegistrationProgramPdf";
+import { positioningSourceDocumentId } from "@/lib/daily/ownPositioning";
 
 type Params = { params: Promise<{ token: string }> };
 const text = (v: unknown) => String(v ?? "").trim();
@@ -36,10 +37,30 @@ export async function GET(_request: Request, { params }: Params) {
       Boolean(entityEmail && entityEmail === email(related(row.daily_learners)?.email)));
     if (!matched) return NextResponse.json({ error: "Inscription inactive." }, { status: 403 });
     const { data: formation, error: formationError } = await admin.from("daily_formations")
-      .select("id,user_id,title,status,creation_mode,global_objective,learning_objectives,target_audience,prerequisites,duration_hours,duration_days,modality,modality_details,access_delays,registration_methods,price,detailed_program,accessibility,pedagogical_resources,pedagogical_methods,evaluation_methods,contact_phone,contact_email,contact_website")
+      .select("id,user_id,title,status,creation_mode,global_objective,learning_objectives,target_audience,prerequisites,duration_hours,duration_days,modality,modality_details,access_delays,registration_methods,price,detailed_program,accessibility,pedagogical_resources,pedagogical_methods,evaluation_methods,contact_phone,contact_email,contact_website,detailed_program_document_url")
       .eq("id", session.formation_id).eq("organisation_id", session.organisation_id).maybeSingle();
     if (formationError) throw formationError;
-    if (!formation || formation.status !== "validated" || (formation.creation_mode ?? "selen_form") !== "selen_form")
+    if (!formation || formation.status !== "validated")
+      return NextResponse.json({ error: "Programme indisponible." }, { status: 404 });
+    if (formation.creation_mode === "program_import") {
+      const sourceId = positioningSourceDocumentId(formation.detailed_program_document_url);
+      if (!sourceId) return NextResponse.json({ error: "Programme importé indisponible." }, { status: 404 });
+      const { data: source, error: sourceError } = await admin.from("daily_documents")
+        .select("id,bucket,storage_path,is_current,status,archived_at,document_type,linked_object_type,linked_object_id,formation_id")
+        .eq("id", sourceId).eq("organisation_id", session.organisation_id)
+        .eq("document_type", "training_program_source")
+        .eq("linked_object_type", "organisation").eq("linked_object_id", session.organisation_id)
+        .maybeSingle();
+      if (sourceError) throw sourceError;
+      if (!source || !source.is_current || source.archived_at || source.status === "archived"
+        || (source.formation_id && source.formation_id !== formation.id)
+        || source.bucket !== "documents" || !source.storage_path?.startsWith("daily/" + session.organisation_id + "/"))
+        return NextResponse.json({ error: "Programme importé indisponible." }, { status: 404 });
+      const { data: signed, error: signError } = await admin.storage.from("documents").createSignedUrl(source.storage_path, 120, { download: true });
+      if (signError || !signed?.signedUrl) return NextResponse.json({ error: "Téléchargement indisponible." }, { status: 500 });
+      return NextResponse.redirect(signed.signedUrl, { headers: { "Cache-Control": "private, no-store" } });
+    }
+    if ((formation.creation_mode ?? "selen_form") !== "selen_form")
       return NextResponse.json({ error: "Programme indisponible." }, { status: 404 });
     const { data: organisation, error: organisationError } = await admin.from("daily_onboarding")
       .select("organisation_name,address,platform_contact_email").eq("user_id", session.user_id).maybeSingle();
