@@ -39,7 +39,7 @@ export async function GET(_request:Request,{params}:Params){
  if(access.portal_type==="learner"&&session.formation_id&&session.organisation_id){
   const{data:formation,error:formationError}=await supabase.from("daily_formations").select("id,organisation_id,status,creation_mode,public_registration_enabled,public_registration_token").eq("id",session.formation_id).eq("organisation_id",session.organisation_id).maybeSingle();
   if(formationError)return NextResponse.json({error:formationError.message},{status:500});
-  if(formation&&formation.id===session.formation_id&&formation.organisation_id===session.organisation_id&&formation.status==="validated"&&(formation.creation_mode??"selen_form")==="selen_form"){
+  if(formation&&formation.id===session.formation_id&&formation.organisation_id===session.organisation_id&&formation.status==="validated"&&["selen_form","program_import"].includes(formation.creation_mode??"selen_form")){
    publicProgramPdfUrl=`/api/daily-portal/${encodeURIComponent(clean)}/program-pdf`;
   }
  }
