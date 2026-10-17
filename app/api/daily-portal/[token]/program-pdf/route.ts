@@ -29,9 +29,11 @@ export async function GET(_request: Request, { params }: Params) {
       .select("learner_id,daily_learners(email)").eq("session_id", session.id).eq("organisation_id", session.organisation_id)
       .not("status", "in", "(declined,cancelled,abandoned)");
     if (enrolmentError) throw enrolmentError;
+    const entityKey = text(access.entity_key);
+    const entityEmail = email(access.entity_email);
     const matched = (enrolments ?? []).some((row: any) =>
-      (access.entity_key && access.entity_key === `learner:${row.learner_id}`) ||
-      (email(access.entity_email) && email(access.entity_email) === email(related(row.daily_learners)?.email)));
+      entityKey ? entityKey === `learner:${row.learner_id}` :
+      Boolean(entityEmail && entityEmail === email(related(row.daily_learners)?.email)));
     if (!matched) return NextResponse.json({ error: "Inscription inactive." }, { status: 403 });
     const { data: formation, error: formationError } = await admin.from("daily_formations")
       .select("id,user_id,title,status,creation_mode,global_objective,learning_objectives,target_audience,prerequisites,duration_hours,duration_days,modality,modality_details,access_delays,registration_methods,price,detailed_program,accessibility,pedagogical_resources,pedagogical_methods,evaluation_methods,contact_phone,contact_email,contact_website")
