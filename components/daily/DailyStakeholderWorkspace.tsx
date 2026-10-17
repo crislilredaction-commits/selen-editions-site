@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { normalizePortalRole, PORTAL_ROLE_CONFIG } from "@/lib/daily/portalRoleConfig";
 
 type Json = Record<string, any>;
-type Props = { role: string; token: string };
+type Props = { role: string; token: string; preview?: { data: Json; resources: Json[]; followup?: Json[]; documentBaseUrl?: string } };
 type PortalAction = { label: string; detail: string; href: string };
 
 const text = (value: unknown) => String(value ?? "").trim();
@@ -26,17 +26,18 @@ function phase(session: Json | undefined) {
   return "during";
 }
 
-export default function DailyStakeholderWorkspace({ role, token }: Props) {
+export default function DailyStakeholderWorkspace({ role, token, preview }: Props) {
   const normalizedRole = normalizePortalRole(role);
-  const [data, setData] = useState<Json | null>(null);
-  const [resources, setResources] = useState<Json[]>([]);
-  const [followup, setFollowup] = useState<Json[]>([]);
+  const [data, setData] = useState<Json | null>(preview?.data ?? null);
+  const [resources, setResources] = useState<Json[]>(preview?.resources ?? []);
+  const [followup, setFollowup] = useState<Json[]>(preview?.followup ?? []);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!preview);
   const [followupRequestId, setFollowupRequestId] = useState(() => crypto.randomUUID());
 
   async function reload() {
+    if (preview) return;
     setLoading(true);
     setError("");
     try {
@@ -58,7 +59,7 @@ export default function DailyStakeholderWorkspace({ role, token }: Props) {
     }
   }
 
-  useEffect(() => { void reload(); }, [token, normalizedRole]);
+  useEffect(() => { if (!preview) void reload(); }, [token, normalizedRole, preview]);
 
   const config = normalizedRole ? PORTAL_ROLE_CONFIG[normalizedRole] : null;
   const formation = data?.session?.daily_formations;
@@ -66,7 +67,7 @@ export default function DailyStakeholderWorkspace({ role, token }: Props) {
   const participantProgress = data?.participantProgress ?? [];
   const currentPhase = phase(data?.session);
   const isLearner = normalizedRole === "learner";
-  const publicProgramPdfUrl = isLearner && currentPhase === "before" && data?.access?.portalType === "learner" ? data.publicProgramPdfUrl : undefined;
+  const publicProgramPdfUrl = !preview && isLearner && currentPhase === "before" && data?.access?.portalType === "learner" ? data.publicProgramPdfUrl : undefined;
   const isEnterprise = normalizedRole === "enterprise";
 
   const learnerActions = useMemo(() => {
@@ -76,18 +77,18 @@ export default function DailyStakeholderWorkspace({ role, token }: Props) {
     if (currentPhase !== "after") {
       actions.push(positioningDone(positioning)
         ? { label: "Positionnement", detail: "Votre positionnement est enregistré.", status: "done" }
-        : { label: "Positionnement", detail: "Répondez au questionnaire avant la formation ou, si nécessaire, au tout début de la session.", href: `/daily/portail/${role}/${token}/positionnement`, status: "todo" });
+        : { label: "Positionnement", detail: "Répondez au questionnaire avant la formation ou, si nécessaire, au tout début de la session.", href: preview ? undefined : `/daily/portail/${role}/${token}/positionnement`, status: "todo" });
     }
     const convocation = resources.find((doc) => doc.document_type === "convocation");
     if (currentPhase === "before") {
       actions.push(convocation
-        ? { label: "Consulter ma convocation", detail: "Vérifiez les dates, horaires et modalités pratiques.", href: `/api/daily-portal/${token}/document?id=${convocation.id}`, status: "todo" }
+        ? { label: "Consulter ma convocation", detail: "Vérifiez les dates, horaires et modalités pratiques.", href: preview ? undefined : `/api/daily-portal/${token}/document?id=${convocation.id}`, status: "todo" }
         : { label: "Convocation", detail: "Elle n'est pas encore disponible dans votre espace.", status: "info" });
     }
-    if (currentPhase === "after") actions.push({ label: "Mon évaluation", detail: "Complétez votre évaluation de fin de formation.", href: `/daily/portail/${role}/${token}/evaluation`, status: "todo" });
-    actions.push({ label: "Réclamation / suggestion", detail: "Signalez une difficulté ou transmettez une suggestion à tout moment.", href: `/daily/portail/${role}/${token}/feedback`, status: "info" });
+    if (currentPhase === "after") actions.push({ label: "Mon évaluation", detail: "Complétez votre évaluation de fin de formation.", href: preview ? undefined : `/daily/portail/${role}/${token}/evaluation`, status: "todo" });
+    actions.push({ label: "Réclamation / suggestion", detail: "Signalez une difficulté ou transmettez une suggestion à tout moment.", href: preview ? undefined : `/daily/portail/${role}/${token}/feedback`, status: "info" });
     return actions;
-  }, [normalizedRole, data, resources, currentPhase, role, token]);
+  }, [normalizedRole, data, resources, currentPhase, role, token, preview]);
 
   const genericActions = useMemo<PortalAction[]>(() => {
     if (!normalizedRole || normalizedRole === "learner") return [];
@@ -105,6 +106,7 @@ export default function DailyStakeholderWorkspace({ role, token }: Props) {
 
   async function addFollowup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (preview) return;
     setError("");
     setMessage("");
     const form = new FormData(event.currentTarget);
@@ -128,7 +130,7 @@ export default function DailyStakeholderWorkspace({ role, token }: Props) {
 
   return <main style={s.page}>
     <header style={{ ...s.hero, ...(polished ? s.polishedHero : {}), ...(isEnterprise ? s.enterpriseHero : {}) }}>
-      <span style={s.kicker}>Selen Daily · Espace {config.label}</span>
+      <span style={s.kicker}>Selen Daily · Espace {config.label}{preview ? " · Consultation Studio en lecture seule" : ""}</span>
       <h1 style={s.title}>{formation?.title ?? data?.access?.entityName ?? "Selen Daily"}</h1>
       <p style={s.lead}>{data?.access?.entityName ? `Bonjour ${data.access.entityName}. ` : ""}{isEnterprise ? "Suivez la session, vos participants et les documents qui concernent votre organisation depuis un espace unique." : "Retrouvez ici uniquement les informations et actions qui vous concernent. Votre session, vos documents et vos prochaines étapes restent regroupés au même endroit."}</p>
     </header>
@@ -174,12 +176,12 @@ export default function DailyStakeholderWorkspace({ role, token }: Props) {
       <section style={{ ...s.card, ...(polished ? s.polishedCard : {}), ...s.fullWidth }}>
         <div>{polished ? <span style={s.sectionKicker}>{isEnterprise ? "Dossier partagé" : "Ressources"}</span> : null}<h2 style={s.h2}>Mes documents</h2>{polished ? <p style={s.muted}>{isEnterprise ? "Retrouvez les documents autorisés pour votre organisation et cette session, sans mélange avec les dossiers des autres parties prenantes." : "Les documents applicables à votre inscription restent regroupés ici."}</p> : null}</div>
         {publicProgramPdfUrl ? <a style={s.documentLink} href={publicProgramPdfUrl} target="_blank" rel="noreferrer">Télécharger le programme complet (PDF)</a> : null}
-        {resources.length ? <div style={s.documents}>{resources.map((doc: Json) => <a style={{ ...s.documentLink, ...(polished ? s.polishedDocumentLink : {}) }} key={doc.id} href={`/api/daily-portal/${token}/document?id=${doc.id}`} target="_blank" rel="noreferrer"><strong>{docLabel(doc)}</strong><span>{doc.version ? `Version ${doc.version}` : "Ouvrir le document"}</span></a>)}</div> : !publicProgramPdfUrl ? <p style={s.muted}>Aucun document n’est disponible pour le moment.</p> : null}
+        {resources.length ? <div style={s.documents}>{resources.map((doc: Json) => { const url = preview ? (preview.documentBaseUrl ? `${preview.documentBaseUrl}${encodeURIComponent(doc.id)}` : null) : `/api/daily-portal/${token}/document?id=${doc.id}`; return url ? <a style={{ ...s.documentLink, ...(polished ? s.polishedDocumentLink : {}) }} key={doc.id} href={url} target="_blank" rel="noreferrer"><strong>{docLabel(doc)}</strong><span>{doc.version ? `Version ${doc.version}` : "Ouvrir le document"}</span></a> : <div style={{ ...s.documentLink, ...(polished ? s.polishedDocumentLink : {}) }} key={doc.id}><strong>{docLabel(doc)}</strong><span>Consultation indisponible dans ce mode d’assistance</span></div>; })}</div> : !publicProgramPdfUrl ? <p style={s.muted}>Aucun document n’est disponible pour le moment.</p> : null}
       </section>
 
-      {normalizedRole === "trainer" ? <section style={{ ...s.card, ...s.fullWidth }}><h2 style={s.h2}>Fiche de suivi de session</h2><form onSubmit={addFollowup} style={s.form}><select name="entry_type" defaultValue="incident"><option value="incident">Incident / difficulté</option><option value="adaptation">Adaptation</option></select><select name="level" defaultValue="info"><option value="info">Information</option><option value="attention">À suivre</option><option value="critical">Critique</option></select><input name="summary" required placeholder="Constat" /><textarea name="description" placeholder="Détails utiles" /><textarea name="action_taken" placeholder="Action engagée" /><button type="submit">Ajouter au suivi</button></form><div style={s.stack}>{followup.map((entry) => <article key={entry.id} style={s.followup}><strong>{entry.summary}</strong><span>{entry.entry_type} · {entry.level} · {entry.status === "resolved" ? "traité" : "ouvert"}</span>{entry.description ? <p>{entry.description}</p> : null}{entry.action_taken ? <p>Suite : {entry.action_taken}</p> : null}</article>)}</div></section> : null}
+      {normalizedRole === "trainer" ? <section style={{ ...s.card, ...s.fullWidth }}><h2 style={s.h2}>Fiche de suivi de session</h2>{!preview ? <form onSubmit={addFollowup} style={s.form}><select name="entry_type" defaultValue="incident"><option value="incident">Incident / difficulté</option><option value="adaptation">Adaptation</option></select><select name="level" defaultValue="info"><option value="info">Information</option><option value="attention">À suivre</option><option value="critical">Critique</option></select><input name="summary" required placeholder="Constat" /><textarea name="description" placeholder="Détails utiles" /><textarea name="action_taken" placeholder="Action engagée" /><button type="submit">Ajouter au suivi</button></form> : <p style={s.muted}>Consultation Studio en lecture seule : aucune modification du suivi.</p>}<div style={s.stack}>{followup.map((entry) => <article key={entry.id} style={s.followup}><strong>{entry.summary}</strong><span>{entry.entry_type} · {entry.level} · {entry.status === "resolved" ? "traité" : "ouvert"}</span>{entry.description ? <p>{entry.description}</p> : null}{entry.action_taken ? <p>Suite : {entry.action_taken}</p> : null}</article>)}</div></section> : null}
 
-      {normalizedRole !== "learner" ? <section style={{ ...s.card, ...(isEnterprise ? s.polishedCard : {}), ...(isEnterprise ? s.fullWidth : {}) }}>
+      {!preview && normalizedRole !== "learner" ? <section style={{ ...s.card, ...(isEnterprise ? s.polishedCard : {}), ...(isEnterprise ? s.fullWidth : {}) }}>
         <div>{isEnterprise ? <span style={s.sectionKicker}>Vos prochaines étapes</span> : null}<h2 style={s.h2}>Mes actions</h2>{isEnterprise ? <p style={s.muted}>Les actions disponibles ici concernent uniquement votre rôle de commanditaire.</p> : null}</div>
         <div style={isEnterprise ? s.actionGrid : s.linkStack}>{genericActions.map((action) => isEnterprise ? <article key={action.href} style={{ ...s.actionCard, ...s.actionInfo }}><div><strong>{action.label}</strong><p style={s.muted}>{action.detail}</p></div><a style={s.buttonLink} href={action.href}>Ouvrir</a></article> : <a key={action.href} href={action.href}>{action.label}</a>)}</div>
       </section> : null}

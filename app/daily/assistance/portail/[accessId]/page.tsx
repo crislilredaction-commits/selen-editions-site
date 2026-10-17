@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import DailyStakeholderWorkspace from "@/components/daily/DailyStakeholderWorkspace";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
@@ -23,13 +23,6 @@ function related<T>(value: T | T[] | null | undefined) {
 
 function email(value: unknown) {
   return String(value ?? "").trim().toLowerCase();
-}
-
-function personName(value: RelatedLearner | null | undefined) {
-  return [value?.first_name, value?.last_name]
-    .map((part) => String(part ?? "").trim())
-    .filter(Boolean)
-    .join(" ");
 }
 
 export default async function DelegatedPortalPreview({ params, searchParams }: Props) {
@@ -106,66 +99,22 @@ export default async function DelegatedPortalPreview({ params, searchParams }: P
     metadata: { mode: "agent_assistance", scope: "portal_preview", portal_access_id: access.id, session_id: session.id },
   });
 
-  const formation = related(session.daily_formations) as { title?: string | null; global_objective?: string | null } | null;
-  const learnerIdentity = learner ? related(learner.daily_learners) as RelatedLearner | null : null;
 
-  return <main style={s.page}>
-    <header style={s.hero}>
-      <p style={s.kicker}>Consultation déléguée · {access.portal_type === "learner" ? "espace apprenant" : "espace formateur"}</p>
-      <h1 style={s.title}>{formation?.title || session.internal_reference || "Session Daily"}</h1>
-      <p style={s.lead}>Contexte OF vérifié. Cette vue est strictement en lecture seule : aucune réponse, signature, présence, évaluation, satisfaction ou réclamation ne peut être créée au nom du titulaire.</p>
-    </header>
-
-    <section style={s.grid}>
-      <article style={s.card}>
-        <h2 style={s.h2}>Titulaire de l’espace</h2>
-        <p><strong>{access.entity_name || personName(learnerIdentity) || "Identité non renseignée"}</strong></p>
-        <p style={s.muted}>{access.entity_email || learnerIdentity?.email || "Email non renseigné"}</p>
-        <p style={s.muted}>Statut du lien : {access.status}{access.viewed_at ? " · déjà ouvert par le titulaire" : " · non encore ouvert par le titulaire"}</p>
-      </article>
-      <article style={s.card}>
-        <h2 style={s.h2}>Session</h2>
-        <p><strong>Dates :</strong> {session.start_date || "à préciser"}{session.end_date ? ` → ${session.end_date}` : ""}</p>
-        <p><strong>Modalité :</strong> {session.modality || "à préciser"}</p>
-        <p><strong>Lieu :</strong> {session.location_address || session.remote_url || "à préciser"}</p>
-        {formation?.global_objective ? <p><strong>Objectif :</strong> {formation.global_objective}</p> : null}
-      </article>
-
-      {learner ? <article style={{ ...s.card, ...s.full }}>
-        <h2 style={s.h2}>Avancement de l’apprenant</h2>
-        <div style={s.row}><span>Inscription</span><strong>{learner.status}</strong></div>
-        <div style={s.row}><span>Positionnement</span><strong>{learner.positioning_status || "not_started"}</strong></div>
-        <div style={s.row}><span>Prérequis</span><strong>{learner.prerequisites_status || "not_reviewed"}</strong></div>
-      </article> : null}
-
-      {access.portal_type === "trainer" ? <>
-        <article style={{ ...s.card, ...s.full }}>
-          <h2 style={s.h2}>Participants visibles par le formateur</h2>
-          {rows.length === 0 ? <p style={s.muted}>Aucun inscrit actif.</p> : rows.map((row) => { const item = related(row.daily_learners) as RelatedLearner | null; return <div key={row.id} style={s.row}><span>{personName(item) || item?.email || "Apprenant"}</span><strong>{row.positioning_status || "not_started"} · {row.prerequisites_status || "not_reviewed"}</strong></div>; })}
-        </article>
-        <article style={{ ...s.card, ...s.full }}>
-          <h2 style={s.h2}>Suivi de session</h2>
-          {(followup ?? []).length === 0 ? <p style={s.muted}>Aucune entrée de suivi.</p> : (followup ?? []).map((entry) => <div key={entry.id} style={s.row}><span>{entry.summary}</span><strong>{entry.entry_type} · {entry.status}</strong></div>)}
-        </article>
-      </> : null}
-      <article style={{ ...s.card, ...s.full }}>
-        <h2 style={s.h2}>Ressources disponibles</h2>
-        {resources.length===0?<p style={s.muted}>Aucune ressource disponible dans cet espace.</p>:resources.map(resource=><div key={resource.id} style={s.row}><span>{resource.logical_name}</span><a href={`/daily/assistance/portail/${encodeURIComponent(access.id)}/document?assistanceToken=${encodeURIComponent(token)}&id=${encodeURIComponent(resource.id)}`} target="_blank" rel="noreferrer">Consulter</a></div>)}
-      </article>
-    </section>
-  </main>;
+  const previewData = {
+    access: { portalType: access.portal_type, entityName: access.entity_name, entityEmail: access.entity_email },
+    session,
+    enrolment: learner,
+    participants: access.portal_type === "trainer" ? rows.map(row => {
+      const person = related(row.daily_learners) as RelatedLearner | null;
+      return { id: row.id, first_name: person?.first_name, last_name: person?.last_name, email: person?.email };
+    }) : [],
+    participantProgress: access.portal_type === "trainer" ? rows.map(row => {
+      const person = related(row.daily_learners) as RelatedLearner | null;
+      return { id: row.id, firstName: person?.first_name, lastName: person?.last_name, email: person?.email, positioningStatus: row.positioning_status, prerequisitesStatus: row.prerequisites_status };
+    }) : [],
+  };
+  const documentBaseUrl = exactPortalPreview
+    ? `/daily/assistance/portail/${encodeURIComponent(accessId)}/document?assistanceToken=${encodeURIComponent(token)}&id=`
+    : undefined;
+  return <DailyStakeholderWorkspace role={access.portal_type} token="" preview={{ data: previewData, resources: resources.map(resource => ({ ...resource, id: resource.id })), followup: followup ?? [], documentBaseUrl }} />;
 }
-
-const s: Record<string, CSSProperties> = {
-  page: { maxWidth: 1040, margin: "0 auto", padding: "2rem 1rem 5rem", color: "#3e2a1f" },
-  hero: { display: "grid", gap: 8, marginBottom: 16, padding: "1.4rem", border: "1px solid #c8a87a", background: "#fff8e8" },
-  kicker: { margin: 0, color: "#8a4b24", fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", fontSize: 12 },
-  title: { margin: 0, fontSize: "clamp(1.8rem,4vw,2.5rem)" },
-  lead: { margin: 0, lineHeight: 1.55, maxWidth: 820 },
-  grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(300px,100%),1fr))", gap: 12 },
-  card: { padding: 18, border: "1px solid #c8a87a", background: "#fffdf8" },
-  full: { gridColumn: "1 / -1" },
-  h2: { margin: "0 0 10px", fontSize: 20 },
-  muted: { color: "#765d49", lineHeight: 1.45 },
-  row: { display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", padding: "10px 0", borderBottom: "1px solid #ead8ba" },
-};

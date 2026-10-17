@@ -16,5 +16,5 @@ test("P3 trainer imports are traceable, scheduled, consultable and restricted to
 
 test("P3 delegated consultation remains read-only, scoped and logged",async()=>{
   const[page,download]=await Promise.all([read("app/daily/assistance/portail/[accessId]/page.tsx"),read("app/daily/assistance/portail/[accessId]/document/route.ts")]);
-  assert.match(page,/isDailyPortalResourceVisible/);assert.match(page,/Ressources disponibles/);assert.match(download,/portal_access_id/);assert.match(download,/\.eq\("organisation_id",assistance\.organisation_id\)/);assert.match(download,/delegated_portal_document_viewed/);
+  assert.match(page,/isDailyPortalResourceVisible/);assert.match(page,/DailyStakeholderWorkspace/);assert.match(page,/resources: resources\.map/);const shared=await read("components/daily/DailyStakeholderWorkspace.tsx");assert.match(shared,/Mes documents/);assert.match(download,/portal_access_id/);assert.match(download,/\.eq\("organisation_id",assistance\.organisation_id\)/);assert.match(download,/delegated_portal_document_viewed/);
 });

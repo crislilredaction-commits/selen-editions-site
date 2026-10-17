@@ -15,7 +15,11 @@ test("A10 lie la prévisualisation au token d'assistance et au portail exact", (
 
 test("A10 garde le portail délégué en lecture seule et traçable", () => {
   const page = read("app/daily/assistance/portail/[accessId]/page.tsx");
-  assert.match(page, /strictement en lecture seule/);
+  assert.match(page, /DailyStakeholderWorkspace/);
+  assert.match(page, /preview=\{\{/);
+  const shared = read("components/daily/DailyStakeholderWorkspace.tsx");
+  assert.match(shared, /Consultation Studio en lecture seule/);
+  assert.match(shared, /if \(preview\) return;/);
   assert.doesNotMatch(page, /method:\s*["']POST["']/);
   assert.doesNotMatch(page, /method:\s*["']PATCH["']/);
   assert.doesNotMatch(page, /method:\s*["']DELETE["']/);
