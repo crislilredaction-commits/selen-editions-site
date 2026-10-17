@@ -34,13 +34,13 @@ export async function GET(_request:Request,{params}:Params){
  if(access.portal_type==="learner"&&!activeLearnerEnrolment){await supabase.from("daily_portal_access_tokens").update({status:"revoked",updated_at:new Date().toISOString()}).eq("id",access.id);return NextResponse.json({error:"Cette inscription n’est plus active."},{status:403})}
  if(access.status==="pending")await supabase.from("daily_portal_access_tokens").update({status:"viewed",viewed_at:new Date().toISOString()}).eq("id",access.id);
  let learnerDocuments:JsonRecord[]=[];try{learnerDocuments=await loadLearnerDocuments(supabase,session as JsonRecord,activeLearnerEnrolment as JsonRecord|null) as JsonRecord[]}catch(cause){return NextResponse.json({error:cause instanceof Error?cause.message:"Documents indisponibles."},{status:500})}
- // This public URL is independent of the existing formation and private-document DTOs.
+ // The learner portal URL is authorized by its active private access token.
  let publicProgramPdfUrl:string|undefined;
  if(access.portal_type==="learner"&&session.formation_id&&session.organisation_id){
   const{data:formation,error:formationError}=await supabase.from("daily_formations").select("id,organisation_id,status,creation_mode,public_registration_enabled,public_registration_token").eq("id",session.formation_id).eq("organisation_id",session.organisation_id).maybeSingle();
   if(formationError)return NextResponse.json({error:formationError.message},{status:500});
-  if(formation&&formation.id===session.formation_id&&formation.organisation_id===session.organisation_id&&formation.status==="validated"&&(formation.creation_mode??"selen_form")==="selen_form"&&formation.public_registration_enabled===true&&typeof formation.public_registration_token==="string"&&formation.public_registration_token.trim()){
-   publicProgramPdfUrl=`/api/daily-registration/${encodeURIComponent(formation.public_registration_token)}/program-pdf`;
+  if(formation&&formation.id===session.formation_id&&formation.organisation_id===session.organisation_id&&formation.status==="validated"&&(formation.creation_mode??"selen_form")==="selen_form"){
+   publicProgramPdfUrl=`/api/daily-portal/${encodeURIComponent(clean)}/program-pdf`;
   }
  }
  const responseRows=responsesR.data??[],conventionRows=conventionsR.data??[];const individualLearners=asArray(session.individual_beneficiaries),companyLearners=asArray(session.beneficiaries),companies=asArray(session.companies);const learner=[...individualLearners,...companyLearners].find(p=>{const email=normalizedEmail(p.email),name=fullName(p.first_name,p.last_name).toLowerCase();return(entityEmail&&email===entityEmail)||(entityName&&name===entityName)})??null;const company=companies.find(item=>{const email=normalizedEmail(item.email),name=String(item.name??"").trim().toLowerCase();return(entityEmail&&email===entityEmail)||(entityName&&name===entityName)})??null;
