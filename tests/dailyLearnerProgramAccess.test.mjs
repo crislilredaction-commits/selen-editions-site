@@ -5,7 +5,7 @@ import { loadTypeScript } from './helpers/loadTypeScript.mjs';
 
 const fields = 'id,organisation_id,status,creation_mode,public_registration_enabled,public_registration_token';
 const publicToken = 'public/+?é%#';
-const url = `/api/daily-registration/${encodeURIComponent(publicToken)}/program-pdf`;
+const url = `/api/daily-portal/${encodeURIComponent('portal-secret')}/program-pdf`;
 const networkForbidden = () => assert.fail('Network forbidden');
 const resourceVisibility = loadTypeScript('lib/server/dailyPortalResourceVisibility.ts');
 const personalAttendance = loadTypeScript('lib/server/dailyPersonalAttendance.ts');
@@ -54,14 +54,14 @@ for (const mode of ['selen_form',null,undefined]) test(`GET public programme / m
   assert.equal(response.status,200); assert.equal(body.publicProgramPdfUrl,url);
   assert.deepEqual(body.session.daily_formations,h.session.daily_formations);
   assert.deepEqual(body.documents,[]);
-  for(const secret of ['portal-secret','never-use-session-token','public_registration_enabled','creation_mode']) assert.ok(!JSON.stringify(body).includes(secret),secret);
+  for(const secret of ['never-use-session-token','public_registration_enabled','creation_mode']) assert.ok(!JSON.stringify(body).includes(secret),secret);
   assert.deepEqual(h.mutations.map(m=>m.status),['viewed']);
 });
 for(const [name,options] of [
   ['wrong OF',{formation:{organisation_id:'other'}}],['wrong id',{formation:{id:'other'}}],['absent',{absent:true}],
   ...['draft','review','archived'].map(status=>[status,{formation:{status}}]),
-  ['import',{formation:{creation_mode:'program_import'}}],['disabled',{formation:{public_registration_enabled:false}}],
-  ...['',null,'   '].map(public_registration_token=>[`token ${public_registration_token}`,{formation:{public_registration_token}}]),
+  ['import',{formation:{creation_mode:'program_import'}}],
+  
   ['missing session formation',{session:{formation_id:null}}],['missing OF',{session:{organisation_id:null}}],
 ]) test(`GET no fallback: ${name}`,async()=>{const h=fixture(options);const r=await h.get();assert.equal(r.status,200);assert.equal(Object.hasOwn(await r.json(),'publicProgramPdfUrl'),false);});
 for(const role of ['enterprise','trainer']) test(`no public programme read for ${role}`,async()=>{const h=fixture({access:{portal_type:role}});const r=await h.get();assert.equal(r.status,200);assert.equal(Object.hasOwn(await r.json(),'publicProgramPdfUrl'),false);assert.ok(!h.calls.some(c=>c.table==='daily_formations'));});
@@ -97,11 +97,19 @@ for(const name of ['LearnerPhaseNavigation','DailyStakeholderWorkspace']) {
 }
 test('public addition stays in Before tab',async()=>{for(const selected of ['during','after'])assert.ok(!nodes(await render('LearnerPhaseNavigation',{selected})).some(n=>n.props?.href===url));});
 test('follow GET URL to real PDF route and renderer, including last paragraph',async()=>{
-  const body=await(await fixture().get()).json();const token=decodeURIComponent(body.publicProgramPdfUrl.split('/')[3]);assert.equal(token,publicToken);
+  const body=await(await fixture().get()).json();const token=publicToken;assert.equal(body.publicProgramPdfUrl,url);
   const program={id:'formation',user_id:'owner',title:'Complete',status:'validated',creation_mode:'selen_form',public_registration_enabled:true,public_registration_token:publicToken,global_objective:'GLOBAL',learning_objectives:['OBJECTIVE_ONE','OBJECTIVE_TWO'],detailed_program:Array.from({length:400},(_,i)=>`LINE_${i} ${'long content '.repeat(20)}`).join('\n')+'\nFINAL_SENTINEL'};
   const calls=[];
   const admin={from(table){assert.ok(['daily_sessions','daily_formations','daily_onboarding'].includes(table));calls.push(table);const q={select(){return q;},eq(k,v){if(k==='registration_token'||k==='public_registration_token')assert.equal(v,publicToken);return q;},neq(k,v){assert.equal(k,'status');assert.equal(v,'archived');return q;},async maybeSingle(){return {data:table==='daily_formations'?program:null,error:null};}};return q;}};
   const renderer=loadTypeScript('lib/server/dailyRegistrationProgramPdf.ts',{jspdf:{jsPDF}},{fetch:networkForbidden});
   const {GET}=loadTypeScript('app/api/daily-registration/[token]/program-pdf/route.ts',{'next/server':{NextResponse:Response},'@/lib/server/clientNdaAccess':{getAdminSupabase:()=>admin},'@/lib/server/dailyRegistrationProgramPdf':renderer},{Response,fetch:networkForbidden});
   const response=await GET(null,{params:Promise.resolve({token})});assert.equal(response.status,200);assert.equal(response.headers.get('Content-Type'),'application/pdf');const pdf=Buffer.from(await response.arrayBuffer()).toString('latin1');for(const value of ['%PDF-','GLOBAL','OBJECTIVE_ONE','OBJECTIVE_TWO','LINE_399','FINAL_SENTINEL'])assert.ok(pdf.includes(value),value);assert.ok((pdf.match(/\/Type \/Page\b/g)||[]).length>3);assert.deepEqual(calls,['daily_sessions','daily_formations','daily_onboarding']);
+});
+
+for (const options of [
+  {formation:{public_registration_enabled:false,public_registration_token:null}},
+  {formation:{public_registration_enabled:false,public_registration_token:''}},
+]) test('private learner portal exposes PDF without public registration',async()=>{
+  const h=fixture(options);const r=await h.get();assert.equal(r.status,200);
+  assert.equal((await r.json()).publicProgramPdfUrl,url);
 });
