@@ -21,7 +21,7 @@ function setup({ role="learner", status="active", enrolmentStatus="active", form
   "next/server":{NextResponse:Response},
   "@/lib/server/clientNdaAccess":{getAdminSupabase:()=>admin},
   "@/lib/server/dailyRegistrationProgramPdf":{renderRegistrationProgramPdf:()=>new Uint8Array([37,80,68,70,45])},
-  "@/lib/daily/ownPositioning":{positioningSourceDocumentId:(value)=>typeof value==="string"?value.match(/^\\/api\\/client\\/daily\\/uploads\\?id=([0-9a-f-]{36})$/)?.[1]??null:null}
+  "@/lib/daily/ownPositioning":{positioningSourceDocumentId:()=>null}
  },{Response,fetch:()=>assert.fail("Network forbidden")});
  return {get:()=>GET(null,{params:Promise.resolve({token:"portal-secret"})}),calls};
 }
