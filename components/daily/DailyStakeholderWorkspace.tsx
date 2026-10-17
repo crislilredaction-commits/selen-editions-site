@@ -173,7 +173,7 @@ export default function DailyStakeholderWorkspace({ role, token }: Props) {
 
       <section style={{ ...s.card, ...(polished ? s.polishedCard : {}), ...s.fullWidth }}>
         <div>{polished ? <span style={s.sectionKicker}>{isEnterprise ? "Dossier partagé" : "Ressources"}</span> : null}<h2 style={s.h2}>Mes documents</h2>{polished ? <p style={s.muted}>{isEnterprise ? "Retrouvez les documents autorisés pour votre organisation et cette session, sans mélange avec les dossiers des autres parties prenantes." : "Les documents applicables à votre inscription restent regroupés ici."}</p> : null}</div>
-        {publicProgramPdfUrl ? <a style={s.documentLink} href={publicProgramPdfUrl} target="_blank" rel="noreferrer">Télécharger le programme complet (PDF)</a> : null}
+        {publicProgramPdfUrl ? <a style={s.documentLink} href={publicProgramPdfUrl} target="_blank" rel="noreferrer">Télécharger le programme complet</a> : null}
         {resources.length ? <div style={s.documents}>{resources.map((doc: Json) => <a style={{ ...s.documentLink, ...(polished ? s.polishedDocumentLink : {}) }} key={doc.id} href={`/api/daily-portal/${token}/document?id=${doc.id}`} target="_blank" rel="noreferrer"><strong>{docLabel(doc)}</strong><span>{doc.version ? `Version ${doc.version}` : "Ouvrir le document"}</span></a>)}</div> : !publicProgramPdfUrl ? <p style={s.muted}>Aucun document n’est disponible pour le moment.</p> : null}
       </section>
 

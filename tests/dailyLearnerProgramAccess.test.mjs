@@ -93,7 +93,7 @@ async function render(name,{available=true,role='apprenant',resourceFailure=fals
 for(const name of ['LearnerPhaseNavigation','DailyStakeholderWorkspace']) {
   for(const resourceFailure of [false,'http','reject']) test(`${name}: public link survives empty/failed private resources ${resourceFailure}`,async()=>{
     const tree=await render(name,{resourceFailure});const link=nodes(tree).find(n=>n.type==='a'&&n.props.href===url);
-    assert.ok(link);assert.equal(link.props.children,'Télécharger le programme complet (PDF)');assert.equal(link.props.target,'_blank');assert.equal(link.props.rel,'noreferrer');
+    assert.ok(link);assert.equal(link.props.children,'Télécharger le programme complet');assert.equal(link.props.target,'_blank');assert.equal(link.props.rel,'noreferrer');
     const serialized=JSON.stringify(tree);assert.ok(!serialized.includes('Aucun document'));assert.ok(!serialized.includes('training_contract'));assert.ok(serialized.includes(name==='LearnerPhaseNavigation'?'Aucune convocation publiée':'Elle n\'est pas encore disponible'));
   });
   for(const options of [{available:false},{role:'entreprise'}])test(`${name}: unavailable/enterprise ${JSON.stringify(options)}`,async()=>{assert.ok(!nodes(await render(name,options)).some(n=>n.type==='a'&&n.props.href===url));});
