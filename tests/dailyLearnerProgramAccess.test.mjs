@@ -81,7 +81,7 @@ for(const [name,options] of [
  ['wrong bucket',{source:{bucket:'public'}}],
  ['wrong path',{source:{storage_path:'daily/other/file.pdf'}}],
 ])test(`imported programme hidden when ${name}`,async()=>{
- const h=fixture({formation:{creation_mode:'program_import',detailed_program_document_url:`/api/client/daily/uploads?id=${sourceId}`},...options});
+ const h=fixture({...options,formation:{creation_mode:'program_import',detailed_program_document_url:`/api/client/daily/uploads?id=${sourceId}`,...options.formation}});
  const r=await h.get();assert.equal(r.status,200);
  assert.equal(Object.hasOwn(await r.json(),'publicProgramPdfUrl'),false);
 });
