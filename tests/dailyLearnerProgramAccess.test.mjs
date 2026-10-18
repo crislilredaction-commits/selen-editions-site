@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { jsPDF } from 'jspdf';
 import { loadTypeScript } from './helpers/loadTypeScript.mjs';
 
-const fields = 'id,organisation_id,status,creation_mode,public_registration_enabled,public_registration_token';
+const fields = 'id,organisation_id,status,creation_mode,public_registration_enabled,public_registration_token,detailed_program_document_url';
+const sourceId='11111111-1111-1111-1111-111111111111';
 const publicToken = 'public/+?é%#';
 const url = `/api/daily-portal/${encodeURIComponent('portal-secret')}/program-pdf`;
 const networkForbidden = () => assert.fail('Network forbidden');
@@ -14,7 +15,8 @@ function fixture(options = {}) {
   const formation = options.absent ? null : { id: 'formation', organisation_id: 'org', status: 'validated', creation_mode: 'selen_form', public_registration_enabled: true, public_registration_token: publicToken, ...options.formation };
   const session = { id: 'session', formation_id: 'formation', organisation_id: 'org', status: 'ready', daily_formations: { id: 'formation', title: 'Existing DTO' }, registration_token: 'never-use-session-token', ...options.session };
   const enrolment = { id: 'enrolment', session_id: 'session', organisation_id: 'org', learner_id: 'learner', status: 'active', daily_learners: { id: 'learner', email: 'learner@example.test' }, ...options.enrolment };
-  const db = { daily_portal_access_tokens: [access], daily_sessions: [session], daily_session_enrolments: [enrolment], daily_formations: formation ? [formation] : [], daily_onboarding: [], daily_registration_responses: [], daily_conventions: [], daily_trainers: [], daily_convocations: [], daily_documents: [] };
+  const source={id:sourceId,organisation_id:'org',document_type:'training_program_source',linked_object_type:'organisation',linked_object_id:'org',formation_id:'formation',bucket:'documents',storage_path:'daily/org/catalogue-sources/file.docx',is_current:true,status:'to_check',archived_at:null,...options.source};
+  const db = { daily_portal_access_tokens: [access], daily_sessions: [session], daily_session_enrolments: [enrolment], daily_formations: formation ? [formation] : [], daily_onboarding: [], daily_registration_responses: [], daily_conventions: [], daily_trainers: [], daily_convocations: [], daily_documents: options.noSource ? [] : [source] };
   const calls = [], mutations = [];
   const admin = { from(table) {
     assert.ok(Object.hasOwn(db, table), table);
@@ -46,6 +48,7 @@ function fixture(options = {}) {
     'next/server': { NextResponse: Response }, '@/lib/server/clientNdaAccess': { getAdminSupabase:()=>admin },
     '@/lib/server/dailyPortalResourceVisibility': resourceVisibility,
     '@/lib/server/dailyPersonalAttendance': personalAttendance,
+    '@/lib/daily/ownPositioning': {positioningSourceDocumentId:v=>typeof v==='string'&&v===`/api/client/daily/uploads?id=${sourceId}`?sourceId:null},
   }, {fetch:networkForbidden});
   return { calls, mutations, session, get:()=>GET(null,{params:Promise.resolve({token:'portal-secret'})}) };
 }
@@ -64,9 +67,23 @@ for(const [name,options] of [
   ['missing session formation',{session:{formation_id:null}}],['missing OF',{session:{organisation_id:null}}],
 ]) test(`GET no fallback: ${name}`,async()=>{const h=fixture(options);const r=await h.get();assert.equal(r.status,200);assert.equal(Object.hasOwn(await r.json(),'publicProgramPdfUrl'),false);});
 test('validated imported program exposes private link to active learner',async()=>{
-  const h=fixture({formation:{creation_mode:'program_import'}});
+  const h=fixture({formation:{creation_mode:'program_import',detailed_program_document_url:`/api/client/daily/uploads?id=${sourceId}`}});
   const r=await h.get();assert.equal(r.status,200);
   assert.equal((await r.json()).publicProgramPdfUrl,url);
+});
+for(const [name,options] of [
+ ['missing reference',{formation:{detailed_program_document_url:null}}],
+ ['missing source',{noSource:true}],
+ ['archived',{source:{status:'archived'}}],
+ ['stale',{source:{is_current:false}}],
+ ['other organisation',{source:{organisation_id:'other'}}],
+ ['other formation',{source:{formation_id:'other'}}],
+ ['wrong bucket',{source:{bucket:'public'}}],
+ ['wrong path',{source:{storage_path:'daily/other/file.pdf'}}],
+])test(`imported programme hidden when ${name}`,async()=>{
+ const h=fixture({...options,formation:{creation_mode:'program_import',detailed_program_document_url:`/api/client/daily/uploads?id=${sourceId}`,...options.formation}});
+ const r=await h.get();assert.equal(r.status,200);
+ assert.equal(Object.hasOwn(await r.json(),'publicProgramPdfUrl'),false);
 });
 for(const role of ['enterprise','trainer']) test(`no public programme read for ${role}`,async()=>{const h=fixture({access:{portal_type:role}});const r=await h.get();assert.equal(r.status,200);assert.equal(Object.hasOwn(await r.json(),'publicProgramPdfUrl'),false);assert.ok(!h.calls.some(c=>c.table==='daily_formations'));});
 for(const [name,options,status,mutation] of [
