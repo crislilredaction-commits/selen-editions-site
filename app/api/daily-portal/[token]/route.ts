@@ -3,6 +3,7 @@ import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import {DAILY_PORTAL_RESOURCE_STATUSES,isDailyPortalResourceVisible} from "@/lib/server/dailyPortalResourceVisibility";
 import {isPostsessionDownloadAvailable} from "@/lib/server/dailyPersonalAttendance";
 import {positioningSourceDocumentId} from "@/lib/daily/ownPositioning";
+import {matchesDailyLearnerPortalAccess} from "@/lib/server/dailyPortalLearnerIdentity";
 
 type Params={params:Promise<{token:string}>};type JsonRecord=Record<string,unknown>;
 const learnerWorkspaceDocumentTypes=["training_program","convocation","registration_positioning","completion_certificate","organisation_shared"];
@@ -30,8 +31,8 @@ export async function GET(_request:Request,{params}:Params){
   supabase.from("daily_convocations").select("id,recipient_type,recipient_key,recipient_name,recipient_email,company_name,version,document_name,status,sent_at,generated_at").eq("session_id",access.session_id),
   supabase.from("daily_session_enrolments").select("id,learner_id,company_name,status,positioning_status,prerequisites_status,source,created_at,daily_learners(id,first_name,last_name,email)").eq("session_id",access.session_id).not("status","in","(declined,cancelled,abandoned)"),
  ]);if(sessionR.error)return NextResponse.json({error:sessionR.error.message},{status:500});if(enrolmentsR.error)return NextResponse.json({error:enrolmentsR.error.message},{status:500});const session=sessionR.data;if(!session)return NextResponse.json({error:"Session introuvable."},{status:404});
- const entityEmail=normalizedEmail(access.entity_email),entityName=String(access.entity_name??"").trim().toLowerCase(),entityKey=String(access.entity_key??"");
- const activeLearnerEnrolment=access.portal_type==="learner"?(enrolmentsR.data??[]).find(row=>{const linked=relatedLearner(row.daily_learners);return entityKey?entityKey===`learner:${row.learner_id}`:Boolean(linked&&((entityEmail&&normalizedEmail(linked.email)===entityEmail)||(entityName&&fullName(linked.first_name,linked.last_name).toLowerCase()===entityName)))})??null:null;
+ const entityEmail=normalizedEmail(access.entity_email),entityName=String(access.entity_name??"").trim().toLowerCase();
+ const activeLearnerEnrolment=access.portal_type==="learner"?(enrolmentsR.data??[]).find(row=>matchesDailyLearnerPortalAccess(access,row))??null:null;
  if(access.portal_type==="learner"&&!activeLearnerEnrolment){await supabase.from("daily_portal_access_tokens").update({status:"revoked",updated_at:new Date().toISOString()}).eq("id",access.id);return NextResponse.json({error:"Cette inscription n’est plus active."},{status:403})}
  if(access.status==="pending")await supabase.from("daily_portal_access_tokens").update({status:"viewed",viewed_at:new Date().toISOString()}).eq("id",access.id);
  let learnerDocuments:JsonRecord[]=[];try{learnerDocuments=await loadLearnerDocuments(supabase,session as JsonRecord,activeLearnerEnrolment as JsonRecord|null) as JsonRecord[]}catch(cause){return NextResponse.json({error:cause instanceof Error?cause.message:"Documents indisponibles."},{status:500})}
