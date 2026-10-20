@@ -42,7 +42,10 @@ test("la route personnelle recroise jeton, session, inscription active et identi
   assert.match(route, /access\.portal_type !== "learner"/);
   assert.match(route, /\(declined,cancelled,abandoned\)/);
   assert.match(route, /enrolment\.organisation_id !== session\.organisation_id/);
-  assert.match(route, /email\(learner\.email\) !== email\(access\.entity_email\)/);
+  assert.match(route, /entity_key,entity_name,entity_email/);
+  assert.match(route, /id,learner_id,organisation_id/);
+  assert.match(route, /matchesDailyLearnerPortalAccess\(access, enrolment\)/);
+  assert.doesNotMatch(route, /email\(learner\.email\).*email\(access\.entity_email\)/);
   assert.match(route, /isPostsessionDownloadAvailable\(session\.end_date\)/);
   assert.match(route, /attendanceIsSettled/);
   assert.match(route, /proofHash: null/);
@@ -155,7 +158,7 @@ test("la liste expose le résultat personnel uniquement après session et finali
   assert.match(resources, /isFinalAssessmentResult\(assessment\.outcome, assessment\.assessed_at\)/);
   assert.match(resources, /personalAssessmentResultDocumentId\(enrolmentId\)/);
   assert.match(resources, /personal_assessment_result/);
-  assert.match(resources, /entityKey === `learner:\$\{text\(row\.learner_id\)\}`/);
+  assert.match(resources, /matchesDailyLearnerPortalAccess\(access, row\)/);
   assert.match(resources, /\.eq\("organisation_id", session\.organisation_id\)\.eq\("session_id", session\.id\)\.in\("enrolment_id", allowedEnrolmentIds\)/);
 });
 
@@ -171,7 +174,7 @@ test("la route du résultat recroise jeton, inscription, identité stable et ré
   assert.match(route, /access\.portal_type !== "learner"/);
   assert.match(route, /\(declined,cancelled,abandoned\)/);
   assert.match(route, /enrolment\.organisation_id !== session\.organisation_id/);
-  assert.match(route, /entityKey === `learner:\$\{text\(enrolment\.learner_id\)\}`/);
+  assert.match(route, /matchesDailyLearnerPortalAccess\(access, enrolment\)/);
   assert.match(route, /isPostsessionDownloadAvailable\(session\.end_date\)/);
   assert.match(route, /isFinalAssessmentResult\(assessment\.outcome, assessment\.assessed_at\)/);
   assert.match(route, /select\("outcome,score,score_max,method,assessed_at"\)/);
@@ -214,7 +217,7 @@ test("la route de copie recroise jeton, document courant, inscription, identité
   assert.match(route, /document_type", "learning_assessment_evidence"/);
   assert.match(route, /\.eq\("is_current", true\)\.is\("archived_at", null\)/);
   assert.match(route, /\(declined,cancelled,abandoned\)/);
-  assert.match(route, /entityKey === `learner:\$\{text\(enrolment\.learner_id\)\}`/);
+  assert.match(route, /matchesDailyLearnerPortalAccess\(access, enrolment\)/);
   assert.match(route, /isFinalAssessmentResult\(assessment\.outcome, assessment\.assessed_at\)/);
   assert.match(route, /evidence\.bucket !== "documents"/);
   assert.match(route, /startsWith\(`daily\/\$\{session\.organisation_id\}\//);

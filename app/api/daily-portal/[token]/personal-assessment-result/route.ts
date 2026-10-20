@@ -3,22 +3,16 @@ import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import { buildPersonalAssessmentResultHtml } from "@/lib/server/dailyPosttrainingDocumentHtml";
 import { assessmentOutcomeLabel, isFinalAssessmentResult } from "@/lib/server/dailyPersonalAssessment";
 import { isPostsessionDownloadAvailable, safePersonalDownloadName } from "@/lib/server/dailyPersonalAttendance";
+import { matchesDailyLearnerPortalAccess } from "@/lib/server/dailyPortalLearnerIdentity";
 
 type Params = { params: Promise<{ token: string }> };
 type Json = Record<string, unknown>;
 const text = (value: unknown) => String(value ?? "").trim();
-const email = (value: unknown) => text(value).toLowerCase();
 const one = (value: unknown): Json => Array.isArray(value) ? (value[0] as Json | undefined) ?? {} : value && typeof value === "object" ? value as Json : {};
 
 function isExpired(value: unknown) {
   const expiresAt = text(value);
   return Boolean(expiresAt && Date.parse(expiresAt) < Date.now());
-}
-
-function identityMatches(access: Json, enrolment: Json, learner: Json) {
-  const entityKey = text(access.entity_key);
-  if (entityKey) return entityKey === `learner:${text(enrolment.learner_id)}`;
-  return Boolean(email(access.entity_email) && email(learner.email) === email(access.entity_email));
 }
 
 export async function GET(request: Request, { params }: Params) {
@@ -29,7 +23,7 @@ export async function GET(request: Request, { params }: Params) {
   const admin = getAdminSupabase();
   const { data: access, error: accessError } = await admin
     .from("daily_portal_access_tokens")
-    .select("session_id,portal_type,entity_key,entity_email,status,expires_at")
+    .select("session_id,portal_type,entity_key,entity_name,entity_email,status,expires_at")
     .eq("token", text(token))
     .maybeSingle();
   if (accessError) return NextResponse.json({ error: accessError.message }, { status: 500 });
@@ -45,7 +39,7 @@ export async function GET(request: Request, { params }: Params) {
   if (readError) return NextResponse.json({ error: readError.message }, { status: 500 });
   if (!session || !enrolment || enrolment.organisation_id !== session.organisation_id) return NextResponse.json({ error: "Document introuvable." }, { status: 404 });
   const learner = one(enrolment.daily_learners);
-  if (!identityMatches(access as Json, enrolment as Json, learner)) return NextResponse.json({ error: "Document introuvable." }, { status: 404 });
+  if (!matchesDailyLearnerPortalAccess(access, enrolment)) return NextResponse.json({ error: "Document introuvable." }, { status: 404 });
   if (!isPostsessionDownloadAvailable(session.end_date)) return NextResponse.json({ error: "Le résultat personnel sera disponible après la fin de la session." }, { status: 409 });
 
   const [{ data: assessment, error: assessmentError }, { data: organisation, error: organisationError }] = await Promise.all([
@@ -56,7 +50,7 @@ export async function GET(request: Request, { params }: Params) {
   if (resultError) return NextResponse.json({ error: resultError.message }, { status: 500 });
   if (!assessment || !isFinalAssessmentResult(assessment.outcome, assessment.assessed_at)) return NextResponse.json({ error: "Le résultat personnel sera disponible lorsque l’évaluation aura été finalisée." }, { status: 409 });
 
-  const learnerName = [text(learner.first_name), text(learner.last_name)].filter(Boolean).join(" ") || email(learner.email) || "Apprenant";
+  const learnerName = [text(learner.first_name), text(learner.last_name)].filter(Boolean).join(" ") || text(learner.email).toLowerCase() || "Apprenant";
   const formation = one(session.daily_formations);
   const html = buildPersonalAssessmentResultHtml({
     organisationName: text(organisation?.legal_name || organisation?.name) || "Organisme de formation",
