@@ -2,11 +2,10 @@ import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import { renderRegistrationProgramPdf } from "@/lib/server/dailyRegistrationProgramPdf";
 import { positioningSourceDocumentId } from "@/lib/daily/ownPositioning";
+import { matchesDailyLearnerPortalAccess } from "@/lib/server/dailyPortalLearnerIdentity";
 
 type Params = { params: Promise<{ token: string }> };
 const text = (v: unknown) => String(v ?? "").trim();
-const email = (v: unknown) => text(v).toLowerCase();
-const related = (v: any) => Array.isArray(v) ? v[0] : v;
 const safe = (v: string) => v.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9-_]+/g, "-").replace(/^-+|-+$/g, "").toLowerCase().slice(0, 80) || "formation";
 export const runtime = "nodejs";
 
@@ -30,11 +29,7 @@ export async function GET(_request: Request, { params }: Params) {
       .select("learner_id,daily_learners(email)").eq("session_id", session.id).eq("organisation_id", session.organisation_id)
       .not("status", "in", "(declined,cancelled,abandoned)");
     if (enrolmentError) throw enrolmentError;
-    const entityKey = text(access.entity_key);
-    const entityEmail = email(access.entity_email);
-    const matched = (enrolments ?? []).some((row: any) =>
-      entityKey ? entityKey === `learner:${row.learner_id}` :
-      Boolean(entityEmail && entityEmail === email(related(row.daily_learners)?.email)));
+    const matched = (enrolments ?? []).some((row) => matchesDailyLearnerPortalAccess(access, row));
     if (!matched) return NextResponse.json({ error: "Inscription inactive." }, { status: 403 });
     const { data: formation, error: formationError } = await admin.from("daily_formations")
       .select("id,user_id,title,status,creation_mode,global_objective,learning_objectives,target_audience,prerequisites,duration_hours,duration_days,modality,modality_details,access_delays,registration_methods,price,detailed_program,accessibility,pedagogical_resources,pedagogical_methods,evaluation_methods,contact_phone,contact_email,contact_website,detailed_program_document_url")

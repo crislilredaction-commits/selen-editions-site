@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import { verifyAgentAssistance } from "@/lib/server/agentAssistance";
 import {DAILY_PORTAL_RESOURCE_STATUSES,DAILY_PORTAL_RESOURCE_TYPES,isDailyPortalResourceVisible} from "@/lib/server/dailyPortalResourceVisibility";
+import {matchesDailyLearnerPortalAccess} from "@/lib/server/dailyPortalLearnerIdentity";
 
 type Props = {
   params: Promise<{ accessId: string }>;
@@ -19,10 +20,6 @@ type RelatedLearner = {
 
 function related<T>(value: T | T[] | null | undefined) {
   return Array.isArray(value) ? value[0] ?? null : value ?? null;
-}
-
-function email(value: unknown) {
-  return String(value ?? "").trim().toLowerCase();
 }
 
 function personName(value: RelatedLearner | null | undefined) {
@@ -51,6 +48,8 @@ export default async function DelegatedPortalPreview({ params, searchParams }: P
     .eq("id", accessId)
     .in("portal_type", ["learner", "trainer"])
     .maybeSingle();
+  // Server-rendered access control must compare expiry with the current request time.
+  // eslint-disable-next-line react-hooks/purity
   const expired = Boolean(access?.expires_at && new Date(access.expires_at).getTime() < Date.now());
   if (!access || ["revoked", "expired"].includes(String(access.status ?? "")) || expired) notFound();
 
@@ -70,12 +69,8 @@ export default async function DelegatedPortalPreview({ params, searchParams }: P
     .eq("organisation_id", assistance.organisation_id)
     .not("status", "in", "(declined,cancelled,abandoned)");
   const rows = enrolments ?? [];
-  const targetEmail = email(access.entity_email);
   const learner = access.portal_type === "learner"
-    ? rows.find((row) => {
-        const linked = related(row.daily_learners) as RelatedLearner | null;
-        return access.entity_key === `learner:${row.learner_id}` || Boolean(targetEmail && email(linked?.email) === targetEmail);
-      }) ?? null
+    ? rows.find((row) => matchesDailyLearnerPortalAccess(access, row)) ?? null
     : null;
   if (access.portal_type === "learner" && !learner) notFound();
 
