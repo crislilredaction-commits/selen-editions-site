@@ -3,6 +3,7 @@ import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import {DAILY_PORTAL_RESOURCE_STATUSES,DAILY_PORTAL_RESOURCE_TYPES,isDailyPortalResourceVisible} from "@/lib/server/dailyPortalResourceVisibility";
 import {attendanceIsSettled,isPostsessionDownloadAvailable,personalAttendanceDocumentId} from "@/lib/server/dailyPersonalAttendance";
 import {isFinalAssessmentResult,personalAssessmentEvidenceDocumentId,personalAssessmentResultDocumentId} from "@/lib/server/dailyPersonalAssessment";
+import {matchesDailyLearnerPortalAccess} from "@/lib/server/dailyPortalLearnerIdentity";
 
 type Params = { params: Promise<{ token: string }> };
 type Json = Record<string, unknown>;
@@ -113,12 +114,7 @@ export async function GET(_request: Request, { params }: Params) {
   if (access.portal_type === "learner") {
     const { data: rows, error: enrolmentError } = await admin.from("daily_session_enrolments").select("id,learner_id,daily_learners(email)").eq("session_id", session.id).eq("organisation_id", session.organisation_id).not("status", "in", "(declined,cancelled,abandoned)");
     if (enrolmentError) return NextResponse.json({ error: enrolmentError.message }, { status: 500 });
-    const entityKey = text(access.entity_key);
-    matchingRows = (rows ?? []).filter((row: Json) => {
-      if (entityKey) return entityKey === `learner:${text(row.learner_id)}`;
-      const learner = Array.isArray(row.daily_learners) ? row.daily_learners[0] : row.daily_learners;
-      return Boolean(email(access.entity_email) && email((learner as Json | undefined)?.email) === email(access.entity_email));
-    });
+    matchingRows = (rows ?? []).filter((row: Json) => matchesDailyLearnerPortalAccess(access, row));
     allowedEnrolmentIds = matchingRows.map((row: Json) => text(row.id)).filter(Boolean);
     allowedLearnerIds = matchingRows.map((row: Json) => text(row.learner_id)).filter(Boolean);
   } else if (access.portal_type === "enterprise") {

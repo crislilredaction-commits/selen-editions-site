@@ -2,12 +2,10 @@ import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import { isPostsessionDownloadAvailable } from "@/lib/server/dailyPersonalAttendance";
 import { isFinalAssessmentResult } from "@/lib/server/dailyPersonalAssessment";
+import { matchesDailyLearnerPortalAccess } from "@/lib/server/dailyPortalLearnerIdentity";
 
 type Params = { params: Promise<{ token: string }> };
-type Json = Record<string, unknown>;
 const text = (value: unknown) => String(value ?? "").trim();
-const email = (value: unknown) => text(value).toLowerCase();
-const relatedLearner = (value: unknown): Json | null => Array.isArray(value) ? (value[0] as Json | undefined) ?? null : value && typeof value === "object" ? value as Json : null;
 
 export async function GET(request: Request, { params }: Params) {
   const { token } = await params;
@@ -16,7 +14,7 @@ export async function GET(request: Request, { params }: Params) {
   if (!cleanToken || !documentId) return NextResponse.json({ error: "Lien invalide." }, { status: 400 });
 
   const admin = getAdminSupabase();
-  const { data: access, error: accessError } = await admin.from("daily_portal_access_tokens").select("session_id,portal_type,entity_key,entity_email,status,expires_at").eq("token", cleanToken).maybeSingle();
+  const { data: access, error: accessError } = await admin.from("daily_portal_access_tokens").select("session_id,portal_type,entity_key,entity_name,entity_email,status,expires_at").eq("token", cleanToken).maybeSingle();
   if (accessError) return NextResponse.json({ error: accessError.message }, { status: 500 });
   if (!access || access.portal_type !== "learner") return NextResponse.json({ error: "Document introuvable." }, { status: 404 });
   if (["revoked", "expired"].includes(text(access.status))) return NextResponse.json({ error: "Cet accès n’est plus actif." }, { status: 403 });
@@ -33,9 +31,7 @@ export async function GET(request: Request, { params }: Params) {
   const { data: enrolment, error: enrolmentError } = await admin.from("daily_session_enrolments").select("id,organisation_id,session_id,learner_id,status,daily_learners(email)").eq("id", evidence.enrolment_id).eq("organisation_id", session.organisation_id).eq("session_id", session.id).not("status", "in", "(declined,cancelled,abandoned)").maybeSingle();
   if (enrolmentError) return NextResponse.json({ error: enrolmentError.message }, { status: 500 });
   if (!enrolment || text(enrolment.learner_id) !== text(evidence.learner_id) || enrolment.organisation_id !== session.organisation_id) return NextResponse.json({ error: "Document introuvable." }, { status: 404 });
-  const entityKey = text(access.entity_key);
-  const identityMatches = entityKey ? entityKey === `learner:${text(enrolment.learner_id)}` : Boolean(email(access.entity_email) && email(relatedLearner(enrolment.daily_learners)?.email) === email(access.entity_email));
-  if (!identityMatches) return NextResponse.json({ error: "Document introuvable." }, { status: 404 });
+  if (!matchesDailyLearnerPortalAccess(access, enrolment)) return NextResponse.json({ error: "Document introuvable." }, { status: 404 });
 
   const { data: assessment, error: assessmentError } = await admin.from("daily_learning_assessments").select("outcome,assessed_at").eq("organisation_id", session.organisation_id).eq("session_id", session.id).eq("enrolment_id", enrolment.id).maybeSingle();
   if (assessmentError) return NextResponse.json({ error: assessmentError.message }, { status: 500 });
