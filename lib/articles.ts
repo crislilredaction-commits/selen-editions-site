@@ -32,6 +32,53 @@ export type Article = {
 // date de publication, mise à la une.
 export const articles: Article[] = [
   {
+    "slug": "cybermois-2026-securiser-dossiers-apprenants-formateurs",
+    "title": "Cybermois 2026 : votre dossier apprenant est-il une passoire numérique ?",
+    "category": "Gestion quotidienne",
+    "excerpt": "Sept pièges numériques qui guettent les formateurs indépendants : partages trop larges, phishing, faux RIB, sauvegardes et données des apprenants.",
+    "publishedAt": "2026-10-20",
+    "coverImage": "/plum.png",
+    "coverAlt": "Plume sur parchemin, illustration de la Gazette Selen",
+    "featured": true,
+    "readingTime": "8 min",
+    "introduction": "Mardi 20 octobre, 8 h 42. Nina, formatrice indépendante depuis huit mois, reçoit un message : « URGENT : votre espace professionnel sera suspendu dans 24 heures. » Elle approche sa souris du lien… puis hésite. Heureusement : octobre est le Cybermois, campagne nationale de sensibilisation à la cybersécurité du 1er au 31 octobre 2026. Un formateur indépendant manipule noms, coordonnées, évaluations et dossiers d'inscription. Profitons-en pour visiter sept pièges numériques, sans transformer votre salon en centre de cybersécurité.",
+    "sections": [
+      {
+        "title": "🕳️ Piège n° 1 : le dossier partagé avec toute la planète",
+        "body": "Nina partage le dossier d'une session en sélectionnant « Toute personne disposant du lien ». Pratique : le client ouvre les fichiers sans compte. Moins pratique : toute personne recevant le lien pourrait aussi y accéder. Le problème n'est pas le cloud, mais les droits d'accès. Le test de l'invité surprise : ouvrez les paramètres de partage d'un dossier contenant des données personnelles, contrôlez qui y accède et retirez les accès devenus inutiles. Un apprenant n'a pas besoin de voir les évaluations des autres, ni un ancien intervenant de conserver l'accès aux archives."
+      },
+      {
+        "title": "📧 Piège n° 2 : le mail collectif qui présente tout le monde",
+        "body": "Nina envoie une information aux douze participants en plaçant les douze adresses dans « À ». Chacun découvre les coordonnées des onze autres : réseautage imposé, non merci. Lorsque les destinataires n'ont pas à se connaître, utilisez Cci ou un envoi individualisé. Un résultat d'évaluation, lui, mérite une transmission personnelle et sécurisée. Écrire CONFIDENTIEL en majuscules n'est pas une technologie de protection. Référence : CNIL, recommandations sur la protection des données lors des formations numériques."
+      },
+      {
+        "title": "🔑 Piège n° 3 : le mot de passe qui sert absolument partout",
+        "body": "Messagerie, facturation, plateforme pédagogique : Nina utilise presque le même mot de passe pour tout. Si un service est compromis, les autres sont exposés. Commencez par sécuriser trois comptes vitaux : messagerie (qui sert souvent à réinitialiser les autres mots de passe), espace de gestion des formations, espace bancaire ou de facturation. Utilisez des mots de passe uniques, un gestionnaire dédié et l'authentification multifacteur lorsqu'elle est disponible. Le Post-it collé à l'écran est facile à retrouver, précisément le problème."
+      },
+      {
+        "title": "💸 Piège n° 4 : le faux RIB qui ressemble au vrai",
+        "body": "Un fournisseur vous annonce ses nouvelles coordonnées bancaires dans un message très convaincant. La fraude au faux RIB consiste précisément à usurper l'identité d'un créancier pour détourner un virement. Avant de modifier un RIB, contactez votre interlocuteur par un canal déjà connu et fiable, et non avec les seules coordonnées fournies dans le message. Cybermalveillance.gouv.fr a mis à jour ses conseils sur cette escroquerie le 14 octobre 2026. Un virement détourné ne se corrige pas toujours avec un deuxième mail."
+      },
+      {
+        "title": "💾 Piège n° 5 : la sauvegarde qui n'a jamais été testée",
+        "body": "Nina pense que son ordinateur sauvegarde tout : elle a vu une petite icône verte il y a quelques mois. Mais saurait-elle restaurer ses programmes si son ordinateur tombait en panne avant une session ? Faites le test du lundi catastrophique : restaurez un document non sensible depuis la sauvegarde, puis identifiez les fichiers indispensables à la continuité de l'activité. La synchronisation ne remplace pas toujours une sauvegarde indépendante : une suppression peut se répercuter sur plusieurs appareils. Prévoyez des copies protégées et vérifiez leur restauration. Référence : Cybermalveillance.gouv.fr, prévention des rançongiciels, mise à jour du 7 mai 2026."
+      },
+      {
+        "title": "🖥️ Piège n° 6 : l'ordinateur pédagogique qui sait tout",
+        "body": "Pour un exercice Excel, Nina utilise une feuille avec de vrais noms, adresses et montants issus de ses dossiers. C'est réaliste, mais beaucoup trop. Constituez plutôt une bibliothèque de jeux de données entièrement fictifs : entreprises imaginaires, personnes inventées, transactions de démonstration. Vous pourrez les réutiliser dans vos supports et captures d'écran sans exposer vos clients. En visioconférence, fermez les fenêtres inutiles et les notifications avant de partager l'écran. Une démonstration ne devrait pas devenir une visite guidée de votre comptabilité."
+      },
+      {
+        "title": "🚨 Piège n° 7 : la fuite que personne ne sait gérer",
+        "body": "Nina découvre qu'un dossier apprenant était accessible sans autorisation. Elle ferme l'accès : et ensuite ? Le RGPD impose de documenter les violations de données personnelles. Lorsque la violation est susceptible d'engendrer un risque pour les droits et libertés, le responsable de traitement doit la notifier à la CNIL dans les meilleurs délais et, si possible, sous 72 heures après en avoir pris connaissance. Si le risque est élevé, l'information des personnes concernées peut être requise, sous réserve des exceptions applicables. Toute erreur n'impose pas automatiquement une notification, mais elle doit être évaluée. Préparez une fiche réflexe : personnes à contacter, sécurisation, collecte des faits, évaluation du risque et décision documentée. Le kit Cybermois 2026 comporte une ressource CNIL/Cybermalveillance sur la réaction aux violations. Source : CNIL, « Notifier une violation de données personnelles », et Cybermalveillance.gouv.fr, kit Cybermois 2026 (1er octobre 2026)."
+      },
+      {
+        "title": "🧪 Le défi Selen : quinze minutes pour vérifier votre sécurité",
+        "body": "Cinq tests de trois minutes, sans prétendre réaliser un audit complet : (1) vérifier les droits d'accès d'un dossier apprenant ; (2) vérifier l'authentification multifacteur de votre messagerie ; (3) contrôler la confidentialité d'un envoi collectif ; (4) restaurer un document de test non sensible ; (5) retrouver votre procédure en cas d'incident. Ces quinze minutes sont une idée pédagogique Selen, pas une obligation réglementaire. Si vous repérez une faiblesse, prenez une mesure concrète et vérifiez qu'elle fonctionne."
+      }
+    ],
+    "conclusion": "Nina décide de ne pas cliquer sur le lien menaçant et consulte directement le site officiel par son adresse habituelle. Aucune suspension : seulement un hameçonnage. Elle sécurise ses comptes, vérifie ses partages, et retourne préparer sa formation. La cybersécurité n'est pas réservée aux grandes entreprises : elle commence aussi dans le bureau d'un indépendant, même entre une imprimante capricieuse et une tasse de café oubliée. L'équipe Selen Éditions. Article d'information générale daté du 20 octobre 2026 ; mesures à adapter aux risques et aux obligations propres à chaque organisme. Ressources : https://www.cybermalveillance.gouv.fr/ ; https://www.cnil.fr/ ."
+  },
+  {
     "slug": "facturation-electronique-2026-formateurs-independants",
     "category": "Gestion quotidienne",
     "title": "Facturation électronique : votre PDF va-t-il finir au musée ?",
