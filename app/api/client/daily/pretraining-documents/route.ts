@@ -123,7 +123,7 @@ export async function POST(req:Request) {
     const templates=new Map<string,any>();
     for(const template of templateRows??[]){const type=template.document_type==="internal_rules"?"internal_regulations":template.document_type;if(!templates.has(type))templates.set(type,template);}
     const variables={ORGANISME:common.organisationName,SIRET:common.organisationSiret,ADRESSE_ORGANISME:common.organisationAddress,NDA:common.organisationNda,FORMATION:common.formationTitle,DATES:[common.startDate,common.endDate].join(" → "),DUREE:text(formation.duration_hours)+" heures",HORAIRES:common.schedule,MODALITE:common.modality,MODALITES_PRATIQUES:common.location,CONTACT:[common.organisationEmail,common.organisationPhone].filter(Boolean).join(" · "),ACCESSIBILITE:text(formation.accessibility),TARIF:text(formation.price),OBJECTIF:text(formation.global_objective),PREREQUIS:text(formation.prerequisites),FORMATEUR:trainerNames,DATE_DOCUMENT:new Date().toLocaleDateString("fr-FR")};
-    const generateDocument=(args:Parameters<typeof generateCanonicalDocument>[0])=>generateCanonicalDocument({...args,onlyMissing:body.only_missing===true,template:templates.get(args.documentType),metadata:{...args.metadata,session_name:common.formationTitle+" · "+common.startDate+" → "+common.endDate},variables:{...variables,SIRET_CLIENT:text(args.metadata.client_siret),BENEFICIAIRE:text(args.metadata.learner_name),CLIENT_OU_BENEFICIAIRE:text(args.metadata.company_name||args.metadata.learner_name)}});
+    const generateDocument=(args:Parameters<typeof generateCanonicalDocument>[0])=>generateCanonicalDocument({...args,onlyMissing:body.only_missing===true,deferRetirement:true,template:templates.get(args.documentType),metadata:{...args.metadata,session_name:common.formationTitle+" · "+common.startDate+" → "+common.endDate},variables:{...variables,SIRET_CLIENT:text(args.metadata.client_siret),BENEFICIAIRE:text(args.metadata.learner_name),CLIENT_OU_BENEFICIAIRE:text(args.metadata.company_name||args.metadata.learner_name)}});
     const companies = asArray(session.companies) as Record<string,unknown>[];
     // The contractual party belongs to the enrolment. Never infer it from a SIRET,
     // the learner identity or the funding mode.
@@ -143,21 +143,29 @@ export async function POST(req:Request) {
       const company = companies.find(row=>text(row.name) && text(row.name)===text(enrolment.company_name));
       return resolveContractingPartyType(enrolment) === "company";
     }).map((enrolment:any)=>enrolment.id));
-    // Snapshot only this session's current contractual documents after validation.
-    // Keep historical enrolment documents outside the loaded enrolments untouched.
+    // Snapshot every current pretraining document after validation. The cutover
+    // happens only after the whole replacement pack has rendered, uploaded and
+    // persisted successfully, so a partial failure cannot remove the last
+    // canonical version.
     const contractualTypes = ["training_contract", "training_agreement"];
-    const { data: sessionContractualDocuments, error: contractualReadError } = await context.admin.from("daily_documents")
+    const { data: sessionCurrentDocuments, error: currentDocumentsReadError } = await context.admin.from("daily_documents")
       .select("id,document_type,linked_object_type,linked_object_id,logical_name,metadata")
       .eq("organisation_id",context.organisationId).eq("session_id",sessionId)
-      .in("document_type",contractualTypes).eq("is_current",true);
-    if (contractualReadError) throw new Error(contractualReadError.message);
-    // An individual pack never retires or blocks on contracts belonging to
-    // another enrolment/company. Shared session documents are still reused.
-    const contractualDocuments = !targeted ? sessionContractualDocuments : (sessionContractualDocuments??[]).filter((document:any)=>
-      document.linked_object_type==="enrolment" && document.linked_object_id===enrolmentId
-      || document.document_type==="training_agreement" && applicableCompanies.some(company=>text(document.metadata?.company_name)
-        ? text(document.metadata.company_name)===text(company.name)
-        : document.logical_name===`convention-${safe(text(company.name)||text(company.siret))}`)
+      .in("document_type",[...documentTypes]).eq("is_current",true);
+    if (currentDocumentsReadError) throw new Error(currentDocumentsReadError.message);
+    // An individual pack never retires documents belonging to another
+    // enrolment. Shared session documents are still reused.
+    const currentDocuments = !targeted ? sessionCurrentDocuments : (sessionCurrentDocuments??[]).filter((document:any)=>
+      document.linked_object_type==="session"
+      || document.linked_object_type==="enrolment" && document.linked_object_id===enrolmentId
+    );
+    const contractualDocuments = (currentDocuments??[]).filter((document:any)=>
+      contractualTypes.includes(document.document_type)
+      && (!targeted
+        || document.linked_object_type==="enrolment" && document.linked_object_id===enrolmentId
+        || document.document_type==="training_agreement" && applicableCompanies.some(company=>text(document.metadata?.company_name)
+          ? text(document.metadata.company_name)===text(company.name)
+          : document.logical_name===`convention-${safe(text(company.name)||text(company.siret))}`))
     );
     const obsoleteDocumentIds = (contractualDocuments ?? []).filter((document:any)=> {
       if (document.document_type === "training_contract") {
@@ -194,7 +202,7 @@ export async function POST(req:Request) {
     // Updating currency alone preserves signed content, status and signature evidence.
     // Include every current version from before this attempt, including failed retries.
     const createdIds = new Set(created.map(document=>document.id));
-    const replacedDocumentIds = (contractualDocuments ?? []).filter((document:any)=>created.some(replacement=>
+    const replacedDocumentIds = (currentDocuments ?? []).filter((document:any)=>created.some(replacement=>
       replacement.document_type === document.document_type
       && replacement.linked_object_type === document.linked_object_type
       && replacement.linked_object_id === document.linked_object_id
@@ -205,7 +213,7 @@ export async function POST(req:Request) {
       const { error: retirementError } = await context.admin.from("daily_documents")
         .update({is_current:false,updated_by:actorUserId})
         .eq("organisation_id",context.organisationId).eq("session_id",sessionId)
-        .in("document_type",contractualTypes).eq("is_current",true).in("id",retireDocumentIds);
+        .in("document_type",[...documentTypes]).eq("is_current",true).in("id",retireDocumentIds);
       if (retirementError) throw new Error(retirementError.message);
     }
     if(context.assisted && context.assistance)await logAgentAssistanceAction({supabase:context.admin,req,assistance:context.assistance,action:"pretraining_documents_prepared",actionLabel:"Préparation documentaire avant formation",metadata:{session_id:sessionId,enrolment_id:enrolmentId||null,document_ids:created.map(doc=>doc.id)}});
