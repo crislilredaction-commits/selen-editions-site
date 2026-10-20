@@ -105,7 +105,7 @@ export async function GET(_request: Request, { params }: Params) {
 
   const { data: session, error: sessionError } = await admin.from("daily_sessions").select("id,organisation_id,companies,end_date").eq("id", access.session_id).neq("status", "archived").maybeSingle();
   if (sessionError || !session) return NextResponse.json({ error: sessionError?.message ?? "Session introuvable." }, { status: sessionError ? 500 : 404 });
-  const { data: documents, error: documentError } = await admin.from("daily_documents").select("id,document_type,linked_object_type,linked_object_id,logical_name,version,status,mime_type,created_at,metadata,session_id,enrolment_id,learner_id").eq("organisation_id", session.organisation_id).eq("is_current", true).in("status", DAILY_PORTAL_RESOURCE_STATUSES).in("document_type", DAILY_PORTAL_RESOURCE_TYPES).order("created_at", { ascending: false });
+  const { data: documents, error: documentError } = await admin.from("daily_documents").select("id,document_type,linked_object_type,linked_object_id,logical_name,version,status,mime_type,created_at,metadata,session_id,enrolment_id,learner_id").eq("organisation_id", session.organisation_id).eq("is_current", true).is("archived_at", null).in("status", DAILY_PORTAL_RESOURCE_STATUSES).in("document_type", DAILY_PORTAL_RESOURCE_TYPES).order("created_at", { ascending: false });
   if (documentError) return NextResponse.json({ error: documentError.message }, { status: 500 });
 
   let allowedEnrolmentIds: string[] = [];

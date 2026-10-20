@@ -16,7 +16,7 @@ function relatedLearner(v:unknown):JsonRecord|null{return Array.isArray(v)?v[0]&
 
 async function loadLearnerDocuments(supabase:ReturnType<typeof getAdminSupabase>,session:JsonRecord,enrolment:JsonRecord|null){
  if(!enrolment)return[];
- const{data:documents,error:documentError}=await supabase.from("daily_documents").select("id,document_type,linked_object_type,linked_object_id,logical_name,version,status,mime_type,created_at,metadata").eq("organisation_id",session.organisation_id).eq("is_current",true).in("status",DAILY_PORTAL_RESOURCE_STATUSES).in("document_type",learnerWorkspaceDocumentTypes).order("created_at",{ascending:false});if(documentError)throw documentError;
+ const{data:documents,error:documentError}=await supabase.from("daily_documents").select("id,document_type,linked_object_type,linked_object_id,logical_name,version,status,mime_type,created_at,metadata").eq("organisation_id",session.organisation_id).eq("is_current",true).is("archived_at",null).in("status",DAILY_PORTAL_RESOURCE_STATUSES).in("document_type",learnerWorkspaceDocumentTypes).order("created_at",{ascending:false});if(documentError)throw documentError;
  return(documents??[]).filter(document=>isDailyPortalResourceVisible({resource:document,role:"learner",sessionId:String(session.id??""),enrolmentIds:[String(enrolment.id??"")],learnerIds:[String(enrolment.learner_id??"")],postsessionAvailable:isPostsessionDownloadAvailable(session.end_date)}))
 }
 

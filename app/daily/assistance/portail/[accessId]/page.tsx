@@ -74,7 +74,7 @@ export default async function DelegatedPortalPreview({ params, searchParams }: P
     : null;
   if (access.portal_type === "learner" && !learner) notFound();
 
-  const {data:resourceRows}=await admin.from("daily_documents").select("id,document_type,linked_object_type,linked_object_id,logical_name,created_at,metadata,session_id,enrolment_id,learner_id").eq("organisation_id",assistance.organisation_id).eq("is_current",true).in("status",DAILY_PORTAL_RESOURCE_STATUSES).in("document_type",DAILY_PORTAL_RESOURCE_TYPES).order("created_at",{ascending:false});
+  const {data:resourceRows}=await admin.from("daily_documents").select("id,document_type,linked_object_type,linked_object_id,logical_name,created_at,metadata,session_id,enrolment_id,learner_id").eq("organisation_id",assistance.organisation_id).eq("is_current",true).is("archived_at",null).in("status",DAILY_PORTAL_RESOURCE_STATUSES).in("document_type",DAILY_PORTAL_RESOURCE_TYPES).order("created_at",{ascending:false});
   const resources=(resourceRows??[]).filter(resource=>isDailyPortalResourceVisible({resource,role:access.portal_type,sessionId:session.id,enrolmentIds:learner?[String(learner.id)]:[],learnerIds:learner?[String(learner.learner_id)]:[]}));
 
   const { data: followup } = access.portal_type === "trainer"

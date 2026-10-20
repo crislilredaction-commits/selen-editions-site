@@ -26,6 +26,7 @@ function fixture(options = {}) {
     const q = {
       select(value) { call.fields = value; if (table === 'daily_formations') assert.equal(value, fields); return q; },
       eq(k,v) { call.filters.push(['eq',k,v]); return q; },
+      is(k,v) { call.filters.push(['is',k,v]); return q; },
       neq(k,v) { call.filters.push(['neq',k,v]); return q; },
       not(k,op,v) { assert.equal(op,'in'); call.filters.push(['not',k,v.slice(1,-1).split(',')]); return q; },
       in(k,v) { call.filters.push(['in',k,v]); return q; },
@@ -39,7 +40,7 @@ function fixture(options = {}) {
           assert.ok(!['declined','cancelled','abandoned'].includes(enrolment.status));
           if (options.readError) return {data:null,error:{message:'Public programme read failed'}};
         }
-        const rows=db[table].filter(row=>call.filters.every(([op,k,v])=>op==='eq'?row[k]===v:op==='neq'?row[k]!==v:op==='in'?v.includes(row[k]):!v.includes(row[k])));
+        const rows=db[table].filter(row=>call.filters.every(([op,k,v])=>op==='eq'?row[k]===v:op==='is'?row[k]===v:op==='neq'?row[k]!==v:op==='in'?v.includes(row[k]):!v.includes(row[k])));
         if(update) { mutations.push(JSON.parse(JSON.stringify(update))); rows.forEach(row=>Object.assign(row,update)); }
         return {data:one?rows[0]??null:rows,error:null};
       }).then(resolve,reject); },
@@ -61,6 +62,11 @@ for (const mode of ['selen_form',null,undefined]) test(`GET public programme / m
   assert.deepEqual(body.documents,[]);
   for(const secret of ['never-use-session-token','public_registration_enabled','creation_mode']) assert.ok(!JSON.stringify(body).includes(secret),secret);
   assert.deepEqual(h.mutations.map(m=>m.status),['viewed']);
+});
+test('le portail apprenant masque une ressource logiquement archivée même si elle reste publiée et courante', async()=>{
+  const h=fixture({source:{document_type:'training_program',linked_object_type:'session',linked_object_id:'session',session_id:'session',formation_id:null,status:'published',archived_at:'2026-10-20T08:00:00Z'}});
+  const response=await h.get();assert.equal(response.status,200);
+  assert.deepEqual((await response.json()).documents,[]);
 });
 for(const [name,options] of [
   ['wrong OF',{formation:{organisation_id:'other'}}],['wrong id',{formation:{id:'other'}}],['absent',{absent:true}],
