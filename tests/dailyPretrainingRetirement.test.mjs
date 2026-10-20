@@ -57,7 +57,7 @@ test('individual -> company retires signed contract only after all generations w
   assert.equal(current(f,'training_agreement').length,1);
   const updates=f.calls.filter(c=>c.operation==='update');
   assert.equal(updates.length,1);
-  assert.deepEqual(updates[0].filters,[{key:'organisation_id',value:'org',kind:'eq'},{key:'session_id',value:'session',kind:'eq'},{key:'document_type',value:['training_contract','training_agreement'],kind:'in'},{key:'is_current',value:true,kind:'eq'},{key:'id',value:['old-contract'],kind:'in'}]);
+  assert.deepEqual(updates[0].filters,[{key:'organisation_id',value:'org',kind:'eq'},{key:'session_id',value:'session',kind:'eq'},{key:'document_type',value:['training_program','training_agreement','training_contract','convocation','registration_positioning','welcome_booklet','internal_regulations'],kind:'in'},{key:'is_current',value:true,kind:'eq'},{key:'id',value:['old-contract'],kind:'in'}]);
   assert.equal(f.calls.at(-1),updates[0]);
 });
 test('company -> individual retires unnecessary agreement and creates contract',async()=>{
