@@ -15,6 +15,7 @@ const helper = compile('lib/dailyContractingParty.ts');
 const enrolment = (id, party, company = 'A') => ({id,organisation_id:'org',session_id:'session',status:'confirmed',contracting_party_type:party,company_name:company,daily_learners:{first_name:id}});
 const contract = (id = 'old-contract', learner = 'one') => ({id,organisation_id:'org',session_id:'session',document_type:'training_contract',linked_object_type:'enrolment',linked_object_id:learner,logical_name:'contrat-formation-apprenant',version:1,is_current:true,status:'signed',storage_path:'retained.doc',signature_id:'signature',metadata:{}});
 const agreement = (company = 'A') => ({...contract(`agreement-${company}`),document_type:'training_agreement',linked_object_type:'session',linked_object_id:'session',logical_name:`convention-${company.toLowerCase()}`,metadata:{company_name:company,client_siret:'123'}});
+const convocation = () => ({...contract('old-convocation'),document_type:'convocation',logical_name:'convocation-apprenant'});
 function fixture({enrolments = [enrolment('one','company')],companies = [{name:'A',siret:'123'}],documents = [contract()],failure} = {}) {
   const rows = structuredClone(documents), calls = [], uploads = [];
   const tables = {daily_document_templates:[],daily_documents:rows,daily_sessions:[{id:'session',organisation_id:'org',companies,daily_formations:{}}],daily_session_enrolments:enrolments,daily_enrolment_support_needs:[],organisations:[{id:'org'}],daily_trainer_profiles:[]};
@@ -56,7 +57,7 @@ test('individual -> company retires signed contract only after all generations w
   assert.equal(current(f,'training_agreement').length,1);
   const updates=f.calls.filter(c=>c.operation==='update');
   assert.equal(updates.length,1);
-  assert.deepEqual(updates[0].filters,[{key:'organisation_id',value:'org',kind:'eq'},{key:'session_id',value:'session',kind:'eq'},{key:'document_type',value:['training_contract','training_agreement'],kind:'in'},{key:'is_current',value:true,kind:'eq'},{key:'id',value:['old-contract'],kind:'in'}]);
+  assert.deepEqual(updates[0].filters,[{key:'organisation_id',value:'org',kind:'eq'},{key:'session_id',value:'session',kind:'eq'},{key:'document_type',value:['training_program','training_agreement','training_contract','convocation','registration_positioning','welcome_booklet','internal_regulations'],kind:'in'},{key:'is_current',value:true,kind:'eq'},{key:'id',value:['old-contract'],kind:'in'}]);
   assert.equal(f.calls.at(-1),updates[0]);
 });
 test('company -> individual retires unnecessary agreement and creates contract',async()=>{
@@ -120,4 +121,31 @@ for(const failure of ['retire','late-upload']) for(const party of ['company','in
   assert.equal(new Set(ids).size,ids.length);
   assert.ok(response.body.documents.every(document=>!ids.includes(document.id)));
   assert.equal(f.calls.filter(call=>call.operation==='select'&&call.filters.some(filter=>filter.key==='document_type'&&filter.kind==='in')).length,2);
+});
+
+
+test('a successful pack retires the previous convocation only after every replacement exists',async()=>{
+  const original=convocation(), f=fixture({documents:[original]});
+  assert.equal((await f.post()).status,200);
+  assert.deepEqual(f.rows[0],{...original,is_current:false,updated_by:'user'});
+  assert.equal(current(f,'convocation').length,1);
+  assert.equal(f.calls.filter(call=>call.operation==='update').length,1);
+});
+for(const failure of ['late-upload','render']) test(`${failure} preserves the previous canonical convocation`,async()=>{
+  const original=convocation(), f=fixture({documents:[original],failure});
+  const response=await f.post();
+  assert.equal(response.status,400);
+  assert.deepEqual(f.rows[0],original);
+  assert.equal(current(f,'convocation').length,1);
+  assert.equal(f.calls.filter(call=>call.operation==='update').length,0);
+});
+test('retry after a partial convocation failure leaves exactly one current version per logical document',async()=>{
+  const f=fixture({documents:[convocation()],failure:'late-upload'});
+  assert.equal((await f.post()).status,400);
+  assert.equal(current(f,'convocation').length,1);
+  f.clearFailure();
+  assert.equal((await f.post()).status,200);
+  for(const type of ['training_program','welcome_booklet','internal_regulations','training_agreement','convocation','registration_positioning']) {
+    assert.equal(current(f,type).length,1,type);
+  }
 });
