@@ -133,7 +133,7 @@ export async function GET(req: Request) {
   const sessions = (data ?? []).map((session) => ({
     ...session,
     daily_conventions: (session.daily_conventions ?? []).filter((document: { status: string }) => document.status === "generated"),
-    daily_convocations: (session.daily_convocations ?? []).filter((document) => ["generated", "sent", "viewed"].includes(document.status)),
+    daily_convocations: (session.daily_convocations ?? []).filter((document: { status: string }) => ["generated", "sent", "viewed"].includes(document.status)),
   }));
   if (sessions.length === 0) return NextResponse.json({ sessions });
   const enrolmentPageSize = 1000;
