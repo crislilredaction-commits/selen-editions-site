@@ -130,11 +130,15 @@ export async function GET(req: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   // Keep historical versions in the database, but never expose them as the
   // active pretraining documents attached to a session list response.
-  const sessions = (data ?? []).map((session) => ({
-    ...session,
-    daily_conventions: (session.daily_conventions ?? []).filter((document: { status: string }) => document.status === "generated"),
-    daily_convocations: (session.daily_convocations ?? []).filter((document: { status: string }) => ["generated", "sent", "viewed"].includes(document.status)),
-  }));
+  const sessions = data ?? [];
+  for (const session of sessions) {
+    if (Array.isArray(session.daily_conventions)) {
+      session.daily_conventions = session.daily_conventions.filter((document: { status: string }) => document.status === "generated");
+    }
+    if (Array.isArray(session.daily_convocations)) {
+      session.daily_convocations = session.daily_convocations.filter((document: { status: string }) => ["generated", "sent", "viewed"].includes(document.status));
+    }
+  }
   if (sessions.length === 0) return NextResponse.json({ sessions });
   const enrolmentPageSize = 1000;
   const enrolmentQuery = () => context.admin.from("daily_session_enrolments")
