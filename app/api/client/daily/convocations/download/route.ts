@@ -13,6 +13,7 @@ export async function GET(req: Request) {
     .from("daily_convocations")
     .select("id,document_name,storage_path,session_id")
     .eq("id", id)
+    .in("status", ["generated", "sent", "viewed"])
     .maybeSingle();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
