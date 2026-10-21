@@ -72,7 +72,7 @@ test("le téléchargement central route le relevé personnel sans modifier les f
 
 test("AR1 masque le certificat personnel avant la fin de session et le borne à l’inscription active", async () => {
   const visibility = await read("lib/server/dailyPortalResourceVisibility.ts");
-  assert.match(visibility, /type === "completion_certificate" && !input\.postsessionAvailable/);
+  assert.match(visibility, /type === "completion_certificate" && \(!input\.postsessionAvailable \|\| !\["published", "signed"\]\.includes\(text\(resource\.status\)\)\)/);
   assert.match(visibility, /role === "learner" && resource\.linked_object_type === "enrolment"/);
   assert.match(visibility, /enrolmentIds\.includes\(text\(resource\.linked_object_id\)\)/);
 
@@ -104,6 +104,17 @@ test("AR1 refuse le certificat avant session puis l’autorise pour la seule ins
   assert.equal(resourceVisibility.isDailyPortalResourceVisible(input), false);
   assert.equal(resourceVisibility.isDailyPortalResourceVisible({...input,postsessionAvailable:true}), true);
   assert.equal(resourceVisibility.isDailyPortalResourceVisible({...input,enrolmentIds:["enrolment-2"],postsessionAvailable:true}), false);
+});
+
+test("AR1 n’expose le certificat personnel qu’après sa publication", () => {
+  const base = {document_type:"completion_certificate",linked_object_type:"enrolment",linked_object_id:"enrolment-1"};
+  const input = {role:"learner",sessionId:"session-1",enrolmentIds:["enrolment-1"],postsessionAvailable:true};
+  for (const status of ["draft", "to_check", "to_validate", "validated", "correction_requested", "active"]) {
+    assert.equal(resourceVisibility.isDailyPortalResourceVisible({...input,resource:{...base,status}}), false, status);
+  }
+  for (const status of ["published", "signed"]) {
+    assert.equal(resourceVisibility.isDailyPortalResourceVisible({...input,resource:{...base,status}}), true, status);
+  }
 });
 
 test("Après affiche une action dédiée au certificat finalisé ou son état d’attente", async () => {
