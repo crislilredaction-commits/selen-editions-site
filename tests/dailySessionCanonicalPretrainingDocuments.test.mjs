@@ -19,11 +19,11 @@ test("la liste des sessions n'expose que les pièces préformation canoniques", 
   );
   assert.match(
     getHandler,
-    /daily_conventions:\s*\(session\.daily_conventions \?\? \[\]\)\.filter\(\(document\) => document\.status === "generated"\)/,
+    /daily_conventions:\s*\(session\.daily_conventions \?\? \[\]\)\.filter\(\(document: \{ status: string \}\) => document\.status === "generated"\)/,
   );
   assert.match(
     getHandler,
-    /daily_convocations:\s*\(session\.daily_convocations \?\? \[\]\)\.filter\(\(document\) => \["generated", "sent", "viewed"\]\.includes\(document\.status\)\)/,
+    /daily_convocations:\s*\(session\.daily_convocations \?\? \[\]\)\.filter\(\(document: \{ status: string \}\) => \["generated", "sent", "viewed"\]\.includes\(document\.status\)\)/,
   );
 });
 
