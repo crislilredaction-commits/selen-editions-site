@@ -19,19 +19,19 @@ test("la liste des sessions n'expose que les pièces préformation canoniques", 
   );
   assert.match(
     getHandler,
-    /daily_conventions:\s*\(session\.daily_conventions \?\? \[\]\)\.filter\(\(document: \{ status: string \}\) => document\.status === "generated"\)/,
+    /Array\.isArray\(session\.daily_conventions\)[\s\S]*session\.daily_conventions = session\.daily_conventions\.filter\(\(document: \{ status: string \}\) => document\.status === "generated"\)/,
   );
   assert.match(
     getHandler,
-    /daily_convocations:\s*\(session\.daily_convocations \?\? \[\]\)\.filter\(\(document: \{ status: string \}\) => \["generated", "sent", "viewed"\]\.includes\(document\.status\)\)/,
+    /Array\.isArray\(session\.daily_convocations\)[\s\S]*session\.daily_convocations = session\.daily_convocations\.filter\(\(document: \{ status: string \}\) => \["generated", "sent", "viewed"\]\.includes\(document\.status\)\)/,
   );
 });
 
 test("le filtrage de lecture conserve le bornage organisme et l'historique", () => {
   assert.match(
     getHandler,
-    /\.from\("daily_sessions"\)[\s\S]*\.eq\("organisation_id", context\.organisationId\)[\s\S]*const sessions = \(data \?\? \[\]\)\.map/,
+    /\.from\("daily_sessions"\)[\s\S]*\.eq\("organisation_id", context\.organisationId\)[\s\S]*const sessions = data \?\? \[\];/,
   );
   assert.doesNotMatch(getHandler, /\.delete\(|\.update\(|\.upsert\(|\.insert\(/);
-  assert.ok(getHandler.indexOf("const sessions = (data ?? []).map") < getHandler.lastIndexOf("NextResponse.json({ sessions })"));
+  assert.ok(getHandler.indexOf("const sessions = data ?? [];") < getHandler.lastIndexOf("NextResponse.json({ sessions })"));
 });
