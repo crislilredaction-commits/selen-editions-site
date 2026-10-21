@@ -132,7 +132,7 @@ export async function GET(req: Request) {
   // active pretraining documents attached to a session list response.
   const sessions = (data ?? []).map((session) => ({
     ...session,
-    daily_conventions: (session.daily_conventions ?? []).filter((document) => document.status === "generated"),
+    daily_conventions: (session.daily_conventions ?? []).filter((document: { status: string }) => document.status === "generated"),
     daily_convocations: (session.daily_convocations ?? []).filter((document) => ["generated", "sent", "viewed"].includes(document.status)),
   }));
   if (sessions.length === 0) return NextResponse.json({ sessions });
