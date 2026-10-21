@@ -128,7 +128,13 @@ export async function GET(req: Request) {
   if (!context.assisted && !context.capabilities?.sessions) return NextResponse.json({ sessions: [] });
   const { data, error } = await context.admin.from("daily_sessions").select("*, daily_formations(id,title,status,version), daily_registration_recipients(id,recipient_type,recipient_name,recipient_email,status,sent_at,last_error), daily_conventions(id,recipient_type,recipient_key,recipient_name,company_name,version,document_name,status,generated_at,daily_convention_signatures(id,signatory_type,signatory_name,status,signed_at)), daily_convocations(id,recipient_type,recipient_key,recipient_name,company_name,version,document_name,status,sent_at,generated_at), daily_portal_access_tokens(id,portal_type,entity_name,entity_email,token,status,viewed_at)").eq("organisation_id", context.organisationId).order("created_at", { ascending: false });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  const sessions = data ?? [];
+  // Keep historical versions in the database, but never expose them as the
+  // active pretraining documents attached to a session list response.
+  const sessions = (data ?? []).map((session) => ({
+    ...session,
+    daily_conventions: (session.daily_conventions ?? []).filter((document) => document.status === "generated"),
+    daily_convocations: (session.daily_convocations ?? []).filter((document) => ["generated", "sent", "viewed"].includes(document.status)),
+  }));
   if (sessions.length === 0) return NextResponse.json({ sessions });
   const enrolmentPageSize = 1000;
   const enrolmentQuery = () => context.admin.from("daily_session_enrolments")
