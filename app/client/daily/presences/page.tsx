@@ -190,7 +190,7 @@ export default function DailyPresencePage() {
         const record = slot.daily_attendance_records?.find((row) => row.enrolment_id === enrolment.id);
         const review = record?.evidence_metadata?.late_review;
         const awaitingReview = record?.evidence_metadata?.late_attendance === true && record.status === "pending" && review?.state === "awaiting_validation";
-        const reminders = overview.communications.filter((item) => item.enrolment_id === enrolment.id && item.communication_type === "attendance_reminder" && item.metadata?.attendance_slot_id === slot.id);
+        const reminders = overview.communications.filter((item) => item.enrolment_id === enrolment.id && ["attendance_reminder", "attendance_correction_request"].includes(item.communication_type) && item.metadata?.attendance_slot_id === slot.id);
         const lastReminder = reminders.map((item) => item.sent_at ?? item.created_at).sort().at(-1);
         return <div key={enrolment.id} style={{ display: "flex", gap: ".6rem", alignItems: "center", flexWrap: "wrap", padding: ".55rem 0", borderTop: "1px solid #ead8bc" }}>
           <strong style={{ minWidth: 180 }}>{learnerName(enrolment)}</strong><span>{awaitingReview ? `En attente de validation · version ${review?.version ?? 1}` : dailyAttendanceLabel(record?.status, slot.status === "closed" ? "closed" : "open")}</span>

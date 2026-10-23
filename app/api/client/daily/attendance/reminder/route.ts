@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { getDailyOrganisationContext } from "@/lib/server/dailyOrganisationContext";
 import { attendanceChannel, createAttendanceToken } from "@/lib/server/dailyAttendance";
-import { prepareDailyAttendanceReminder, sendDailyAttendanceReminder } from "@/lib/server/dailyAttendanceEmails";
+import {
+  prepareDailyAttendanceCorrection,
+  prepareDailyAttendanceReminder,
+  sendDailyAttendanceCorrection,
+  sendDailyAttendanceReminder,
+} from "@/lib/server/dailyAttendanceEmails";
 
 function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
@@ -13,12 +18,26 @@ function awaitingLateReview(record: { evidence_metadata?: unknown } | null | und
   return metadata.late_attendance === true && review.state === "awaiting_validation";
 }
 
+function rejectedLateReview(record: { evidence_metadata?: unknown } | null | undefined) {
+  const metadata = record?.evidence_metadata && typeof record.evidence_metadata === "object" ? record.evidence_metadata as Record<string, unknown> : {};
+  const review = metadata.late_review && typeof metadata.late_review === "object" ? metadata.late_review as Record<string, unknown> : {};
+  const version = Number(review.version);
+  return metadata.late_attendance === true && review.state === "rejected" && Number.isInteger(version) && version > 0
+    ? { version, reason: text(review.rejection_reason) }
+    : null;
+}
+
 function one<T>(value: T | T[] | null | undefined): T | null {
   if (Array.isArray(value)) return value[0] ?? null;
   return value ?? null;
 }
 
-function linkExpiry(slotDate: string) {
+function linkExpiry(slotDate: string, correction: boolean) {
+  if (correction) {
+    const date = new Date();
+    date.setUTCDate(date.getUTCDate() + 7);
+    return date.toISOString();
+  }
   const date = new Date(`${slotDate}T12:00:00.000Z`);
   date.setUTCDate(date.getUTCDate() + 3);
   return date.toISOString();
@@ -77,11 +96,18 @@ export async function POST(req: Request) {
   if (readError) return NextResponse.json({ error: readError.message }, { status: 500 });
   if (!session || session.status === "archived") return NextResponse.json({ error: "Session indisponible." }, { status: 404 });
   if (!slot || ["closed", "cancelled"].includes(slot.status)) return NextResponse.json({ error: "Ce créneau n’accepte plus d’émargement." }, { status: 409 });
-  if (!enrolment || ["declined", "cancelled", "completed"].includes(enrolment.status)) {
+  if (!enrolment || ["declined", "cancelled", "abandoned"].includes(enrolment.status)) {
     return NextResponse.json({ error: "Inscription inactive." }, { status: 404 });
   }
   if (record?.status !== "pending") return NextResponse.json({ error: "Cette présence est déjà traitée ; aucune relance n’est nécessaire." }, { status: 409 });
   if (awaitingLateReview(record)) return NextResponse.json({ error: "Cette preuve est déjà en attente de validation ; aucune relance n’est nécessaire." }, { status: 409 });
+  const correction = rejectedLateReview(record);
+  if (record?.evidence_metadata && !correction) {
+    const metadata = record.evidence_metadata as Record<string, unknown>;
+    if (metadata.late_attendance === true) {
+      return NextResponse.json({ error: "Cette régularisation ne peut pas être relancée dans son état actuel." }, { status: 409 });
+    }
+  }
 
   const learner = one(enrolment.daily_learners as { first_name?: string | null; last_name?: string | null; email?: string | null } | { first_name?: string | null; last_name?: string | null; email?: string | null }[] | null);
   const email = text(learner?.email).toLowerCase();
@@ -107,15 +133,20 @@ export async function POST(req: Request) {
       organisation_id: context.organisationId,
       session_id: sessionId,
       enrolment_id: enrolmentId,
-      communication_type: "attendance_reminder",
+      communication_type: correction ? "attendance_correction_request" : "attendance_reminder",
       channel: "email",
       recipient_email: email,
       recipient_name: learnerName || null,
-      subject: "Relance d’émargement à envoyer",
+      subject: correction ? "Demande de correction d’émargement à envoyer" : "Relance d’émargement à envoyer",
+      text_body: "Préparation de l’envoi en cours.",
       provider: "resend",
       status: "queued",
       created_by: context.user.id,
-      metadata: { attendance_slot_id: slotId, manual: true },
+      metadata: {
+        attendance_slot_id: slotId,
+        manual: true,
+        ...(correction ? { review_version: String(correction.version), correction_reason: correction.reason } : {}),
+      },
     })
     .select("id")
     .single();
@@ -136,7 +167,7 @@ export async function POST(req: Request) {
   }
 
   const { token, tokenHash } = createAttendanceToken();
-  const expiresAt = linkExpiry(slot.slot_date);
+  const expiresAt = linkExpiry(slot.slot_date, Boolean(correction));
   const { data: access, error: tokenError } = await context.admin
     .from("daily_attendance_access_tokens")
     .insert({
@@ -168,7 +199,8 @@ export async function POST(req: Request) {
     slotLabel,
     attendanceUrl,
   };
-  const prepared = prepareDailyAttendanceReminder(emailInput);
+  const correctionInput = correction ? { ...emailInput, rejectionReason: correction.reason } : null;
+  const prepared = correctionInput ? prepareDailyAttendanceCorrection(correctionInput) : prepareDailyAttendanceReminder(emailInput);
 
   const { error: evidenceError } = await context.admin
     .from("daily_communications")
@@ -180,6 +212,8 @@ export async function POST(req: Request) {
         attendance_slot_id: slotId,
         attendance_access_token_id: access.id,
         token_expires_at: expiresAt,
+        manual: true,
+        ...(correction ? { review_version: String(correction.version), correction_reason: correction.reason } : {}),
       },
     })
     .eq("id", communication.id);
@@ -202,7 +236,9 @@ export async function POST(req: Request) {
     .eq("slot_id", slotId)
     .eq("enrolment_id", enrolmentId)
     .maybeSingle();
-  if (attendanceBeforeSend?.status !== "pending" || awaitingLateReview(attendanceBeforeSend)) {
+  const correctionBeforeSend = rejectedLateReview(attendanceBeforeSend);
+  const correctionChanged = correction && correctionBeforeSend?.version !== correction.version;
+  if (attendanceBeforeSend?.status !== "pending" || awaitingLateReview(attendanceBeforeSend) || correctionChanged) {
     const cancelledAt = new Date().toISOString();
     await Promise.all([
       context.admin.from("daily_attendance_access_tokens").update({ status: "revoked" }).eq("id", access.id).eq("organisation_id", context.organisationId),
@@ -211,7 +247,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "La présence vient d’être traitée ; aucune relance n’a été envoyée." }, { status: 409 });
   }
 
-  const sent = await sendDailyAttendanceReminder(emailInput);
+  const sent = correctionInput
+    ? await sendDailyAttendanceCorrection(correctionInput)
+    : await sendDailyAttendanceReminder(emailInput);
   if (!sent.sent) {
     const failedAt = new Date().toISOString();
     await Promise.all([
@@ -253,5 +291,6 @@ export async function POST(req: Request) {
     expiresAt,
     evidenceRecorded: !finalizeError,
     communicationId: communication.id,
+    kind: correction ? "correction" : "reminder",
   });
 }

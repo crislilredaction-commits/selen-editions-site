@@ -8,7 +8,14 @@ type Session = {
   internal_reference?: string | null;
   daily_formations?: { title?: string | null } | { title?: string | null }[] | null;
 };
-type RecordRow = { enrolment_id: string; status: string };
+type RecordRow = {
+  enrolment_id: string;
+  status: string;
+  evidence_metadata?: {
+    late_attendance?: boolean;
+    late_review?: { state?: string; rejection_reason?: string; version?: number };
+  } | null;
+};
 type Slot = {
   id: string;
   slot_date: string;
@@ -38,6 +45,20 @@ function learnerLabel(enrolment: Enrolment) {
   const learner = one(enrolment.daily_learners);
   const name = [learner?.first_name, learner?.last_name].filter(Boolean).join(" ").trim();
   return name || learner?.email || "Apprenant";
+}
+
+function correctionFor(record?: RecordRow) {
+  const review = record?.evidence_metadata?.late_review;
+  return record?.status === "pending" && record.evidence_metadata?.late_attendance === true && review?.state === "rejected"
+    ? { reason: review.rejection_reason || "Correction demandée par l’organisme de formation.", version: review.version }
+    : null;
+}
+
+function isRelanceable(record?: RecordRow) {
+  if (!record) return true;
+  if (record.status !== "pending") return false;
+  const reviewState = record.evidence_metadata?.late_review?.state;
+  return reviewState !== "awaiting_validation" && reviewState !== "validated";
 }
 
 export default function DailyRemindersPage() {
@@ -91,13 +112,15 @@ export default function DailyRemindersPage() {
     const body = await response.json().catch(() => ({}));
     setBusyKey("");
     if (!response.ok) return setError(body.error ?? "La relance n'a pas pu être envoyée.");
-    setMessage(`Relance envoyée à ${body.sentTo}. Un nouveau lien personnel a été généré.`);
+    setMessage(body.kind === "correction"
+      ? `Demande de correction envoyée à ${body.sentTo}. Un nouveau lien personnel valable sept jours a été généré.`
+      : `Relance envoyée à ${body.sentTo}. Un nouveau lien personnel a été généré.`);
   }
 
   const openSlots = (overview?.slots ?? []).filter((slot) => !["closed", "cancelled"].includes(slot.status));
   const pendingCount = openSlots.reduce((total, slot) => total + (overview?.enrolments ?? []).filter((enrolment) => {
     const record = slot.daily_attendance_records?.find((row) => row.enrolment_id === enrolment.id);
-    return record?.status !== "present";
+    return isRelanceable(record);
   }).length, 0);
 
   return (
@@ -125,7 +148,7 @@ export default function DailyRemindersPage() {
       {openSlots.map((slot) => {
         const pending = overview?.enrolments.filter((enrolment) => {
           const record = slot.daily_attendance_records?.find((row) => row.enrolment_id === enrolment.id);
-          return record?.status !== "present";
+          return isRelanceable(record);
         }) ?? [];
         return (
           <section key={slot.id} style={s.card}>
@@ -139,11 +162,14 @@ export default function DailyRemindersPage() {
             {pending.length === 0 ? <p style={s.muted}>Tout le monde a émargé sur ce créneau.</p> : pending.map((enrolment) => {
               const learner = one(enrolment.daily_learners);
               const key = `${slot.id}:${enrolment.id}`;
+              const record = slot.daily_attendance_records?.find((row) => row.enrolment_id === enrolment.id);
+              const correction = correctionFor(record);
               return (
                 <div key={enrolment.id} style={s.row}>
                   <div>
                     <strong>{learnerLabel(enrolment)}</strong>
                     <div style={s.muted}>{learner?.email || "Aucune adresse e-mail"}</div>
+                    {correction ? <div style={s.correction}><strong>Correction demandée</strong> · {correction.reason}</div> : null}
                   </div>
                   <button
                     type="button"
@@ -151,7 +177,7 @@ export default function DailyRemindersPage() {
                     disabled={busyKey === key || !learner?.email}
                     onClick={() => void remind(slot, enrolment)}
                   >
-                    <span>{busyKey === key ? "Envoi..." : "Envoyer une relance"}</span>
+                    <span>{busyKey === key ? "Envoi..." : correction ? "Envoyer la demande de correction" : "Envoyer une relance"}</span>
                   </button>
                 </div>
               );
@@ -178,5 +204,6 @@ const s: Record<string, React.CSSProperties> = {
   muted: { color: "var(--sepia-dark)", margin: ".25rem 0" },
   error: { border: "1px solid #9a412f", color: "#7b2f21", padding: ".8rem" },
   notice: { border: "1px solid #6f8b58", background: "rgba(111,139,88,.08)", padding: ".8rem" },
+  correction: { color: "#7b2f21", marginTop: ".35rem", maxWidth: 620 },
   empty: { border: "1px solid #6f8b58", background: "rgba(111,139,88,.08)", padding: "1rem" },
 };
