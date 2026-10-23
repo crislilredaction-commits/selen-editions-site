@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { getDailyOrganisationContext } from "@/lib/server/dailyOrganisationContext";
 import { prepareDailyCompletionCertificateEmail, sendDailyCompletionCertificate } from "@/lib/server/dailyPosttrainingEmails";
 
-const sendableStatuses = ["validated", "published", "active"];
+const sendableStatuses = ["published", "signed"];
 
 function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
@@ -46,7 +46,7 @@ export async function POST(request: Request) {
   if (documentError) return NextResponse.json({ error: documentError.message }, { status: 500 });
   if (!document) return NextResponse.json({ error: "Certificat introuvable ou remplacé par une version plus récente." }, { status: 404 });
   if (!sendableStatuses.includes(document.status)) {
-    return NextResponse.json({ error: "Le certificat doit être validé par Selen avant son envoi." }, { status: 409 });
+    return NextResponse.json({ error: "Le certificat doit être publié par Selen avant son envoi." }, { status: 409 });
   }
 
   const { data: enrolment, error: enrolmentError } = await context.admin
