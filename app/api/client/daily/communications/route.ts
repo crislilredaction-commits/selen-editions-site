@@ -1,4 +1,5 @@
 import { projectCommunicationMetadata } from "@/lib/daily/communicationMetadata";
+import { CLIENT_VISIBLE_COMMUNICATION_STATUSES } from "@/lib/daily/clientEvidenceVisibility";
 import { NextResponse } from "next/server";
 import { getDailyOrganisationContext } from "@/lib/server/dailyOrganisationContext";
 
@@ -12,6 +13,7 @@ export async function GET(req: Request) {
     .from("daily_communications")
     .select("id,session_id,enrolment_id,communication_type,recipient_email,recipient_name,subject,text_body,provider,provider_message_id,status,sent_at,delivered_at,failed_at,failure_reason,created_at,metadata")
     .eq("organisation_id", context.organisationId)
+    .in("status", [...CLIENT_VISIBLE_COMMUNICATION_STATUSES])
     .order("created_at", { ascending: false })
     .limit(250);
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsPDF } from "jspdf";
 import { getDailyOrganisationContext } from "@/lib/server/dailyOrganisationContext";
+import { CLIENT_VISIBLE_COMMUNICATION_STATUSES } from "@/lib/daily/clientEvidenceVisibility";
 
 export const runtime = "nodejs";
 
@@ -60,6 +61,7 @@ export async function GET(req: Request) {
     .select("id,communication_type,recipient_email,recipient_name,subject,text_body,provider,provider_message_id,status,sent_at,delivered_at,failed_at,failure_reason,created_at")
     .eq("id", communicationId)
     .eq("organisation_id", context.organisationId)
+    .in("status", [...CLIENT_VISIBLE_COMMUNICATION_STATUSES])
     .maybeSingle();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

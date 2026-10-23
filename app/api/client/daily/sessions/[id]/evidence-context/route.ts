@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { getDailyOrganisationReadContext } from "@/lib/server/dailyOrganisationContext";
 import { filterCurrentOwnPositioningEvidence } from "@/lib/server/dailyCurrentPositioningEvidence";
+import { CLIENT_VISIBLE_COMMUNICATION_STATUSES, isClientVisibleSessionDocument } from "@/lib/daily/clientEvidenceVisibility";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -75,6 +76,7 @@ export async function GET(request: Request, { params }: Params) {
       .select("id,enrolment_id,status,sent_at,delivered_at,failed_at,failure_reason,subject")
       .eq("organisation_id", context.organisationId)
       .eq("session_id", sessionId)
+      .in("status", [...CLIENT_VISIBLE_COMMUNICATION_STATUSES])
       .order("created_at", { ascending: false }),
   ]);
 
@@ -90,7 +92,9 @@ export async function GET(request: Request, { params }: Params) {
     return NextResponse.json({
       session,
       enrolments: enrolments ?? [],
-      documents: currentDocuments.map(({ metadata: _metadata, formation_id: _formationId, ...document }) => document),
+      documents: currentDocuments
+        .filter(isClientVisibleSessionDocument)
+        .map(({ metadata: _metadata, formation_id: _formationId, ...document }) => document),
       assessmentResponses: assessmentResponses ?? [],
       attendanceSlots: attendanceSlots ?? [],
       attendanceRecords: attendanceRecords ?? [],
