@@ -5,22 +5,23 @@ import vm from 'node:vm';
 import ts from 'typescript';
 
 const helper = 'lib/daily/communicationMetadata.ts';
+const visibility = 'lib/daily/clientEvidenceVisibility.ts';
 const context = 'lib/server/dailyOrganisationContext.ts';
 const route = name => `app/api/client/daily/${name}/route.ts`;
-const allowed = new Set([helper, context, ...['communications', 'session-dossiers', 'pretraining-documents/download'].map(route)]);
+const allowed = new Set([helper, visibility, context, ...['communications', 'session-dossiers', 'pretraining-documents/download'].map(route)]);
 const privateBytes = 'PRIVATE_FILE_SENTINEL';
 const json = value => JSON.parse(JSON.stringify(value));
 function freeze(value) {
   if (value && typeof value === 'object') { Object.values(value).forEach(freeze); Object.freeze(value); }
   return value;
 }
-function harness({ rows = [], capabilities = { sessions: true, trainings: true }, refused = false } = {}) {
+function harness({ rows = [], documents, capabilities = { sessions: true, trainings: true }, refused = false } = {}) {
   const db = {
     daily_communications: rows,
     daily_sessions: [{ id: 'session', organisation_id: 'org', formation_id: 'formation', status: 'active' }],
     daily_session_dossiers: [{ session_id: 'session', organisation_id: 'org', status: 'in_progress' }],
     daily_session_checklist_items: [{ id: 'check', session_id: 'session', organisation_id: 'org', responsibility: 'client', position: 1 }],
-    daily_documents: [{ id: 'document', session_id: 'session', organisation_id: 'org', is_current: true, version: 3, metadata: { business: true } }],
+    daily_documents: documents ?? [{ id: 'document', session_id: 'session', organisation_id: 'org', document_type: 'completion_certificate', status: 'published', is_current: true, version: 3, metadata: { business: true } }],
     daily_formations: [{ id: 'formation', title: 'Formation' }],
     daily_convention_signatures: [{ id: 'signature', session_id: 'session', status: 'signed' }],
     daily_mission_orders: [{ id: 'mission', organisation_id: 'org', session_ids: ['session'] }],
@@ -94,7 +95,7 @@ function communication(source, status, metadata) {
       email_input:{attachmentBase64:privateBytes, prepared:{subject:'Transport subject', html:privateBytes}} } };
 }
 for(const name of ['communications','session-dossiers']) {
-  for(const source of ['daily_documents','daily_convocations']) for(const status of ['queued','sent','pending']) {
+  for(const source of ['daily_documents','daily_convocations']) for(const status of ['sent','delivered','opened','clicked','bounced','complained']) {
     test(`${name}: ${source}/${status} projects only transport without mutating DB`, async () => {
       const row=communication(source,status); const h=harness({rows:[row]}); const before=json(h.db);
       const response=await h.get(name); assert.equal(response.status,200); const body=await response.json();
@@ -113,15 +114,24 @@ for(const name of ['communications','session-dossiers']) {
       const query=h.calls.find(c=>c.table==='daily_communications');
       assert.ok(query.filters.some(f=>JSON.stringify(f)===JSON.stringify(['eq','organisation_id','org'])));
       assert.ok(query.filters.some(f=>JSON.stringify(f)===JSON.stringify(name==='communications'?['eq','session_id','session']:['not','session_id',null])));
+      assert.ok(query.filters.some(f=>f[0]==='in' && f[1]==='status' && f[2].includes('sent') && !f[2].includes('queued')));
       assert.equal(query.limit,name==='communications'?250:500);
       assert.deepEqual(h.calls.find(c=>c.table==='daily_communication_documents').filters,[['in','communication_id',[row.id]]]);
       if(name==='session-dossiers') for(const call of h.calls.filter(c=>Object.values(h.canonical).includes(c.table))) assert.ok(call.filters.some(f=>f[0]==='in' && f[1]==='session_id' && f[2][0]==='session'));
     });
   }
+  for(const status of ['queued','pending','failed']) test(`${name}: ${status} communication remains internal`, async () => {
+    const row=communication('daily_documents',status); const h=harness({rows:[row]});
+    const response=await h.get(name); assert.equal(response.status,200); const body=await response.json();
+    assert.deepEqual(body.communications,[]);
+    if(name==='session-dossiers') assert.deepEqual(body.communicationDocuments,[]);
+    assert.equal(h.calls.some(c=>c.table==='daily_communication_documents'),false);
+    assert.doesNotMatch(JSON.stringify(body),/email_input|attachmentBase64|PRIVATE_FILE_SENTINEL|Original subject|Original text/);
+  });
   test(`${name}: other families and absent/null/malformed metadata retain their contracts`,async()=>{
-    const rows=[undefined,null,[],['original'],42,false,'original',{}].map((metadata,i)=>({ ...communication('daily_documents',String(i)), metadata }));
+    const rows=[undefined,null,[],['original'],42,false,'original',{}].map((metadata,i)=>({ ...communication('daily_documents','sent'), id:`metadata-${i}`, metadata }));
     delete rows[0].metadata;
-    rows.push({...communication('daily_documents','other'),communication_type:'registration_confirmation'});
+    rows.push({...communication('daily_documents','sent'),id:'other-family',communication_type:'registration_confirmation'});
     const h=harness({rows}); const response=await h.get(name); assert.equal(response.status,200); const body=await response.json();
     rows.forEach((row,i)=>{
       assert.equal(Object.hasOwn(body.communications[i],'metadata'),Object.hasOwn(row,'metadata'));
@@ -133,6 +143,16 @@ for(const name of ['communications','session-dossiers']) {
     assert.equal(response.status,refused?401:403); assert.equal(h.calls.length,0);
   });
 }
+test('session-dossiers exposes posttraining documents only after publication while preserving other document families',async()=>{
+  const documents=[
+    {id:'certificate-draft',session_id:'session',organisation_id:'org',document_type:'completion_certificate',status:'validated',is_current:true,version:1,metadata:{}},
+    {id:'attendance-draft',session_id:'session',organisation_id:'org',document_type:'attendance_summary',status:'to_check',is_current:true,version:1,metadata:{}},
+    {id:'certificate-published',session_id:'session',organisation_id:'org',document_type:'completion_certificate',status:'published',is_current:true,version:2,metadata:{}},
+    {id:'contract-validated',session_id:'session',organisation_id:'org',document_type:'training_contract',status:'validated',is_current:true,version:1,metadata:{}},
+  ];
+  const h=harness({documents}); const response=await h.get('session-dossiers'); assert.equal(response.status,200);
+  const body=await response.json(); assert.deepEqual(body.documents.map(document=>document.id),['certificate-published','contract-validated']);
+});
 test('Work reproduction: trainings-only dossier allowed, snapshot absent, download and communications remain forbidden',async()=>{
   const h=harness({capabilities:{trainings:true,sessions:false},rows:[communication('daily_documents','queued')]});
   const response=await h.get('session-dossiers'); assert.equal(response.status,200);
