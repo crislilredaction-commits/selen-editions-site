@@ -83,7 +83,7 @@ async function loadSessionOverview(
       .select("id,enrolment_id,communication_type,status,sent_at,created_at,metadata")
       .eq("organisation_id", organisationId)
       .eq("session_id", sessionId)
-      .in("communication_type", ["attendance_request", "attendance_reminder"])
+      .in("communication_type", ["attendance_request", "attendance_reminder", "attendance_correction_request"])
       .in("status", ["queued", "sent", "delivered"]),
   ]);
   if (slotsError) throw new Error(slotsError.message);
