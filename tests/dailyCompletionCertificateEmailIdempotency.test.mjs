@@ -15,3 +15,9 @@ test("completion certificate send route deduplicates an already sent document ve
 test("completion certificate route still excludes inactive enrolments", () => {
   assert.match(route, /\["declined", "cancelled", "abandoned"\]/);
 });
+
+test("completion certificate send route requires Studio publication", () => {
+  assert.match(route, /const sendableStatuses = \["published", "signed"\]/);
+  assert.match(route, /doit être publié par Selen avant son envoi/);
+  assert.doesNotMatch(route, /const sendableStatuses = \[[^\]]*"validated"/);
+});
