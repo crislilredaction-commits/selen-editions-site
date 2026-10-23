@@ -8,7 +8,7 @@ const [route, emails, page, overview, portal, migration] = await Promise.all([
   "../app/client/daily/relances/page.tsx",
   "../app/api/client/daily/attendance/route.ts",
   "../app/api/daily-portal/[token]/attendance/route.ts",
-  "../supabase/migrations/20261023173000_daily_attendance_correction_request_idempotency.sql",
+  "../supabase/migrations/20261023183429_daily_attendance_correction_request_idempotency.sql",
 ].map((path) => readFile(new URL(path, import.meta.url), "utf8")));
 
 test("AR1 distingue une correction rejetée d'une relance générique", () => {
