@@ -18,6 +18,7 @@ export async function GET(req: Request) {
     .eq("id", id)
     .eq("organisation_id", context.organisationId)
     .in("document_type", ["attendance_summary", "completion_certificate"])
+    .in("status", ["published", "signed"])
     .eq("is_current", true)
     .is("archived_at", null)
     .single();
