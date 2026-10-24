@@ -25,10 +25,10 @@ function mount(steps, suffix = 'token_hash=one-use&type=invite&next=/daily/porta
     return step.result;
   }]));
   const jsx = (type, props) => ({ type, props });
-  const module = { exports: {} };
+  const mod = { exports: {} };
   const source = fs.readFileSync('app/client/activation/page.tsx', 'utf8') + '\nexport { ClientActivationContent };';
   vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText, {
-    module, exports: module.exports, URL, URLSearchParams,
+    module: mod, exports: mod.exports, URL, URLSearchParams,
     document: { title: 'Activation' },
     window: { location: { href: `https://test.invalid/client/activation?${suffix}` }, history: { replaceState(...args) { calls.push({ name: 'replaceState', args }); } }, setTimeout(fn) { fn(); } },
     require(name) {
@@ -40,7 +40,7 @@ function mount(steps, suffix = 'token_hash=one-use&type=invite&next=/daily/porta
       throw new Error(`Unexpected import: ${name}`);
     },
   });
-  function render() { cursor = 0; tree = module.exports.ClientActivationContent(); }
+  function render() { cursor = 0; tree = mod.exports.ClientActivationContent(); }
   function nodes(node = tree) { if (!node || typeof node !== 'object') return []; return [node, ...[node.props?.children].flat(Infinity).flatMap(child => child == null ? [] : nodes(child))]; }
   render(); effects.splice(0).forEach(fn => fn()); render();
   return {
