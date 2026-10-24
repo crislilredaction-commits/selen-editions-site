@@ -9,6 +9,8 @@ type Data = {
   learner?: { first_name?: string | null; last_name?: string | null; email?: string | null } | null;
   alreadySigned?: boolean;
   signedAt?: string | null;
+  submittedForReview?: boolean;
+  correction?: { reviewVersion: number; rejectionReason: string } | null;
   consentText: string;
   requiresEmailCode?: boolean;
 };
@@ -136,8 +138,10 @@ export default function DailyAttendancePage({ params }: { params: Promise<{ toke
     const body = await response.json().catch(() => null);
     setSaving(false);
     if (!response.ok) return setError(body?.error ?? "Émargement impossible.");
-    setData((current) => current ? { ...current, alreadySigned: true, signedAt: body?.signedAt ?? new Date().toISOString() } : current);
-    setNotice("Votre présence est enregistrée et la preuve d'émargement est conservée dans le dossier de formation.");
+    setData((current) => current ? { ...current, alreadySigned: true, submittedForReview: body?.submittedForReview === true, signedAt: body?.signedAt ?? new Date().toISOString() } : current);
+    setNotice(body?.submittedForReview
+      ? "Votre nouvelle preuve est enregistrée et attend la validation de l’organisme de formation."
+      : "Votre présence est enregistrée et la preuve d'émargement est conservée dans le dossier de formation.");
   }
 
   const fieldStyle: React.CSSProperties = {
@@ -176,9 +180,10 @@ export default function DailyAttendancePage({ params }: { params: Promise<{ toke
           <h1 style={{ marginBottom: ".5rem", fontSize: "clamp(1.5rem, 7vw, 2.1rem)", lineHeight: 1.15 }}>{data.session.title}</h1>
           <p style={{ lineHeight: 1.55 }}>{new Date(`${data.slot.slot_date}T12:00:00`).toLocaleDateString("fr-FR")} · {data.slot.starts_at.slice(0, 5)} à {data.slot.ends_at.slice(0, 5)}</p>
           {data.slot.label ? <p>{data.slot.label}</p> : null}
-          {data.alreadySigned ? <p style={{ padding: ".85rem", border: "1px solid #6a8a4a", borderRadius: 8, lineHeight: 1.5 }}>Votre présence est enregistrée{data.signedAt ? ` depuis le ${new Date(data.signedAt).toLocaleString("fr-FR")}` : ""}.</p> : <>
+          {data.alreadySigned ? <p style={{ padding: ".85rem", border: "1px solid #6a8a4a", borderRadius: 8, lineHeight: 1.5 }}>{data.submittedForReview ? "Votre nouvelle preuve attend la validation de l’organisme" : "Votre présence est enregistrée"}{data.signedAt ? ` depuis le ${new Date(data.signedAt).toLocaleString("fr-FR")}` : ""}.</p> : <>
+            {data.correction ? <div role="status" style={{ padding: ".85rem", marginBottom: "1rem", border: "1px solid #b26a3d", borderRadius: 8, background: "#fff3e8", lineHeight: 1.5 }}><strong>Une nouvelle preuve est demandée.</strong><br />Version refusée : v{data.correction.reviewVersion}.{data.correction.rejectionReason ? <><br />Motif : {data.correction.rejectionReason}</> : null}<br />La date réelle de cette nouvelle transmission sera conservée.</div> : null}
             {data.accessType === "shared" ? <div style={{ display: "grid", gap: ".85rem", marginBottom: "1.1rem" }}>
-              <label style={{ display: "grid", gap: ".45rem", fontWeight: 700 }}>E-mail d'inscription<input type="email" inputMode="email" autoComplete="email" value={email} onChange={(event) => { setEmail(event.target.value); setCodeSent(false); setVerificationId(""); setCode(""); }} style={fieldStyle} /></label>
+              <label style={{ display: "grid", gap: ".45rem", fontWeight: 700 }}>E-mail d’inscription<input type="email" inputMode="email" autoComplete="email" value={email} onChange={(event) => { setEmail(event.target.value); setCodeSent(false); setVerificationId(""); setCode(""); }} style={fieldStyle} /></label>
               <button type="button" onClick={() => void requestCode()} disabled={sendingCode} style={primaryButtonStyle}>{sendingCode ? "Envoi..." : codeSent ? "Renvoyer un code" : "Recevoir mon code"}</button>
               {codeSent ? <label style={{ display: "grid", gap: ".45rem", fontWeight: 700 }}>Code reçu par e-mail<input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} style={{ ...fieldStyle, textAlign: "center", letterSpacing: ".35rem", fontSize: "1.25rem", fontWeight: 800 }} /></label> : null}
             </div> : null}
