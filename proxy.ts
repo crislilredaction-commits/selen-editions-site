@@ -2,19 +2,11 @@ import { createServerClient } from "@supabase/ssr";
 import { createClient as createSupabaseAdminClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PORTAL_ROLE_BY_SLUG = {
-  apprenant: "learner",
-  formateur: "trainer",
-  entreprise: "enterprise",
-} as const;
-
-function normalizeEmail(value: string | null | undefined) {
-  return value?.trim().toLowerCase() || "";
-}
-
-function isApiRequest(pathname: string) {
-  return pathname.startsWith("/api/daily-portal/");
-}
+import {
+  isApiRequest,
+  normalizeEmail,
+  portalContext,
+} from "@/lib/server/portalAuth";
 
 function portalLoginRedirect(request: NextRequest, switchAccount = false) {
   const loginUrl = request.nextUrl.clone();
@@ -42,26 +34,6 @@ function forbidden(request: NextRequest) {
     status: 403,
     headers: { "content-type": "text/plain; charset=utf-8" },
   });
-}
-
-function portalContext(pathname: string) {
-  const segments = pathname.split("/").filter(Boolean);
-
-  if (segments[0] === "daily" && segments[1] === "portail") {
-    const roleSlug = segments[2] as keyof typeof PORTAL_ROLE_BY_SLUG | undefined;
-    const token = segments[3];
-    return {
-      token,
-      expectedPortalType: roleSlug ? PORTAL_ROLE_BY_SLUG[roleSlug] : undefined,
-      roleIsValid: Boolean(roleSlug && PORTAL_ROLE_BY_SLUG[roleSlug]),
-    };
-  }
-
-  if (segments[0] === "api" && segments[1] === "daily-portal") {
-    return { token: segments[2], expectedPortalType: undefined, roleIsValid: true };
-  }
-
-  return { token: undefined, expectedPortalType: undefined, roleIsValid: false };
 }
 
 export async function proxy(request: NextRequest) {

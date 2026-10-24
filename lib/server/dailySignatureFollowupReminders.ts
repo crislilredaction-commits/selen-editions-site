@@ -1,3 +1,4 @@
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AdminClient = any;
 
 export const DAILY_SIGNATURE_REMINDER_TYPE = "daily_signature_pending_72h";

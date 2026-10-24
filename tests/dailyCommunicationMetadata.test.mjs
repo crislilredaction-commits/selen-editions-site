@@ -69,7 +69,7 @@ function harness({ rows = [], documents, capabilities = { sessions: true, traini
   function load(path) {
     assert.ok(allowed.has(path), `Forbidden production import ${path}`);
     if(cache[path]) return cache[path];
-    const module = { exports: {} };
+    const mod = { exports: {} };
     const fail = () => { throw new Error('Forbidden Auth/network/mutation'); };
     const mocks = {
       'next/server': { NextResponse: { json: (body,init) => Response.json(body,init) } },
@@ -79,12 +79,12 @@ function harness({ rows = [], documents, capabilities = { sessions: true, traini
       '@/lib/server/dailySessionCompletion': { reconcileDailySessionDossier: fail },
     };
     const code = ts.transpileModule(fs.readFileSync(path,'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-    vm.runInNewContext(code, { module, exports:module.exports, URL, fetch:fail, require(name) {
+    vm.runInNewContext(code, { module: mod, exports:mod.exports, URL, fetch:fail, require(name) {
       if(Object.hasOwn(mocks,name)) return mocks[name];
       if(name.startsWith('@/')) return load(name.slice(2)+'.ts');
       throw new Error(`Forbidden import ${name}`);
     } }, {filename:path});
-    return cache[path] = module.exports;
+    return cache[path] = mod.exports;
   }
   return { db, calls, canonical, load, get: name => load(route(name)).GET(new Request(`https://fixture.test/?session_id=session&id=document`)) };
 }
