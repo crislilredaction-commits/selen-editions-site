@@ -128,11 +128,16 @@ export async function GET(_request: Request, { params }: Params) {
 
   const postsessionAvailable = isPostsessionDownloadAvailable(session.end_date);
   const visible = (documents ?? []).filter((document: Json) => isDailyPortalResourceVisible({resource:document,companyName:String(access.entity_name??""),role:access.portal_type,sessionId:session.id,enrolmentIds:allowedEnrolmentIds,learnerIds:allowedLearnerIds,postsessionAvailable}));
+  const attendancePublished = (documents ?? []).some((document: Json) =>
+    document.document_type === "attendance_summary"
+    && text(document.session_id) === text(session.id)
+    && ["published", "signed"].includes(text(document.status))
+  );
 
   const personalAttendanceResources: Json[] = [];
   const personalAssessmentResources: Json[] = [];
   const personalAssessmentEvidenceResources: Json[] = [];
-  if (access.portal_type === "learner" && postsessionAvailable && allowedEnrolmentIds.length) {
+  if (access.portal_type === "learner" && postsessionAvailable && attendancePublished && allowedEnrolmentIds.length) {
     const [{ data: slots, error: slotsError }, { data: records, error: recordsError }, { data: assessments, error: assessmentsError }, { data: assessmentEvidence, error: assessmentEvidenceError }] = await Promise.all([
       admin.from("daily_attendance_slots").select("id").eq("organisation_id", session.organisation_id).eq("session_id", session.id).neq("status", "cancelled"),
       admin.from("daily_attendance_records").select("slot_id,enrolment_id,status").eq("organisation_id", session.organisation_id).eq("session_id", session.id).in("enrolment_id", allowedEnrolmentIds),

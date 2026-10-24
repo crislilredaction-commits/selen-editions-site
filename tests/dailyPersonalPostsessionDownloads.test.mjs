@@ -48,7 +48,14 @@ test("la route personnelle recroise jeton, session, inscription active et identi
   assert.doesNotMatch(route, /email\(learner\.email\).*email\(access\.entity_email\)/);
   assert.match(route, /isPostsessionDownloadAvailable\(session\.end_date\)/);
   assert.match(route, /attendanceIsSettled/);
-  assert.match(route, /proofHash: null/);
+  assert.match(route, /document_type", "attendance_summary"/);
+  assert.match(route, /\.in\("status", \["published", "signed"\]\)/);
+  assert.match(route, /Content-Type": "application\/pdf"/);
+  assert.match(route, /Feuille d’émargement individuelle/);
+  assert.match(route, /trainer_signature_evidence/);
+  assert.match(route, /Signature de l’apprenant/);
+  assert.match(route, /Signature du formateur/);
+  assert.doesNotMatch(route, /proof_sha256|evidence_metadata|late_review|reviewer/);
   assert.match(route, /"Cache-Control": "private, no-store"/);
   assert.match(route, /"X-Content-Type-Options": "nosniff"/);
   assert.doesNotMatch(route, /\.insert\(|\.update\(|\.upsert\(|\.upload\(/);
@@ -60,6 +67,8 @@ test("la liste du portail n’annonce le relevé qu’après session et traiteme
   assert.match(resources, /attendanceIsSettled\(slotIds, ownRecords\)/);
   assert.match(resources, /personalAttendanceDocumentId\(enrolmentId\)/);
   assert.match(resources, /personal_attendance_summary/);
+  assert.match(resources, /attendancePublished/);
+  assert.match(resources, /postsessionAvailable && attendancePublished/);
 });
 
 test("le téléchargement central route le relevé personnel sans modifier les fichiers historiques", async () => {
@@ -123,6 +132,14 @@ test("Après affiche une action dédiée au certificat finalisé ou son état d�
   assert.match(navigation, /Téléchargez votre certificat personnel finalisé/);
   assert.match(navigation, /Il sera disponible ici après la session, une fois finalisé par votre organisme/);
   assert.match(navigation, /encodeURIComponent\(completionCertificate\.id\)/);
+});
+
+test("Après affiche directement la feuille d’émargement individuelle publiée", async () => {
+  const navigation = await read("components/daily/LearnerPhaseNavigation.tsx");
+  assert.match(navigation, /resources\.find\(\(doc\) => doc\.document_type === "personal_attendance_summary"\)/);
+  assert.match(navigation, /Ma feuille d’émargement/);
+  assert.match(navigation, /PDF individuel avec uniquement vos créneaux, vos signatures et celles du formateur/);
+  assert.match(navigation, /toutes vos présences traitées et le relevé publié/);
 });
 
 test("AR1 ne publie que les résultats canoniques finalisés et horodatés", () => {
