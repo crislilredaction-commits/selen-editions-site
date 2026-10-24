@@ -76,6 +76,7 @@ export default function LearnerPhaseNavigation({ role, token }: Props) {
       ];
     }
     const completionCertificate = resources.find((doc) => doc.document_type === "completion_certificate");
+    const personalAttendance = resources.find((doc) => doc.document_type === "personal_attendance_summary");
     const personalAssessmentResult = resources.find((doc) => doc.document_type === "personal_assessment_result");
     const personalAssessmentEvidence = resources.find((doc) => doc.document_type === "personal_assessment_evidence");
     return [
@@ -85,6 +86,9 @@ export default function LearnerPhaseNavigation({ role, token }: Props) {
         : { label: "Résultat de l’évaluation finale", detail: "Il sera disponible après la session, une fois finalisé par votre organisme." },
       ...(personalAssessmentEvidence ? [{ label: "Copie de l’évaluation finale", detail: "Téléchargez la copie externe jointe à votre résultat finalisé.", href: `/api/daily-portal/${token}/document?id=${encodeURIComponent(personalAssessmentEvidence.id)}` }] : []),
       { label: "Présences & émargement", detail: "Un émargement oublié reste accessible depuis l’historique de cette session.", href: `/daily/portail/${role}/${token}/presence` },
+      personalAttendance
+        ? { label: "Ma feuille d’émargement", detail: "Téléchargez votre PDF individuel avec uniquement vos créneaux, vos signatures et celles du formateur.", href: `/api/daily-portal/${token}/document?id=${encodeURIComponent(personalAttendance.id)}` }
+        : { label: "Ma feuille d’émargement", detail: "Elle sera disponible après la session, une fois toutes vos présences traitées et le relevé publié." },
       completionCertificate
         ? { label: "Certificat de réalisation", detail: "Téléchargez votre certificat personnel finalisé.", href: `/api/daily-portal/${token}/document?id=${encodeURIComponent(completionCertificate.id)}` }
         : { label: "Certificat de réalisation", detail: "Il sera disponible ici après la session, une fois finalisé par votre organisme." },
