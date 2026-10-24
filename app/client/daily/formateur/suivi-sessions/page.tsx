@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getStoredAssistanceToken } from "@/components/AgentAssistanceBanner";
 import ApplicationSignature from "@/components/daily/ApplicationSignature";
 import SelenButton from "@/components/ui/SelenButton";
@@ -16,6 +16,10 @@ type Session = {
 type Learner = { id?: string; first_name?: string | null; last_name?: string | null; email?: string | null };
 type Enrolment = { id: string; learner_id?: string; status: string; positioning_status?: string | null; prerequisites_status?: string | null; daily_learners?: Learner | Learner[] | null };
 type SupportNeed = { enrolment_id: string; has_specific_needs: boolean; planned_accommodations?: string | null; contact_requested?: boolean };
+type AttendanceSlot = { id: string; slot_date: string; starts_at: string; ends_at: string; label?: string | null };
+type AttendanceRecord = { status: string };
+type TrainerDocument = { id: string; document_type: string; logical_name: string; created_at: string; enrolment_id?: string | null; metadata?: Record<string, unknown> | null };
+type TrainerSignature = { id: string; signed_at: string; metadata?: { slot_id?: string } | null };
 type Entry = {
   id: string;
   enrolment_id?: string | null;
@@ -59,7 +63,7 @@ const levelLabels: Record<Entry["level"], string> = {
 };
 
 export default function TrainerSessionFollowupPage() {
-  const [requestedEnrolmentId, setRequestedEnrolmentId] = useState("");
+  const [requestedEnrolmentId] = useState(() => typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("enrolment") ?? "");
   const [sessions, setSessions] = useState<Session[]>([]);
   const [sessionId, setSessionId] = useState("");
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -96,7 +100,7 @@ export default function TrainerSessionFollowupPage() {
     });
   }
 
-  async function loadSession(id: string) {
+  const loadSession = useCallback(async (id: string) => {
     if (!id) {
       setEntries([]);
       setEnrolments([]);
@@ -111,15 +115,14 @@ export default function TrainerSessionFollowupPage() {
     setEnrolments(data.enrolments ?? []);
     setSupportNeeds(data.supportNeeds ?? []);
     if (requestedEnrolmentId && (data.enrolments ?? []).some((item: Enrolment) => item.id === requestedEnrolmentId)) setEnrolmentId(requestedEnrolmentId);
-  }
+  }, [requestedEnrolmentId]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const preferredSessionId = params.get("session") ?? "";
-    setRequestedEnrolmentId(params.get("enrolment") ?? "");
-    void loadSessions(preferredSessionId);
+    void Promise.resolve().then(() => loadSessions(preferredSessionId));
   }, []);
-  useEffect(() => { void loadSession(sessionId); }, [sessionId]);
+  useEffect(() => { void Promise.resolve().then(() => loadSession(sessionId)); }, [loadSession, sessionId]);
 
   async function createEntry() {
     if (!sessionId || !summary.trim()) return setError("Choisissez une session et ajoutez un résumé.");
@@ -179,6 +182,7 @@ export default function TrainerSessionFollowupPage() {
         <p style={styles.lead}>
           Consignez une note utile au suivi ou signalez un incident, un cas particulier ou une adaptation mise en place. Les notes restent dans le dossier sans créer de blocage de clôture.
         </p>
+        <a href="#signer-ma-presence" style={styles.primaryLink}>Signer ma présence / émargement</a>
       </header>
 
       {error ? <p role="alert" style={styles.error}>{error}</p> : null}
@@ -192,7 +196,6 @@ export default function TrainerSessionFollowupPage() {
 
       <SelenCard>
         <SelenCardTitle>Session concernée</SelenCardTitle>
-        {sessionId ? <TrainerPedagogicalTools sessionId={sessionId} enrolments={enrolments} /> : null}
         <label style={styles.field}>
           <span style={styles.label}>Session</span>
           <select value={sessionId} onChange={(event) => setSessionId(event.target.value)} style={styles.input}>
@@ -209,6 +212,9 @@ export default function TrainerSessionFollowupPage() {
             {formatDate(selectedSession.start_date)}{selectedSession.end_date ? ` → ${formatDate(selectedSession.end_date)}` : ""}
           </p>
         ) : null}
+        {sessionId ? <TrainerPedagogicalTools sessionId={sessionId} enrolments={enrolments} /> : (
+          <p id="signer-ma-presence" role="status" style={styles.attendanceNotice}>Choisissez d’abord une session affectée pour accéder à votre émargement personnel.</p>
+        )}
       </SelenCard>
 
       {sessionId ? (
@@ -352,30 +358,48 @@ export default function TrainerSessionFollowupPage() {
 }
 
 function TrainerPedagogicalTools({sessionId,enrolments}:{sessionId:string;enrolments:Enrolment[]}) {
-  const [slots,setSlots]=useState<any[]>([]),[records,setRecords]=useState<any[]>([]),[documents,setDocuments]=useState<any[]>([]),[busy,setBusy]=useState(false),[message,setMessage]=useState("");
+  const [slots,setSlots]=useState<AttendanceSlot[]>([]),[records,setRecords]=useState<AttendanceRecord[]>([]),[documents,setDocuments]=useState<TrainerDocument[]>([]),[busy,setBusy]=useState(false),[message,setMessage]=useState("");
   const [loadError,setLoadError]=useState("");
-  const [trainerSignatures,setTrainerSignatures]=useState<any[]>([]),[signatureSlot,setSignatureSlot]=useState(""),[signatureData,setSignatureData]=useState(""),[signatureConsent,setSignatureConsent]=useState(false);
+  const [signatureMessage,setSignatureMessage]=useState(""),[signatureError,setSignatureError]=useState("");
+  const [trainerSignatures,setTrainerSignatures]=useState<TrainerSignature[]>([]),[signatureSlot,setSignatureSlot]=useState(""),[signatureData,setSignatureData]=useState(""),[signatureConsent,setSignatureConsent]=useState(false);
   const signatureBusy=useRef(false);
   const externalEvaluationRequestId=useRef(crypto.randomUUID());
-  async function refresh(signal?:AbortSignal){try{const r=await fetch(`/api/client/daily/trainer-session-workspace?session_id=${encodeURIComponent(sessionId)}`,{cache:"no-store",signal});const d=await r.json().catch(()=>({}));if(signal?.aborted)return;if(!r.ok){setLoadError(d.error??"Suivi des présences indisponible.");return}setSlots(d.slots??[]);setRecords(d.records??[]);setDocuments(d.documents??[]);setTrainerSignatures(d.trainer_signatures??[]);setLoadError("")}catch{if(!signal?.aborted)setLoadError("Suivi des présences indisponible.")}}
-  useEffect(()=>{const controller=new AbortController();void refresh(controller.signal);return()=>controller.abort()},[sessionId]);
+  const refresh=useCallback(async(signal?:AbortSignal)=>{try{const r=await fetch(`/api/client/daily/trainer-session-workspace?session_id=${encodeURIComponent(sessionId)}`,{cache:"no-store",signal});const d=await r.json().catch(()=>({}));if(signal?.aborted)return;if(!r.ok){setLoadError(d.error??"Suivi des présences indisponible.");return}setSlots(d.slots??[]);setRecords(d.records??[]);setDocuments(d.documents??[]);setTrainerSignatures(d.trainer_signatures??[]);setLoadError("")}catch{if(!signal?.aborted)setLoadError("Suivi des présences indisponible.")}},[sessionId]);
+  useEffect(()=>{const controller=new AbortController();void refresh(controller.signal);return()=>controller.abort()},[refresh]);
   async function upload(event:React.FormEvent<HTMLFormElement>){event.preventDefault();setBusy(true);setMessage("");const fd=new FormData(event.currentTarget);fd.set("session_id",sessionId);if(fd.get("kind")==="external_evaluation")fd.set("request_id",externalEvaluationRequestId.current);const r=await fetch("/api/client/daily/trainer-session-workspace",{method:"POST",body:fd});const d=await r.json().catch(()=>({}));setBusy(false);setMessage(r.ok?"Document enregistré dans la session.":d.error??"Import impossible.");if(r.ok){(event.currentTarget as HTMLFormElement).reset();externalEvaluationRequestId.current=crypto.randomUUID();await refresh()}}
   async function signPresence(){
-    if(getStoredAssistanceToken()){setMessage("La signature personnelle nécessite votre propre compte formateur, sans délégation.");return;}
-    if(signatureBusy.current || !signatureSlot || !signatureData || !signatureConsent)return;
+    setSignatureError("");setSignatureMessage("");
+    if(getStoredAssistanceToken()){setSignatureError("La signature personnelle nécessite votre propre compte formateur, sans délégation.");return;}
+    if(signatureBusy.current)return;
+    if(!signatureSlot){setSignatureError("Choisissez le créneau que vous souhaitez signer.");return;}
+    if(!signatureData){setSignatureError("Votre signature personnelle est requise.");return;}
+    if(!signatureConsent){setSignatureError("Confirmez votre consentement avant d’enregistrer la signature.");return;}
     const slot=slots.find(row=>row.id===signatureSlot);
     if(!window.confirm(`Signer personnellement votre présence pour le créneau ${slot?.slot_date} ${String(slot?.starts_at).slice(0,5)}–${String(slot?.ends_at).slice(0,5)} ? La signature sera horodatée maintenant.`))return;
-    signatureBusy.current=true;setBusy(true);setMessage("");
-    try{const body=new FormData();body.set("kind","trainer_signature");body.set("session_id",sessionId);body.set("slot_id",signatureSlot);body.set("signature_data",signatureData);body.set("signature_consent","true");const response=await fetch("/api/client/daily/trainer-session-workspace",{method:"POST",body});const result=await response.json().catch(()=>({}));if(!response.ok)throw new Error(result.error||"Signature impossible.");setMessage("Votre signature personnelle est enregistrée avec son horodatage.");setSignatureSlot("");setSignatureData("");setSignatureConsent(false);await refresh();}catch(cause){setMessage(cause instanceof Error?cause.message:"Signature impossible.");}finally{signatureBusy.current=false;setBusy(false);}
+    signatureBusy.current=true;setBusy(true);
+    try{const body=new FormData();body.set("kind","trainer_signature");body.set("session_id",sessionId);body.set("slot_id",signatureSlot);body.set("signature_data",signatureData);body.set("signature_consent","true");const response=await fetch("/api/client/daily/trainer-session-workspace",{method:"POST",body});const result=await response.json().catch(()=>({}));if(!response.ok)throw new Error(result.error||"Signature impossible. Vérifiez votre accès à cette session et réessayez.");setSignatureMessage("Votre signature personnelle est enregistrée avec son horodatage réel.");setSignatureSlot("");setSignatureData("");setSignatureConsent(false);await refresh();}catch(cause){setSignatureError(cause instanceof Error?cause.message:"Signature impossible. Vérifiez votre connexion et réessayez.");}finally{signatureBusy.current=false;setBusy(false);}
   }
   if(loadError)return <div role="alert"><p>{loadError}</p><button type="button" onClick={()=>void refresh()}>Réessayer le chargement des présences</button></div>;
-  return <div style={{display:"grid",gap:12,marginBottom:16}}>
+  const unsignedSlots=slots.filter(slot=>!trainerSignatures.some(doc=>doc.metadata?.slot_id===slot.id));
+  return <div style={{display:"grid",gap:12,marginTop:16}}>
+    <section id="signer-ma-presence" aria-labelledby="trainer-signature-title" style={styles.attendancePanel}>
+      <p className="gazette-label" style={styles.eyebrow}>Émargement formateur</p>
+      <h3 id="trainer-signature-title" style={styles.attendanceTitle}>Signer ma présence / émargement</h3>
+      <p style={styles.help}>Cette action concerne uniquement votre propre présence sur cette session affectée. Sélectionnez un créneau, tracez votre signature et confirmez votre consentement. L’heure réelle d’enregistrement est conservée, y compris pour un créneau passé.</p>
+      {slots.length===0?<p role="status" style={styles.attendanceNotice}>Aucun créneau d’émargement n’est encore disponible pour cette session.</p>:unsignedSlots.length===0?<p role="status" style={styles.success}>Tous vos créneaux disponibles sont déjà signés.</p>:<>
+        <label style={styles.field}><span style={styles.label}>Créneau à signer</span><select aria-label="Créneau à signer" value={signatureSlot} onChange={event=>{setSignatureSlot(event.target.value);setSignatureData("");setSignatureConsent(false);setSignatureError("");setSignatureMessage("");}} style={styles.input}><option value="">Choisir un créneau</option>{unsignedSlots.map(slot=><option key={slot.id} value={slot.id}>{slot.slot_date} · {String(slot.starts_at).slice(0,5)}–{String(slot.ends_at).slice(0,5)}</option>)}</select></label>
+        {signatureSlot?<ApplicationSignature key={signatureSlot} title="Signature de présence du formateur" ariaLabel="Zone de signature personnelle du formateur" consentText="J’atteste personnellement ma présence au créneau sélectionné et confirme cette signature." consent={signatureConsent} onConsentChange={setSignatureConsent} onSignatureChange={setSignatureData}/>:null}
+        <button type="button" disabled={busy||!signatureSlot||!signatureData||!signatureConsent} onClick={()=>void signPresence()} style={styles.attendanceButton}>{busy?"Enregistrement…":"Signer ma présence / émargement"}</button>
+      </>}
+      {signatureError?<p role="alert" style={styles.error}>{signatureError}</p>:null}
+      {signatureMessage?<p role="status" style={styles.success}>{signatureMessage}</p>:null}
+      {trainerSignatures.map(doc=><p key={doc.id} style={styles.sessionMeta}>Créneau {slots.find(slot=>slot.id===doc.metadata?.slot_id)?.slot_date} · votre signature a été enregistrée le {new Date(doc.signed_at).toLocaleString("fr-FR")}</p>)}
+    </section>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:8}}>
       <div style={styles.metricCard}><span style={styles.metricLabel}>Créneaux d’émargement</span><strong>{slots.length}</strong></div>
       <div style={styles.metricCard}><span style={styles.metricLabel}>Présences recueillies</span><strong>{records.filter(r=>r.status==="present").length}</strong></div>
       <div style={styles.metricCard}><span style={styles.metricLabel}>Ressources / preuves</span><strong>{documents.length}</strong></div>
     </div>
-    {slots.length?<section aria-label="Émargement personnel du formateur"><h3>Votre signature de présence</h3><p>Cette signature concerne uniquement votre présence. Son heure réelle d’enregistrement sera conservée, y compris pour un créneau passé.</p><select aria-label="Créneau à signer" value={signatureSlot} onChange={event=>{setSignatureSlot(event.target.value);setSignatureData("");setSignatureConsent(false);}}><option value="">Choisir un créneau</option>{slots.filter(slot=>!trainerSignatures.some(doc=>doc.metadata?.slot_id===slot.id)).map(slot=><option key={slot.id} value={slot.id}>{slot.slot_date} · {String(slot.starts_at).slice(0,5)}–{String(slot.ends_at).slice(0,5)}</option>)}</select>{signatureSlot?<ApplicationSignature key={signatureSlot} title="Signature de présence du formateur" ariaLabel="Zone de signature personnelle du formateur" consentText="J’atteste personnellement ma présence au créneau sélectionné et confirme cette signature." consent={signatureConsent} onConsentChange={setSignatureConsent} onSignatureChange={setSignatureData}/>:null}<button type="button" disabled={busy||!signatureSlot||!signatureData||!signatureConsent} onClick={()=>void signPresence()}>Signer ma présence</button>{trainerSignatures.map(doc=><p key={doc.id}>Créneau {slots.find(slot=>slot.id===doc.metadata?.slot_id)?.slot_date} · signature enregistrée le {new Date(doc.signed_at).toLocaleString("fr-FR")}</p>)}</section>:null}
     <form onSubmit={upload} style={{display:"grid",gap:8,padding:12,border:"1px solid var(--sepia-mid)",borderRadius:12}}>
       <strong>Ressource, feuille papier ou évaluation externe</strong>
       <select name="kind" required style={styles.input}><option value="resource">Ressource pédagogique</option><option value="attendance_paper">Feuille d’émargement signée</option><option value="external_evaluation">Évaluation externe</option></select>
@@ -413,6 +437,7 @@ const styles: Record<string, React.CSSProperties> = {
   eyebrow: { margin: 0, color: "var(--rust)" },
   title: { margin: 0, color: "var(--ink)", fontSize: "clamp(1.9rem,4vw,2.8rem)" },
   lead: { maxWidth: 820, margin: 0, color: "var(--ink-soft)", lineHeight: 1.65 },
+  primaryLink: { display: "inline-flex", width: "fit-content", minHeight: 44, alignItems: "center", justifyContent: "center", marginTop: ".55rem", padding: ".7rem 1rem", border: "1px solid var(--rust)", borderRadius: 10, background: "var(--rust)", color: "white", fontWeight: 800, textDecoration: "none" },
   error: { padding: ".8rem 1rem", border: "1px solid var(--rust)", borderRadius: 12, background: "rgba(138,75,36,.08)", color: "var(--rust)" },
   success: { padding: ".8rem 1rem", border: "1px solid rgba(74,122,74,.45)", borderRadius: 12, background: "rgba(74,122,74,.08)", color: "var(--ink)" },
   summaryGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: ".75rem", marginBottom: "1rem" },
@@ -430,6 +455,10 @@ const styles: Record<string, React.CSSProperties> = {
   input: { width: "100%", minHeight: 44, boxSizing: "border-box", padding: ".7rem .75rem", border: "1px solid var(--sepia-mid)", borderRadius: 10, background: "var(--paper)", color: "var(--ink)" },
   textarea: { width: "100%", boxSizing: "border-box", padding: ".7rem .75rem", border: "1px solid var(--sepia-mid)", borderRadius: 10, background: "var(--paper)", color: "var(--ink)", resize: "vertical" },
   sessionMeta: { marginBottom: 0, color: "var(--ink-soft)", fontSize: ".9rem" },
+  attendancePanel: { display: "grid", gap: ".75rem", scrollMarginTop: "1rem", padding: "1rem", border: "2px solid var(--rust)", borderRadius: 14, background: "rgba(255,247,232,.82)" },
+  attendanceTitle: { margin: 0, color: "var(--ink)", fontSize: "1.45rem" },
+  attendanceNotice: { margin: 0, padding: ".8rem", border: "1px dashed var(--sepia-mid)", borderRadius: 10, color: "var(--ink-soft)" },
+  attendanceButton: { minHeight: 44, width: "fit-content", padding: ".7rem 1rem", border: "1px solid var(--rust)", borderRadius: 10, background: "var(--rust)", color: "white", fontWeight: 800, cursor: "pointer" },
   formGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: ".75rem" },
   actionRow: { display: "flex", justifyContent: "flex-start", marginTop: ".9rem" },
   historyList: { display: "grid", gap: ".75rem" },

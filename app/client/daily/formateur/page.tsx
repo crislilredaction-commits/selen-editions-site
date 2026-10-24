@@ -122,6 +122,19 @@ export default function TrainerHome() {
       {error ? <div className="mt-5 border border-[#8a4b24] bg-[#f8efdf] p-4 text-[#8a4b24]">{error}</div> : null}
       {message ? <div className="mt-5 border border-[#78915f] bg-[#f4faed] p-4 text-[#49643e]">{message}</div> : null}
 
+      <section className="mt-6 border border-[#8a4b24] bg-[#fff7e8] p-5 md:p-6" aria-labelledby="trainer-attendance-action-title">
+        <span className="gazette-label">Action de présence</span>
+        <div className="mt-3 grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+          <div>
+            <h2 id="trainer-attendance-action-title" className="text-2xl font-bold text-[#3e2a1f]">Signer ma présence / émargement</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-[#5a4031]">Choisissez une session et un créneau qui vous sont affectés. Vous signerez uniquement votre propre présence, avec votre consentement et l’heure réelle d’enregistrement.</p>
+          </div>
+          <Link href="/client/daily/formateur/suivi-sessions#signer-ma-presence" className="inline-flex min-h-11 items-center justify-center border border-[#8a4b24] bg-[#8a4b24] px-5 py-3 font-['Cinzel'] text-[0.66rem] font-bold uppercase tracking-[0.1em] text-white no-underline transition hover:bg-[#713c1d]">
+            Accéder à l’émargement
+          </Link>
+        </div>
+      </section>
+
       <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="grid gap-6">
           {profile ? (
@@ -173,7 +186,7 @@ export default function TrainerHome() {
             <h2 className="mt-4 text-2xl font-bold text-[#3e2a1f]">Votre activité</h2>
             <div className="mt-4 grid gap-2">
               <TrainerLink href="/client/daily/candidatures" title="Candidatures à valider" detail="Décisions qui attendent votre intervention" />
-              <TrainerLink href="/client/daily/formateur/suivi-sessions" title="Mes sessions" detail="Planning, présences et suivi" />
+              <TrainerLink href="/client/daily/formateur/suivi-sessions#signer-ma-presence" title="Signer ma présence / émargement" detail="Accès direct à vos créneaux affectés" />
               <TrainerLink href="/client/daily/formateur/cv" title="Mon CV" detail="Maintenir votre parcours à jour" />
               <TrainerLink href="/client/daily/formateur/certifications" title="Mes certifications" detail="Justificatifs et échéances" />
               {!exempt ? <TrainerLink href="/client/daily/formateur/suivi-annuel" title="Mon suivi annuel" detail="Auto-évaluation et suivi professionnel" /> : null}
