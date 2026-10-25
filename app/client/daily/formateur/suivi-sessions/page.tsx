@@ -68,7 +68,6 @@ export default function TrainerSessionFollowupPage() {
   const [sessionId, setSessionId] = useState("");
   // Invalide les réponses d'une ancienne session, y compris après une mutation asynchrone.
   const activeSessionIdRef = useRef("");
-  activeSessionIdRef.current = sessionId;
   const [entries, setEntries] = useState<Entry[]>([]);
   const [enrolments, setEnrolments] = useState<Enrolment[]>([]);
   const [supportNeeds, setSupportNeeds] = useState<SupportNeed[]>([]);
@@ -129,6 +128,7 @@ export default function TrainerSessionFollowupPage() {
     void Promise.resolve().then(() => loadSessions(preferredSessionId));
   }, []);
   useEffect(() => {
+    activeSessionIdRef.current = sessionId;
     if (!sessionId) return;
     const controller = new AbortController();
     void loadSession(sessionId, controller.signal);
@@ -216,6 +216,7 @@ export default function TrainerSessionFollowupPage() {
             setSupportNeeds([]);
             setEnrolmentId("");
             setError("");
+            activeSessionIdRef.current = event.target.value;
             setSessionId(event.target.value);
           }} style={styles.input}>
             <option value="">Choisir une session</option>
