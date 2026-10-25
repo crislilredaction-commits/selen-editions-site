@@ -129,12 +129,6 @@ export default function TrainerSessionFollowupPage() {
     void Promise.resolve().then(() => loadSessions(preferredSessionId));
   }, []);
   useEffect(() => {
-    // Ne jamais afficher les apprenants ou les signatures d'une session précédente.
-    setEntries([]);
-    setEnrolments([]);
-    setSupportNeeds([]);
-    setEnrolmentId("");
-    setError("");
     if (!sessionId) return;
     const controller = new AbortController();
     void loadSession(sessionId, controller.signal);
@@ -215,7 +209,15 @@ export default function TrainerSessionFollowupPage() {
         <SelenCardTitle>Session concernée</SelenCardTitle>
         <label style={styles.field}>
           <span style={styles.label}>Session</span>
-          <select value={sessionId} onChange={(event) => setSessionId(event.target.value)} style={styles.input}>
+          <select value={sessionId} onChange={(event) => {
+            // Purger synchroniquement les données de la session précédente avant de changer l'identifiant.
+            setEntries([]);
+            setEnrolments([]);
+            setSupportNeeds([]);
+            setEnrolmentId("");
+            setError("");
+            setSessionId(event.target.value);
+          }} style={styles.input}>
             <option value="">Choisir une session</option>
             {sessions.map((session) => (
               <option key={session.id} value={session.id}>
