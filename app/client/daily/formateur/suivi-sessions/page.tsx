@@ -131,7 +131,7 @@ export default function TrainerSessionFollowupPage() {
     activeSessionIdRef.current = sessionId;
     if (!sessionId) return;
     const controller = new AbortController();
-    void loadSession(sessionId, controller.signal);
+    void Promise.resolve().then(() => loadSession(sessionId, controller.signal));
     return () => controller.abort();
   }, [loadSession, sessionId]);
 
