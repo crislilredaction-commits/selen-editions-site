@@ -66,6 +66,8 @@ export default function TrainerSessionFollowupPage() {
   const [requestedEnrolmentId] = useState(() => typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("enrolment") ?? "");
   const [sessions, setSessions] = useState<Session[]>([]);
   const [sessionId, setSessionId] = useState("");
+  // Invalide les réponses d'une ancienne session, y compris après une mutation asynchrone.
+  const activeSessionIdRef = useRef("");
   const [entries, setEntries] = useState<Entry[]>([]);
   const [enrolments, setEnrolments] = useState<Enrolment[]>([]);
   const [supportNeeds, setSupportNeeds] = useState<SupportNeed[]>([]);
@@ -100,21 +102,24 @@ export default function TrainerSessionFollowupPage() {
     });
   }
 
-  const loadSession = useCallback(async (id: string) => {
-    if (!id) {
-      setEntries([]);
-      setEnrolments([]);
-      setSupportNeeds([]);
-      return;
+  const loadSession = useCallback(async (id: string, signal?: AbortSignal) => {
+    if (!id || signal?.aborted || activeSessionIdRef.current !== id) return;
+    try {
+      const response = await fetch(`/api/client/daily/trainer-followup?session_id=${encodeURIComponent(id)}`, { cache: "no-store", signal });
+      const data = await response.json().catch(() => ({}));
+      if (signal?.aborted || activeSessionIdRef.current !== id) return;
+      if (!response.ok) {
+        setError(data.error ?? "Chargement impossible.");
+        return;
+      }
+      setError("");
+      setEntries(data.entries ?? []);
+      setEnrolments(data.enrolments ?? []);
+      setSupportNeeds(data.supportNeeds ?? []);
+      if (requestedEnrolmentId && (data.enrolments ?? []).some((item: Enrolment) => item.id === requestedEnrolmentId)) setEnrolmentId(requestedEnrolmentId);
+    } catch {
+      if (!signal?.aborted && activeSessionIdRef.current === id) setError("Chargement de la session impossible. Réessayez.");
     }
-    setError("");
-    const response = await fetch(`/api/client/daily/trainer-followup?session_id=${encodeURIComponent(id)}`, { cache: "no-store" });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) return setError(data.error ?? "Chargement impossible.");
-    setEntries(data.entries ?? []);
-    setEnrolments(data.enrolments ?? []);
-    setSupportNeeds(data.supportNeeds ?? []);
-    if (requestedEnrolmentId && (data.enrolments ?? []).some((item: Enrolment) => item.id === requestedEnrolmentId)) setEnrolmentId(requestedEnrolmentId);
   }, [requestedEnrolmentId]);
 
   useEffect(() => {
@@ -122,7 +127,13 @@ export default function TrainerSessionFollowupPage() {
     const preferredSessionId = params.get("session") ?? "";
     void Promise.resolve().then(() => loadSessions(preferredSessionId));
   }, []);
-  useEffect(() => { void Promise.resolve().then(() => loadSession(sessionId)); }, [loadSession, sessionId]);
+  useEffect(() => {
+    activeSessionIdRef.current = sessionId;
+    if (!sessionId) return;
+    const controller = new AbortController();
+    void Promise.resolve().then(() => loadSession(sessionId, controller.signal));
+    return () => controller.abort();
+  }, [loadSession, sessionId]);
 
   async function createEntry() {
     if (!sessionId || !summary.trim()) return setError("Choisissez une session et ajoutez un résumé.");
@@ -198,7 +209,16 @@ export default function TrainerSessionFollowupPage() {
         <SelenCardTitle>Session concernée</SelenCardTitle>
         <label style={styles.field}>
           <span style={styles.label}>Session</span>
-          <select value={sessionId} onChange={(event) => setSessionId(event.target.value)} style={styles.input}>
+          <select value={sessionId} onChange={(event) => {
+            // Purger synchroniquement les données de la session précédente avant de changer l'identifiant.
+            setEntries([]);
+            setEnrolments([]);
+            setSupportNeeds([]);
+            setEnrolmentId("");
+            setError("");
+            activeSessionIdRef.current = event.target.value;
+            setSessionId(event.target.value);
+          }} style={styles.input}>
             <option value="">Choisir une session</option>
             {sessions.map((session) => (
               <option key={session.id} value={session.id}>
@@ -212,7 +232,7 @@ export default function TrainerSessionFollowupPage() {
             {formatDate(selectedSession.start_date)}{selectedSession.end_date ? ` → ${formatDate(selectedSession.end_date)}` : ""}
           </p>
         ) : null}
-        {sessionId ? <TrainerPedagogicalTools sessionId={sessionId} enrolments={enrolments} /> : (
+        {sessionId ? <TrainerPedagogicalTools key={sessionId} sessionId={sessionId} enrolments={enrolments} /> : (
           <p id="signer-ma-presence" role="status" style={styles.attendanceNotice}>Choisissez d’abord une session affectée pour accéder à votre émargement personnel.</p>
         )}
       </SelenCard>

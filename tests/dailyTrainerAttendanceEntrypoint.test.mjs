@@ -42,3 +42,13 @@ test("la signature reste bornée côté serveur au compte, au formateur, à la s
   assert.match(migration, /revoke all on function public\.daily_record_trainer_presence_signature[\s\S]*from public,\s*anon,\s*authenticated/i);
   assert.match(migration, /grant execute on function public\.daily_record_trainer_presence_signature[\s\S]*to service_role/i);
 });
+
+test("changer de session annule les anciennes lectures et réinitialise les données apprenants", () => {
+  assert.match(sessionPage, /activeSessionIdRef\.current = sessionId/);
+  assert.match(sessionPage, /signal\?\.aborted \|\| activeSessionIdRef\.current !== id/);
+  assert.match(sessionPage, /const controller = new AbortController\(\)/);
+  assert.match(sessionPage, /loadSession\(sessionId, controller\.signal\)/);
+  assert.match(sessionPage, /return \(\) => controller\.abort\(\)/);
+  assert.match(sessionPage, /setEntries\(\[\]\);\s*setEnrolments\(\[\]\);\s*setSupportNeeds\(\[\]\);\s*setEnrolmentId\(""\)/);
+  assert.match(sessionPage, /<TrainerPedagogicalTools key=\{sessionId\}/);
+});

@@ -43,6 +43,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: ESLint ciblé — émargement formateur
+        run: npx eslint app/client/daily/formateur/suivi-sessions/page.tsx tests/dailyTrainerAttendanceEntrypoint.test.mjs
+
       - name: Tests, typecheck and build
         env:
           # Build-only placeholders: no live Stripe/Supabase service is contacted by the build.
