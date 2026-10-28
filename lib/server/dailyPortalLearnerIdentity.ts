@@ -21,7 +21,6 @@ type EnrolmentIdentity = {
 
 const text = (value: unknown) => String(value ?? "").trim();
 const email = (value: unknown) => text(value).toLowerCase();
-const name = (value: unknown) => text(value).toLowerCase().replace(/\s+/g, " ");
 
 function relatedLearner(value: LearnerRelation) {
   return Array.isArray(value) ? value[0] ?? null : value ?? null;
@@ -36,10 +35,6 @@ export function matchesDailyLearnerPortalAccess(
 
   const entityEmail = email(access.entity_email);
   const learner = relatedLearner(enrolment.daily_learners);
-  const entityName = name(access.entity_name);
-  const learnerName = name([learner?.first_name, learner?.last_name].map(text).filter(Boolean).join(" "));
-  return Boolean(
-    (entityEmail && entityEmail === email(learner?.email))
-    || (entityName && entityName === learnerName),
-  );
+  // A display name cannot authorize private documents, even for legacy links.
+  return Boolean(entityEmail && entityEmail === email(learner?.email));
 }

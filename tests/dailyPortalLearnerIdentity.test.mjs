@@ -25,14 +25,14 @@ test("legacy access without a key can still use its normalized email", () => {
   assert.equal(matchesDailyLearnerPortalAccess(access, enrolment("other", "other@example.test")), false);
 });
 
-test("legacy access without a key can still use its normalized name", () => {
+test("legacy access cannot use a matching display name as a private identity", () => {
   const access = { entity_key: null, entity_name: "  Alice   Martin " };
   const row = {
     learner_id: "legacy",
     daily_learners: { first_name: "Alice", last_name: "Martin", email: null },
   };
 
-  assert.equal(matchesDailyLearnerPortalAccess(access, row), true);
+  assert.equal(matchesDailyLearnerPortalAccess(access, row), false);
 });
 
 test("an incomplete identity never matches an enrolment", () => {

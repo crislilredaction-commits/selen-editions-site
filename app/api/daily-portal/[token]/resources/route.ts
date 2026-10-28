@@ -4,6 +4,7 @@ import {DAILY_PORTAL_RESOURCE_STATUSES,DAILY_PORTAL_RESOURCE_TYPES,isDailyPortal
 import {attendanceIsSettled,isPostsessionDownloadAvailable,personalAttendanceDocumentId} from "@/lib/server/dailyPersonalAttendance";
 import {isFinalAssessmentResult,personalAssessmentEvidenceDocumentId,personalAssessmentResultDocumentId} from "@/lib/server/dailyPersonalAssessment";
 import {matchesDailyLearnerPortalAccess} from "@/lib/server/dailyPortalLearnerIdentity";
+import {resolveEnterprisePortalCompany} from "@/lib/daily/enterprisePortalIdentity.mjs";
 
 type Params = { params: Promise<{ token: string }> };
 type Json = Record<string, unknown>;
@@ -13,11 +14,7 @@ const array = (value: unknown): Json[] => Array.isArray(value) ? value.filter((v
 
 function matchesLearnerRecipient(row: Json, access: Json) {
   const entityEmail = email(access.entity_email);
-  const entityName = text(access.entity_name).toLowerCase();
-  return row.recipient_type === "beneficiary" && (
-    (entityEmail && email(row.recipient_email) === entityEmail)
-    || (entityName && text(row.recipient_name).toLowerCase() === entityName)
-  );
+  return row.recipient_type === "beneficiary" && Boolean(entityEmail) && email(row.recipient_email) === entityEmail;
 }
 
 function latestVersion(rows: Json[]) {
@@ -111,14 +108,19 @@ export async function GET(_request: Request, { params }: Params) {
   let allowedEnrolmentIds: string[] = [];
   let allowedLearnerIds: string[] = [];
   let matchingRows: Json[] = [];
+  let companyName = "";
   if (access.portal_type === "learner") {
     const { data: rows, error: enrolmentError } = await admin.from("daily_session_enrolments").select("id,learner_id,daily_learners(email)").eq("session_id", session.id).eq("organisation_id", session.organisation_id).not("status", "in", "(declined,cancelled,abandoned)");
     if (enrolmentError) return NextResponse.json({ error: enrolmentError.message }, { status: 500 });
     matchingRows = (rows ?? []).filter((row: Json) => matchesDailyLearnerPortalAccess(access, row));
+    if (matchingRows.length !== 1) return NextResponse.json({ error: "Accès apprenant absent ou ambigu." }, { status: matchingRows.length ? 409 : 403 });
     allowedEnrolmentIds = matchingRows.map((row: Json) => text(row.id)).filter(Boolean);
     allowedLearnerIds = matchingRows.map((row: Json) => text(row.learner_id)).filter(Boolean);
   } else if (access.portal_type === "enterprise") {
-    const company = array(session.companies).find((item) => email(item.email) === email(access.entity_email) || text(item.name).toLowerCase() === text(access.entity_name).toLowerCase());
+    const companyIdentity = resolveEnterprisePortalCompany(array(session.companies), email(access.entity_email));
+    if (companyIdentity.status !== "ok") return NextResponse.json({ error: "Identité entreprise absente ou ambiguë." }, { status: companyIdentity.status === "ambiguous" ? 409 : 403 });
+    const company = companyIdentity.company;
+    companyName = text(company?.name);
     const participantEmails = new Set(array(company?.participants).map((item) => email(item.email)).filter(Boolean));
     if (participantEmails.size) {
       const { data: rows } = await admin.from("daily_session_enrolments").select("id,daily_learners(email)").eq("session_id", session.id).eq("organisation_id", session.organisation_id).not("status", "in", "(declined,cancelled,abandoned)");
@@ -127,7 +129,7 @@ export async function GET(_request: Request, { params }: Params) {
   }
 
   const postsessionAvailable = isPostsessionDownloadAvailable(session.end_date);
-  const visible = (documents ?? []).filter((document: Json) => isDailyPortalResourceVisible({resource:document,companyName:String(access.entity_name??""),role:access.portal_type,sessionId:session.id,enrolmentIds:allowedEnrolmentIds,learnerIds:allowedLearnerIds,postsessionAvailable}));
+  const visible = (documents ?? []).filter((document: Json) => isDailyPortalResourceVisible({resource:document,companyName,role:access.portal_type,sessionId:session.id,enrolmentIds:allowedEnrolmentIds,learnerIds:allowedLearnerIds,postsessionAvailable}));
   const attendancePublished = (documents ?? []).some((document: Json) =>
     document.document_type === "attendance_summary"
     && text(document.session_id) === text(session.id)
