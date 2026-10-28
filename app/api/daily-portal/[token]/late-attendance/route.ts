@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { createClient as createServerSupabaseClient } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
+import { findUniqueDailyLearnerPortalEnrolment } from "@/lib/server/dailyPortalLearnerIdentity";
 import {
   DAILY_ATTENDANCE_CONSENT,
   buildAttendanceProofHash,
@@ -53,7 +54,7 @@ export async function POST(request: Request, { params }: Params) {
   const admin = getAdminSupabase();
   const { data: access, error: accessError } = await admin
     .from("daily_portal_access_tokens")
-    .select("id,session_id,portal_type,entity_email,status,expires_at")
+    .select("id,session_id,portal_type,entity_key,entity_email,status,expires_at")
     .eq("token", cleanToken)
     .maybeSingle();
   if (accessError) return NextResponse.json({ error: accessError.message }, { status: 500 });
@@ -73,24 +74,19 @@ export async function POST(request: Request, { params }: Params) {
   if (sessionError) return NextResponse.json({ error: sessionError.message }, { status: 500 });
   if (!session) return NextResponse.json({ error: "Session introuvable." }, { status: 404 });
 
-  const { data: learner, error: learnerError } = await admin
-    .from("daily_learners")
-    .select("id,email")
-    .eq("organisation_id", session.organisation_id)
-    .ilike("email", normalizeEmail(access.entity_email))
-    .maybeSingle();
-  if (learnerError) return NextResponse.json({ error: learnerError.message }, { status: 500 });
-  if (!learner) return NextResponse.json({ error: "Apprenant introuvable." }, { status: 404 });
-
-  const { data: enrolment, error: enrolmentError } = await admin
+  // Bind the signature to this token's unique enrolment, never to the first
+  // learner matching an email across the organisation. Include inactive rows
+  // so legacy email-only links cannot be reassigned after a cancellation.
+  const { data: enrolments, error: enrolmentError } = await admin
     .from("daily_session_enrolments")
-    .select("id,status")
+    .select("id,learner_id,status,daily_learners(email)")
     .eq("organisation_id", session.organisation_id)
-    .eq("session_id", session.id)
-    .eq("learner_id", learner.id)
-    .maybeSingle();
+    .eq("session_id", session.id);
   if (enrolmentError) return NextResponse.json({ error: enrolmentError.message }, { status: 500 });
-  if (!enrolment || INACTIVE.has(clean(enrolment.status))) return NextResponse.json({ error: "Inscription inactive ou introuvable." }, { status: 404 });
+  const enrolment = findUniqueDailyLearnerPortalEnrolment(access, enrolments ?? []);
+  if (!enrolment || INACTIVE.has(clean(enrolment.status))) {
+    return NextResponse.json({ error: "Inscription inactive, introuvable ou identité ambiguë." }, { status: 404 });
+  }
 
   const { data: slot, error: slotError } = await admin
     .from("daily_attendance_slots")
