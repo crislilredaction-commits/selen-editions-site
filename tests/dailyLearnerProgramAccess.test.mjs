@@ -11,6 +11,7 @@ const networkForbidden = () => assert.fail('Network forbidden');
 const resourceVisibility = loadTypeScript('lib/server/dailyPortalResourceVisibility.ts');
 const personalAttendance = loadTypeScript('lib/server/dailyPersonalAttendance.ts');
 const learnerIdentity = loadTypeScript('lib/server/dailyPortalLearnerIdentity.ts');
+const enterpriseIdentity = await import('../lib/daily/enterprisePortalIdentity.mjs');
 function fixture(options = {}) {
   const access = { id: 'access', token: 'portal-secret', status: 'pending', portal_type: 'learner', session_id: 'session', user_id: 'owner', entity_key: 'learner:learner', entity_email: 'learner@example.test', ...options.access };
   const formation = options.absent ? null : { id: 'formation', organisation_id: 'org', status: 'validated', creation_mode: 'selen_form', public_registration_enabled: true, public_registration_token: publicToken, ...options.formation };
@@ -51,6 +52,7 @@ function fixture(options = {}) {
     '@/lib/server/dailyPortalResourceVisibility': resourceVisibility,
     '@/lib/server/dailyPersonalAttendance': personalAttendance,
     '@/lib/server/dailyPortalLearnerIdentity': learnerIdentity,
+    '@/lib/daily/enterprisePortalIdentity.mjs': enterpriseIdentity,
     '@/lib/daily/ownPositioning': {positioningSourceDocumentId:v=>typeof v==='string'&&v===`/api/client/daily/uploads?id=${sourceId}`?sourceId:null},
   }, {fetch:networkForbidden});
   return { calls, mutations, session, get:()=>GET(null,{params:Promise.resolve({token:'portal-secret'})}) };
@@ -93,7 +95,8 @@ for(const [name,options] of [
  const r=await h.get();assert.equal(r.status,200);
  assert.equal(Object.hasOwn(await r.json(),'publicProgramPdfUrl'),false);
 });
-for(const role of ['enterprise','trainer']) test(`no public programme read for ${role}`,async()=>{const h=fixture({access:{portal_type:role}});const r=await h.get();assert.equal(r.status,200);assert.equal(Object.hasOwn(await r.json(),'publicProgramPdfUrl'),false);assert.ok(!h.calls.some(c=>c.table==='daily_formations'));});
+for(const role of ['enterprise','trainer']) test(`no public programme read for ${role}`,async()=>{const h=fixture({access:{portal_type:role,entity_email:role==='enterprise'?'contact@example.test':'learner@example.test'},session:{companies:role==='enterprise'?[{name:'Acme',email:'contact@example.test'}]:[]}});const r=await h.get();assert.equal(r.status,200);assert.equal(Object.hasOwn(await r.json(),'publicProgramPdfUrl'),false);assert.ok(!h.calls.some(c=>c.table==='daily_formations'));});
+test('enterprise portal refuses a token without a uniquely identified company',async()=>{const h=fixture({access:{portal_type:'enterprise'}});const r=await h.get();assert.equal(r.status,403);assert.ok(!h.calls.some(c=>c.table==='daily_formations'));});
 for(const [name,options,status,mutation] of [
   ['revoked',{access:{status:'revoked'}},403,null],['expired',{access:{status:'expired'}},403,null],
   ['past expiry',{access:{expires_at:'2000-01-01'}},410,'expired'],['archived session',{session:{status:'archived'}},404,null],
