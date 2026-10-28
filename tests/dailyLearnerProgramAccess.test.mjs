@@ -95,7 +95,8 @@ for(const [name,options] of [
  const r=await h.get();assert.equal(r.status,200);
  assert.equal(Object.hasOwn(await r.json(),'publicProgramPdfUrl'),false);
 });
-for(const role of ['enterprise','trainer']) test(`no public programme read for ${role}`,async()=>{const h=fixture({access:{portal_type:role}});const r=await h.get();assert.equal(r.status,200);assert.equal(Object.hasOwn(await r.json(),'publicProgramPdfUrl'),false);assert.ok(!h.calls.some(c=>c.table==='daily_formations'));});
+for(const role of ['enterprise','trainer']) test(`no public programme read for ${role}`,async()=>{const h=fixture({access:{portal_type:role,entity_email:role==='enterprise'?'contact@example.test':'learner@example.test'},session:{companies:role==='enterprise'?[{name:'Acme',email:'contact@example.test'}]:[]}});const r=await h.get();assert.equal(r.status,200);assert.equal(Object.hasOwn(await r.json(),'publicProgramPdfUrl'),false);assert.ok(!h.calls.some(c=>c.table==='daily_formations'));});
+test('enterprise portal refuses a token without a uniquely identified company',async()=>{const h=fixture({access:{portal_type:'enterprise'}});const r=await h.get();assert.equal(r.status,403);assert.ok(!h.calls.some(c=>c.table==='daily_formations'));});
 for(const [name,options,status,mutation] of [
   ['revoked',{access:{status:'revoked'}},403,null],['expired',{access:{status:'expired'}},403,null],
   ['past expiry',{access:{expires_at:'2000-01-01'}},410,'expired'],['archived session',{session:{status:'archived'}},404,null],
