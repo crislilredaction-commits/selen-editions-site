@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
+import { findUniqueDailyLearnerPortalEnrolment } from "@/lib/server/dailyPortalLearnerIdentity";
 import { getLearnerSatisfactionAvailability } from "@/lib/daily/endOfTraining";
 import { finalizeDailyLearnerSatisfaction } from "@/lib/server/dailyLearnerSatisfactionLifecycle";
 
@@ -8,10 +9,6 @@ type JsonRecord = Record<string, unknown>;
 
 function text(value: unknown) {
   return String(value ?? "").trim();
-}
-
-function normalizedEmail(value: unknown) {
-  return text(value).toLowerCase();
 }
 
 function rating(value: unknown, required = false) {
@@ -29,7 +26,7 @@ async function resolveLearner(token: string) {
   const supabase = getAdminSupabase();
   const { data: access, error: accessError } = await supabase
     .from("daily_portal_access_tokens")
-    .select("id,status,expires_at,portal_type,entity_email,session_id")
+    .select("id,status,expires_at,portal_type,entity_key,entity_email,session_id")
     .eq("token", token)
     .maybeSingle();
   if (accessError) throw accessError;
@@ -49,16 +46,12 @@ async function resolveLearner(token: string) {
 
   const { data: enrolments, error: enrolmentError } = await supabase
     .from("daily_session_enrolments")
-    .select("id,status,daily_learners(id,email,first_name,last_name)")
+    .select("id,learner_id,status,daily_learners(id,email,first_name,last_name)")
     .eq("session_id", session.id)
     .eq("organisation_id", session.organisation_id)
     .not("status", "in", "(declined,cancelled,abandoned)");
   if (enrolmentError) throw enrolmentError;
-  const email = normalizedEmail(access.entity_email);
-  const enrolment = (enrolments ?? []).find((row) => {
-    const learner = Array.isArray(row.daily_learners) ? row.daily_learners[0] : row.daily_learners;
-    return normalizedEmail(learner && typeof learner === "object" ? (learner as JsonRecord).email : "") === email;
-  });
+  const enrolment = findUniqueDailyLearnerPortalEnrolment(access, enrolments ?? []);
   if (!enrolment) return { error: "Inscription apprenant introuvable.", status: 404 } as const;
 
   const formation = Array.isArray(session.daily_formations) ? session.daily_formations[0] : session.daily_formations;

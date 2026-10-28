@@ -38,3 +38,16 @@ export function matchesDailyLearnerPortalAccess(
   // A display name cannot authorize private documents, even for legacy links.
   return Boolean(entityEmail && entityEmail === email(learner?.email));
 }
+
+/**
+ * A learner portal token must resolve to exactly one active enrolment.
+ * Canonical learner keys take precedence over legacy email-only links.
+ * Shared emails and incomplete legacy identities fail closed.
+ */
+export function findUniqueDailyLearnerPortalEnrolment<T extends EnrolmentIdentity>(
+  access: PortalAccessIdentity,
+  enrolments: T[],
+): T | null {
+  const matches = enrolments.filter((enrolment) => matchesDailyLearnerPortalAccess(access, enrolment));
+  return matches.length === 1 ? matches[0] : null;
+}
