@@ -8,7 +8,7 @@ const routes = [
   "app/api/daily-portal/[token]/learner-satisfaction/route.ts",
 ];
 const active = (id = "a", organisation_id = "org") => ({
-  id: `enrol-${id}`, learner_id: `learner-${id}`, organisation_id,
+  id: `enrol-${id}`, learner_id: `learner-${id}`, organisation_id, session_id: "session",
   status: "active", daily_learners: { id: `learner-${id}`, email: "shared@example.test" },
 });
 const cancelled = { ...active("b"), status: "cancelled" };
