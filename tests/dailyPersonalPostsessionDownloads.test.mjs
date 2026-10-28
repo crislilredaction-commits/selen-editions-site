@@ -93,7 +93,7 @@ test("AR1 masque le certificat personnel avant la fin de session et le borne à 
 
 test("AR1 refuse aussi un identifiant de certificat deviné avant la fin de session", async () => {
   const route = await read("app/api/daily-portal/[token]/document/route.ts");
-  assert.match(route, /select\("id,organisation_id,status,end_date"\)/);
+  assert.match(route, /select\("id,organisation_id,status,end_date,companies"\)/);
   assert.match(route, /postsessionAvailable:isPostsessionDownloadAvailable\(session\.end_date\)/);
   assert.ok(route.indexOf("isDailyPortalResourceVisible") < route.indexOf("createSignedUrl"));
 });
