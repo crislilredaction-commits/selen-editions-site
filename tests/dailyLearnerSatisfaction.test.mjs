@@ -10,8 +10,9 @@ const [route, helper, privacyMigration] = await Promise.all([readFile(routePath,
 
 test("learner satisfaction is restricted to active learner portal access", () => {
   assert.match(route, /access\.portal_type !== "learner"/);
-  assert.match(route, /\["revoked", "expired"\]/);
-  assert.match(route, /\(declined,cancelled,abandoned\)/);
+  assert.match(route, /\["pending", "viewed"\]/);
+  assert.match(route, /\["declined", "cancelled", "abandoned"\]/);
+  assert.doesNotMatch(route, /\.not\("status", "in", "\(declined,cancelled,abandoned\)"\)/);
 });
 
 test("selen quiz satisfaction opens only after the canonical assessment response", () => {

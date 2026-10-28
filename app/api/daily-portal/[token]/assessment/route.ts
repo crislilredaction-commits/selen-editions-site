@@ -80,9 +80,7 @@ async function resolveLearner(token: string) {
   if (accessError) throw accessError;
   if (!access) return { error: "Portail introuvable.", status: 404 } as const;
   if (access.portal_type !== "learner") return { error: "Évaluation réservée à l’apprenant.", status: 403 } as const;
-  if (["revoked", "expired"].includes(String(access.status ?? ""))) {
-    return { error: "Cet accès n’est plus actif.", status: 403 } as const;
-  }
+  if (!["pending", "viewed"].includes(String(access.status ?? ""))) return { error: "Cet accès n’est plus actif.", status: 403 } as const;
   if (access.expires_at && new Date(access.expires_at).getTime() < Date.now()) {
     return { error: "Ce lien de portail a expiré.", status: 410 } as const;
   }
@@ -100,12 +98,14 @@ async function resolveLearner(token: string) {
     .from("daily_session_enrolments")
     .select("id,learner_id,status,daily_learners(id,email,first_name,last_name)")
     .eq("session_id", session.id)
-    .eq("organisation_id", session.organisation_id)
-    .not("status", "in", "(declined,cancelled,abandoned)");
+    .eq("organisation_id", session.organisation_id);
   if (enrolmentError) throw enrolmentError;
 
   const enrolment = findUniqueDailyLearnerPortalEnrolment(access, enrolments ?? []);
-  if (!enrolment) return { error: "Inscription apprenant introuvable.", status: 404 } as const;
+  if (!enrolment) return { error: "Identité apprenant introuvable ou ambiguë.", status: 409 } as const;
+  if (["declined", "cancelled", "abandoned"].includes(String(enrolment.status ?? ""))) {
+    return { error: "Cette inscription n’est plus active.", status: 403 } as const;
+  }
 
   const formation = Array.isArray(session.daily_formations) ? session.daily_formations[0] : session.daily_formations;
   if (!formation || typeof formation !== "object") return { error: "Formation introuvable.", status: 404 } as const;
