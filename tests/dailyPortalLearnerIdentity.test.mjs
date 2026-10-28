@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { loadTypeScript } from "./helpers/loadTypeScript.mjs";
 
-const { matchesDailyLearnerPortalAccess } = loadTypeScript(
+const { matchesDailyLearnerPortalAccess, hasUniqueDailyLearnerRecipientEmail } = loadTypeScript(
   "lib/server/dailyPortalLearnerIdentity.ts",
 );
 
@@ -63,4 +63,24 @@ test("learner resolution rejects absent, incomplete or ambiguous identities", ()
   assert.equal(findUniqueDailyLearnerPortalEnrolment({ entity_name: "Someone" }, rows), null);
   assert.equal(findUniqueDailyLearnerPortalEnrolment({ entity_key: "learner:missing" }, rows), null);
   assert.equal(findUniqueDailyLearnerPortalEnrolment({ entity_email: "other@example.test" }, rows), rows[1]);
+});
+
+
+test("email-only private documents reject two active learners sharing an email", () => {
+  const rows = [enrolment("one"), enrolment("two")];
+  assert.equal(hasUniqueDailyLearnerRecipientEmail({ entity_key: "learner:one", entity_email: "shared@example.test" }, rows), false);
+  assert.equal(hasUniqueDailyLearnerRecipientEmail({ entity_email: "shared@example.test" }, rows), false);
+});
+
+test("email-only private documents reject a collision with a cancelled enrolment", () => {
+  const rows = [{ ...enrolment("one"), status: "active" }, { ...enrolment("cancelled"), status: "cancelled" }];
+  assert.equal(hasUniqueDailyLearnerRecipientEmail({ entity_key: "learner:one", entity_email: "shared@example.test" }, rows), false);
+});
+
+test("email-only private documents allow one canonical or legacy recipient", () => {
+  const rows = [enrolment("one"), enrolment("other", "other@example.test")];
+  assert.equal(hasUniqueDailyLearnerRecipientEmail({ entity_key: "learner:one", entity_email: " SHARED@example.test " }, rows), true);
+  assert.equal(hasUniqueDailyLearnerRecipientEmail({ entity_email: "shared@example.test" }, rows), true);
+  assert.equal(hasUniqueDailyLearnerRecipientEmail({ entity_key: "learner:other", entity_email: "shared@example.test" }, rows), false);
+  assert.equal(hasUniqueDailyLearnerRecipientEmail({ entity_key: "learner:one", entity_email: "" }, rows), false);
 });

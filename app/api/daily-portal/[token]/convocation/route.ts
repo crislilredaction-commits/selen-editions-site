@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
-import { matchesDailyLearnerPortalAccess } from "@/lib/server/dailyPortalLearnerIdentity";
+import { matchesDailyLearnerPortalAccess, hasUniqueDailyLearnerRecipientEmail } from "@/lib/server/dailyPortalLearnerIdentity";
 import { resolveEnterprisePortalCompany } from "@/lib/daily/enterprisePortalIdentity.mjs";
 
 type Params = { params: Promise<{ token: string }> };
@@ -49,12 +49,13 @@ export async function GET(request: Request, { params }: Params) {
   const entityEmail = normalizedEmail(access.entity_email);
   if (access.portal_type === "learner") {
     const { data: rows, error: enrolmentError } = await supabase.from("daily_session_enrolments")
-      .select("learner_id,daily_learners(email,first_name,last_name)")
+      .select("learner_id,status,daily_learners(email,first_name,last_name)")
       .eq("session_id", access.session_id)
-      .not("status", "in", "(declined,cancelled,abandoned)");
+      ;
     if (enrolmentError) return NextResponse.json({ error: enrolmentError.message }, { status: 500 });
-    const matches = (rows ?? []).filter((row) => matchesDailyLearnerPortalAccess(access, row));
+    const matches = (rows ?? []).filter((row) => !["declined", "cancelled", "abandoned"].includes(String(row.status ?? "")) && matchesDailyLearnerPortalAccess(access, row));
     if (matches.length !== 1) return NextResponse.json({ error: "Accès apprenant absent ou ambigu." }, { status: matches.length ? 409 : 403 });
+    if (!hasUniqueDailyLearnerRecipientEmail(access, rows ?? [])) return NextResponse.json({ error: "Document à destinataire email ambigu." }, { status: 403 });
   }
   if (access.portal_type === "enterprise") {
     const { data: session, error: sessionError } = await supabase.from("daily_sessions")
