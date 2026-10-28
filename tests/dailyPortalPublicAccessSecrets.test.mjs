@@ -8,10 +8,10 @@ const route = await readFile(
 );
 
 test("public stakeholder payload never selects convention signing bearer tokens", () => {
-  const select = route.match(/daily_convention_signatures\\(([^)]*)\\)/)?.[1];
+  const select = route.match(/daily_convention_signatures\(([^)]*)\)/)?.[1];
   assert.ok(select, "convention signature projection must remain explicit");
   assert.equal(select.split(",").map((field) => field.trim()).includes("token"), false);
-  assert.match(route, /daily_conventions"\\)\\.select\\("id,recipient_type/);
+  assert.match(route, /daily_conventions"\)\.select\("id,recipient_type/);
 });
 
 test("the portal rejects unsupported roles before reading private session data", () => {
@@ -28,7 +28,7 @@ test("only pending or viewed portal tokens are allowed", () => {
 
 test("recipient filtering and response projections remain in place", () => {
   assert.match(route, /const filteredConventions=/);
-  assert.match(route, /matchesEnterprisePortalRecipient\\(c.recipient_email,entityEmail\\)/);
+  assert.match(route, /matchesEnterprisePortalRecipient\(c.recipient_email,entityEmail\)/);
   assert.match(route, /conventions:filteredConventions/);
-  assert.doesNotMatch(route, /daily_convention_signatures\\([^)]*\\btoken\\b/);
+  assert.doesNotMatch(route, /daily_convention_signatures\([^)]*\btoken\b/);
 });
