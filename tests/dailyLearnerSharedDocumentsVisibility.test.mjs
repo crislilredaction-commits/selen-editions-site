@@ -50,14 +50,15 @@ test("les inscriptions apprenant refusées, annulées ou abandonnées ne donnent
   assert.match(document, /\.select\("id,learner_id,status,daily_learners/);
   assert.match(document, /\["declined","cancelled","abandoned"\]\.includes\(String\(enrolment\.status\?\?""\)\)/);
   assert.doesNotMatch(document, /\.not\("status","in","\(declined,cancelled,abandoned\)"\)/);
-  assert.match(assessment, /\.not\("status", "in", "\(declined,cancelled,abandoned\)"\)/);
+  assert.match(assessment, /\["declined", "cancelled", "abandoned"\]\.includes\(String\(enrolment\.status \?\? ""\)\)/);
+  assert.doesNotMatch(assessment, /\.not\("status", "in", "\(declined,cancelled,abandoned\)"\)/);
 });
 
 test("un token de portail révoqué ou expiré est refusé avant de charger les données", () => {
   assert.match(resources, /\["revoked", "expired"\]\.includes\(String\(access\.status \?\? ""\)\)/);
   assert.match(portal, /\["pending","viewed"\]\.includes\(String\(access\.status\?\?""\)\)/);
   assert.match(document, /!\["pending","viewed"\]\.includes\(String\(access\.status\?\?""\)\)/);
-  assert.match(assessment, /\["revoked", "expired"\]\.includes\(String\(access\.status \?\? ""\)\)/);
+  assert.match(assessment, /!\["pending", "viewed"\]\.includes\(String\(access\.status \?\? ""\)\)/);
   assert.match(satisfaction, /\["revoked", "expired"\]\.includes\(String\(access\.status \?\? ""\)\)/);
   assert.match(convention, /\["revoked", "expired"\]\.includes\(String\(access\.status \?\? ""\)\)/);
   assert.match(convocation, /\["revoked", "expired"\]\.includes\(String\(access\.status \?\? ""\)\)/);
