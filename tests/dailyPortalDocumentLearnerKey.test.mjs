@@ -13,11 +13,14 @@ test("document download loads the same learner entity key as resource listing", 
 
 test("learner entity key is authoritative even when another learner shares email", () => {
   assert.match(route, /dailyPortalLearnerIdentity/);
-  assert.match(route, /if\(access\.portal_type==="learner"\)\{const\{data:enrolments/);
+  assert.match(route, /if\(access\.portal_type==="learner"\)\{[\s\S]*?const\{data:enrolments,error\}/);
+  assert.match(route, /const matches=\(enrolments\?\?\[\]\)\.filter/);
 });
 
 test("legacy email fallback remains limited to tokens without an entity key", () => {
   assert.doesNotMatch(route, /normalizedEmail|relatedLearner/);
   assert.match(route, /matchesDailyLearnerPortalAccess\(access,row\)/);
-  assert.match(route, /\.not\("status","in","\(declined,cancelled,abandoned\)"\)/);
+  assert.match(route, /\.select\("id,learner_id,status,daily_learners/);
+  assert.doesNotMatch(route, /\.not\("status","in","\(declined,cancelled,abandoned\)"\)/);
+  assert.match(route, /if\(matches\.length!==1\)/);
 });
