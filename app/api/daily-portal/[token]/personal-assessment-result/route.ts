@@ -3,7 +3,7 @@ import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import { buildPersonalAssessmentResultHtml } from "@/lib/server/dailyPosttrainingDocumentHtml";
 import { assessmentOutcomeLabel, isFinalAssessmentResult } from "@/lib/server/dailyPersonalAssessment";
 import { isPostsessionDownloadAvailable, safePersonalDownloadName } from "@/lib/server/dailyPersonalAttendance";
-import { matchesDailyLearnerPortalAccess } from "@/lib/server/dailyPortalLearnerIdentity";
+import { findUniqueDailyLearnerPortalEnrolment, matchesDailyLearnerPortalAccess } from "@/lib/server/dailyPortalLearnerIdentity";
 
 type Params = { params: Promise<{ token: string }> };
 type Json = Record<string, unknown>;
@@ -28,7 +28,7 @@ export async function GET(request: Request, { params }: Params) {
     .maybeSingle();
   if (accessError) return NextResponse.json({ error: accessError.message }, { status: 500 });
   if (!access || access.portal_type !== "learner") return NextResponse.json({ error: "Document introuvable." }, { status: 404 });
-  if (["revoked", "expired"].includes(text(access.status))) return NextResponse.json({ error: "Cet accès n’est plus actif." }, { status: 403 });
+  if (!["pending", "viewed"].includes(text(access.status))) return NextResponse.json({ error: "Cet accès n’est plus actif." }, { status: 403 });
   if (isExpired(access.expires_at)) return NextResponse.json({ error: "Ce lien de portail a expiré." }, { status: 410 });
 
   const [{ data: session, error: sessionError }, { data: enrolment, error: enrolmentError }] = await Promise.all([
@@ -40,6 +40,17 @@ export async function GET(request: Request, { params }: Params) {
   if (!session || !enrolment || enrolment.organisation_id !== session.organisation_id) return NextResponse.json({ error: "Document introuvable." }, { status: 404 });
   const learner = one(enrolment.daily_learners);
   if (!matchesDailyLearnerPortalAccess(access, enrolment)) return NextResponse.json({ error: "Document introuvable." }, { status: 404 });
+  // Check every enrolment in this OF/session, including cancelled ones.
+  // A legacy email-only link must never authorize a different learner's private evidence.
+  const { data: sessionEnrolments, error: scopeError } = await admin
+    .from("daily_session_enrolments")
+    .select("id,learner_id,status,daily_learners(email)")
+    .eq("organisation_id", session.organisation_id)
+    .eq("session_id", session.id);
+  if (scopeError) return NextResponse.json({ error: scopeError.message }, { status: 500 });
+  if (findUniqueDailyLearnerPortalEnrolment(access, sessionEnrolments ?? [])?.id !== enrolment.id)
+    return NextResponse.json({ error: "Document introuvable." }, { status: 404 });
+
   if (!isPostsessionDownloadAvailable(session.end_date)) return NextResponse.json({ error: "Le résultat personnel sera disponible après la fin de la session." }, { status: 409 });
 
   const [{ data: assessment, error: assessmentError }, { data: organisation, error: organisationError }] = await Promise.all([
