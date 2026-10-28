@@ -9,7 +9,6 @@ import {resolveEnterprisePortalCompany,matchesEnterprisePortalRecipient} from "@
 type Params={params:Promise<{token:string}>};type JsonRecord=Record<string,unknown>;
 const learnerWorkspaceDocumentTypes=["training_program","convocation","registration_positioning","completion_certificate","organisation_shared"];
 const cleanToken=(v?:string|null)=>String(v??"").trim();const normalizedEmail=(v:unknown)=>String(v??"").trim().toLowerCase();
-function fullName(first?:unknown,last?:unknown){return[first,last].map(v=>String(v??"").trim()).filter(Boolean).join(" ")}
 function asArray(v:unknown):JsonRecord[]{return Array.isArray(v)?v.filter(x=>x&&typeof x==="object") as JsonRecord[]:[]}
 function portalRole(v:string){return v==="learner"?"apprenant":v==="enterprise"?"entreprise":"formateur"}
 function isExpired(v?:string|null){return Boolean(v&&new Date(v).getTime()<Date.now())}

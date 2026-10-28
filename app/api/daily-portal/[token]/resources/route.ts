@@ -120,7 +120,7 @@ export async function GET(_request: Request, { params }: Params) {
     const companyIdentity = resolveEnterprisePortalCompany(array(session.companies), email(access.entity_email));
     if (companyIdentity.status !== "ok") return NextResponse.json({ error: "Identité entreprise absente ou ambiguë." }, { status: companyIdentity.status === "ambiguous" ? 409 : 403 });
     const company = companyIdentity.company;
-    companyName = text(company.name);
+    companyName = text(company?.name);
     const participantEmails = new Set(array(company?.participants).map((item) => email(item.email)).filter(Boolean));
     if (participantEmails.size) {
       const { data: rows } = await admin.from("daily_session_enrolments").select("id,daily_learners(email)").eq("session_id", session.id).eq("organisation_id", session.organisation_id).not("status", "in", "(declined,cancelled,abandoned)");
