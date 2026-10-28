@@ -11,6 +11,7 @@ const networkForbidden = () => assert.fail('Network forbidden');
 const resourceVisibility = loadTypeScript('lib/server/dailyPortalResourceVisibility.ts');
 const personalAttendance = loadTypeScript('lib/server/dailyPersonalAttendance.ts');
 const learnerIdentity = loadTypeScript('lib/server/dailyPortalLearnerIdentity.ts');
+const enterpriseIdentity = await import('../lib/daily/enterprisePortalIdentity.mjs');
 function fixture(options = {}) {
   const access = { id: 'access', token: 'portal-secret', status: 'pending', portal_type: 'learner', session_id: 'session', user_id: 'owner', entity_key: 'learner:learner', entity_email: 'learner@example.test', ...options.access };
   const formation = options.absent ? null : { id: 'formation', organisation_id: 'org', status: 'validated', creation_mode: 'selen_form', public_registration_enabled: true, public_registration_token: publicToken, ...options.formation };
@@ -51,6 +52,7 @@ function fixture(options = {}) {
     '@/lib/server/dailyPortalResourceVisibility': resourceVisibility,
     '@/lib/server/dailyPersonalAttendance': personalAttendance,
     '@/lib/server/dailyPortalLearnerIdentity': learnerIdentity,
+    '@/lib/daily/enterprisePortalIdentity.mjs': enterpriseIdentity,
     '@/lib/daily/ownPositioning': {positioningSourceDocumentId:v=>typeof v==='string'&&v===`/api/client/daily/uploads?id=${sourceId}`?sourceId:null},
   }, {fetch:networkForbidden});
   return { calls, mutations, session, get:()=>GET(null,{params:Promise.resolve({token:'portal-secret'})}) };
