@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
+import { matchesDailyLearnerPortalAccess } from "@/lib/server/dailyPortalLearnerIdentity";
+import { resolveEnterprisePortalCompany } from "@/lib/daily/enterprisePortalIdentity.mjs";
 
 type Params = { params: Promise<{ token: string }> };
 
@@ -45,17 +47,30 @@ export async function GET(request: Request, { params }: Params) {
   if (!convocation?.storage_path) return NextResponse.json({ error: "Convocation introuvable." }, { status: 404 });
 
   const entityEmail = normalizedEmail(access.entity_email);
-  const entityName = String(access.entity_name ?? "").trim().toLowerCase();
+  if (access.portal_type === "learner") {
+    const { data: rows, error: enrolmentError } = await supabase.from("daily_session_enrolments")
+      .select("learner_id,daily_learners(email,first_name,last_name)")
+      .eq("session_id", access.session_id)
+      .not("status", "in", "(declined,cancelled,abandoned)");
+    if (enrolmentError) return NextResponse.json({ error: enrolmentError.message }, { status: 500 });
+    const matches = (rows ?? []).filter((row) => matchesDailyLearnerPortalAccess(access, row));
+    if (matches.length !== 1) return NextResponse.json({ error: "Accès apprenant absent ou ambigu." }, { status: matches.length ? 409 : 403 });
+  }
+  if (access.portal_type === "enterprise") {
+    const { data: session, error: sessionError } = await supabase.from("daily_sessions")
+      .select("companies").eq("id", access.session_id).neq("status", "archived").maybeSingle();
+    if (sessionError) return NextResponse.json({ error: sessionError.message }, { status: 500 });
+    const companyIdentity = resolveEnterprisePortalCompany(Array.isArray(session?.companies) ? session.companies : [], entityEmail);
+    if (companyIdentity.status !== "ok") return NextResponse.json({ error: "Identité entreprise absente ou ambiguë." }, { status: companyIdentity.status === "ambiguous" ? 409 : 403 });
+  }
   const allowed =
     (access.portal_type === "learner" &&
       convocation.recipient_type === "beneficiary" &&
-      ((entityEmail && normalizedEmail(convocation.recipient_email) === entityEmail) ||
-        (entityName && String(convocation.recipient_name ?? "").trim().toLowerCase() === entityName))) ||
+      Boolean(entityEmail && normalizedEmail(convocation.recipient_email) === entityEmail)) ||
     (access.portal_type === "enterprise" &&
       convocation.recipient_type === "company" &&
-      ((entityEmail && normalizedEmail(convocation.recipient_email) === entityEmail) ||
-        (entityName && String(convocation.company_name ?? "").trim().toLowerCase() === entityName))) ||
-    (access.portal_type === "trainer" && convocation.recipient_type === "trainer");
+      Boolean(entityEmail && normalizedEmail(convocation.recipient_email) === entityEmail)) ||
+    (access.portal_type === "trainer" && convocation.recipient_type === "trainer" && Boolean(entityEmail && normalizedEmail(convocation.recipient_email) === entityEmail));
   if (!allowed) return NextResponse.json({ error: "Document non disponible pour ce portail." }, { status: 403 });
 
   const { data, error: signedUrlError } = await supabase.storage
