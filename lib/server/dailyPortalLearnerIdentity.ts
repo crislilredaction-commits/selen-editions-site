@@ -51,3 +51,18 @@ export function findUniqueDailyLearnerPortalEnrolment<T extends EnrolmentIdentit
   const matches = enrolments.filter((enrolment) => matchesDailyLearnerPortalAccess(access, enrolment));
   return matches.length === 1 ? matches[0] : null;
 }
+
+// Legacy convention, convocation and registration-response rows identify recipients
+// only by email. Even a canonical learner token cannot distinguish such rows when
+// another enrolment in the same session (including a cancelled one) shares that email.
+export function hasUniqueDailyLearnerRecipientEmail(
+  access: PortalAccessIdentity,
+  enrolments: EnrolmentIdentity[],
+): boolean {
+  const entityEmail = email(access.entity_email);
+  if (!entityEmail) return false;
+  const recipients = enrolments.filter((row) =>
+    email(relatedLearner(row.daily_learners)?.email) === entityEmail,
+  );
+  return recipients.length === 1 && matchesDailyLearnerPortalAccess(access, recipients[0]);
+}

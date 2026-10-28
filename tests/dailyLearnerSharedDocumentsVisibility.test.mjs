@@ -37,7 +37,7 @@ test("un document organisme est visible par un apprenant", () => {
 });
 
 test("une diffusion ciblée vérifie le learner_id de l'apprenant courant", () => {
-  assert.match(resources, /select\("id,learner_id,daily_learners\(email\)"\)/);
+  assert.match(resources, /select\("id,learner_id,status,daily_learners\(email\)"\)/);
   assert.match(resources, /allowedLearnerIds = matchingRows\.map/);
   assert.match(resourceRules, /scope === "learners" && role === "learner"/);
   assert.match(resourceRules, /metadata\.learner_ids\.map\(String\)\.some/);
@@ -45,8 +45,8 @@ test("une diffusion ciblée vérifie le learner_id de l'apprenant courant", () =
 });
 
 test("les inscriptions apprenant refusées, annulées ou abandonnées ne donnent pas accès", () => {
-  assert.match(resources, /\.not\("status", "in", "\(declined,cancelled,abandoned\)"\)/);
-  assert.match(portal, /\.not\("status","in","\(declined,cancelled,abandoned\)"\)/);
+  assert.match(resources, /!\["declined", "cancelled", "abandoned"\]\.includes\(text\(row\.status\)\)/);
+  assert.match(portal, /activeEnrolments=\(enrolmentsR\.data\?\?\[\]\)\.filter\(row=>!\["declined","cancelled","abandoned"\]\.includes\(String\(row\.status\?\?""\)\)\)/);
   assert.match(document, /\.not\("status","in","\(declined,cancelled,abandoned\)"\)/);
   assert.match(assessment, /\.not\("status", "in", "\(declined,cancelled,abandoned\)"\)/);
 });

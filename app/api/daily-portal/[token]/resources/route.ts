@@ -3,7 +3,7 @@ import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import {DAILY_PORTAL_RESOURCE_STATUSES,DAILY_PORTAL_RESOURCE_TYPES,isDailyPortalResourceVisible} from "@/lib/server/dailyPortalResourceVisibility";
 import {attendanceIsSettled,isPostsessionDownloadAvailable,personalAttendanceDocumentId} from "@/lib/server/dailyPersonalAttendance";
 import {isFinalAssessmentResult,personalAssessmentEvidenceDocumentId,personalAssessmentResultDocumentId} from "@/lib/server/dailyPersonalAssessment";
-import {matchesDailyLearnerPortalAccess} from "@/lib/server/dailyPortalLearnerIdentity";
+import {matchesDailyLearnerPortalAccess,hasUniqueDailyLearnerRecipientEmail} from "@/lib/server/dailyPortalLearnerIdentity";
 import {resolveEnterprisePortalCompany} from "@/lib/daily/enterprisePortalIdentity.mjs";
 
 type Params = { params: Promise<{ token: string }> };
@@ -108,11 +108,13 @@ export async function GET(_request: Request, { params }: Params) {
   let allowedEnrolmentIds: string[] = [];
   let allowedLearnerIds: string[] = [];
   let matchingRows: Json[] = [];
+  let learnerEmailRecipientUnique = false;
   let companyName = "";
   if (access.portal_type === "learner") {
-    const { data: rows, error: enrolmentError } = await admin.from("daily_session_enrolments").select("id,learner_id,daily_learners(email)").eq("session_id", session.id).eq("organisation_id", session.organisation_id).not("status", "in", "(declined,cancelled,abandoned)");
+    const { data: rows, error: enrolmentError } = await admin.from("daily_session_enrolments").select("id,learner_id,status,daily_learners(email)").eq("session_id", session.id).eq("organisation_id", session.organisation_id);
     if (enrolmentError) return NextResponse.json({ error: enrolmentError.message }, { status: 500 });
-    matchingRows = (rows ?? []).filter((row: Json) => matchesDailyLearnerPortalAccess(access, row));
+    learnerEmailRecipientUnique = hasUniqueDailyLearnerRecipientEmail(access, rows ?? []);
+    matchingRows = (rows ?? []).filter((row: Json) => !["declined", "cancelled", "abandoned"].includes(text(row.status)) && matchesDailyLearnerPortalAccess(access, row));
     if (matchingRows.length !== 1) return NextResponse.json({ error: "Accès apprenant absent ou ambigu." }, { status: matchingRows.length ? 409 : 403 });
     allowedEnrolmentIds = matchingRows.map((row: Json) => text(row.id)).filter(Boolean);
     allowedLearnerIds = matchingRows.map((row: Json) => text(row.learner_id)).filter(Boolean);
@@ -197,7 +199,7 @@ export async function GET(_request: Request, { params }: Params) {
 
   let pretrainingResources: Json[] = [];
   try {
-    pretrainingResources = await loadLearnerPretrainingResources(admin, session.id, access as Json);
+    pretrainingResources = learnerEmailRecipientUnique ? await loadLearnerPretrainingResources(admin, session.id, access as Json) : [];
   } catch (cause) {
     return NextResponse.json({ error: cause instanceof Error ? cause.message : "Documents avant formation indisponibles." }, { status: 500 });
   }

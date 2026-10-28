@@ -43,7 +43,8 @@ test("public portal response exposes only the session fields required by the sta
 test("enterprise participants come from active canonical enrolments for the selected company", () => {
   assert.match(portalRoute, /id,learner_id,company_name,status,positioning_status/);
   assert.match(portalRoute, /const companyName=String\(company\?\.name\?\?""\)\.trim\(\)\.toLowerCase\(\)/);
-  assert.match(portalRoute, /const enterpriseParticipants=access\.portal_type==="enterprise"\?\(enrolmentsR\.data\?\?\[\]\)\.filter/);
+  assert.match(portalRoute, /const enterpriseParticipants=access\.portal_type==="enterprise"\?activeEnrolments\.filter/);
+  assert.match(portalRoute, /activeEnrolments=\(enrolmentsR\.data\?\?\[\]\)\.filter\(row=>!\["declined","cancelled","abandoned"\]/);
   assert.match(portalRoute, /String\(row\.company_name\?\?""\)\.trim\(\)\.toLowerCase\(\)===companyName/);
   assert.match(portalRoute, /participants:access\.portal_type==="enterprise"\?enterpriseParticipants/);
   assert.doesNotMatch(portalRoute, /participants:access\.portal_type==="enterprise"\?asArray\(company\?\.participants\)/);
