@@ -53,7 +53,7 @@ test("les inscriptions apprenant refusées, annulées ou abandonnées ne donnent
 
 test("un token de portail révoqué ou expiré est refusé avant de charger les données", () => {
   assert.match(resources, /\["revoked", "expired"\]\.includes\(String\(access\.status \?\? ""\)\)/);
-  assert.match(portal, /\["revoked","expired"\]\.includes\(String\(access\.status\?\?""\)\)/);
+  assert.match(portal, /\["pending","viewed"\]\.includes\(String\(access\.status\?\?""\)\)/);
   assert.match(document, /\["revoked","expired"\]\.includes\(String\(access\.status\?\?""\)\)/);
   assert.match(assessment, /\["revoked", "expired"\]\.includes\(String\(access\.status \?\? ""\)\)/);
   assert.match(satisfaction, /\["revoked", "expired"\]\.includes\(String\(access\.status \?\? ""\)\)/);
