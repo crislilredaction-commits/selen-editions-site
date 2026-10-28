@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import { isPostsessionDownloadAvailable } from "@/lib/server/dailyPersonalAttendance";
 import { isFinalAssessmentResult } from "@/lib/server/dailyPersonalAssessment";
-import { matchesDailyLearnerPortalAccess } from "@/lib/server/dailyPortalLearnerIdentity";
+import { findUniqueDailyLearnerPortalEnrolment, matchesDailyLearnerPortalAccess } from "@/lib/server/dailyPortalLearnerIdentity";
 
 type Params = { params: Promise<{ token: string }> };
 const text = (value: unknown) => String(value ?? "").trim();
@@ -17,7 +17,7 @@ export async function GET(request: Request, { params }: Params) {
   const { data: access, error: accessError } = await admin.from("daily_portal_access_tokens").select("session_id,portal_type,entity_key,entity_name,entity_email,status,expires_at").eq("token", cleanToken).maybeSingle();
   if (accessError) return NextResponse.json({ error: accessError.message }, { status: 500 });
   if (!access || access.portal_type !== "learner") return NextResponse.json({ error: "Document introuvable." }, { status: 404 });
-  if (["revoked", "expired"].includes(text(access.status))) return NextResponse.json({ error: "Cet accès n’est plus actif." }, { status: 403 });
+  if (!["pending", "viewed"].includes(text(access.status))) return NextResponse.json({ error: "Cet accès n’est plus actif." }, { status: 403 });
   if (access.expires_at && new Date(access.expires_at).getTime() < Date.now()) return NextResponse.json({ error: "Ce lien a expiré." }, { status: 410 });
 
   const { data: session, error: sessionError } = await admin.from("daily_sessions").select("id,organisation_id,end_date").eq("id", access.session_id).neq("status", "archived").maybeSingle();
@@ -32,6 +32,17 @@ export async function GET(request: Request, { params }: Params) {
   if (enrolmentError) return NextResponse.json({ error: enrolmentError.message }, { status: 500 });
   if (!enrolment || text(enrolment.learner_id) !== text(evidence.learner_id) || enrolment.organisation_id !== session.organisation_id) return NextResponse.json({ error: "Document introuvable." }, { status: 404 });
   if (!matchesDailyLearnerPortalAccess(access, enrolment)) return NextResponse.json({ error: "Document introuvable." }, { status: 404 });
+  // Check every enrolment in this OF/session, including cancelled ones.
+  // A legacy email-only link must never authorize a different learner's private evidence.
+  const { data: sessionEnrolments, error: scopeError } = await admin
+    .from("daily_session_enrolments")
+    .select("id,learner_id,status,daily_learners(email)")
+    .eq("organisation_id", session.organisation_id)
+    .eq("session_id", session.id);
+  if (scopeError) return NextResponse.json({ error: scopeError.message }, { status: 500 });
+  if (findUniqueDailyLearnerPortalEnrolment(access, sessionEnrolments ?? [])?.id !== enrolment.id)
+    return NextResponse.json({ error: "Document introuvable." }, { status: 404 });
+
 
   const { data: assessment, error: assessmentError } = await admin.from("daily_learning_assessments").select("outcome,assessed_at").eq("organisation_id", session.organisation_id).eq("session_id", session.id).eq("enrolment_id", enrolment.id).maybeSingle();
   if (assessmentError) return NextResponse.json({ error: assessmentError.message }, { status: 500 });
