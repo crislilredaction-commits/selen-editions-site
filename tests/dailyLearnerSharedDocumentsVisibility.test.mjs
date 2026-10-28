@@ -47,14 +47,16 @@ test("une diffusion ciblée vérifie le learner_id de l'apprenant courant", () =
 test("les inscriptions apprenant refusées, annulées ou abandonnées ne donnent pas accès", () => {
   assert.match(resources, /!\["declined", "cancelled", "abandoned"\]\.includes\(text\(row\.status\)\)/);
   assert.match(portal, /activeEnrolments=\(enrolmentsR\.data\?\?\[\]\)\.filter\(row=>!\["declined","cancelled","abandoned"\]\.includes\(String\(row\.status\?\?""\)\)\)/);
-  assert.match(document, /\.not\("status","in","\(declined,cancelled,abandoned\)"\)/);
+  assert.match(document, /\.select\("id,learner_id,status,daily_learners/);
+  assert.match(document, /\["declined","cancelled","abandoned"\]\.includes\(String\(enrolment\.status\?\?""\)\)/);
+  assert.doesNotMatch(document, /\.not\("status","in","\(declined,cancelled,abandoned\)"\)/);
   assert.match(assessment, /\.not\("status", "in", "\(declined,cancelled,abandoned\)"\)/);
 });
 
 test("un token de portail révoqué ou expiré est refusé avant de charger les données", () => {
   assert.match(resources, /\["revoked", "expired"\]\.includes\(String\(access\.status \?\? ""\)\)/);
   assert.match(portal, /\["pending","viewed"\]\.includes\(String\(access\.status\?\?""\)\)/);
-  assert.match(document, /\["revoked","expired"\]\.includes\(String\(access\.status\?\?""\)\)/);
+  assert.match(document, /!\["pending","viewed"\]\.includes\(String\(access\.status\?\?""\)\)/);
   assert.match(assessment, /\["revoked", "expired"\]\.includes\(String\(access\.status \?\? ""\)\)/);
   assert.match(satisfaction, /\["revoked", "expired"\]\.includes\(String\(access\.status \?\? ""\)\)/);
   assert.match(convention, /\["revoked", "expired"\]\.includes\(String\(access\.status \?\? ""\)\)/);

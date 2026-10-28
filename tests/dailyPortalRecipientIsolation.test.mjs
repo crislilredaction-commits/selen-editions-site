@@ -19,7 +19,8 @@ test("display names never authorize private learner documents", () => {
 test("cancelled or ambiguous learner access cannot expose resources", () => {
  assert.match(portal,/learnerMatches\.length>1/);
  assert.match(resources,/matchingRows\.length !== 1/);
- assert.match(document,/enrolmentIds\.length!==1/);
+ assert.match(document,/matches\.length!==1/);
+ assert.match(document,/\["declined","cancelled","abandoned"\]\.includes\(String\(enrolment\.status\?\?""\)\)/);
  for(const route of [convention,convocation]) { assert.match(route,/\["declined", "cancelled", "abandoned"\]\.includes/); assert.match(route,/hasUniqueDailyLearnerRecipientEmail/); }
 });
 test("enterprise identity is unique and email-bound across listing and downloads", () => {
