@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
+import { findUniqueDailyLearnerPortalEnrolment } from "@/lib/server/dailyPortalLearnerIdentity";
 
 type Params = { params: Promise<{ token: string }> };
 type JsonRecord = Record<string, unknown>;
@@ -19,11 +20,24 @@ function isExpired(expiresAt?: string | null) {
   return Boolean(expiresAt && new Date(expiresAt).getTime() < Date.now());
 }
 
+function portalAccessError(access: JsonRecord) {
+  if (!["learner", "trainer", "enterprise"].includes(String(access.portal_type ?? ""))) {
+    return { error: "Rôle de portail non autorisé.", status: 403 };
+  }
+  if (access.status === "expired" || isExpired(access.expires_at as string | null)) {
+    return { error: "Ce lien de portail a expiré.", status: 410 };
+  }
+  if (!["pending", "viewed"].includes(String(access.status ?? ""))) {
+    return { error: "Cet accès n’est plus actif.", status: 403 };
+  }
+  return null;
+}
+
 async function loadAccess(rawToken: string) {
   const admin = getAdminSupabase();
   const { data: access, error } = await admin
     .from("daily_portal_access_tokens")
-    .select("id,user_id,session_id,portal_type,entity_name,entity_email,status,expires_at")
+    .select("id,user_id,session_id,portal_type,entity_key,entity_name,entity_email,status,expires_at")
     .eq("token", rawToken)
     .maybeSingle();
 
@@ -32,11 +46,11 @@ async function loadAccess(rawToken: string) {
 
   const { data: session, error: sessionError } = await admin
     .from("daily_sessions")
-    .select("organisation_id")
+    .select("organisation_id,status")
     .eq("id", access.session_id)
     .maybeSingle();
   if (sessionError) throw new Error(sessionError.message);
-  if (!session?.organisation_id) throw new Error("Organisation de la session introuvable.");
+  if (!session?.organisation_id || session.status === "archived") throw new Error("Session active introuvable.");
 
   return { admin, access: { ...access, organisation_id: session.organisation_id } };
 }
@@ -45,23 +59,25 @@ async function learnerEnrolmentId(
   admin: ReturnType<typeof getAdminSupabase>,
   access: JsonRecord,
 ) {
-  if (access.portal_type !== "learner") return null;
-  const email = clean(access.entity_email, 320).toLowerCase();
-  if (!email) return null;
+  if (access.portal_type !== "learner") return { id: null };
 
+  // Resolve against ALL enrolments, including cancelled ones, before checking activity.
+  // A legacy email-only link must never switch to another learner after withdrawal.
   const { data, error } = await admin
     .from("daily_session_enrolments")
-    .select("id,daily_learners(email)")
+    .select("id,learner_id,status,daily_learners(id,email)")
     .eq("organisation_id", access.organisation_id)
-    .eq("session_id", access.session_id)
-    .not("status", "in", "(declined,cancelled)");
+    .eq("session_id", access.session_id);
   if (error) throw new Error(error.message);
 
-  const row = (data ?? []).find((item) => {
-    const learner = Array.isArray(item.daily_learners) ? item.daily_learners[0] : item.daily_learners;
-    return clean(learner?.email, 320).toLowerCase() === email;
-  });
-  return row?.id ?? null;
+  const enrolment = findUniqueDailyLearnerPortalEnrolment(access, data ?? []);
+  if (!enrolment) {
+    return { error: "Identité apprenant introuvable ou ambiguë.", status: 409 };
+  }
+  if (["declined", "cancelled", "abandoned"].includes(String(enrolment.status ?? ""))) {
+    return { error: "Cette inscription n’est plus active.", status: 403 };
+  }
+  return { id: enrolment.id };
 }
 
 export async function GET(_request: Request, { params }: Params) {
@@ -72,10 +88,11 @@ export async function GET(_request: Request, { params }: Params) {
   try {
     const loaded = await loadAccess(rawToken);
     if (!loaded) return NextResponse.json({ error: "Portail introuvable." }, { status: 404 });
-    const { access } = loaded;
-    if (isExpired(access.expires_at) || access.status === "expired") {
-      return NextResponse.json({ error: "Ce lien de portail a expiré." }, { status: 410 });
-    }
+    const { admin, access } = loaded;
+    const accessProblem = portalAccessError(access);
+    if (accessProblem) return NextResponse.json({ error: accessProblem.error }, { status: accessProblem.status });
+    const identity = await learnerEnrolmentId(admin, access as JsonRecord);
+    if ("error" in identity) return NextResponse.json({ error: identity.error }, { status: identity.status });
 
     return NextResponse.json({
       stakeholderType: stakeholderType(access.portal_type),
@@ -107,17 +124,16 @@ export async function POST(request: Request, { params }: Params) {
     const loaded = await loadAccess(rawToken);
     if (!loaded) return NextResponse.json({ error: "Portail introuvable." }, { status: 404 });
     const { admin, access } = loaded;
-    if (isExpired(access.expires_at) || access.status === "expired") {
-      return NextResponse.json({ error: "Ce lien de portail a expiré." }, { status: 410 });
-    }
-
-    const enrolmentId = await learnerEnrolmentId(admin, access as JsonRecord);
+    const accessProblem = portalAccessError(access);
+    if (accessProblem) return NextResponse.json({ error: accessProblem.error }, { status: accessProblem.status });
+    const identity = await learnerEnrolmentId(admin, access as JsonRecord);
+    if ("error" in identity) return NextResponse.json({ error: identity.error }, { status: identity.status });
     const { data, error } = await admin
       .from("daily_stakeholder_feedback")
       .insert({
         organisation_id: access.organisation_id,
         session_id: access.session_id,
-        enrolment_id: enrolmentId,
+        enrolment_id: identity.id,
         submission_type: submissionType,
         stakeholder_type: stakeholderType(access.portal_type),
         submitter_name: clean(access.entity_name, 200) || "Partie prenante Daily",
