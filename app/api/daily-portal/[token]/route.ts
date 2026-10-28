@@ -33,9 +33,11 @@ export async function GET(_request:Request,{params}:Params){
  ]);if(sessionR.error)return NextResponse.json({error:sessionR.error.message},{status:500});if(enrolmentsR.error)return NextResponse.json({error:enrolmentsR.error.message},{status:500});const session=sessionR.data;if(!session)return NextResponse.json({error:"Session introuvable."},{status:404});
  const entityEmail=normalizedEmail(access.entity_email),entityName=String(access.entity_name??"").trim().toLowerCase();
  const activeEnrolments=(enrolmentsR.data??[]).filter(row=>!["declined","cancelled","abandoned"].includes(String(row.status??"")));
-  const learnerMatches=access.portal_type==="learner"?activeEnrolments.filter(row=>matchesDailyLearnerPortalAccess(access,row)):[];
+  // Resolve identity against ALL session enrolments before filtering inactive rows.
+  // A cancelled learner sharing an email must not transfer a legacy link.
+  const learnerMatches=access.portal_type==="learner"?(enrolmentsR.data??[]).filter(row=>matchesDailyLearnerPortalAccess(access,row)):[];
   const learnerEmailRecipientUnique=access.portal_type==="learner"&&hasUniqueDailyLearnerRecipientEmail(access,enrolmentsR.data??[]);
- const activeLearnerEnrolment=learnerMatches.length===1?learnerMatches[0]:null;
+ const activeLearnerEnrolment=learnerMatches.length===1&&!["declined","cancelled","abandoned"].includes(String(learnerMatches[0].status??""))?learnerMatches[0]:null;
  if(access.portal_type==="learner"&&!activeLearnerEnrolment){if(learnerMatches.length>1)return NextResponse.json({error:"Identité apprenant ambiguë. Contactez votre organisme de formation."},{status:409});await supabase.from("daily_portal_access_tokens").update({status:"revoked",updated_at:new Date().toISOString()}).eq("id",access.id);return NextResponse.json({error:"Cette inscription n’est plus active."},{status:403})}
  if(access.status==="pending")await supabase.from("daily_portal_access_tokens").update({status:"viewed",viewed_at:new Date().toISOString()}).eq("id",access.id);
  let learnerDocuments:JsonRecord[]=[];try{learnerDocuments=await loadLearnerDocuments(supabase,session as JsonRecord,activeLearnerEnrolment as JsonRecord|null) as JsonRecord[]}catch(cause){return NextResponse.json({error:cause instanceof Error?cause.message:"Documents indisponibles."},{status:500})}
