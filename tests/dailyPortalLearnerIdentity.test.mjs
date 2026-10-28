@@ -38,3 +38,29 @@ test("legacy access cannot use a matching display name as a private identity", (
 test("an incomplete identity never matches an enrolment", () => {
   assert.equal(matchesDailyLearnerPortalAccess({}, enrolment("learner")), false);
 });
+
+test("unique learner resolution prefers canonical keys when learners share an email", () => {
+  const { findUniqueDailyLearnerPortalEnrolment } = loadTypeScript(
+    "lib/server/dailyPortalLearnerIdentity.ts",
+  );
+  const rows = [enrolment("first"), enrolment("second")];
+  assert.equal(
+    findUniqueDailyLearnerPortalEnrolment({ entity_key: "learner:second", entity_email: "shared@example.test" }, rows),
+    rows[1],
+  );
+  assert.equal(
+    findUniqueDailyLearnerPortalEnrolment({ entity_email: "shared@example.test" }, rows),
+    null,
+  );
+});
+
+test("learner resolution rejects absent, incomplete or ambiguous identities", () => {
+  const { findUniqueDailyLearnerPortalEnrolment } = loadTypeScript(
+    "lib/server/dailyPortalLearnerIdentity.ts",
+  );
+  const rows = [enrolment("first", ""), enrolment("second", "other@example.test")];
+  assert.equal(findUniqueDailyLearnerPortalEnrolment({ entity_email: "" }, rows), null);
+  assert.equal(findUniqueDailyLearnerPortalEnrolment({ entity_name: "Someone" }, rows), null);
+  assert.equal(findUniqueDailyLearnerPortalEnrolment({ entity_key: "learner:missing" }, rows), null);
+  assert.equal(findUniqueDailyLearnerPortalEnrolment({ entity_email: "other@example.test" }, rows), rows[1]);
+});
