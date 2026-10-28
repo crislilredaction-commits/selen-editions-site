@@ -62,10 +62,10 @@ test("attendance legacy email token remains ambiguous after a cancellation", () 
   assert.equal(findUniqueDailyLearnerPortalEnrolment({ entity_email: "shared@example.test" }, rows), null);
   assert.equal(findUniqueDailyLearnerPortalEnrolment({ entity_key: "learner:active", entity_email: "shared@example.test" }, rows), rows[1]);
   assert.equal(findUniqueDailyLearnerPortalEnrolment({ entity_key: "learner:cancelled", entity_email: "shared@example.test" }, rows), rows[0]);
-  assert.match(route, /INACTIVE\\.has\\(text\\(learnerEnrolment\\.status\\)\\)/);
+  assert.match(route, /INACTIVE\.has\(text\(learnerEnrolment\.status\)\)/);
 });
 
 test("attendance rejects unknown portal token states, preserving pending and viewed", () => {
-  assert.match(route, /!\\["pending","viewed"\\]\\.includes\\(text\\(access\\.status\\)\\)/);
-  assert.doesNotMatch(route, /\\["revoked","expired"\\]\\.includes\\(text\\(access\\.status\\)\\)/);
+  assert.match(route, /!\["pending","viewed"\]\.includes\(text\(access\.status\)\)/);
+  assert.doesNotMatch(route, /\["revoked","expired"\]\.includes\(text\(access\.status\)\)/);
 });
