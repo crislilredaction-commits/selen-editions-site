@@ -97,7 +97,7 @@ export async function GET(_request: Request, { params }: Params) {
   const { data: access, error: accessError } = await admin.from("daily_portal_access_tokens").select("*").eq("token", text(token)).maybeSingle();
   if (accessError) return NextResponse.json({ error: accessError.message }, { status: 500 });
   if (!access) return NextResponse.json({ error: "Portail introuvable." }, { status: 404 });
-  if (["revoked", "expired"].includes(String(access.status ?? ""))) return NextResponse.json({ error: "Cet accès n’est plus actif." }, { status: 403 });
+  if (!["pending", "viewed"].includes(String(access.status ?? ""))) return NextResponse.json({ error: "Cet accès n’est plus actif." }, { status: 403 });
   if (access.expires_at && new Date(access.expires_at).getTime() < Date.now()) return NextResponse.json({ error: "Ce lien a expiré." }, { status: 410 });
 
   const { data: session, error: sessionError } = await admin.from("daily_sessions").select("id,organisation_id,companies,end_date").eq("id", access.session_id).neq("status", "archived").maybeSingle();
@@ -114,8 +114,11 @@ export async function GET(_request: Request, { params }: Params) {
     const { data: rows, error: enrolmentError } = await admin.from("daily_session_enrolments").select("id,learner_id,status,daily_learners(email)").eq("session_id", session.id).eq("organisation_id", session.organisation_id);
     if (enrolmentError) return NextResponse.json({ error: enrolmentError.message }, { status: 500 });
     learnerEmailRecipientUnique = hasUniqueDailyLearnerRecipientEmail(access, rows ?? []);
-    matchingRows = (rows ?? []).filter((row: Json) => !["declined", "cancelled", "abandoned"].includes(text(row.status)) && matchesDailyLearnerPortalAccess(access, row));
-    if (matchingRows.length !== 1) return NextResponse.json({ error: "Accès apprenant absent ou ambigu." }, { status: matchingRows.length ? 409 : 403 });
+    // Resolve on every enrolment, including cancelled rows, before allowing access.
+    const identityMatches = (rows ?? []).filter((row: Json) => matchesDailyLearnerPortalAccess(access, row));
+    if (identityMatches.length !== 1) return NextResponse.json({ error: "Accès apprenant absent ou ambigu." }, { status: identityMatches.length ? 409 : 403 });
+    matchingRows = identityMatches.filter((row: Json) => !["declined", "cancelled", "abandoned"].includes(text(row.status)));
+    if (matchingRows.length !== 1) return NextResponse.json({ error: "Cette inscription n’est plus active." }, { status: 403 });
     allowedEnrolmentIds = matchingRows.map((row: Json) => text(row.id)).filter(Boolean);
     allowedLearnerIds = matchingRows.map((row: Json) => text(row.learner_id)).filter(Boolean);
   } else if (access.portal_type === "enterprise") {
