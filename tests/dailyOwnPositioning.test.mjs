@@ -90,3 +90,32 @@ test('simultaneous exact retries create one candidature, one durable proof and o
 test('a private upload interrupted after file persistence resumes the same bytes',async()=>{const options={failRequestWrite:true};const h=harness(options);assert.equal((await h.post()).status,500);options.failRequestWrite=false;assert.equal((await h.post()).status,200);assert.equal(h.uploads.length,1);assert.equal(h.db.daily_documents.length,2);assert.equal(h.sends.length,1);});
 test('retry cannot reuse a pending proof relinked to another candidature',async()=>{const options={failRequestWrite:true};const h=harness(options);await h.post();h.db.daily_documents[1].linked_object_id=uuid(99);options.failRequestWrite=false;assert.equal((await h.post()).status,409);assert.equal(h.db.daily_formation_registration_requests.length,0);assert.equal(h.sends.length,0);});
 test('a retained historical filled copy is readable only by its bound learner',async()=>{const h=harness();const proof={id:uuid(99),organisation_id:ids.org,formation_id:ids.formation,session_id:ids.session,learner_id:ids.learner,enrolment_id:ids.enrolment,linked_object_type:'enrolment',linked_object_id:ids.enrolment,document_type:'positioning_evidence',bucket:'documents',storage_path:`daily/${ids.org}/historical.pdf`,is_current:false,status:'signed',metadata:{source_document_id:uuid(88),original_filename:'Historique.pdf'}};h.db.daily_documents.push(proof);h.storage.set(proof.storage_path,filled);assert.equal((await h.load(learnerRoute).GET(new Request(`https://site.test?id=${proof.id}`),h.params('learner-token'))).status,200);h.setUser({email:'bob@example.test'});assert.equal((await h.load(learnerRoute).GET(new Request(`https://site.test?id=${proof.id}`),h.params('learner-token'))).status,403);});
+
+for (const unsafeSuffix of ["../foreign.pdf", "./source.pdf", "/source.pdf", "folder\\\\source.pdf"]) {
+  test(`private original positioning rejects unsafe Storage segment ${JSON.stringify(unsafeSuffix)} before download`, async () => {
+    const h = harness();
+    h.original.storage_path = `daily/${ids.org}/${unsafeSuffix}`;
+    const response = await h.load(route).GET(new Request("https://site.test"), h.params("candidate-token"));
+    assert.equal(response.status, 409);
+    assert.deepEqual(h.downloads, []);
+    assert.deepEqual(h.writes, []);
+  });
+}
+test("learner filled positioning rejects an unsafe private path without downloading another object", async () => {
+  const h = harness();
+  const form = new FormData();
+  form.set("positioning_source_id", ids.source);
+  form.set("submission_id", ids.submission);
+  form.set("positioning_file_0", new File([filled], "Alice.pdf", { type: "application/pdf" }));
+  const submit = await h.load("app/api/daily-portal/[token]/positioning/route.ts").POST(
+    new Request("https://site.test", { method: "POST", body: form }), h.params("learner-token")
+  );
+  assert.equal(submit.status, 200);
+  const proof = h.db.daily_documents[1];
+  proof.storage_path = `daily/${ids.org}/../foreign.pdf`;
+  const response = await h.load(learnerRoute).GET(
+    new Request(`https://site.test?id=${proof.id}`), h.params("learner-token")
+  );
+  assert.equal(response.status, 404);
+  assert.deepEqual(h.downloads, []);
+});
