@@ -18,10 +18,11 @@ test("imported source must be a current scoped program source", () => {
   assert.match(route, /\.eq\("organisation_id", session\.organisation_id\)/);
   assert.match(route, /\.eq\("document_type", "training_program_source"\)/);
   assert.match(route, /!source\.is_current/);
+  assert.match(route, /personalSignatureStorageObjectPath\(source\?\.storage_path, session\.organisation_id\)/);
   assert.match(route, /source\.formation_id && source\.formation_id !== formation\.id/);
   assert.match(route, /source\.bucket !== "documents"/);
 });
 test("imported source uses a short-lived private signed download", () => {
-  assert.match(route, /createSignedUrl\(source\.storage_path, 120, \{ download: true \}\)/);
+  assert.match(route, /createSignedUrl\(storagePath, 120, \{ download: true \}\)/);
   assert.match(route, /"Cache-Control": "private, no-store"/);
 });

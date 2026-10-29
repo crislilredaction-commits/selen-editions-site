@@ -4,7 +4,7 @@ import { loadTypeScript } from "./helpers/loadTypeScript.mjs";
 
 const learnerIdentity = loadTypeScript("lib/server/dailyPortalLearnerIdentity.ts");
 
-function setup({ role="learner", status="active", enrolmentStatus="active", formationStatus="validated", creationMode="selen_form", expiresAt=null }={}) {
+function setup({ role="learner", status="pending", enrolmentStatus="active", formationStatus="validated", creationMode="selen_form", expiresAt=null }={}) {
  const access={token:"portal-secret",session_id:"session",portal_type:role,entity_key:"learner:learner",entity_email:"learner@example.test",status,expires_at:expiresAt};
  const session={id:"session",organisation_id:"org",formation_id:"formation",user_id:"owner",status:"ready"};
  const enrolment={learner_id:"learner",session_id:"session",organisation_id:"org",status:enrolmentStatus,daily_learners:{email:"learner@example.test"}};
