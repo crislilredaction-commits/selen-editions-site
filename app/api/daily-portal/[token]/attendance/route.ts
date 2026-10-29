@@ -2,20 +2,20 @@ import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import { dailyAttendanceSummary } from "@/lib/dailyAttendanceState";
 import { findUniqueDailyLearnerPortalEnrolment } from "@/lib/server/dailyPortalLearnerIdentity";
+import { isActivePortalAttendanceToken } from "@/lib/daily/portalAttendanceAccess.mjs";
 
 type Params={params:Promise<{token:string}>};
 type Json=Record<string,unknown>;
 const INACTIVE=new Set(["declined","cancelled","abandoned"]);
 const text=(v:unknown)=>String(v??"").trim();
 const one=<T,>(v:T|T[]|null|undefined):T|null=>Array.isArray(v)?v[0]??null:v??null;
-function expired(v:unknown){const value=text(v);return Boolean(value&&new Date(value).getTime()<Date.now())}
 function slotPhase(slot:{slot_date:string;starts_at:string;ends_at:string}){const now=new Date();const date=new Intl.DateTimeFormat("en-CA",{timeZone:"Europe/Paris",year:"numeric",month:"2-digit",day:"2-digit"}).format(now);if(slot.slot_date>date)return"upcoming";if(slot.slot_date<date)return"closed";const parts=new Intl.DateTimeFormat("en-GB",{timeZone:"Europe/Paris",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).format(now).split(":").map(Number),minutes=parts[0]*60+parts[1];const toMinutes=(v:string)=>{const[h,m]=v.slice(0,5).split(":").map(Number);return h*60+m};if(minutes<toMinutes(slot.starts_at))return"upcoming";if(minutes<=toMinutes(slot.ends_at))return"open";return"closed"}
 
 export async function GET(_request:Request,{params}:Params){
  const{token}=await params;const clean=text(token);if(!clean)return NextResponse.json({error:"Lien invalide."},{status:400});
  const admin=getAdminSupabase();
  const{data:access,error:accessError}=await admin.from("daily_portal_access_tokens").select("id,session_id,portal_type,entity_key,entity_email,status,expires_at").eq("token",clean).maybeSingle();
- if(accessError)return NextResponse.json({error:accessError.message},{status:500});if(!access)return NextResponse.json({error:"Portail introuvable."},{status:404});if(!["pending","viewed"].includes(text(access.status))||expired(access.expires_at))return NextResponse.json({error:"Cet accès n’est plus actif."},{status:410});if(!["trainer","learner"].includes(text(access.portal_type)))return NextResponse.json({error:"Suivi de présence indisponible pour cet espace."},{status:403});
+ if(accessError)return NextResponse.json({error:accessError.message},{status:500});if(!access)return NextResponse.json({error:"Portail introuvable."},{status:404});if(!isActivePortalAttendanceToken(access.status, access.expires_at))return NextResponse.json({error:"Cet accès n’est plus actif."},{status:410});if(!["trainer","learner"].includes(text(access.portal_type)))return NextResponse.json({error:"Suivi de présence indisponible pour cet espace."},{status:403});
  const{data:session,error:sessionError}=await admin.from("daily_sessions").select("id,organisation_id,status,daily_formations(title)").eq("id",access.session_id).neq("status","archived").maybeSingle();if(sessionError)return NextResponse.json({error:sessionError.message},{status:500});if(!session)return NextResponse.json({error:"Session introuvable."},{status:404});
  const[slotsR,enrolmentsR,recordsR,communicationsR]=await Promise.all([
   admin.from("daily_attendance_slots").select("id,slot_date,starts_at,ends_at,label,status").eq("session_id",session.id).eq("organisation_id",session.organisation_id).neq("status","cancelled").order("slot_date").order("starts_at"),
