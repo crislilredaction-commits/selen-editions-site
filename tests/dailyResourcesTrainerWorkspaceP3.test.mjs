@@ -6,7 +6,7 @@ const read=(path)=>readFile(new URL(`../${path}`,import.meta.url),"utf8");
 
 test("P3 centralizes portal visibility, includes trainer resources and enforces availability server-side",async()=>{
   const[helper,list,download]=await Promise.all([read("lib/server/dailyPortalResourceVisibility.ts"),read("app/api/daily-portal/[token]/resources/route.ts"),read("app/api/daily-portal/[token]/document/route.ts")]);
-  assert.match(helper,/trainer_resource/);assert.match(helper,/available_from/);assert.match(helper,/role === "enterprise"/);assert.match(helper,/text\(resource\.session_id\) !== sessionId/);assert.match(list,/isDailyPortalResourceVisible/);assert.match(download,/isDailyPortalResourceVisible/);assert.match(download,/createSignedUrl\(document\.storage_path,120\)/);
+  assert.match(helper,/trainer_resource/);assert.match(helper,/available_from/);assert.match(helper,/role === "enterprise"/);assert.match(helper,/text\(resource\.session_id\) !== sessionId/);assert.match(list,/isDailyPortalResourceVisible/);assert.match(download,/isDailyPortalResourceVisible/);assert.match(download,/createSignedUrl\(storagePath,120\)/);
 });
 
 test("P3 trainer imports are traceable, scheduled, consultable and restricted to assigned sessions",async()=>{

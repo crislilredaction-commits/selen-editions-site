@@ -3,14 +3,15 @@ import assert from "node:assert/strict";
 import { loadTypeScript } from "./helpers/loadTypeScript.mjs";
 
 const learnerIdentity = loadTypeScript("lib/server/dailyPortalLearnerIdentity.ts");
+const pathGuard = loadTypeScript("lib/server/dailyPersonalAttendance.ts");
 const active = { id:"enrol-a", learner_id:"learner-a", status:"active", session_id:"session", organisation_id:"org", daily_learners:{id:"learner-a",email:"shared@example.test"} };
 const cancelled = { id:"enrol-b", learner_id:"learner-b", status:"cancelled", session_id:"session", organisation_id:"org", daily_learners:{id:"learner-b",email:"shared@example.test"} };
 
-function setup({ entityKey="", accessStatus="pending", portalType="learner", enrolments=[active,cancelled] }={}) {
+function setup({ entityKey="", accessStatus="pending", portalType="learner", enrolments=[active,cancelled], storagePath="daily/org/private.pdf" }={}) {
   const db={
     daily_portal_access_tokens:[{id:"access",token:"secret",session_id:"session",portal_type:portalType,entity_key:entityKey,entity_email:"shared@example.test",status:accessStatus,expires_at:null}],
     daily_sessions:[{id:"session",organisation_id:"org",status:"ready",end_date:null,companies:[]}],
-    daily_documents:[{id:"document",organisation_id:"org",document_type:"learner_file",linked_object_type:"enrolment",linked_object_id:"enrol-a",session_id:"session",enrolment_id:"enrol-a",learner_id:"learner-a",status:"published",is_current:true,archived_at:null,bucket:"documents",storage_path:"daily/org/private.pdf",metadata:{}}],
+    daily_documents:[{id:"document",organisation_id:"org",document_type:"learner_file",linked_object_type:"enrolment",linked_object_id:"enrol-a",session_id:"session",enrolment_id:"enrol-a",learner_id:"learner-a",status:"published",is_current:true,archived_at:null,bucket:"documents",storage_path:storagePath,metadata:{}}],
     daily_session_enrolments:enrolments,
   };
   const reads=[];let signedCount=0;
@@ -40,14 +41,14 @@ function setup({ entityKey="", accessStatus="pending", portalType="learner", enr
     }}
   };
   const {GET}=loadTypeScript("app/api/daily-portal/[token]/document/route.ts",{
-    "next/server":{NextResponse:Response},
+    "next/server":{NextResponse:{json:(body,init)=>Response.json(body,init),redirect:(url,init)=>new Response(null,{status:302,headers:{location:String(url),...(init?.headers??{})}})}},
     "@/lib/server/clientNdaAccess":{getAdminSupabase:()=>admin},
     "@/lib/server/dailyPortalResourceVisibility":{
       DAILY_PORTAL_RESOURCE_STATUSES:["published"],
       DAILY_PORTAL_RESOURCE_TYPES:["learner_file"],
       isDailyPortalResourceVisible:({enrolmentIds,learnerIds})=>enrolmentIds.includes("enrol-a")&&learnerIds.includes("learner-a")
     },
-    "@/lib/server/dailyPersonalAttendance":{isPostsessionDownloadAvailable:()=>true,personalAttendanceEnrolmentId:()=>null},
+    "@/lib/server/dailyPersonalAttendance":{isPostsessionDownloadAvailable:()=>true,personalAttendanceEnrolmentId:()=>null,personalSignatureStorageObjectPath:pathGuard.personalSignatureStorageObjectPath},
     "@/lib/server/dailyPersonalAssessment":{personalAssessmentEvidenceSourceId:()=>null,personalAssessmentResultEnrolmentId:()=>null},
     "@/lib/server/dailyPortalLearnerIdentity":learnerIdentity,
     "@/lib/daily/enterprisePortalIdentity.mjs":{resolveEnterprisePortalCompany:()=>({status:"missing"})},
@@ -92,4 +93,26 @@ test("unknown portal type is denied before private data reads",async()=>{
 test("two active enrolments with same legacy email are ambiguous",async()=>{
   const h=setup({enrolments:[active,{...cancelled,status:"active"}]});const response=await h.get();
   assert.equal(response.status,409);assert.equal(h.getSignedCount(),0);
+});
+
+for (const storagePath of [
+  "daily/other/private.pdf",
+  "daily/org/../private.pdf",
+  "daily/org/./private.pdf",
+  "daily/org//private.pdf",
+  "daily/org\\private.pdf",
+]) {
+  test("portal document rejects unsafe Storage path: " + storagePath, async () => {
+    const h = setup({entityKey:"learner:learner-a", storagePath});
+    const response = await h.get();
+    assert.equal(response.status, 404);
+    assert.equal(h.getSignedCount(), 0);
+  });
+}
+test("portal document signed download is not cacheable", async () => {
+  const h = setup({entityKey:"learner:learner-a"});
+  const response = await h.get();
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get("cache-control"), "private, no-store");
+  assert.equal(response.headers.get("x-content-type-options"), "nosniff");
 });

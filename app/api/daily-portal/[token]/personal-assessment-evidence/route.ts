@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
-import { isPostsessionDownloadAvailable } from "@/lib/server/dailyPersonalAttendance";
+import { isPostsessionDownloadAvailable, personalSignatureStorageObjectPath } from "@/lib/server/dailyPersonalAttendance";
 import { isFinalAssessmentResult } from "@/lib/server/dailyPersonalAssessment";
 import { findUniqueDailyLearnerPortalEnrolment, matchesDailyLearnerPortalAccess } from "@/lib/server/dailyPortalLearnerIdentity";
 
@@ -47,9 +47,10 @@ export async function GET(request: Request, { params }: Params) {
   const { data: assessment, error: assessmentError } = await admin.from("daily_learning_assessments").select("outcome,assessed_at").eq("organisation_id", session.organisation_id).eq("session_id", session.id).eq("enrolment_id", enrolment.id).maybeSingle();
   if (assessmentError) return NextResponse.json({ error: assessmentError.message }, { status: 500 });
   if (!assessment || !isFinalAssessmentResult(assessment.outcome, assessment.assessed_at)) return NextResponse.json({ error: "Document introuvable." }, { status: 404 });
-  if (evidence.bucket !== "documents" || !text(evidence.storage_path).startsWith(`daily/${session.organisation_id}/`)) return NextResponse.json({ error: "Document introuvable." }, { status: 404 });
+  const storagePath = personalSignatureStorageObjectPath(evidence.storage_path, session.organisation_id);
+  if (evidence.bucket !== "documents" || !storagePath) return NextResponse.json({ error: "Document introuvable." }, { status: 404 });
 
-  const { data: signed, error: signedError } = await admin.storage.from("documents").createSignedUrl(text(evidence.storage_path), 120, { download: text(evidence.logical_name) || true });
+  const { data: signed, error: signedError } = await admin.storage.from("documents").createSignedUrl(storagePath, 120, { download: text(evidence.logical_name) || true });
   if (signedError || !signed?.signedUrl) return NextResponse.json({ error: "Téléchargement indisponible." }, { status: 500 });
   return NextResponse.redirect(signed.signedUrl, { headers: { "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } });
 }
