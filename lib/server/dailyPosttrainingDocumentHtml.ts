@@ -1,0 +1,48 @@
+function esc(value: unknown) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char] ?? char));
+}
+
+type OrganisationFooter = {
+  name: string;
+  address?: string;
+  siret?: string;
+  nda?: string;
+  phone?: string;
+  email?: string;
+};
+function footer(org: OrganisationFooter) {
+  const nda = org.nda ? `NDA ${esc(org.nda)} · Cette déclaration ne vaut pas agrément de l'État` : "NDA non renseigné";
+  return `${esc(org.name)} · ${esc(org.address || "Adresse non renseignée")} · SIRET ${esc(org.siret || "non renseigné")} · ${nda} · ${esc(org.phone || "Téléphone non renseigné")} · ${esc(org.email || "Email non renseigné")}`;
+}
+function page(title: string, organisation: OrganisationFooter, body: string) {
+  return `<!doctype html><html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;color:#2f241c;line-height:1.45;margin:36px}h1{color:#7f4828;font-size:24px}h2{font-size:17px;margin-top:24px}p{text-align:justify}table{width:100%;border-collapse:collapse;margin:14px 0}th,td{border:1px solid #c9b49d;padding:7px;text-align:left;font-size:12px}th{background:#f4eadc}.muted{color:#6f6258;font-size:11px}.box{border:1px solid #c9b49d;padding:12px;margin:12px 0}.footer{border-top:1px solid #c9b49d;margin-top:28px;padding-top:9px;text-align:center;color:#6f6258;font-size:10px;line-height:1.45}</style></head><body><div class="muted">${esc(organisation.name)} · Selen Daily</div><h1>${esc(title)}</h1>${body}<div class="footer">${footer(organisation)}</div></body></html>`;
+}
+
+export type AttendanceLine = { learnerName: string; date: string; start: string; end: string; status: string; proofHash?: string | null };
+export type CompletionLearningOutcome = "achieved" | "partially_achieved" | "not_achieved" | "pending" | "not_applicable" | null | undefined;
+
+export function completionCertificateLearningResult(outcome: CompletionLearningOutcome) {
+  if (outcome === "achieved") return "Acquis";
+  if (outcome === "partially_achieved" || outcome === "not_achieved") return "Non acquis";
+  return null;
+}
+
+export function buildAttendanceSummaryHtml(args: { organisationName:string; organisationAddress?:string; organisationSiret?:string; organisationNda?:string; organisationPhone?:string; organisationEmail?:string; formationTitle:string; sessionReference:string; startDate:string; endDate:string; lines:AttendanceLine[]; generatedAt:Date }) {
+  const labels:Record<string,string>={present:"Présent",absent:"Absent",excused:"Absence justifiée",pending:"À confirmer"};
+  const rows=args.lines.map((line)=>`<tr><td>${esc(line.learnerName)}</td><td>${esc(line.date)}</td><td>${esc(line.start)}–${esc(line.end)}</td><td>${esc(labels[line.status]??line.status)}</td><td>${line.proofHash?esc(line.proofHash):"—"}</td></tr>`).join("");
+  return page("Relevé des présences",{name:args.organisationName,address:args.organisationAddress,siret:args.organisationSiret,nda:args.organisationNda,phone:args.organisationPhone,email:args.organisationEmail},`<div class="box"><strong>Formation :</strong> ${esc(args.formationTitle)}<br><strong>Session :</strong> ${esc(args.sessionReference||"Sans référence")}<br><strong>Période :</strong> ${esc(args.startDate)} au ${esc(args.endDate)}</div><table><thead><tr><th>Apprenant</th><th>Date</th><th>Horaire</th><th>Statut</th><th>Empreinte de preuve</th></tr></thead><tbody>${rows}</tbody></table><p class="muted">Document généré le ${esc(args.generatedAt.toLocaleString("fr-FR"))}. Les empreintes SHA-256 permettent de rapprocher ce relevé des preuves d’émargement conservées dans Selen Daily.</p>`);
+}
+
+export function buildCompletionCertificateHtml(args:{ organisationName:string; organisationAddress?:string; organisationSiret:string; organisationNda:string; organisationPhone?:string; organisationEmail?:string; formationTitle:string; learnerName:string; startDate:string; endDate:string; plannedHours:number; attendedHours:number; learningOutcome?:CompletionLearningOutcome; generatedAt:Date }) {
+  const participation = args.plannedHours > 0 ? Math.min(100, Math.round((args.attendedHours / args.plannedHours) * 100)) : null;
+  const learningResult = completionCertificateLearningResult(args.learningOutcome);
+  const learningResultHtml = learningResult ? `<p><strong>Résultat de l’évaluation des acquis :</strong> ${esc(learningResult)}</p>` : "";
+  return page("Certificat de réalisation",{name:args.organisationName,address:args.organisationAddress,siret:args.organisationSiret,nda:args.organisationNda,phone:args.organisationPhone,email:args.organisationEmail},`<p>Je soussigné(e), représentant l’organisme de formation <strong>${esc(args.organisationName)}</strong>, certifie que :</p><div class="box"><strong>${esc(args.learnerName)}</strong><br>a participé à la formation <strong>${esc(args.formationTitle)}</strong><br>du ${esc(args.startDate)} au ${esc(args.endDate)}.</div><p><strong>Durée programmée :</strong> ${esc(args.plannedHours.toFixed(2))} h<br><strong>Présence constatée :</strong> ${esc(args.attendedHours.toFixed(2))} h${participation===null?"":` (${participation} %)`}</p>${learningResultHtml}<p>Le présent certificat atteste de la réalisation constatée à partir des émargements et preuves de présence enregistrés dans le dossier de session. Le résultat pédagogique, lorsqu’il est indiqué, reprend l’évaluation finale enregistrée dans Selen Daily ; le certificat ne constitue pas à lui seul une certification ou un diplôme.</p><p class="muted">Établi le ${esc(args.generatedAt.toLocaleDateString("fr-FR"))}.</p>`);
+}
+
+export function buildPersonalAssessmentResultHtml(args:{ organisationName:string; organisationAddress?:string; organisationSiret?:string; organisationNda?:string; organisationPhone?:string; organisationEmail?:string; formationTitle:string; sessionReference:string; learnerName:string; startDate:string; endDate:string; outcomeLabel:string; score?:number|null; scoreMax?:number|null; method?:string|null; assessedAt:string; generatedAt:Date }) {
+  const hasScore = Number.isFinite(args.score);
+  const score = hasScore ? `${esc(args.score)}${Number.isFinite(args.scoreMax) ? ` / ${esc(args.scoreMax)}` : ""}` : "Non renseigné";
+  const method = args.method ? `<p><strong>Méthode d’évaluation :</strong> ${esc(args.method)}</p>` : "";
+  return page("Résultat personnel de l’évaluation finale",{name:args.organisationName,address:args.organisationAddress,siret:args.organisationSiret,nda:args.organisationNda,phone:args.organisationPhone,email:args.organisationEmail},`<div class="box"><strong>Apprenant :</strong> ${esc(args.learnerName)}<br><strong>Formation :</strong> ${esc(args.formationTitle)}<br><strong>Session :</strong> ${esc(args.sessionReference||"Sans référence")}<br><strong>Période :</strong> ${esc(args.startDate)} au ${esc(args.endDate)}</div><h2>Résultat finalisé</h2><p><strong>Résultat :</strong> ${esc(args.outcomeLabel)}</p><p><strong>Score :</strong> ${score}</p>${method}<p><strong>Évaluation finalisée le :</strong> ${esc(args.assessedAt)}</p><p>Ce document reprend le résultat final enregistré par l’organisme de formation pour cette inscription. Il ne constitue pas à lui seul une certification ou un diplôme.</p><p class="muted">Document personnel généré le ${esc(args.generatedAt.toLocaleString("fr-FR"))}. Les données internes de traitement ne sont pas incluses.</p>`);
+}

@@ -1,0 +1,12 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { readFile } from "node:fs/promises";
+const helper=await readFile(new URL("../lib/dailyIndividualEarlyStart.ts",import.meta.url),"utf8");
+const route=await readFile(new URL("../app/api/daily-signature/[token]/route.ts",import.meta.url),"utf8");
+const page=await readFile(new URL("../app/daily-signature/[token]/page.tsx",import.meta.url),"utf8");
+const registration=await readFile(new URL("../app/api/daily-registration/[token]/route.ts",import.meta.url),"utf8");
+test("A9 ne prend jamais la candidature comme référence du délai consommateur",()=>{assert.doesNotMatch(helper,/application_signature_date/);assert.match(helper,/canonicalReference:"contract_signature"/);assert.doesNotMatch(route,/signature_signed_at.*registration|application_signature_date/);});
+test("A9 calcule le délai depuis la signature contractuelle et tient compte des jours non ouvrables nationaux",()=>{assert.match(helper,/calculateDistanceWithdrawalDeadline\(contractSignedAt/);assert.match(helper,/isHoliday/);assert.match(helper,/getUTCDay/);});
+test("la signature contractuelle expose la date de session nécessaire au calcul",()=>{assert.match(route,/start_date/);assert.match(route,/getContractEarlyStartContext/);});
+test("la demande expresse et la reconnaissance sont séparées et non précochées",()=>{assert.match(page,/earlyStartRequested/);assert.match(page,/fullPerformanceAcknowledged/);assert.match(page,/type="checkbox"/);assert.match(route,/early_start_requested/);assert.match(route,/full_performance_withdrawal_loss_acknowledged/);});
+test("la candidature ne collecte plus une renonciation générale",()=>{assert.doesNotMatch(registration,/renonciation générale|waive_withdrawal|withdrawal_waiver/);});

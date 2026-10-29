@@ -1,0 +1,86 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+
+const onboardingPage = await readFile(
+  new URL("../app/client/daily/onboarding/page.tsx", import.meta.url),
+  "utf8",
+);
+const dashboardPage = await readFile(
+  new URL("../components/daily/DailyDashboardOverviewV2.tsx", import.meta.url),
+  "utf8",
+);
+const accountPanel = await readFile(
+  new URL("../components/daily/DailyAccountPanel.tsx", import.meta.url),
+  "utf8",
+);
+const setupAppointmentPage = await readFile(
+  new URL("../app/client/daily/rendez-vous-parametrage/page.tsx", import.meta.url),
+  "utf8",
+);
+const setupAppointmentRoute = await readFile(
+  new URL("../app/api/client/daily/setup-appointment/route.ts", import.meta.url),
+  "utf8",
+);
+const setupCalendar = await readFile(
+  new URL("../lib/server/dailySetupCalendar.ts", import.meta.url),
+  "utf8",
+);
+
+test("le NDA n'est pas présenté comme facultatif lorsqu'il existe", () => {
+  assert.match(onboardingPage, /<Input label="Numéro NDA"/);
+  assert.match(
+    onboardingPage,
+    /Si votre organisme possède déjà un numéro de déclaration d&apos;activité, il doit être renseigné ici\./,
+  );
+  assert.doesNotMatch(onboardingPage, /NDA[^\n]{0,40}facultatif/i);
+});
+
+test("le client peut saisir le SIRET et l'adresse avant la vérification INSEE", () => {
+  assert.match(onboardingPage, /<Input label="SIRET" value=\{form\.siret\}/);
+  assert.match(onboardingPage, /<Input label="Adresse de l'organisme" value=\{form\.address\}/);
+  assert.match(onboardingPage, /L&apos;avis INSEE permet à Selen de vérifier le SIRET et l&apos;adresse renseignés ci-dessus/);
+  assert.doesNotMatch(onboardingPage, /seront repris depuis cet avis/);
+});
+
+test("le profil reconnaît le statut Qualiopi canonique de l'organisme", () => {
+  assert.match(accountPanel, /qualiopiStatus==="certified"\|\|qualiopiStatus==="yes"/);
+});
+
+test("les imports utilisent un bouton encadré explicite plutôt que le sélecteur natif", () => {
+  assert.match(onboardingPage, /const inputRef = useRef<HTMLInputElement>\(null\)/);
+  assert.match(onboardingPage, /style=\{s\.fileInput\}/);
+  assert.match(onboardingPage, /style=\{s\.fileButton\}/);
+  assert.match(onboardingPage, /Choisir un fichier/);
+  assert.match(onboardingPage, /fileInput: \{ display: "none" \}/);
+  assert.match(onboardingPage, /fileButton: \{[^\n]*border: "1px solid var\(--rust\)"/);
+});
+
+test("le BPF n'est réclamé qu'aux organismes qui ont un NDA et ne sont pas en première année", () => {
+  assert.match(dashboardPage, /nda_number\?:string\|null/);
+  assert.match(
+    dashboardPage,
+    /Boolean\(onboarding\.nda_number\?\.trim\(\)\)&&!onboarding\.first_nda_year&&!onboarding\.nda_or_bpf_document_url/,
+  );
+  assert.match(accountPanel, /const hasNda=Boolean\(text\(org\.nda_number\|\|onboarding\?\.nda_number\)\.trim\(\)\)/);
+  assert.match(accountPanel, /required:hasNda&&!firstNdaYear/);
+  assert.match(accountPanel, /Non requis tant que l'organisme n'a pas de NDA/);
+});
+
+test("l'onboarding Daily vouvoie l'organisme", () => {
+  assert.match(onboardingPage, /Choisissez comment vous préférez paramétrer votre espace/);
+  assert.match(onboardingPage, /Votre espace Daily est prêt à démarrer/);
+  assert.doesNotMatch(onboardingPage, /\b(?:tu|ton|ta)\b/i);
+  assert.doesNotMatch(onboardingPage, /\bChoisis\b/);
+  assert.doesNotMatch(onboardingPage, /\bContinue à\b/);
+  assert.doesNotMatch(onboardingPage, /t'aider/);
+});
+
+test("le rendez-vous accompagné inclut explicitement la démonstration et le premier paramétrage", () => {
+  assert.match(setupAppointmentPage, /Démonstration et paramétrage accompagnés/);
+  assert.match(setupAppointmentPage, /Réserver votre démo et premier paramétrage/);
+  assert.match(setupAppointmentPage, /nous vous présentons Selen Daily puis nous vous aidons à réaliser les premiers réglages/);
+  assert.match(setupAppointmentRoute, /Démonstration et premier paramétrage Selen Daily - 1 h/);
+  assert.match(setupCalendar, /Démo et paramétrage Selen Daily/);
+  assert.match(setupCalendar, /démonstration de Selen Daily puis accompagnement au premier paramétrage/);
+});

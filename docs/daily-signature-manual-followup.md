@@ -1,0 +1,1 @@
+Relance manuelle de signature : disponible uniquement après H+72, uniquement tant que la signature reste attendue, journalisée séparément de l'invitation initiale et protégée contre les doubles envois rapprochés.

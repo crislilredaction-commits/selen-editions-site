@@ -1,0 +1,9 @@
+alter table public.daily_registration_request_enrolments
+  drop constraint if exists daily_registration_request_enrolments_enrolment_id_key;
+
+alter table public.daily_registration_request_enrolments
+  drop constraint if exists daily_registration_request_enrolments_registration_request_id_enrolment_id_key;
+
+alter table public.daily_registration_request_enrolments
+  add constraint daily_registration_request_enrolments_registration_request_id_enrolment_id_key
+  unique (registration_request_id, enrolment_id);
