@@ -41,7 +41,7 @@ function setup({ entityKey="", accessStatus="pending", portalType="learner", enr
     }}
   };
   const {GET}=loadTypeScript("app/api/daily-portal/[token]/document/route.ts",{
-    "next/server":{NextResponse:Response},
+    "next/server":{NextResponse:{json:(body,init)=>Response.json(body,init),redirect:(url,init)=>new Response(null,{status:302,headers:{location:String(url),...(init?.headers??{})}})}},
     "@/lib/server/clientNdaAccess":{getAdminSupabase:()=>admin},
     "@/lib/server/dailyPortalResourceVisibility":{
       DAILY_PORTAL_RESOURCE_STATUSES:["published"],
