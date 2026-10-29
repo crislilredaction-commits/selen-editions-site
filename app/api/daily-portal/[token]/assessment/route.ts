@@ -121,6 +121,63 @@ async function resolveLearner(token: string) {
   return { supabase, access, session, enrolment, formation: formation as JsonRecord, response } as const;
 }
 
+function assessmentSummaryNeedsSync(summary: JsonRecord | null, response: JsonRecord) {
+  if (!summary) return true;
+  // A trainer's finalized assessment is authoritative and must never be overwritten.
+  if (text(summary.outcome) !== "pending") return false;
+  const sameScore = (left: unknown, right: unknown) =>
+    left == null && right == null || left != null && right != null && Number(left) === Number(right);
+  return text(summary.method) !== "Selen quiz"
+    || !sameScore(summary.score, response.auto_score)
+    || !sameScore(summary.score_max, response.score_max);
+}
+
+async function assessmentSummaryState(
+  supabase: ReturnType<typeof getAdminSupabase>,
+  session: JsonRecord,
+  enrolment: JsonRecord,
+  response: JsonRecord,
+  repair: boolean,
+) {
+  const { data: summary, error: readError } = await supabase
+    .from("daily_learning_assessments")
+    .select("id,outcome,method,score,score_max")
+    .eq("organisation_id", session.organisation_id)
+    .eq("session_id", session.id)
+    .eq("enrolment_id", enrolment.id)
+    .maybeSingle();
+  if (readError) throw readError;
+  const pending = assessmentSummaryNeedsSync(summary, response);
+  if (!pending || !repair) return pending;
+
+  const patch = {
+    method: "Selen quiz",
+    score: response.auto_score ?? null,
+    score_max: response.score_max ?? null,
+    notes: response.requires_manual_review
+      ? "Questionnaire Selen transmis. Réponse(s) libre(s) à relire par le formateur."
+      : "Questionnaire Selen transmis. Résultat à valider par le formateur.",
+    updated_at: new Date().toISOString(),
+  };
+  const result = summary?.id
+    ? await supabase.from("daily_learning_assessments")
+      .update(patch)
+      .eq("id", summary.id)
+      .eq("organisation_id", session.organisation_id)
+      .eq("session_id", session.id)
+      .eq("enrolment_id", enrolment.id)
+      .eq("outcome", "pending")
+    : await supabase.from("daily_learning_assessments").insert({
+      organisation_id: session.organisation_id,
+      session_id: session.id,
+      enrolment_id: enrolment.id,
+      outcome: "pending",
+      ...patch,
+    });
+  if (result.error) throw result.error;
+  return false;
+}
+
 export async function GET(_request: Request, { params }: Params) {
   const { token } = await params;
   const clean = text(token);
@@ -134,6 +191,9 @@ export async function GET(_request: Request, { params }: Params) {
     const endDate = text(resolved.session.end_date);
     const available = Boolean(endDate && dateInParis() >= endDate);
     const questions = mode === "selen_quiz" ? sanitizeQuestions(resolved.formation.learning_assessment_questions) : [];
+    const summaryPending = resolved.response
+      ? await assessmentSummaryState(resolved.supabase, resolved.session, resolved.enrolment, resolved.response, false)
+      : false;
 
     return NextResponse.json({
       assessment: {
@@ -143,6 +203,7 @@ export async function GET(_request: Request, { params }: Params) {
         endDate,
         available,
         submitted: Boolean(resolved.response),
+        summaryPending,
         submittedAt: resolved.response?.submitted_at ?? null,
         autoScore: resolved.response?.auto_score ?? null,
         scoreMax: resolved.response?.score_max ?? null,
@@ -163,7 +224,20 @@ export async function POST(request: Request, { params }: Params) {
   try {
     const resolved = await resolveLearner(clean);
     if ("error" in resolved) return NextResponse.json({ error: resolved.error }, { status: resolved.status });
-    if (resolved.response) return NextResponse.json({ error: "Cette évaluation a déjà été transmise." }, { status: 409 });
+    // Retrying an already saved submission only repairs its summary; it never creates a second response.
+    if (resolved.response) {
+      try {
+        await assessmentSummaryState(resolved.supabase, resolved.session, resolved.enrolment, resolved.response, true);
+        return NextResponse.json({ submitted: true, alreadySubmitted: true, summaryPending: false,
+          submittedAt: resolved.response.submitted_at, autoScore: resolved.response.auto_score,
+          scoreMax: resolved.response.score_max, requiresManualReview: resolved.response.requires_manual_review });
+      } catch {
+        return NextResponse.json({ submitted: true, alreadySubmitted: true, summaryPending: true,
+          warning: "Vos réponses sont conservées, mais leur synchronisation avec le suivi formateur reste en attente.",
+          submittedAt: resolved.response.submitted_at, autoScore: resolved.response.auto_score,
+          scoreMax: resolved.response.score_max, requiresManualReview: resolved.response.requires_manual_review }, { status: 202 });
+      }
+    }
     if (text(resolved.formation.learning_assessment_mode) !== "selen_quiz") {
       return NextResponse.json({ error: "Cette formation utilise une évaluation externe." }, { status: 409 });
     }
@@ -226,39 +300,23 @@ export async function POST(request: Request, { params }: Params) {
       return NextResponse.json({ error: insertError?.message ?? "Transmission impossible." }, { status: 500 });
     }
 
-    const { data: existingAssessment } = await resolved.supabase
-      .from("daily_learning_assessments")
-      .select("id")
-      .eq("session_id", resolved.session.id)
-      .eq("enrolment_id", resolved.enrolment.id)
-      .maybeSingle();
-
-    const assessmentPatch = {
-      method: "Selen quiz",
-      score: scoreMax > 0 ? autoScore : null,
-      score_max: scoreMax > 0 ? scoreMax : null,
-      notes: requiresManualReview ? "Questionnaire Selen transmis. Réponse(s) libre(s) à relire par le formateur." : "Questionnaire Selen transmis. Résultat à valider par le formateur.",
-      updated_at: new Date().toISOString(),
-    };
-    if (existingAssessment?.id) {
-      await resolved.supabase.from("daily_learning_assessments").update(assessmentPatch).eq("id", existingAssessment.id);
-    } else {
-      await resolved.supabase.from("daily_learning_assessments").insert({
-        organisation_id: resolved.session.organisation_id,
-        session_id: resolved.session.id,
-        enrolment_id: resolved.enrolment.id,
-        outcome: "pending",
-        ...assessmentPatch,
-      });
+    let summaryPending = false;
+    try {
+      await assessmentSummaryState(resolved.supabase, resolved.session, resolved.enrolment, created, true);
+    } catch {
+      // The immutable response is already saved: never report that the submission was lost.
+      summaryPending = true;
     }
 
     return NextResponse.json({
       submitted: true,
+      summaryPending,
+      ...(summaryPending ? { warning: "Vos réponses sont conservées, mais leur synchronisation avec le suivi formateur reste en attente." } : {}),
       submittedAt: created.submitted_at,
       autoScore: created.auto_score,
       scoreMax: created.score_max,
       requiresManualReview: created.requires_manual_review,
-    });
+    }, { status: summaryPending ? 202 : 200 });
   } catch (cause) {
     return NextResponse.json({ error: cause instanceof Error ? cause.message : "Transmission impossible." }, { status: 500 });
   }
