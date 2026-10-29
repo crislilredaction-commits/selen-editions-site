@@ -30,7 +30,12 @@ export async function GET(_request:Request,{params}:Params){
   supabase.from("daily_trainers").select("id,first_name,last_name,email").eq("user_id",access.user_id),
   supabase.from("daily_convocations").select("id,recipient_type,recipient_key,recipient_name,recipient_email,company_name,version,document_name,status,sent_at,generated_at").eq("session_id",access.session_id),
   supabase.from("daily_session_enrolments").select("id,learner_id,company_name,status,positioning_status,prerequisites_status,source,created_at,daily_learners(id,first_name,last_name,email)").eq("session_id",access.session_id),
- ]);if(sessionR.error)return NextResponse.json({error:sessionR.error.message},{status:500});if(enrolmentsR.error)return NextResponse.json({error:enrolmentsR.error.message},{status:500});const session=sessionR.data;if(!session)return NextResponse.json({error:"Session introuvable."},{status:404});
+ ]);if(sessionR.error)return NextResponse.json({error:sessionR.error.message},{status:500});if(enrolmentsR.error)return NextResponse.json({error:enrolmentsR.error.message},{status:500});
+ // A partial read must never masquerade as an empty document/signature/response list.
+ // Keep the portal token unchanged so the recipient can retry after a transient failure.
+ if([onboardingR,responsesR,conventionsR,trainersR,convocationsR].some(result=>result.error))
+  return NextResponse.json({error:"Les informations de cet espace sont temporairement indisponibles. Réessayez."},{status:503});
+ const session=sessionR.data;if(!session)return NextResponse.json({error:"Session introuvable."},{status:404});
  const entityEmail=normalizedEmail(access.entity_email),entityName=String(access.entity_name??"").trim().toLowerCase();
  const activeEnrolments=(enrolmentsR.data??[]).filter(row=>!["declined","cancelled","abandoned"].includes(String(row.status??"")));
   // Resolve identity against ALL session enrolments before filtering inactive rows.
