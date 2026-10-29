@@ -20,6 +20,7 @@ type Assessment = {
   endDate: string;
   available: boolean;
   submitted: boolean;
+  summaryPending: boolean;
   submittedAt: string | null;
   autoScore: number | null;
   scoreMax: number | null;
@@ -97,13 +98,31 @@ export default function LearnerAssessmentPage({ params }: { params: Promise<{ ro
     setAssessment((current) => current ? {
       ...current,
       submitted: true,
+      summaryPending: Boolean(payload.summaryPending),
       submittedAt: payload.submittedAt ?? new Date().toISOString(),
       autoScore: payload.autoScore ?? null,
       scoreMax: payload.scoreMax ?? null,
       requiresManualReview: Boolean(payload.requiresManualReview),
       questions: [],
     } : current);
-    setSuccess("Votre évaluation a bien été transmise. Le formateur pourra maintenant la valider.");
+    setSuccess(payload.summaryPending ? payload.warning ?? "Réponses conservées, synchronisation en attente." : "Votre évaluation a bien été transmise. Le formateur pourra maintenant la valider.");
+  }
+
+  async function retrySummary() {
+    if (sending) return;
+    setSending(true);
+    setError("");
+    const response = await fetch(`/api/daily-portal/${token}/assessment`, { method: "POST" });
+    const payload = await response.json().catch(() => null);
+    setSending(false);
+    if (!response.ok) {
+      setError(payload?.error ?? "Synchronisation indisponible.");
+      return;
+    }
+    setAssessment((current) => current ? { ...current, summaryPending: Boolean(payload.summaryPending) } : current);
+    setSuccess(payload.summaryPending
+      ? payload.warning ?? "Vos réponses restent conservées, synchronisation en attente."
+      : "Le suivi formateur est maintenant synchronisé.");
   }
 
   return (
@@ -130,6 +149,8 @@ export default function LearnerAssessmentPage({ params }: { params: Promise<{ ro
         {assessment?.submitted ? (
           <article style={styles.card}>
             <strong>Évaluation transmise</strong>
+            {assessment.summaryPending ? <span role="status">Vos réponses sont conservées, mais le suivi formateur doit encore être synchronisé.</span> : null}
+            {assessment.summaryPending ? <button type="button" onClick={() => void retrySummary()} disabled={sending} style={styles.primary}>{sending ? "Synchronisation…" : "Réessayer la synchronisation"}</button> : null}
             <span>Transmission : {formatDate(assessment.submittedAt)}</span>
             {assessment.scoreMax !== null && assessment.autoScore !== null ? (
               <span>Partie automatiquement corrigée : {assessment.autoScore} / {assessment.scoreMax} points.</span>
