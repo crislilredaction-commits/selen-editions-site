@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { loadTypeScript } from "./helpers/loadTypeScript.mjs";
 
 const learnerIdentity = loadTypeScript("lib/server/dailyPortalLearnerIdentity.ts");
+const pathGuard = loadTypeScript("lib/server/dailyPersonalAttendance.ts");
 
 function setup({ role="learner", status="pending", enrolmentStatus="active", formationStatus="validated", creationMode="selen_form", expiresAt=null }={}) {
  const access={token:"portal-secret",session_id:"session",portal_type:role,entity_key:"learner:learner",entity_email:"learner@example.test",status,expires_at:expiresAt};
@@ -24,7 +25,8 @@ function setup({ role="learner", status="pending", enrolmentStatus="active", for
   "@/lib/server/clientNdaAccess":{getAdminSupabase:()=>admin},
   "@/lib/server/dailyRegistrationProgramPdf":{renderRegistrationProgramPdf:()=>new Uint8Array([37,80,68,70,45])},
   "@/lib/daily/ownPositioning":{positioningSourceDocumentId:()=>null},
-  "@/lib/server/dailyPortalLearnerIdentity":learnerIdentity
+  "@/lib/server/dailyPortalLearnerIdentity":learnerIdentity,
+  "@/lib/server/dailyPersonalAttendance":pathGuard
  },{Response,fetch:()=>assert.fail("Network forbidden")});
  return {get:()=>GET(null,{params:Promise.resolve({token:"portal-secret"})}),calls};
 }
