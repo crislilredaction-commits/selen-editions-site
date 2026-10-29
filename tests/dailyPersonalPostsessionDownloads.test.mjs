@@ -248,7 +248,7 @@ test("la route de copie recroise jeton, document courant, inscription, identité
   assert.match(route, /matchesDailyLearnerPortalAccess\(access, enrolment\)/);
   assert.match(route, /isFinalAssessmentResult\(assessment\.outcome, assessment\.assessed_at\)/);
   assert.match(route, /evidence\.bucket !== "documents"/);
-  assert.match(route, /personalSignatureStorageObjectPath\(evidence\.storage_path, session\.organisation_id\)//);
+  assert.match(route, /personalSignatureStorageObjectPath\(evidence\.storage_path, session\.organisation_id\)/);
   assert.match(route, /createSignedUrl\(storagePath, 120/);
   assert.match(route, /"Cache-Control": "private, no-store"/);
   assert.doesNotMatch(route, /sha256|assessed_by|notes/);
