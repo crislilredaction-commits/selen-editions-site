@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { createClient as createServerSupabaseClient } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import { findUniqueDailyLearnerPortalEnrolment } from "@/lib/server/dailyPortalLearnerIdentity";
+import { isActivePortalAttendanceToken } from "@/lib/daily/portalAttendanceAccess.mjs";
 import {
   DAILY_ATTENDANCE_CONSENT,
   buildAttendanceProofHash,
@@ -59,8 +60,9 @@ export async function POST(request: Request, { params }: Params) {
     .maybeSingle();
   if (accessError) return NextResponse.json({ error: accessError.message }, { status: 500 });
   if (!access || access.portal_type !== "learner") return NextResponse.json({ error: "Accès apprenant introuvable." }, { status: 403 });
-  if (!["pending", "viewed"].includes(clean(access.status))) return NextResponse.json({ error: "Cet accès n’est plus actif." }, { status: 410 });
-  if (access.expires_at && new Date(access.expires_at).getTime() <= Date.now()) return NextResponse.json({ error: "Cet accès a expiré." }, { status: 410 });
+  if (!isActivePortalAttendanceToken(access.status, access.expires_at)) {
+    return NextResponse.json({ error: "Cet accès a expiré ou n’est plus actif." }, { status: 410 });
+  }
   if (normalizeEmail(authData.user.email) !== normalizeEmail(access.entity_email)) {
     return NextResponse.json({ error: "Ce portail n’est pas associé au compte connecté." }, { status: 403 });
   }

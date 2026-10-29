@@ -1,0 +1,33 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+import { isActivePortalAttendanceToken } from "../lib/daily/portalAttendanceAccess.mjs";
+
+const now = Date.parse("2026-10-29T18:40:00.000Z");
+
+for (const status of ["pending", "viewed"]) {
+  test(`un accès ${status} reste autorisé avec une échéance future ou absente`, () => {
+    assert.equal(isActivePortalAttendanceToken(status, "2026-10-30T18:40:00.000Z", now), true);
+    assert.equal(isActivePortalAttendanceToken(status, null, now), true);
+  });
+  test(`un accès ${status} est refusé si son échéance est passée, immédiate ou illisible`, () => {
+    for (const expiry of ["2026-10-28T18:40:00.000Z", "2026-10-29T18:40:00.000Z", "date-invalide", "", " ", 1234, NaN]) {
+      assert.equal(isActivePortalAttendanceToken(status, expiry, now), false, `expiry=${String(expiry)}`);
+    }
+  });
+}
+
+for (const status of ["revoked", "expired", "suspended", "sent", "", null, undefined]) {
+  test(`un statut ${String(status)} est refusé, même avec une date future`, () => {
+    assert.equal(isActivePortalAttendanceToken(status, "2027-01-01T00:00:00.000Z", now), false);
+  });
+}
+
+test("les deux parcours d'émargement appliquent le même garde avant toute lecture métier", async () => {
+  const base = new URL("../app/api/daily-portal/[token]/", import.meta.url);
+  for (const name of ["attendance", "late-attendance"]) {
+    const route = await readFile(new URL(`${name}/route.ts`, base), "utf8");
+    assert.match(route, /isActivePortalAttendanceToken\\(access\\.status, access\\.expires_at\\)/);
+    assert.ok(route.indexOf("isActivePortalAttendanceToken(access.status, access.expires_at)") < route.indexOf('from("daily_sessions")'));
+  }
+});
