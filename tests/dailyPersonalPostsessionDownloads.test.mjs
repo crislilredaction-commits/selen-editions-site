@@ -76,7 +76,7 @@ test("le téléchargement central route le relevé personnel sans modifier les f
   assert.match(route, /personalAttendanceEnrolmentId/);
   assert.match(route, /route:"personal-attendance"/);
   assert.match(route, /query:"enrolment"/);
-  assert.match(route, /createSignedUrl\(document\.storage_path,120\)/);
+  assert.match(route, /createSignedUrl\(storagePath,120\)/);
 });
 
 test("AR1 masque le certificat personnel avant la fin de session et le borne à l’inscription active", async () => {
@@ -248,8 +248,8 @@ test("la route de copie recroise jeton, document courant, inscription, identité
   assert.match(route, /matchesDailyLearnerPortalAccess\(access, enrolment\)/);
   assert.match(route, /isFinalAssessmentResult\(assessment\.outcome, assessment\.assessed_at\)/);
   assert.match(route, /evidence\.bucket !== "documents"/);
-  assert.match(route, /startsWith\(`daily\/\$\{session\.organisation_id\}\//);
-  assert.match(route, /createSignedUrl\(text\(evidence\.storage_path\), 120/);
+  assert.match(route, /personalSignatureStorageObjectPath\(evidence\.storage_path, session\.organisation_id\)//);
+  assert.match(route, /createSignedUrl\(storagePath, 120/);
   assert.match(route, /"Cache-Control": "private, no-store"/);
   assert.doesNotMatch(route, /sha256|assessed_by|notes/);
   assert.doesNotMatch(route, /\.insert\(|\.update\(|\.upsert\(|\.upload\(/);
