@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import { OwnPositioningError } from "@/lib/server/dailyOwnPositioning";
+import { personalSignatureStorageObjectPath } from "@/lib/server/dailyPersonalAttendance";
 
 type Json = Record<string, unknown>;
 const text = (value: unknown) => String(value ?? "").trim();
@@ -53,6 +54,6 @@ export async function learnerPositioningEvidence(context: LearnerOwnPositioningC
   if (sourceId) query = query.contains("metadata", { source_document_id: sourceId });
   const { data, error } = await query.order("created_at", { ascending: false }).limit(1).maybeSingle();
   if (error) throw new OwnPositioningError("Lecture du positionnement indisponible.", 500);
-  if (!data || data.bucket !== "documents" || !String(data.storage_path ?? "").startsWith(`daily/${context.session.organisation_id}/`)) return null;
+  if (!data || data.bucket !== "documents" || personalSignatureStorageObjectPath(data.storage_path, context.session.organisation_id) !== text(data.storage_path)) return null;
   return { ...data, name: text((data.metadata as Json)?.original_filename) || "Positionnement rempli" };
 }

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { personalSignatureStorageObjectPath } from "@/lib/server/dailyPersonalAttendance";
 import { OWN_POSITIONING_MAX_BYTES, OWN_POSITIONING_MIME_TYPES, positioningSourceDocumentId, type PositioningSubject } from "@/lib/daily/ownPositioning";
 
 type Json = Record<string, unknown>;
@@ -26,7 +27,7 @@ export async function loadOriginalPositioning(admin: SupabaseClient, formation: 
   if (error) throw new OwnPositioningError("Lecture du questionnaire indisponible.", 500);
   if (!data || data.bucket !== "documents" || !data.is_current || data.status === "archived" ||
     (data.formation_id && data.formation_id !== formation.id) ||
-    !String(data.storage_path ?? "").startsWith(`daily/${formation.organisation_id}/`) ||
+    personalSignatureStorageObjectPath(data.storage_path, formation.organisation_id) !== text(data.storage_path) ||
     !/^[a-f0-9]{64}$/i.test(String(data.sha256 ?? "")) ||
     !(OWN_POSITIONING_MIME_TYPES as readonly string[]).includes(String(data.mime_type ?? ""))) {
     throw new OwnPositioningError("Le questionnaire demandé n’est plus disponible. Actualisez votre dossier.", 409);
