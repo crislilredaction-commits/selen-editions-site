@@ -9,7 +9,7 @@ function setup(kind, options = {}) {
  const rows = {
   daily_portal_access_tokens: [{ token: "secret", session_id: "session", portal_type: role, entity_email: email, status: options.status ?? "pending", expires_at: null }],
   daily_sessions: [{ id: "session", organisation_id: "org", status: options.archived ? "archived" : "active", companies: [{ name: "Company", email: "company@test.invalid" }] }],
-  daily_session_enrolments: [{ learner_id: "learner", status: "active", daily_learners: { email } }],
+  daily_session_enrolments: [{ session_id: "session", learner_id: "learner", status: "active", daily_learners: { email } }],
   daily_conventions: [{ id: "doc", session_id: "session", recipient_type: role === "enterprise" ? "company" : "beneficiary", recipient_email: email, storage_path: path, document_name: "doc.pdf" }],
   daily_convocations: [{ id: "doc", session_id: "session", recipient_type: role === "enterprise" ? "company" : role === "trainer" ? "trainer" : "beneficiary", recipient_email: email, storage_path: path, document_name: "doc.pdf", status: "sent" }],
  };
@@ -34,7 +34,7 @@ function setup(kind, options = {}) {
   return { data: { signedUrl: "https://files.test.invalid/document.pdf" }, error: null };
  } }; } } };
  const { GET } = loadTypeScript(`app/api/daily-portal/[token]/${kind}/route.ts`, {
-  "next/server": { NextResponse: Response },
+  "next/server": { NextResponse: { json: Response.json, redirect: (url,init) => new Response(null,{ status:302, headers:{ location:String(url), ...(init?.headers ?? {}) } }) } },
   "@/lib/server/clientNdaAccess": { getAdminSupabase: () => db },
   "@/lib/server/dailyPersonalAttendance": { personalSignatureStorageObjectPath: (value,org) => {
    const p=String(value ?? ""); return p.startsWith(`daily/${org}/`) && !p.split("/").some(part => !part || part === "." || part === "..") ? p : null;
