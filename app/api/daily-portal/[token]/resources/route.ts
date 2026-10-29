@@ -135,11 +135,23 @@ export async function GET(_request: Request, { params }: Params) {
 
   const postsessionAvailable = isPostsessionDownloadAvailable(session.end_date);
   const visible = (documents ?? []).filter((document: Json) => isDailyPortalResourceVisible({resource:document,companyName,role:access.portal_type,sessionId:session.id,enrolmentIds:allowedEnrolmentIds,learnerIds:allowedLearnerIds,postsessionAvailable}));
-  const attendancePublished = (documents ?? []).some((document: Json) =>
-    document.document_type === "attendance_summary"
-    && text(document.session_id) === text(session.id)
-    && ["published", "signed"].includes(text(document.status))
-  );
+  // Attendance summaries are not part of DAILY_PORTAL_RESOURCE_TYPES:
+  // query their publication independently, otherwise this flag is always false.
+  let attendancePublished = false;
+  if (access.portal_type === "learner" && postsessionAvailable) {
+    const { data: publishedAttendance, error: publicationError } = await admin.from("daily_documents")
+      .select("id")
+      .eq("organisation_id", session.organisation_id)
+      .eq("session_id", session.id)
+      .eq("document_type", "attendance_summary")
+      .eq("is_current", true)
+      .is("archived_at", null)
+      .in("status", ["published", "signed"])
+      .limit(1)
+      .maybeSingle();
+    if (publicationError) return NextResponse.json({ error: publicationError.message }, { status: 500 });
+    attendancePublished = Boolean(publishedAttendance);
+  }
 
   const personalAttendanceResources: Json[] = [];
   const personalAssessmentResources: Json[] = [];
