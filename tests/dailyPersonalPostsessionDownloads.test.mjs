@@ -262,3 +262,26 @@ test("Après propose la copie seulement lorsqu’un fichier personnel finalisé 
   assert.match(navigation, /\.\.\.\(personalAssessmentEvidence \? \[/);
   assert.match(navigation, /encodeURIComponent\(personalAssessmentEvidence\.id\)/);
 });
+
+test("AR1 borne les chemins des signatures au seul OF, sans traversée ni préfixe ambigu", () => {
+  const org = "11111111-2222-4333-8444-555555555555";
+  const valid = `daily/${org}/trainer/signature.png`;
+  assert.equal(helper.personalSignatureStorageObjectPath(valid, org), valid);
+  assert.equal(helper.personalSignatureStorageObjectPath(`documents/${valid}`, org), valid);
+  for (const path of [
+    "", "documents/", `daily/${org}-other/signature.png`,
+    "daily/99999999-2222-4333-8444-555555555555/trainer/signature.png",
+    `daily/${org}/../other/signature.png`, `daily/${org}//signature.png`,
+    `daily/${org}/.//signature.png`, `daily/${org}/trainer\\signature.png`,
+  ]) assert.equal(helper.personalSignatureStorageObjectPath(path, org), null, path);
+});
+
+test("le PDF individuel refuse les signatures hors OF et dégrade les images invalides sans révéler d'autre document", async () => {
+  const route = await read("app/api/daily-portal/[token]/personal-attendance/route.ts");
+  assert.match(route, /personalSignatureStorageObjectPath\(storagePath, session\.organisation_id\)/);
+  assert.match(route, /if \(!objectPath\)/);
+  assert.match(route, /\.download\(objectPath\)/);
+  assert.ok(route.indexOf("if (!objectPath)") < route.indexOf(".download(objectPath)"));
+  assert.match(route, /bytes\.subarray\(0, 8\)\.equals\(pngMagic\)/);
+  assert.match(route, /Signature conservée, image non lisible/);
+});

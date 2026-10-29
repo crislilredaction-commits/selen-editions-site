@@ -50,3 +50,13 @@ export function safePersonalDownloadName(value: unknown, extension = ".doc") {
     .slice(0, 90) || "document";
   return base.toLowerCase().endsWith(extension.toLowerCase()) ? base : `${base}${extension}`;
 }
+
+/** Only use signature objects belonging to the current organisation. */
+export function personalSignatureStorageObjectPath(path: unknown, organisationId: unknown): string | null {
+  const organisation = text(organisationId);
+  const raw = text(path);
+  const objectPath = raw.startsWith("documents/") ? raw.slice("documents/".length) : raw;
+  if (!organisation || !objectPath.startsWith(`daily/${organisation}/`)) return null;
+  if (objectPath.includes("\\") || objectPath.split("/").some((part) => !part || part === "." || part === "..")) return null;
+  return objectPath;
+}

@@ -6,6 +6,7 @@ import {
   attendanceIsSettled,
   isPostsessionDownloadAvailable,
   safePersonalDownloadName,
+  personalSignatureStorageObjectPath,
 } from "@/lib/server/dailyPersonalAttendance";
 
 type Params = { params: Promise<{ token: string }> };
@@ -16,10 +17,6 @@ const one = (value: unknown): Json => Array.isArray(value) ? (value[0] as Json |
 function isExpired(value: unknown) {
   const expiresAt = text(value);
   return Boolean(expiresAt && Date.parse(expiresAt) < Date.now());
-}
-
-function storageObjectPath(path: string) {
-  return path.startsWith("documents/") ? path.slice("documents/".length) : path;
 }
 
 function formatDate(value: unknown, withTime = false) {
@@ -151,12 +148,23 @@ export async function GET(request: Request, { params }: Params) {
     const storagePath = text(path);
     line(`${label}${signedAt ? ` · ${formatDate(signedAt, true)}` : ""}`, 8, true);
     if (!storagePath) { line("Signature non enregistrée.", 8); return; }
-    const { data, error } = await admin.storage.from("documents").download(storageObjectPath(storagePath));
+    const objectPath = personalSignatureStorageObjectPath(storagePath, session.organisation_id);
+    if (!objectPath) { line("Signature conservée, chemin de preuve invalide.", 8); return; }
+    const { data, error } = await admin.storage.from("documents").download(objectPath);
     if (error || !data) { line("Signature conservée, aperçu temporairement indisponible.", 8); return; }
     const bytes = Buffer.from(await data.arrayBuffer());
+    const pngMagic = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+    if (bytes.length < pngMagic.length || !bytes.subarray(0, 8).equals(pngMagic)) {
+      line("Signature conservée, image non valide.", 8);
+      return;
+    }
     ensure(24);
-    doc.addImage(bytes.toString("base64"), "PNG", left, y, 48, 20, undefined, "FAST");
-    y += 24;
+    try {
+      doc.addImage(bytes.toString("base64"), "PNG", left, y, 48, 20, undefined, "FAST");
+      y += 24;
+    } catch {
+      line("Signature conservée, image non lisible.", 8);
+    }
   };
 
   line("Feuille d’émargement individuelle", 16, true);
