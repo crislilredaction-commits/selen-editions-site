@@ -60,8 +60,8 @@ test("un token de portail révoqué ou expiré est refusé avant de charger les 
   assert.match(document, /!\["pending","viewed"\]\.includes\(String\(access\.status\?\?""\)\)/);
   assert.match(assessment, /!\["pending", "viewed"\]\.includes\(String\(access\.status \?\? ""\)\)/);
   assert.match(satisfaction, /\["revoked", "expired"\]\.includes\(String\(access\.status \?\? ""\)\)/);
-  assert.match(convention, /\["revoked", "expired"\]\.includes\(String\(access\.status \?\? ""\)\)/);
-  assert.match(convocation, /\["revoked", "expired"\]\.includes\(String\(access\.status \?\? ""\)\)/);
+  assert.match(convention, /!\["pending", "viewed"\]\.includes\(String\(access\.status \?\? ""\)\)/);
+  assert.match(convocation, /!\["pending", "viewed"\]\.includes\(String\(access\.status \?\? ""\)\)/);
 });
 
 test("les ressources entreprise excluent aussi les inscriptions abandonnées", () => {

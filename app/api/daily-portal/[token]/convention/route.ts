@@ -1,3 +1,4 @@
+import { personalSignatureStorageObjectPath } from "@/lib/server/dailyPersonalAttendance";
 import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import { matchesDailyLearnerPortalAccess, hasUniqueDailyLearnerRecipientEmail } from "@/lib/server/dailyPortalLearnerIdentity";
@@ -36,9 +37,17 @@ export async function GET(request: Request, { params }: Params) {
   if (!access || isExpired(access.expires_at)) {
     return NextResponse.json({ error: "Portail introuvable ou expire." }, { status: 404 });
   }
-  if (["revoked", "expired"].includes(String(access.status ?? ""))) {
+  if (!["pending", "viewed"].includes(String(access.status ?? ""))) {
     return NextResponse.json({ error: "Cet accès n’est plus actif." }, { status: 403 });
   }
+  if (!["learner", "enterprise"].includes(String(access.portal_type ?? ""))) {
+    return NextResponse.json({ error: "Rôle de portail non autorisé." }, { status: 403 });
+  }
+  const { data: session, error: sessionError } = await supabase.from("daily_sessions")
+    .select("id,organisation_id,companies")
+    .eq("id", access.session_id).neq("status", "archived").maybeSingle();
+  if (sessionError) return NextResponse.json({ error: sessionError.message }, { status: 500 });
+  if (!session) return NextResponse.json({ error: "Session introuvable." }, { status: 404 });
 
   const { data: convention, error } = await supabase
     .from("daily_conventions")
@@ -64,9 +73,6 @@ export async function GET(request: Request, { params }: Params) {
     if (!hasUniqueDailyLearnerRecipientEmail(access, rows ?? [])) return NextResponse.json({ error: "Document à destinataire email ambigu." }, { status: 403 });
   }
   if (access.portal_type === "enterprise") {
-    const { data: session, error: sessionError } = await supabase.from("daily_sessions")
-      .select("companies").eq("id", access.session_id).neq("status", "archived").maybeSingle();
-    if (sessionError) return NextResponse.json({ error: sessionError.message }, { status: 500 });
     const companyIdentity = resolveEnterprisePortalCompany(Array.isArray(session?.companies) ? session.companies : [], entityEmail);
     if (companyIdentity.status !== "ok") return NextResponse.json({ error: "Identité entreprise absente ou ambiguë." }, { status: companyIdentity.status === "ambiguous" ? 409 : 403 });
   }
@@ -80,9 +86,12 @@ export async function GET(request: Request, { params }: Params) {
 
   if (!allowed) return NextResponse.json({ error: "Document non disponible pour ce portail." }, { status: 403 });
 
+  const storagePath = personalSignatureStorageObjectPath(convention.storage_path, session.organisation_id);
+  if (!storagePath) return NextResponse.json({ error: "Document introuvable." }, { status: 404 });
+
   const { data: signedUrlData, error: signedUrlError } = await supabase.storage
     .from("documents")
-    .createSignedUrl(convention.storage_path, 60 * 5, {
+    .createSignedUrl(storagePath, 60 * 5, {
       download: convention.document_name ?? true,
     });
 
@@ -93,5 +102,5 @@ export async function GET(request: Request, { params }: Params) {
     );
   }
 
-  return NextResponse.redirect(signedUrlData.signedUrl);
+  return NextResponse.redirect(signedUrlData.signedUrl, { headers: { "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } });
 }
