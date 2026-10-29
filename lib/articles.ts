@@ -32,6 +32,53 @@ export type Article = {
 // date de publication, mise à la une.
 export const articles: Article[] = [
   {
+    "slug": "qualiopi-novembre-2026-nouveau-referentiel-checklist",
+    "title": "Qualiopi change dimanche : opération sauvetage avant minuit 🎃",
+    "category": "Qualiopi",
+    "excerpt": "Le référentiel Qualiopi évolue le 1er novembre 2026. Cinq missions concrètes et un bonus CFA pour préparer les nouvelles exigences sans brûler vos classeurs.",
+    "publishedAt": "2026-10-29",
+    "coverImage": "/plum.png",
+    "coverAlt": "Plume de la Gazette Selen sur fond parchemin",
+    "featured": true,
+    "readingTime": "8 min",
+    "introduction": "Mardi 27 octobre, 9 h 12. Thomas, formateur indépendant et certifié Qualiopi, apprend que le référentiel évolue dimanche 1er novembre. Il voit déjà son week-end : des procédures à réécrire, des classeurs à reconstruire et une imprimante en panne samedi soir. Faut-il vraiment tout recommencer ? Non. Le décret n° 2026-728 du 1er août 2026, publié au Journal officiel du 4 août, maintient les sept critères, actualise plusieurs indicateurs et ajoute un indicateur 33 pour l'apprentissage. Cinq missions pratiques pour cibler les changements applicables, sans sacrifier son café ni son week-end.",
+    "sections": [
+      {
+        "title": "🧟 Avant de commencer : pas besoin de reconstruire Qualiopi",
+        "body": "Le nouveau référentiel entre en vigueur le 1er novembre 2026. Les sept critères sont conservés. Les 33 indicateurs ne concernent pas tous chaque prestataire : l'indicateur 33 vise l'apprentissage. Votre certificat ne disparaît pas automatiquement dimanche. L'objectif est de repérer les nouvelles exigences pertinentes pour vos prestations et de préparer vos futurs audits. Source officielle : décret n° 2026-728 du 1er août 2026, Légifrance, https://www.legifrance.gouv.fr/loda/id/JORFTEXT000054608509/."
+      },
+      {
+        "title": "🔎 Mission n° 1 : le détecteur de promesses commerciales",
+        "body": "Thomas découvre sur son site « notre formation vous garantit une réussite immédiate ». Un peu ambitieux, Thomas. L'indicateur 1 impose une information publique accessible, détaillée, vérifiable et sans promesse trompeuse. L'indicateur 2 renforce la transparence sur les modalités de calcul des résultats. Une formation affiche 100 % de satisfaction, mais deux répondants seulement sur trois participants : sans méthode ni dénominateur, le chiffre risque d'induire en erreur. Astuce Selen : pour chaque statistique diffusée, conservez la période, le nombre de personnes concernées, le nombre de répondants, le calcul et la date d'actualisation. Un résultat modeste mais explicable vaut mieux qu'une médaille commerciale obtenue par prestidigitation."
+      },
+      {
+        "title": "💻 Mission n° 2 : le fantôme des modules à distance",
+        "body": "Thomas envoie des liens et conserve des captures d'écran. Mais pour ses modules autonomes, comment vérifier un suivi réel ? L'indicateur 19 renforce l'effectivité du suivi des modules à distance. Le texte prévoit également, au-delà d'un seuil d'intervenants fixé par arrêté, un référent pédagogique : n'inventez pas ce seuil. Astuce Selen : réunissez trois types de traces adaptées au parcours, par exemple accès au module, activité réalisée et évaluation ou production. Un lien envoyé ne prouve pas qu'une compétence a été travaillée. Ce sont des pistes de preuves, non une liste réglementaire universelle."
+      },
+      {
+        "title": "🚨 Mission n° 3 : le signalement du vendredi à 16 h 55",
+        "body": "Votre livret d'accueil précise les horaires, mais qui traite un signalement de violence, de harcèlement ou de discrimination ? L'indicateur 12 renforce explicitement la prévention et le traitement de ces situations pendant la formation. Les indicateurs 14 et 15 précisent des exigences spécifiques pour les CFA. Testez une situation fictive : un apprenant vous signale un comportement grave juste avant le week-end. Qui reçoit les faits, quelles mesures immédiates peuvent être prises, qui contacter, comment préserver la confidentialité et documenter le suivi ? Une procédure courte et réellement applicable vaut mieux qu'une interdiction solennelle dans un règlement jamais consulté. L'enjeu est d'abord de protéger les personnes."
+      },
+      {
+        "title": "📑 Mission n° 4 : le sous-traitant mystérieux",
+        "body": "Thomas travaille avec une formatrice compétente et conserve son CV. Leur contrat se contente pourtant de dire « formation réalisée selon les modalités convenues ». L'indicateur 27 exige davantage de traçabilité du respect du référentiel dans les contrats de sous-traitance et les situations concernées. Astuce Selen : une fiche de mission indique objectifs, responsabilités, documents attendus, remontée des incidents et modalités de suivi qualité. Vérifiez sa cohérence avec le contrat et la prestation réelle. La confiance entre professionnels et une formalisation sérieuse peuvent parfaitement cohabiter."
+      },
+      {
+        "title": "🧠 Mission n° 5 : la boule de cristal des risques",
+        "body": "L'indicateur 32 demande de prendre en compte l'analyse des risques pour la qualité des formations dans la démarche d'amélioration continue. Non, Thomas n'a pas besoin de prévoir l'avenir. Commencez par trois risques concrets : formateur indisponible, plateforme à distance en panne, besoin d'adaptation identifié trop tard. Pour chacun, consignez conséquence, prévention, responsable et suivi. Exemple : pour une panne de plateforme, tester une solution alternative ; pour un absent, prévoir un report ou remplacement encadré. Ce petit registre est un outil conseillé par Selen, pas un modèle obligatoire. Si votre risque principal est un ordinateur qui fait un bruit d'hélicoptère, vous tenez peut-être déjà une piste."
+      },
+      {
+        "title": "🎓 Bonus CFA : le trente-troisième invité",
+        "body": "L'indicateur 33 s'applique aux prestations par apprentissage. Il demande d'évaluer les contenus et les enseignements par les apprenants, distinctement de leur satisfaction générale, de partager les résultats avec les équipes pédagogiques et d'alimenter une amélioration continue dont l'efficacité est mesurée périodiquement. « Les apprenants aiment-ils la formation ? » et « Les contenus et méthodes les aident-ils à apprendre ? » sont deux questions différentes. On ne juge pas un restaurant uniquement à la couleur de ses serviettes."
+      },
+      {
+        "title": "🎁 La checklist de contrôle express",
+        "body": "1. Vérifier la communication publique et le calcul des résultats. 2. Examiner le suivi effectif des modules à distance. 3. Vérifier la prévention et le traitement des violences, harcèlements et discriminations. 4. Revoir les contrats et le suivi des sous-traitants si concernés. 5. Documenter les risques qualité. 6. Pour les CFA, examiner l'évaluation spécifique des contenus et des enseignements. Cette liste sert à prioriser les vérifications et ne remplace pas l'examen exhaustif des dispositions applicables."
+      }
+    ],
+    "conclusion": "Dimanche approche. Thomas n'a ni brûlé ses classeurs ni acheté douze logiciels. Il a identifié les exigences pertinentes, décidé quoi vérifier et commencé à documenter les adaptations. Tout ne sera pas nécessairement réglé en cinq jours, mais les bonnes questions sont posées. Son dernier dossier s'appelle quand même « Qualiopi_nouveau_référentiel_VRAIMENT_FINAL_2026 ». Quand un confrère lui demande si un nouveau guide de lecture va paraître, Thomas ferme son ordinateur : « Lundi. On verra ça lundi. » L'équipe Selen Éditions. Article actualisé pour publication le 29 octobre 2026. Décret officiel : https://www.legifrance.gouv.fr/loda/id/JORFTEXT000054608509/ . Les propositions de méthode sont des conseils pratiques, pas des obligations réglementaires supplémentaires."
+  },
+  {
     "slug": "cybermois-2026-securiser-dossiers-apprenants-formateurs",
     "title": "Cybermois 2026 : votre dossier apprenant est-il une passoire numérique ?",
     "category": "Gestion quotidienne",
