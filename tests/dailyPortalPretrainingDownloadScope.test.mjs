@@ -7,7 +7,7 @@ function setup(kind, options = {}) {
  const email = role === "trainer" ? "trainer@test.invalid" : role === "enterprise" ? "company@test.invalid" : "learner@test.invalid";
  const path = options.path ?? "daily/org/document.pdf";
  const rows = {
-  daily_portal_access_tokens: [{ token: "secret", session_id: "session", portal_type: role, entity_email: email, status: options.status ?? "pending", expires_at: null }],
+  daily_portal_access_tokens: [{ token: "secret", session_id: "session", portal_type: role, entity_email: email, status: options.status ?? "pending", expires_at: options.expiresAt === undefined ? null : options.expiresAt }],
   daily_sessions: [{ id: "session", organisation_id: "org", status: options.archived ? "archived" : "active", companies: [{ name: "Company", email: "company@test.invalid" }] }],
   daily_session_enrolments: [{ session_id: "session", learner_id: "learner", status: "active", daily_learners: { email } }],
   daily_conventions: [{ id: "doc", session_id: "session", recipient_type: role === "enterprise" ? "company" : "beneficiary", recipient_email: email, storage_path: path, document_name: "doc.pdf" }],
@@ -48,6 +48,11 @@ function setup(kind, options = {}) {
 for (const kind of ["convention","convocation"]) {
  for (const [label,opts,expected] of [
   ["valid learner",{},302],["valid enterprise",{role:"enterprise"},302],
+  ["valid future expiry",{expiresAt:"2030-01-01T00:00:00.000Z"},302],
+  ["expired expiry",{expiresAt:"2026-10-01T00:00:00.000Z"},404],
+  ["malformed expiry",{expiresAt:"not-a-date"},404],
+  ["blank expiry",{expiresAt:" "},404],
+  ["numeric expiry",{expiresAt:42},404],
   ["revoked",{status:"revoked"},403],["unknown token state",{status:"disabled"},403],
   ["archived session",{archived:true},404],["SQL error",{sqlError:true},500],
   ["cross-OF path",{path:"daily/other/private.pdf"},404],
@@ -65,3 +70,12 @@ test("trainer convocation remains accessible",async()=>{
 test("trainer convention is refused",async()=>{
  const h=setup("convention",{role:"trainer"});assert.equal((await h.get()).status,403);assert.equal(h.signed(),0);
 });
+
+for (const kind of ["convention", "convocation"]) {
+  test(`${kind}: invalid expiry is rejected before reading session or signing storage`, async () => {
+    const h = setup(kind, { expiresAt: "broken" });
+    const response = await h.get();
+    assert.equal(response.status, 404);
+    assert.equal(h.signed(), 0);
+  });
+}
