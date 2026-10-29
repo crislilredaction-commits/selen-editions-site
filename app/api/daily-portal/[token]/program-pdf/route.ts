@@ -21,7 +21,7 @@ export async function GET(_request: Request, { params }: Params) {
       .eq("token", token).maybeSingle();
     if (accessError) throw accessError;
     if (!access || access.portal_type !== "learner") return NextResponse.json({ error: "Programme introuvable." }, { status: 404 });
-    if (!isActivePortalAttendanceToken(access.status, access.expires_at)
+    if (!isActivePortalAttendanceToken(access.status, access.expires_at))
       return NextResponse.json({ error: "Accès expiré ou révoqué." }, { status: 403 });
     const { data: session, error: sessionError } = await admin.from("daily_sessions")
       .select("id,organisation_id,formation_id,user_id,status").eq("id", access.session_id).neq("status", "archived").maybeSingle();
