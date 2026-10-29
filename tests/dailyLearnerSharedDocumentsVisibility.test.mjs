@@ -59,7 +59,7 @@ test("un token de portail révoqué ou expiré est refusé avant de charger les 
   assert.match(portal, /\["pending","viewed"\]\.includes\(String\(access\.status\?\?""\)\)/);
   assert.match(document, /!\["pending","viewed"\]\.includes\(String\(access\.status\?\?""\)\)/);
   assert.match(assessment, /!\["pending", "viewed"\]\.includes\(String\(access\.status \?\? ""\)\)/);
-  assert.match(satisfaction, /\["revoked", "expired"\]\.includes\(String\(access\.status \?\? ""\)\)/);
+  assert.match(satisfaction, /!\["pending", "viewed"\]\.includes\(String\(access\.status \?\? ""\)\)/);
   assert.match(convention, /!\["pending", "viewed"\]\.includes\(String\(access\.status \?\? ""\)\)/);
   assert.match(convocation, /!\["pending", "viewed"\]\.includes\(String\(access\.status \?\? ""\)\)/);
 });
