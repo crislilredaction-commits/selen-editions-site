@@ -1,1 +1,0 @@
-Déclenchement contrôlé du déploiement production après raccord du générateur de dossier apprenant et mise à jour du cahier des charges qualité/veille.

@@ -8,13 +8,19 @@ const ids=(value:unknown)=>Array.isArray(value)?value.map(text).filter(Boolean):
 export async function getDailyTrainerWorkspaceContext(){
   const workspace=await getDailyClientWorkspace();
   if(!workspace.ok)return workspace;
-  const trainer=workspace.workspace.trainers.find(item=>String(item.user_id??"")===workspace.user.id)
-    ??workspace.workspace.trainers.find(item=>Boolean(workspace.user.email)&&email(item.professional_email)===email(workspace.user.email));
+  // A shared professional address is not a personal identity. Never pick the
+  // first matching profile or impersonate a trainer linked to another account.
+  const eligible=workspace.workspace.trainers.filter(item=>item.active!==false&&item.status!=="archived");
+  const linked=eligible.filter(item=>String(item.user_id??"")===workspace.user.id);
+  const emailMatches=eligible.filter(item=>!item.user_id&&Boolean(workspace.user.email)&&email(item.professional_email)===email(workspace.user.email));
+  if(linked.length>1||(!linked.length&&emailMatches.length>1))
+    return{ok:false as const,status:409,error:"Plusieurs fiches formateur correspondent à votre identité. Demandez à l’organisme de corriger les rattachements."};
+  const trainer=linked[0]??emailMatches[0];
   // The manager can teach under the unique owner profile of their organisation.
-  // Never resolve an arbitrary trainer when several owner profiles exist.
+  // A profile assigned to another user must never be adopted through this fallback.
   let resolvedTrainer=trainer;
   if(!resolvedTrainer?.id&&workspace.workspace.membership.roles.includes("manager")){
-    const owners=workspace.workspace.trainers.filter(item=>item.engagement_type==="owner"&&item.status!=="archived");
+    const owners=eligible.filter(item=>item.engagement_type==="owner"&&(!item.user_id||String(item.user_id)===workspace.user.id));
     if(owners.length===1)resolvedTrainer=owners[0];
   }
   if(!resolvedTrainer?.id)return{ok:false as const,status:403,error:"Aucun profil formateur personnel identifié. Rattachez le dirigeant à une fiche formateur."};

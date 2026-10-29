@@ -1,1 +1,0 @@
-Validation finale groupée du lot signatures : H+72 automatique, clôture sur signature réelle et relance manuelle contrôlée. Ce commit sert uniquement à déclencher un unique preview final consolidé avant fusion.
