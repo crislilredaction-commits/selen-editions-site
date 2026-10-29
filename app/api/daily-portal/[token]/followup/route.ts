@@ -15,7 +15,7 @@ async function trainerAccess(token: string) {
   if (error) return { ok: false as const, status: 500, error: error.message };
   if (!access || access.portal_type !== "trainer") return { ok: false as const, status: 403, error: "Accès formateur requis." };
   if (access.expires_at && new Date(access.expires_at).getTime() < Date.now()) return { ok: false as const, status: 410, error: "Ce lien a expiré." };
-  if (["revoked", "expired"].includes(String(access.status ?? ""))) return { ok: false as const, status: 403, error: "Cet accès n’est plus actif." };
+  if (!["pending", "viewed"].includes(String(access.status ?? ""))) return { ok: false as const, status: 403, error: "Cet accès n’est plus actif." };
   const { data: session, error: sessionError } = await admin.from("daily_sessions").select("id,organisation_id").eq("id", access.session_id).neq("status", "archived").maybeSingle();
   if (sessionError) return { ok: false as const, status: 500, error: sessionError.message };
   if (!session) return { ok: false as const, status: 404, error: "Session introuvable." };
