@@ -9,7 +9,7 @@ test("imported program link is visible in private learner portal", () => {
   assert.match(portal, /\["selen_form","program_import"\]\.includes/);
 });
 test("imported program requires active learner and validated formation", () => {
-  assert.match(route, /if \(!matched\)/);
+  assert.match(route, /if \(!matched \|\|/);
   assert.match(route, /formation\.status !== "validated"/);
   assert.match(route, /formation\.creation_mode === "program_import"/);
 });
