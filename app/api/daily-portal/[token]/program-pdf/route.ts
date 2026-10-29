@@ -4,6 +4,7 @@ import { renderRegistrationProgramPdf } from "@/lib/server/dailyRegistrationProg
 import { positioningSourceDocumentId } from "@/lib/daily/ownPositioning";
 import { findUniqueDailyLearnerPortalEnrolment } from "@/lib/server/dailyPortalLearnerIdentity";
 import { personalSignatureStorageObjectPath } from "@/lib/server/dailyPersonalAttendance";
+import { isActivePortalAttendanceToken } from "@/lib/daily/portalAttendanceAccess.mjs";
 
 type Params = { params: Promise<{ token: string }> };
 const text = (v: unknown) => String(v ?? "").trim();
@@ -20,7 +21,7 @@ export async function GET(_request: Request, { params }: Params) {
       .eq("token", token).maybeSingle();
     if (accessError) throw accessError;
     if (!access || access.portal_type !== "learner") return NextResponse.json({ error: "Programme introuvable." }, { status: 404 });
-    if (!["pending", "viewed"].includes(String(access.status ?? "")) || (access.expires_at && new Date(access.expires_at).getTime() <= Date.now()))
+    if (!isActivePortalAttendanceToken(access.status, access.expires_at)
       return NextResponse.json({ error: "Accès expiré ou révoqué." }, { status: 403 });
     const { data: session, error: sessionError } = await admin.from("daily_sessions")
       .select("id,organisation_id,formation_id,user_id,status").eq("id", access.session_id).neq("status", "archived").maybeSingle();

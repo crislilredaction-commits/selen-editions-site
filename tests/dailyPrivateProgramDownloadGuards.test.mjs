@@ -4,12 +4,13 @@ import { loadTypeScript } from "./helpers/loadTypeScript.mjs";
 
 const identity = loadTypeScript("lib/server/dailyPortalLearnerIdentity.ts");
 const pathGuard = loadTypeScript("lib/server/dailyPersonalAttendance.ts");
+const { isActivePortalAttendanceToken } = await import("../lib/daily/portalAttendanceAccess.mjs");
 const primary = { learner_id: "learner", session_id: "session", organisation_id: "org", status: "active", daily_learners: { email: "shared@example.test" } };
 const cancelled = { learner_id: "other", session_id: "session", organisation_id: "org", status: "cancelled", daily_learners: { email: "shared@example.test" } };
 
-function setup({ status = "pending", entityKey = "learner:learner", enrolments = [primary], mode = "selen_form", sourcePath = "daily/org/program.pdf", sqlError = false } = {}) {
+function setup({ status = "pending", entityKey = "learner:learner", enrolments = [primary], mode = "selen_form", sourcePath = "daily/org/program.pdf", sqlError = false, expiresAt = null } = {}) {
   const rows = {
-    daily_portal_access_tokens: [{ token: "secret", session_id: "session", portal_type: "learner", entity_key: entityKey, entity_email: "shared@example.test", status, expires_at: null }],
+    daily_portal_access_tokens: [{ token: "secret", session_id: "session", portal_type: "learner", entity_key: entityKey, entity_email: "shared@example.test", status, expires_at: expiresAt }],
     daily_sessions: [{ id: "session", organisation_id: "org", formation_id: "formation", user_id: "owner", status: "active" }],
     daily_session_enrolments: enrolments,
     daily_formations: [{ id: "formation", organisation_id: "org", user_id: "owner", title: "Formation", status: "validated", creation_mode: mode, detailed_program_document_url: "source" }],
@@ -51,6 +52,7 @@ function setup({ status = "pending", entityKey = "learner:learner", enrolments =
     "@/lib/daily/ownPositioning": { positioningSourceDocumentId: () => "source" },
     "@/lib/server/dailyPortalLearnerIdentity": identity,
     "@/lib/server/dailyPersonalAttendance": pathGuard,
+    "@/lib/daily/portalAttendanceAccess.mjs": { isActivePortalAttendanceToken },
   }, { Response, fetch: () => assert.fail("Network forbidden") });
   return { get: () => GET(null, { params: Promise.resolve({ token: "secret" }) }), reads, signedPaths };
 }
@@ -92,5 +94,23 @@ for (const path of ["daily/other/private.pdf", "daily/org/../private.pdf", "dail
     const h = setup({ mode: "program_import", sourcePath: path });
     assert.equal((await h.get()).status, 404);
     assert.deepEqual(h.signedPaths, []);
+  });
+}
+
+for (const [label, expiresAt, expected] of [
+  ["legacy without expiry", null, 302],
+  ["future expiry", "2030-01-01T00:00:00.000Z", 302],
+  ["past expiry", "2020-01-01T00:00:00.000Z", 403],
+  ["malformed expiry", "not-a-date", 403],
+  ["empty expiry", "", 403],
+  ["blank expiry", " ", 403],
+  ["numeric expiry", 1234, 403],
+]) {
+  test(`private imported programme: ${label}`, async () => {
+    const h = setup({ mode: "program_import", expiresAt });
+    const response = await h.get();
+    assert.equal(response.status, expected);
+    assert.deepEqual(h.signedPaths, expected === 302 ? ["daily/org/program.pdf"] : []);
+    if (expected === 403) assert.deepEqual(h.reads, ["daily_portal_access_tokens"]);
   });
 }

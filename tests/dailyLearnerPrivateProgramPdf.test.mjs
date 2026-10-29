@@ -4,6 +4,7 @@ import { loadTypeScript } from "./helpers/loadTypeScript.mjs";
 
 const learnerIdentity = loadTypeScript("lib/server/dailyPortalLearnerIdentity.ts");
 const pathGuard = loadTypeScript("lib/server/dailyPersonalAttendance.ts");
+const { isActivePortalAttendanceToken } = await import("../lib/daily/portalAttendanceAccess.mjs");
 
 function setup({ role="learner", status="pending", enrolmentStatus="active", formationStatus="validated", creationMode="selen_form", expiresAt=null }={}) {
  const access={token:"portal-secret",session_id:"session",portal_type:role,entity_key:"learner:learner",entity_email:"learner@example.test",status,expires_at:expiresAt};
@@ -26,7 +27,8 @@ function setup({ role="learner", status="pending", enrolmentStatus="active", for
   "@/lib/server/dailyRegistrationProgramPdf":{renderRegistrationProgramPdf:()=>new Uint8Array([37,80,68,70,45])},
   "@/lib/daily/ownPositioning":{positioningSourceDocumentId:()=>null},
   "@/lib/server/dailyPortalLearnerIdentity":learnerIdentity,
-  "@/lib/server/dailyPersonalAttendance":pathGuard
+  "@/lib/server/dailyPersonalAttendance":pathGuard,
+  "@/lib/daily/portalAttendanceAccess.mjs":{ isActivePortalAttendanceToken }
  },{Response,fetch:()=>assert.fail("Network forbidden")});
  return {get:()=>GET(null,{params:Promise.resolve({token:"portal-secret"})}),calls};
 }
@@ -36,9 +38,13 @@ test("active learner receives genuine PDF without public registration",async()=>
 });
 for(const [name,opts,code] of [
  ["trainer",{role:"trainer"},404],["revoked",{status:"revoked"},403],
- ["expired",{expiresAt:"2000-01-01"},403],["cancelled",{enrolmentStatus:"cancelled"},403],
+ ["expired",{expiresAt:"2000-01-01"},403],
+ ["malformed expiry",{expiresAt:"not-a-date"},403],
+ ["blank expiry",{expiresAt:" "},403],
+ ["numeric expiry",{expiresAt:42},403],
+ ["valid future expiry",{expiresAt:"2030-01-01T00:00:00.000Z"},200],["cancelled",{enrolmentStatus:"cancelled"},403],
  ["draft",{formationStatus:"draft"},404],["imported",{creationMode:"program_import"},404]
 ])test("private PDF refuses "+name,async()=>{
  const h=setup(opts);const r=await h.get();assert.equal(r.status,code);
- if(["trainer","revoked","expired","cancelled"].includes(name))assert.ok(!h.calls.includes("daily_formations"));
+ if(["trainer","revoked","expired","malformed expiry","blank expiry","numeric expiry","cancelled"].includes(name))assert.ok(!h.calls.includes("daily_formations"));
 });
