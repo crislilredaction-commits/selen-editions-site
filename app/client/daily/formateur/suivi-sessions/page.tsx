@@ -438,7 +438,7 @@ function TrainerPedagogicalTools({sessionId,enrolments}:{sessionId:string;enrolm
       const availableFrom=typeof metadata.available_from==="string"?metadata.available_from:"";
       const author=typeof metadata.trainer_name==="string"?metadata.trainer_name:"";
       return <article key={document.id} style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",padding:10,border:"1px solid var(--sepia-mid)",borderRadius:10}}><div><strong>{document.logical_name}</strong><p style={styles.entryMeta}>{document.document_type==="trainer_resource"?"Ressource pédagogique":document.document_type==="attendance_paper_evidence"?"Preuve d’émargement":"Évaluation externe"}{learner?` · ${learnerName(learner)}`:" · session entière"}{author?` · ${author}`:""} · importé le {new Date(document.created_at).toLocaleString("fr-FR")}{availableFrom?` · disponible le ${new Date(availableFrom).toLocaleString("fr-FR")}`:""}</p></div><a href={`/api/client/daily/trainer-session-workspace/document?session_id=${encodeURIComponent(sessionId)}&id=${encodeURIComponent(document.id)}`} target="_blank" rel="noreferrer">Consulter</a></article>})}</div>:null}
-    {slots.length?<a href={`/api/client/daily/trainer-session-workspace/attendance-sheet?session_id=${encodeURIComponent(sessionId)}`} target="_blank" rel="noreferrer">Télécharger la feuille d’émargement préremplie</a>:null}
+    {slots.length && enrolments.length ?<a href={`/api/client/daily/trainer-session-workspace/attendance-sheet?session_id=${encodeURIComponent(sessionId)}`} target="_blank" rel="noreferrer">Télécharger la feuille d’émargement préremplie</a>:null}
   </div>
 }
 
