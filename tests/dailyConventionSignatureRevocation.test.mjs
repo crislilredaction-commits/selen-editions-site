@@ -4,7 +4,7 @@ import { loadTypeScript } from "./helpers/loadTypeScript.mjs";
 
 const routePath = "app/api/daily-signature/[token]/route.ts";
 const downloadPath = "app/api/daily-signature/[token]/download/route.ts";
-const next = { NextResponse: { json: (body, options) => Response.json(body, options), redirect: (url) => Response.redirect(url) } };
+const next = { NextResponse: { json: (body, options) => Response.json(body, options), redirect: (url) => Response.redirect(url, 307) } };
 const tokenContext = { params: Promise.resolve({ token: "test-token" }) };
 
 function fixture(status, { expiresAt = "2099-01-01T00:00:00Z", assistance = false } = {}) {
