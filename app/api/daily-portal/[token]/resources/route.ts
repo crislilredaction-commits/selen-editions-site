@@ -144,30 +144,15 @@ export async function GET(_request: Request, { params }: Params) {
   const personalAttendanceResources: Json[] = [];
   const personalAssessmentResources: Json[] = [];
   const personalAssessmentEvidenceResources: Json[] = [];
-  if (access.portal_type === "learner" && postsessionAvailable && attendancePublished && allowedEnrolmentIds.length) {
-    const [{ data: slots, error: slotsError }, { data: records, error: recordsError }, { data: assessments, error: assessmentsError }, { data: assessmentEvidence, error: assessmentEvidenceError }] = await Promise.all([
-      admin.from("daily_attendance_slots").select("id").eq("organisation_id", session.organisation_id).eq("session_id", session.id).neq("status", "cancelled"),
-      admin.from("daily_attendance_records").select("slot_id,enrolment_id,status").eq("organisation_id", session.organisation_id).eq("session_id", session.id).in("enrolment_id", allowedEnrolmentIds),
+  if (access.portal_type === "learner" && postsessionAvailable && allowedEnrolmentIds.length) {
+    // Final assessment results are independent from the attendance-summary publication.
+    // Both remain scoped to the same active learner enrolment and organisation.
+    const [{ data: assessments, error: assessmentsError }, { data: assessmentEvidence, error: assessmentEvidenceError }] = await Promise.all([
       admin.from("daily_learning_assessments").select("enrolment_id,outcome,assessed_at").eq("organisation_id", session.organisation_id).eq("session_id", session.id).in("enrolment_id", allowedEnrolmentIds),
       admin.from("daily_documents").select("id,enrolment_id,learner_id,linked_object_type,linked_object_id,logical_name,mime_type,created_at").eq("organisation_id", session.organisation_id).eq("session_id", session.id).eq("document_type", "learning_assessment_evidence").eq("is_current", true).is("archived_at", null).in("enrolment_id", allowedEnrolmentIds),
     ]);
-    const attendanceError = slotsError ?? recordsError ?? assessmentsError ?? assessmentEvidenceError;
-    if (attendanceError) return NextResponse.json({ error: attendanceError.message }, { status: 500 });
-    const slotIds = (slots ?? []).map((slot: Json) => slot.id);
-    for (const row of matchingRows) {
-      const enrolmentId = text(row.id);
-      const ownRecords = (records ?? []).filter((record: Json) => text(record.enrolment_id) === enrolmentId);
-      if (!attendanceIsSettled(slotIds, ownRecords)) continue;
-      personalAttendanceResources.push({
-        id: personalAttendanceDocumentId(enrolmentId),
-        document_type: "personal_attendance_summary",
-        linked_object_type: "enrolment",
-        linked_object_id: enrolmentId,
-        logical_name: "Mon relevé de présence",
-        status: "available",
-        created_at: session.end_date,
-      });
-    }
+    const assessmentError = assessmentsError ?? assessmentEvidenceError;
+    if (assessmentError) return NextResponse.json({ error: assessmentError.message }, { status: 500 });
     for (const assessment of assessments ?? []) {
       if (!isFinalAssessmentResult(assessment.outcome, assessment.assessed_at)) continue;
       const enrolmentId = text(assessment.enrolment_id);
@@ -197,6 +182,32 @@ export async function GET(_request: Request, { params }: Params) {
         mime_type: evidence.mime_type ?? null,
         created_at: evidence.created_at ?? assessment.assessed_at,
       });
+    }
+
+    // Attendance sheets still require a published summary and settled slots.
+    // An attendance query failure cannot hide an independently finalized assessment.
+    if (attendancePublished) {
+      const [{ data: slots, error: slotsError }, { data: records, error: recordsError }] = await Promise.all([
+        admin.from("daily_attendance_slots").select("id").eq("organisation_id", session.organisation_id).eq("session_id", session.id).neq("status", "cancelled"),
+        admin.from("daily_attendance_records").select("slot_id,enrolment_id,status").eq("organisation_id", session.organisation_id).eq("session_id", session.id).in("enrolment_id", allowedEnrolmentIds),
+      ]);
+      const attendanceError = slotsError ?? recordsError;
+      if (attendanceError) return NextResponse.json({ error: attendanceError.message }, { status: 500 });
+      const slotIds = (slots ?? []).map((slot: Json) => slot.id);
+      for (const row of matchingRows) {
+        const enrolmentId = text(row.id);
+        const ownRecords = (records ?? []).filter((record: Json) => text(record.enrolment_id) === enrolmentId);
+        if (!attendanceIsSettled(slotIds, ownRecords)) continue;
+        personalAttendanceResources.push({
+          id: personalAttendanceDocumentId(enrolmentId),
+          document_type: "personal_attendance_summary",
+          linked_object_type: "enrolment",
+          linked_object_id: enrolmentId,
+          logical_name: "Mon relevé de présence",
+          status: "available",
+          created_at: session.end_date,
+        });
+      }
     }
   }
 

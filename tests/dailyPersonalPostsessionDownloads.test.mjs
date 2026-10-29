@@ -68,7 +68,8 @@ test("la liste du portail n’annonce le relevé qu’après session et traiteme
   assert.match(resources, /personalAttendanceDocumentId\(enrolmentId\)/);
   assert.match(resources, /personal_attendance_summary/);
   assert.match(resources, /attendancePublished/);
-  assert.match(resources, /postsessionAvailable && attendancePublished/);
+  assert.match(resources, /postsessionAvailable && allowedEnrolmentIds.length/);
+  assert.match(resources, /if \(attendancePublished\) \{/);
 });
 
 test("le téléchargement central route le relevé personnel sans modifier les fichiers historiques", async () => {
