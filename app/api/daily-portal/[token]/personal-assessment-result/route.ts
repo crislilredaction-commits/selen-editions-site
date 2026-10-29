@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
+import { isActivePortalAttendanceToken } from "@/lib/daily/portalAttendanceAccess.mjs";
 import { buildPersonalAssessmentResultHtml } from "@/lib/server/dailyPosttrainingDocumentHtml";
 import { assessmentOutcomeLabel, isFinalAssessmentResult } from "@/lib/server/dailyPersonalAssessment";
 import { isPostsessionDownloadAvailable, safePersonalDownloadName } from "@/lib/server/dailyPersonalAttendance";
@@ -9,11 +10,6 @@ type Params = { params: Promise<{ token: string }> };
 type Json = Record<string, unknown>;
 const text = (value: unknown) => String(value ?? "").trim();
 const one = (value: unknown): Json => Array.isArray(value) ? (value[0] as Json | undefined) ?? {} : value && typeof value === "object" ? value as Json : {};
-
-function isExpired(value: unknown) {
-  const expiresAt = text(value);
-  return Boolean(expiresAt && Date.parse(expiresAt) < Date.now());
-}
 
 export async function GET(request: Request, { params }: Params) {
   const { token } = await params;
@@ -29,7 +25,7 @@ export async function GET(request: Request, { params }: Params) {
   if (accessError) return NextResponse.json({ error: accessError.message }, { status: 500 });
   if (!access || access.portal_type !== "learner") return NextResponse.json({ error: "Document introuvable." }, { status: 404 });
   if (!["pending", "viewed"].includes(text(access.status))) return NextResponse.json({ error: "Cet accès n’est plus actif." }, { status: 403 });
-  if (isExpired(access.expires_at)) return NextResponse.json({ error: "Ce lien de portail a expiré." }, { status: 410 });
+  if (!isActivePortalAttendanceToken(access.status, access.expires_at)) return NextResponse.json({ error: "Ce lien de portail a expiré." }, { status: 410 });
 
   const [{ data: session, error: sessionError }, { data: enrolment, error: enrolmentError }] = await Promise.all([
     admin.from("daily_sessions").select("id,organisation_id,internal_reference,start_date,end_date,status,daily_formations(title)").eq("id", access.session_id).neq("status", "archived").maybeSingle(),
