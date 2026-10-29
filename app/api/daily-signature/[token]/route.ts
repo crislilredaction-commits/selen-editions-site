@@ -133,6 +133,9 @@ export async function GET(_request: Request, { params }: Params) {
 
   const signature = await findSignature(clean);
   if (!signature) return NextResponse.json({ error: "Lien de signature introuvable." }, { status: 404 });
+  if (!["pending", "viewed", "signed"].includes(signature.status)) {
+    return NextResponse.json({ error: "Ce lien de signature n’est plus actif." }, { status: 410 });
+  }
 
   if (isExpired(signature.expires_at) && signature.status !== "signed") {
     await supabase
@@ -173,8 +176,14 @@ export async function POST(request: Request, { params }: Params) {
   }
 
   const supabase = getAdminSupabase();
+  const assistance = await verifyAgentAssistance(supabase, getAssistanceTokenFromRequest(request));
+  if (assistance) return blockedAgentAssistanceResponse();
+
   const signature = await findSignature(clean);
   if (!signature) return NextResponse.json({ error: "Lien de signature introuvable." }, { status: 404 });
+  if (!["pending", "viewed", "signed"].includes(signature.status)) {
+    return NextResponse.json({ error: "Ce lien de signature n’est plus actif." }, { status: 410 });
+  }
   if (signature.status === "signed") {
     const [availability, reminderResolved] = await Promise.all([
       openPostSignatureAvailability(supabase, signature.convention_id, request, signature.user_id),
