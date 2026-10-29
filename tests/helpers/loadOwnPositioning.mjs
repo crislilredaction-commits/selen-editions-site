@@ -5,5 +5,6 @@ import { loadTypeScript } from './loadTypeScript.mjs';
 // No bypass or successful fake validation is introduced.
 export function loadOwnPositioning() {
  const shared=loadTypeScript('lib/daily/ownPositioning.ts');
- return loadTypeScript('lib/server/dailyOwnPositioning.ts',{'node:crypto':crypto,'@/lib/daily/ownPositioning':shared},{Buffer,File,FormData,Response});
+ const storageGuard=loadTypeScript('lib/server/dailyPersonalAttendance.ts');
+ return loadTypeScript('lib/server/dailyOwnPositioning.ts',{'node:crypto':crypto,'@/lib/daily/ownPositioning':shared,'@/lib/server/dailyPersonalAttendance':storageGuard},{Buffer,File,FormData,Response});
 }
