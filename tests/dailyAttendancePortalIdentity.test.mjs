@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { loadTypeScript } from "./helpers/loadTypeScript.mjs";
+import { isActivePortalAttendanceToken } from "../lib/daily/portalAttendanceAccess.mjs";
 
 const route = await readFile(
   new URL("../app/api/daily-portal/[token]/attendance/route.ts", import.meta.url),
@@ -66,6 +67,10 @@ test("attendance legacy email token remains ambiguous after a cancellation", () 
 });
 
 test("attendance rejects unknown portal token states, preserving pending and viewed", () => {
-  assert.match(route, /!\["pending","viewed"\]\.includes\(text\(access\.status\)\)/);
+  assert.match(route, /isActivePortalAttendanceToken\(access\.status, access\.expires_at\)/);
+  assert.equal(isActivePortalAttendanceToken("pending", null), true);
+  assert.equal(isActivePortalAttendanceToken("viewed", "2099-01-01T00:00:00Z"), true);
+  assert.equal(isActivePortalAttendanceToken("suspended", "2099-01-01T00:00:00Z"), false);
+  assert.equal(isActivePortalAttendanceToken("pending", "not-a-date"), false);
   assert.doesNotMatch(route, /\["revoked","expired"\]\.includes\(text\(access\.status\)\)/);
 });
