@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
+import { blockedAgentAssistanceResponse, getAssistanceTokenFromRequest, verifyAgentAssistance } from "@/lib/server/agentAssistance";
 
 type Params = { params: Promise<{ token: string }> };
 
@@ -13,6 +14,9 @@ export async function GET(_request: Request, { params }: Params) {
   if (!clean) return NextResponse.json({ error: "Lien invalide." }, { status: 400 });
 
   const supabase = getAdminSupabase();
+  const assistance = await verifyAgentAssistance(supabase, getAssistanceTokenFromRequest(_request));
+  if (assistance) return blockedAgentAssistanceResponse();
+
   const { data: signature, error } = await supabase
     .from("daily_convention_signatures")
     .select("id,status,expires_at,daily_conventions(document_name,storage_path)")
@@ -21,6 +25,9 @@ export async function GET(_request: Request, { params }: Params) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!signature) return NextResponse.json({ error: "Lien de signature introuvable." }, { status: 404 });
+  if (!["pending", "viewed", "signed"].includes(signature.status)) {
+    return NextResponse.json({ error: "Ce lien de signature n’est plus actif." }, { status: 410 });
+  }
   if (
     signature.status !== "signed" &&
     signature.expires_at &&
