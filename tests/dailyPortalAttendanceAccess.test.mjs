@@ -27,7 +27,7 @@ test("les deux parcours d'émargement appliquent le même garde avant toute lect
   const base = new URL("../app/api/daily-portal/[token]/", import.meta.url);
   for (const name of ["attendance", "late-attendance"]) {
     const route = await readFile(new URL(`${name}/route.ts`, base), "utf8");
-    assert.match(route, /isActivePortalAttendanceToken\\(access\\.status, access\\.expires_at\\)/);
+    assert.match(route, /isActivePortalAttendanceToken\(access\.status, access\.expires_at\)/);
     assert.ok(route.indexOf("isActivePortalAttendanceToken(access.status, access.expires_at)") < route.indexOf('from("daily_sessions")'));
   }
 });
