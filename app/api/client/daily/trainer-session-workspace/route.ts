@@ -72,6 +72,19 @@ export async function POST(request: Request) {
   }
   if (kind === "attendance_paper" && (!enrolment || !slot)) return NextResponse.json({ error: "Apprenant et créneau requis pour une preuve papier." }, { status: 400 });
   if (kind === "external_evaluation" && !enrolment) return NextResponse.json({ error: "Apprenant requis pour une évaluation externe." }, { status: 400 });
+  // A paper proof must not replace a signed or validated attendance record.
+  // Check before uploading and enforce the same guard on the final update.
+  let paperRecord: { id: string; status: string; signed_at: string | null; validated_at: string | null; signature_storage_path: string | null } | null = null;
+  if (kind === "attendance_paper") {
+    const { data, error } = await context.admin.from("daily_attendance_records")
+      .select("id,status,signed_at,validated_at,signature_storage_path")
+      .eq("organisation_id", context.orgId).eq("session_id", sessionId)
+      .eq("slot_id", slotId).eq("enrolment_id", enrolmentId).maybeSingle();
+    if (error) return NextResponse.json({ error: "Impossible de vérifier la preuve de présence existante." }, { status: 500 });
+    if (data && (data.status !== "pending" || data.signed_at || data.validated_at || data.signature_storage_path))
+      return NextResponse.json({ error: "Cette présence possède déjà une preuve ou une décision. Utilisez le parcours de correction dédié." }, { status: 409 });
+    paperRecord = data;
+  }
 
   const note = text(formData.get("comment"));
   const scoreRaw = text(formData.get("score"));
@@ -138,11 +151,19 @@ export async function POST(request: Request) {
   }
 
   if (kind === "attendance_paper") {
-    const { data: existing, error: readError } = await context.admin.from("daily_attendance_records").select("id").eq("organisation_id", context.orgId).eq("session_id", sessionId).eq("slot_id", slotId).eq("enrolment_id", enrolmentId).maybeSingle();
-    if (readError) return NextResponse.json({ error: readError.message }, { status: 500 });
     const patch = { status:"present", signed_at: now, validated_by: context.user.id, validated_at: now, evidence_metadata: { source:"paper_trainer", document_id: document.id, trainer_profile_id: context.trainerId } };
-    const writeResult = existing ? await context.admin.from("daily_attendance_records").update(patch).eq("id", existing.id) : await context.admin.from("daily_attendance_records").insert({ organisation_id: context.orgId, session_id: sessionId, slot_id: slotId, enrolment_id: enrolmentId, ...patch });
+    // Conditional update also protects a signature arriving after the initial read.
+    const writeResult = paperRecord
+      ? await context.admin.from("daily_attendance_records").update(patch)
+        .eq("id", paperRecord.id).eq("organisation_id", context.orgId).eq("session_id", sessionId)
+        .eq("slot_id", slotId).eq("enrolment_id", enrolmentId).eq("status", "pending")
+        .is("signed_at", null).is("validated_at", null).is("signature_storage_path", null)
+        .select("id").maybeSingle()
+      : await context.admin.from("daily_attendance_records")
+        .insert({ organisation_id: context.orgId, session_id: sessionId, slot_id: slotId, enrolment_id: enrolmentId, ...patch })
+        .select("id").single();
     if (writeResult.error) return NextResponse.json({ error: writeResult.error.message }, { status: 500 });
+    if (!writeResult.data) return NextResponse.json({ error: "La présence a été modifiée entre-temps : aucune preuve existante n’a été remplacée." }, { status: 409 });
     await refreshDailyAttendanceChecklist(context.admin, context.orgId, sessionId);
   }
   if (kind === "external_evaluation") {
