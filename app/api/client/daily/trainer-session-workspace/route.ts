@@ -56,14 +56,18 @@ export async function POST(request: Request) {
 
   let enrolment: { id: string; learner_id: string; status: string } | null = null;
   if (enrolmentId) {
-    const { data } = await context.admin.from("daily_session_enrolments").select("id,learner_id,status").eq("organisation_id", context.orgId).eq("session_id", sessionId).eq("id", enrolmentId).maybeSingle();
+    const { data, error } = await context.admin.from("daily_session_enrolments").select("id,learner_id,status").eq("organisation_id", context.orgId).eq("session_id", sessionId).eq("id", enrolmentId).maybeSingle();
+    if (error) return NextResponse.json({ error: "Impossible de vérifier l’inscription de cet apprenant." }, { status: 500 });
     if (!data || !activeDailyEnrolment(data.status)) return NextResponse.json({ error: "Apprenant hors de cette session ou inscription inactive." }, { status: 404 });
     enrolment = data;
   }
   let slot: Record<string, unknown> | null = null;
   if (slotId) {
-    const { data } = await context.admin.from("daily_attendance_slots").select("id,slot_date,starts_at,ends_at,label").eq("organisation_id", context.orgId).eq("session_id", sessionId).eq("id", slotId).maybeSingle();
+    const { data, error } = await context.admin.from("daily_attendance_slots").select("id,slot_date,starts_at,ends_at,label,status").eq("organisation_id", context.orgId).eq("session_id", sessionId).eq("id", slotId).maybeSingle();
+    if (error) return NextResponse.json({ error: "Impossible de vérifier ce créneau d’émargement." }, { status: 500 });
     if (!data) return NextResponse.json({ error: "Créneau hors de cette session." }, { status: 404 });
+    // A cancelled slot must not receive a new attendance proof, even with a valid trainer session.
+    if (data.status === "cancelled") return NextResponse.json({ error: "Ce créneau a été annulé : aucun émargement ne peut être enregistré." }, { status: 409 });
     slot = data;
   }
   if (kind === "attendance_paper" && (!enrolment || !slot)) return NextResponse.json({ error: "Apprenant et créneau requis pour une preuve papier." }, { status: 400 });
