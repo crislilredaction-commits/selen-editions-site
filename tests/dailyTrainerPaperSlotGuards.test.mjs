@@ -9,7 +9,7 @@ const SESSION = "session-a";
 const ENROLMENT = "enrolment-a";
 const SLOT = "slot-a";
 
-function makeDb({ enrolmentError = null, slotError = null, enrolment = { id: ENROLMENT, learner_id: "learner-a", status: "confirmed" }, slot = { id: SLOT, status: "scheduled" } } = {}) {
+function makeDb({ enrolmentError = null, slotError = null, enrolment = { id: ENROLMENT, learner_id: "learner-a", status: "confirmed" }, slot = { id: SLOT, status: "scheduled" }, attendanceRecord = null, attendanceError = null } = {}) {
   const queries = [];
   let uploadCalls = 0;
   const admin = {
@@ -22,6 +22,7 @@ function makeDb({ enrolmentError = null, slotError = null, enrolment = { id: ENR
           queries.push({ table, filters });
           if (table === "daily_session_enrolments") return { data: enrolment, error: enrolmentError };
           if (table === "daily_attendance_slots") return { data: slot, error: slotError };
+          if (table === "daily_attendance_records") return { data: attendanceRecord, error: attendanceError };
           throw new Error("Unexpected table: " + table);
         },
       };
@@ -103,4 +104,36 @@ test("paper attendance: active slot reaches upload with organisation and session
   assert.equal(response.status, 500); // Intentional storage stub, not a business rejection.
   assert.equal(db.uploadCalls, 1);
   assert.ok(db.queries.every(q => q.filters.some(([key, value]) => key === "organisation_id" && value === ORG)));
+});
+
+test("paper attendance: existing signed, validated or decided attendance cannot be overwritten", async () => {
+  const variants = [
+    { status: "present", signed_at: "2026-10-29T04:00:00Z" },
+    { status: "pending", signed_at: "2026-10-29T04:00:00Z" },
+    { status: "pending", validated_at: "2026-10-29T04:00:00Z" },
+    { status: "pending", signature_storage_path: "daily/org-a/signed.png" },
+    { status: "absent" },
+    { status: "excused" },
+  ];
+  for (const variant of variants) {
+    const db = makeDb({ attendanceRecord: { id: "record-a", signed_at: null, validated_at: null, signature_storage_path: null, ...variant } });
+    const response = await submit(db);
+    assert.equal(response.status, 409, JSON.stringify(variant));
+    assert.equal(db.uploadCalls, 0, JSON.stringify(variant));
+    assert.equal(db.queries.at(-1).table, "daily_attendance_records");
+    assert.ok(db.queries.at(-1).filters.some(([key, value]) => key === "organisation_id" && value === ORG));
+    assert.ok(db.queries.at(-1).filters.some(([key, value]) => key === "session_id" && value === SESSION));
+  }
+});
+
+test("paper attendance: SQL errors checking existing proofs fail closed", async () => {
+  const db = makeDb({ attendanceError: { message: "database unavailable" } });
+  assert.equal((await submit(db)).status, 500);
+  assert.equal(db.uploadCalls, 0);
+});
+
+test("paper attendance: a pending record without signature can proceed to upload", async () => {
+  const db = makeDb({ attendanceRecord: { id: "record-a", status: "pending", signed_at: null, validated_at: null, signature_storage_path: null } });
+  assert.equal((await submit(db)).status, 500); // Intentional storage failure in the stub.
+  assert.equal(db.uploadCalls, 1);
 });
