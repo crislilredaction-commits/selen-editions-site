@@ -11,7 +11,7 @@ const learnerWorkspaceDocumentTypes=["training_program","convocation","registrat
 const cleanToken=(v?:string|null)=>String(v??"").trim();const normalizedEmail=(v:unknown)=>String(v??"").trim().toLowerCase();
 function asArray(v:unknown):JsonRecord[]{return Array.isArray(v)?v.filter(x=>x&&typeof x==="object") as JsonRecord[]:[]}
 function portalRole(v:string){return v==="learner"?"apprenant":v==="enterprise"?"entreprise":"formateur"}
-function isExpired(v?:string|null){return Boolean(v&&new Date(v).getTime()<Date.now())}
+function isExpired(v?:string|null){if(v==null)return false;if(typeof v!=="string"||!v.trim())return true;const deadline=Date.parse(v);return !Number.isFinite(deadline)||deadline<=Date.now()}
 function relatedLearner(v:unknown):JsonRecord|null{return Array.isArray(v)?v[0]&&typeof v[0]==="object"?v[0] as JsonRecord:null:v&&typeof v==="object"?v as JsonRecord:null}
 
 async function loadLearnerDocuments(supabase:ReturnType<typeof getAdminSupabase>,session:JsonRecord,enrolment:JsonRecord|null){
