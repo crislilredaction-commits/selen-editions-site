@@ -162,8 +162,31 @@ export async function POST(request: Request) {
       : await context.admin.from("daily_attendance_records")
         .insert({ organisation_id: context.orgId, session_id: sessionId, slot_id: slotId, enrolment_id: enrolmentId, ...patch })
         .select("id").single();
-    if (writeResult.error) return NextResponse.json({ error: writeResult.error.message }, { status: 500 });
-    if (!writeResult.data) return NextResponse.json({ error: "La présence a été modifiée entre-temps : aucune preuve existante n’a été remplacée." }, { status: 409 });
+    if (writeResult.error || !writeResult.data) {
+      // Preserve the uploaded evidence for audit, but never expose an unlinked proof as active.
+      // A concurrent signature or a failed attendance write must not leave a current document.
+      const reason = writeResult.error ? "attendance_write_failed" : "attendance_conflict";
+      const { data: archived, error: archiveError } = await context.admin.from("daily_documents")
+        .update({
+          status: "archived",
+          is_current: false,
+          updated_by: context.user.id,
+          metadata: { ...metadata, attendance_import_outcome: reason, attendance_import_failed_at: new Date().toISOString() },
+        })
+        .eq("id", document.id).eq("organisation_id", context.orgId).eq("session_id", sessionId)
+        .eq("document_type", "attendance_paper_evidence").select("id").maybeSingle();
+      if (archiveError || !archived) {
+        console.error("Daily paper attendance: failed to archive an unlinked document", {
+          documentId: document.id, organisationId: context.orgId, sessionId, reason, archiveError,
+        });
+        return NextResponse.json({ error: "Preuve non rattachée : archivage impossible. Une vérification administrative est nécessaire." }, { status: 500 });
+      }
+      return NextResponse.json({
+        error: writeResult.error
+          ? "La preuve a été conservée en archive, mais l’émargement n’a pas pu être enregistré."
+          : "La présence a été modifiée entre-temps : preuve conservée en archive sans remplacer l’émargement.",
+      }, { status: writeResult.error ? 500 : 409 });
+    }
     await refreshDailyAttendanceChecklist(context.admin, context.orgId, sessionId);
   }
   if (kind === "external_evaluation") {
