@@ -1,7 +1,7 @@
 import {NextResponse} from "next/server";
 import {getAdminSupabase} from "@/lib/server/clientNdaAccess";
 import {DAILY_PORTAL_RESOURCE_STATUSES,DAILY_PORTAL_RESOURCE_TYPES,isDailyPortalResourceVisible} from "@/lib/server/dailyPortalResourceVisibility";
-import {isPostsessionDownloadAvailable,personalAttendanceEnrolmentId} from "@/lib/server/dailyPersonalAttendance";
+import {isPostsessionDownloadAvailable,personalAttendanceEnrolmentId,personalSignatureStorageObjectPath} from "@/lib/server/dailyPersonalAttendance";
 import {personalAssessmentEvidenceSourceId,personalAssessmentResultEnrolmentId} from "@/lib/server/dailyPersonalAssessment";
 import {matchesDailyLearnerPortalAccess} from "@/lib/server/dailyPortalLearnerIdentity";
 import {resolveEnterprisePortalCompany} from "@/lib/daily/enterprisePortalIdentity.mjs";
@@ -38,6 +38,6 @@ export async function GET(request:Request,{params}:Params){
     learnerIds.push(String(enrolment.learner_id));
   }
   if(!isDailyPortalResourceVisible({resource:document,companyName:String(enterpriseIdentity?.company?.name??""),role:access.portal_type,sessionId:String(access.session_id),enrolmentIds,learnerIds,postsessionAvailable:isPostsessionDownloadAvailable(session.end_date)}))return NextResponse.json({error:"Document introuvable."},{status:404});
-  if(document.bucket!=="documents"||!document.storage_path?.startsWith(`daily/${session.organisation_id}/`))return NextResponse.json({error:"Document introuvable."},{status:404});
-  const{data:signed,error:signedError}=await supabase.storage.from(document.bucket).createSignedUrl(document.storage_path,120);if(signedError||!signed?.signedUrl)return NextResponse.json({error:"Téléchargement indisponible."},{status:500});return NextResponse.redirect(signed.signedUrl);
+  const storagePath=personalSignatureStorageObjectPath(document.storage_path,session.organisation_id);if(document.bucket!=="documents"||!storagePath)return NextResponse.json({error:"Document introuvable."},{status:404});
+  const{data:signed,error:signedError}=await supabase.storage.from(document.bucket).createSignedUrl(storagePath,120);if(signedError||!signed?.signedUrl)return NextResponse.json({error:"Téléchargement indisponible."},{status:500});return NextResponse.redirect(signed.signedUrl,{headers:{"Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff"}});
 }
