@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { loadTypeScript } from "./helpers/loadTypeScript.mjs";
+import { isActivePortalAttendanceToken } from "../lib/daily/portalAttendanceAccess.mjs";
 
 const pathGuard = loadTypeScript("lib/server/dailyPersonalAttendance.ts");
 function setup(storagePath) {
@@ -40,6 +41,7 @@ function setup(storagePath) {
   const { GET } = loadTypeScript("app/api/daily-portal/[token]/personal-assessment-evidence/route.ts", {
     "next/server": { NextResponse: { json: (body,init) => Response.json(body,init), redirect: (url,init) => new Response(null,{status:302,headers:{location:String(url),...(init?.headers??{})}}) } },
     "@/lib/server/clientNdaAccess": { getAdminSupabase: () => admin },
+    "@/lib/daily/portalAttendanceAccess.mjs": { isActivePortalAttendanceToken },
     "@/lib/server/dailyPersonalAttendance": { isPostsessionDownloadAvailable: () => true, personalSignatureStorageObjectPath: pathGuard.personalSignatureStorageObjectPath },
     "@/lib/server/dailyPersonalAssessment": { isFinalAssessmentResult: () => true },
     "@/lib/server/dailyPortalLearnerIdentity": { matchesDailyLearnerPortalAccess: () => true, findUniqueDailyLearnerPortalEnrolment: (_access, list) => list[0] },

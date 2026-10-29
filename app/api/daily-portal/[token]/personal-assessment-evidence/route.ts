@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
+import { isActivePortalAttendanceToken } from "@/lib/daily/portalAttendanceAccess.mjs";
 import { isPostsessionDownloadAvailable, personalSignatureStorageObjectPath } from "@/lib/server/dailyPersonalAttendance";
 import { isFinalAssessmentResult } from "@/lib/server/dailyPersonalAssessment";
 import { findUniqueDailyLearnerPortalEnrolment, matchesDailyLearnerPortalAccess } from "@/lib/server/dailyPortalLearnerIdentity";
@@ -18,7 +19,7 @@ export async function GET(request: Request, { params }: Params) {
   if (accessError) return NextResponse.json({ error: accessError.message }, { status: 500 });
   if (!access || access.portal_type !== "learner") return NextResponse.json({ error: "Document introuvable." }, { status: 404 });
   if (!["pending", "viewed"].includes(text(access.status))) return NextResponse.json({ error: "Cet accès n’est plus actif." }, { status: 403 });
-  if (access.expires_at && new Date(access.expires_at).getTime() < Date.now()) return NextResponse.json({ error: "Ce lien a expiré." }, { status: 410 });
+  if (!isActivePortalAttendanceToken(access.status, access.expires_at)) return NextResponse.json({ error: "Ce lien a expiré." }, { status: 410 });
 
   const { data: session, error: sessionError } = await admin.from("daily_sessions").select("id,organisation_id,end_date").eq("id", access.session_id).neq("status", "archived").maybeSingle();
   if (sessionError) return NextResponse.json({ error: sessionError.message }, { status: 500 });
