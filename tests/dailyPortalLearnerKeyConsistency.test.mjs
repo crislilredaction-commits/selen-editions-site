@@ -17,12 +17,12 @@ test("learner portal resolves by entity key before legacy email or name fallback
 });
 
 test("private program PDF does not fall back to shared email when entity key exists", () => {
-  assert.match(pdf, /matchesDailyLearnerPortalAccess\(access, row\)/);
+  assert.match(pdf, /findUniqueDailyLearnerPortalEnrolment\(access, enrolments \?\? \[\]\)/);
 });
 
 test("document download and PDF use entity key first", () => {
   assert.match(document, /matchesDailyLearnerPortalAccess\(access,row\)/);
-  assert.match(pdf, /matchesDailyLearnerPortalAccess/);
+  assert.match(pdf, /findUniqueDailyLearnerPortalEnrolment/);
 });
 
 test("all personal post-session downloads share the canonical learner binding", () => {
