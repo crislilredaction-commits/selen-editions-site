@@ -128,7 +128,8 @@ export async function GET(_request: Request, { params }: Params) {
     companyName = text(company?.name);
     const participantEmails = new Set(array(company?.participants).map((item) => email(item.email)).filter(Boolean));
     if (participantEmails.size) {
-      const { data: rows } = await admin.from("daily_session_enrolments").select("id,daily_learners(email)").eq("session_id", session.id).eq("organisation_id", session.organisation_id).not("status", "in", "(declined,cancelled,abandoned)");
+      const { data: rows, error: participantReadError } = await admin.from("daily_session_enrolments").select("id,daily_learners(email)").eq("session_id", session.id).eq("organisation_id", session.organisation_id).not("status", "in", "(declined,cancelled,abandoned)");
+      if (participantReadError) return NextResponse.json({ error: "Les documents sont temporairement indisponibles. Réessayez." }, { status: 503 });
       allowedEnrolmentIds = (rows ?? []).filter((row: Json) => { const learner = Array.isArray(row.daily_learners) ? row.daily_learners[0] : row.daily_learners; return participantEmails.has(email((learner as Json | undefined)?.email)); }).map((row: Json) => text(row.id)).filter(Boolean);
     }
   }
