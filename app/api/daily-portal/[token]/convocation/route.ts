@@ -15,7 +15,11 @@ function normalizedEmail(value: unknown) {
 }
 
 function isExpired(expiresAt?: string | null) {
-  return Boolean(expiresAt && new Date(expiresAt).getTime() < Date.now());
+  // Legacy links without an expiry remain valid; corrupted expiry values fail closed.
+  if (expiresAt == null) return false;
+  if (typeof expiresAt !== "string" || !expiresAt.trim()) return true;
+  const deadline = Date.parse(expiresAt);
+  return !Number.isFinite(deadline) || deadline <= Date.now();
 }
 
 export async function GET(request: Request, { params }: Params) {
