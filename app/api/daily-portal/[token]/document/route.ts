@@ -5,16 +5,16 @@ import {isPostsessionDownloadAvailable,personalAttendanceEnrolmentId,personalSig
 import {personalAssessmentEvidenceSourceId,personalAssessmentResultEnrolmentId} from "@/lib/server/dailyPersonalAssessment";
 import {matchesDailyLearnerPortalAccess} from "@/lib/server/dailyPortalLearnerIdentity";
 import {resolveEnterprisePortalCompany} from "@/lib/daily/enterprisePortalIdentity.mjs";
+import {isActivePortalAttendanceToken} from "@/lib/daily/portalAttendanceAccess.mjs";
 
 type Params={params:Promise<{token:string}>};
 const text=(value:unknown)=>String(value??"").trim();
-function isExpired(value:unknown){const date=text(value);return Boolean(date&&new Date(date).getTime()<Date.now())}
 function virtualDocumentTarget(documentId:string){const evidenceId=personalAssessmentEvidenceSourceId(documentId);if(evidenceId)return{route:"personal-assessment-evidence",sourceId:evidenceId,query:"document"};const assessmentEnrolmentId=personalAssessmentResultEnrolmentId(documentId);if(assessmentEnrolmentId)return{route:"personal-assessment-result",sourceId:assessmentEnrolmentId,query:"enrolment"};const enrolmentId=personalAttendanceEnrolmentId(documentId);if(enrolmentId)return{route:"personal-attendance",sourceId:enrolmentId,query:"enrolment"};const match=/^portal:(convention|regulations|welcome):(.+)$/.exec(documentId);if(!match)return null;return{route:match[1]==="welcome"?"convocation":"convention",sourceId:match[2],query:"id"}}
 
 export async function GET(request:Request,{params}:Params){
   const{token}=await params;const clean=text(token),documentId=new URL(request.url).searchParams.get("id")??"";if(!clean||!documentId)return NextResponse.json({error:"Lien invalide."},{status:400});
   const supabase=getAdminSupabase();const{data:access,error:accessError}=await supabase.from("daily_portal_access_tokens").select("id,session_id,portal_type,entity_key,entity_name,entity_email,status,expires_at").eq("token",clean).maybeSingle();
-  if(accessError)return NextResponse.json({error:accessError.message},{status:500});if(!access||!["learner","trainer","enterprise"].includes(access.portal_type))return NextResponse.json({error:"Document introuvable."},{status:404});if(!["pending","viewed"].includes(String(access.status??"")))return NextResponse.json({error:"Cet accès n’est plus actif."},{status:403});if(isExpired(access.expires_at))return NextResponse.json({error:"Ce lien de portail a expiré."},{status:410});
+  if(accessError)return NextResponse.json({error:accessError.message},{status:500});if(!access||!["learner","trainer","enterprise"].includes(access.portal_type))return NextResponse.json({error:"Document introuvable."},{status:404});if(!["pending","viewed"].includes(String(access.status??"")))return NextResponse.json({error:"Cet accès n’est plus actif."},{status:403});if(!isActivePortalAttendanceToken(access.status,access.expires_at))return NextResponse.json({error:"Ce lien de portail a expiré ou présente une échéance invalide."},{status:410});
   const{data:session,error:sessionError}=await supabase.from("daily_sessions").select("id,organisation_id,status,end_date,companies").eq("id",access.session_id).neq("status","archived").maybeSingle();if(sessionError)return NextResponse.json({error:sessionError.message},{status:500});if(!session)return NextResponse.json({error:"Session introuvable."},{status:404});
   const enterpriseIdentity=access.portal_type==="enterprise"?resolveEnterprisePortalCompany(Array.isArray(session.companies)?session.companies:[],access.entity_email):null;
   if(enterpriseIdentity&&enterpriseIdentity.status!=="ok")return NextResponse.json({error:"Identité entreprise absente ou ambiguë."},{status:enterpriseIdentity.status==="ambiguous"?409:403});
