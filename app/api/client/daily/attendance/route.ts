@@ -272,16 +272,8 @@ export async function POST(req: Request) {
       }
     }
 
-    let revoke = context.admin
-      .from("daily_attendance_access_tokens")
-      .update({ status: "revoked" })
-      .eq("organisation_id", context.organisationId)
-      .eq("slot_id", slotId)
-      .eq("status", "active");
-    revoke = enrolmentId ? revoke.eq("enrolment_id", enrolmentId) : revoke.is("enrolment_id", null);
-    const { error: revokeError } = await revoke;
-    if (revokeError) return NextResponse.json({ error: revokeError.message }, { status: 500 });
-
+    // Prepare the replacement before invalidating a link already in use.
+    // The token_hash is unique; the new secret is not disclosed until rotation succeeds.
     const { token, tokenHash } = createAttendanceToken();
     const { error: tokenError } = await context.admin.from("daily_attendance_access_tokens").insert({
       organisation_id: context.organisationId,
@@ -295,7 +287,36 @@ export async function POST(req: Request) {
       expires_at: linkExpiry(slot.slot_date),
       created_by: context.user.id,
     });
-    if (tokenError) return NextResponse.json({ error: tokenError.message }, { status: 500 });
+    if (tokenError) {
+      return NextResponse.json({ error: "Impossible de préparer le nouveau lien d’émargement. Réessayez." }, { status: 503 });
+    }
+
+    let revoke = context.admin
+      .from("daily_attendance_access_tokens")
+      .update({ status: "revoked" })
+      .eq("organisation_id", context.organisationId)
+      .eq("session_id", sessionId)
+      .eq("slot_id", slotId)
+      .eq("status", "active")
+      .neq("token_hash", tokenHash);
+    revoke = enrolmentId ? revoke.eq("enrolment_id", enrolmentId) : revoke.is("enrolment_id", null);
+    const { error: revokeError } = await revoke;
+    if (revokeError) {
+      // Best-effort compensation: never expose a replacement when old links
+      // could not be revoked. The existing link remains valid on SQL failure.
+      const { error: rollbackError } = await context.admin
+        .from("daily_attendance_access_tokens")
+        .update({ status: "revoked" })
+        .eq("organisation_id", context.organisationId)
+        .eq("session_id", sessionId)
+        .eq("slot_id", slotId)
+        .eq("token_hash", tokenHash)
+        .eq("status", "active");
+      if (rollbackError) {
+        console.error("[daily] attendance link replacement compensation failed", rollbackError);
+      }
+      return NextResponse.json({ error: "Impossible de renouveler ce lien d’émargement. Réessayez." }, { status: 503 });
+    }
     if (slot.status === "draft") {
       await context.admin.from("daily_attendance_slots").update({ status: "open", updated_at: new Date().toISOString() }).eq("id", slotId);
     }
