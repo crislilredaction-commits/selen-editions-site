@@ -17,7 +17,7 @@ for (const path of ["components/daily/DailyStakeholderWorkspace.tsx", "component
     assert.match(source, /setData\(null\)/);
     assert.match(source, /setResources\(\[\]\)/);
     assert.match(source, /new AbortController\(\)/);
-    assert.match(source, /signal\.aborted/);
+    assert.match(source, /signal\??\.aborted/);
     assert.match(source, /controller\.abort\(\)/);
     assert.match(source, /portalType/);
   });
