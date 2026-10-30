@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { isActivePortalAttendanceToken } from "@/lib/daily/portalAttendanceAccess.mjs";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import { OwnPositioningError } from "@/lib/server/dailyOwnPositioning";
 import { personalSignatureStorageObjectPath } from "@/lib/server/dailyPersonalAttendance";
@@ -18,7 +19,7 @@ export async function resolveLearnerOwnPositioning(token: string) {
   if (error) throw new OwnPositioningError("Vérification de l’accès indisponible.", 500);
   if (!access || access.portal_type !== "learner") throw new OwnPositioningError("Accès apprenant introuvable.", 404);
   if (!["pending", "viewed"].includes(text(access.status))) throw new OwnPositioningError("Cet accès n’est plus actif.", 403);
-  if (access.expires_at && (!Number.isFinite(Date.parse(access.expires_at)) || Date.parse(access.expires_at) <= Date.now())) throw new OwnPositioningError("Ce lien a expiré.", 410);
+  if (!isActivePortalAttendanceToken(access.status, access.expires_at)) throw new OwnPositioningError("Ce lien a expiré.", 410);
   if (email(access.entity_email) !== email(identity.user.email)) throw new OwnPositioningError("Cet accès appartient à un autre apprenant.", 403);
   const metadata = row(access.metadata) ?? {};
   const keyId = /^learner:([0-9a-f-]{36})$/.exec(text(access.entity_key).toLowerCase())?.[1];
