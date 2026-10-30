@@ -101,7 +101,12 @@ export async function GET(request: Request) {
     return NextResponse.json({ sessions });
   }
 
-  const session = await getAssignedSession(context.admin, context.organisationId, context.trainerProfileId, sessionId).catch(() => null);
+  let session: Awaited<ReturnType<typeof getAssignedSession>>;
+  try {
+    session = await getAssignedSession(context.admin, context.organisationId, context.trainerProfileId, sessionId);
+  } catch {
+    return NextResponse.json({ error: "Impossible de vérifier l'affectation de cette session. Réessayez." }, { status: 500 });
+  }
   if (!session) return NextResponse.json({ error: "Session introuvable ou non affectée à ce formateur." }, { status: 404 });
 
   const [{ data: entries, error: entriesError }, { data: enrolments, error: enrolmentsError }] = await Promise.all([
@@ -129,7 +134,12 @@ export async function POST(request: Request) {
   const sessionId = text(body, "session_id");
   if (!sessionId) return NextResponse.json({ error: "Session requise." }, { status: 400 });
 
-  const session = await getAssignedSession(context.admin, context.organisationId, context.trainerProfileId, sessionId).catch(() => null);
+  let session: Awaited<ReturnType<typeof getAssignedSession>>;
+  try {
+    session = await getAssignedSession(context.admin, context.organisationId, context.trainerProfileId, sessionId);
+  } catch {
+    return NextResponse.json({ error: "Impossible de vérifier l'affectation de cette session. Réessayez." }, { status: 500 });
+  }
   if (!session) return NextResponse.json({ error: "Session introuvable ou non affectée à ce formateur." }, { status: 404 });
 
   if (action === "create") {
@@ -150,7 +160,8 @@ export async function POST(request: Request) {
     if (!summary || summary.length > 240) return NextResponse.json({ error: "Le résumé est obligatoire et limité à 240 caractères." }, { status: 400 });
 
     if (enrolmentId) {
-      const { data: enrolment } = await context.admin.from("daily_session_enrolments").select("id,status").eq("organisation_id", context.organisationId).eq("session_id", sessionId).eq("id", enrolmentId).maybeSingle();
+      const { data: enrolment, error: enrolmentError } = await context.admin.from("daily_session_enrolments").select("id,status").eq("organisation_id", context.organisationId).eq("session_id", sessionId).eq("id", enrolmentId).maybeSingle();
+      if (enrolmentError) return NextResponse.json({ error: "Impossible de vérifier cette inscription. Réessayez." }, { status: 500 });
       if (!enrolment || INACTIVE_ENROLMENTS.has(enrolment.status)) return NextResponse.json({ error: "Inscription introuvable ou inactive." }, { status: 404 });
     }
 
