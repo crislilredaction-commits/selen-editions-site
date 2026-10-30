@@ -28,6 +28,8 @@ export async function getDailyTrainerWorkspaceContext(){
 }
 
 export async function getAssignedDailyTrainerSession(context:Extract<Awaited<ReturnType<typeof getDailyTrainerWorkspaceContext>>,{ok:true}>,sessionId:string){
-  const{data}=await context.admin.from("daily_sessions").select("id,organisation_id,formation_id,internal_reference,start_date,end_date,schedule_blocks,trainer_ids,daily_formations(id,title)").eq("organisation_id",context.orgId).eq("id",sessionId).maybeSingle();
+  const{data,error}=await context.admin.from("daily_sessions").select("id,organisation_id,formation_id,internal_reference,start_date,end_date,schedule_blocks,trainer_ids,daily_formations(id,title)").eq("organisation_id",context.orgId).eq("id",sessionId).maybeSingle();
+  // A database outage is not proof that a session is unassigned.
+  if(error)throw new Error("Impossible de vérifier l’affectation de cette session.");
   return data&&ids(data.trainer_ids).includes(context.trainerId)?data:null;
 }

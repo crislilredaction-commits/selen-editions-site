@@ -14,7 +14,9 @@ export async function GET(request: Request) {
 
   const sessionId = text(new URL(request.url).searchParams.get("session_id"));
   if (!sessionId) return NextResponse.json({ error: "Session requise." }, { status: 400 });
-  const session = await getAssignedDailyTrainerSession(context, sessionId);
+  let session: Awaited<ReturnType<typeof getAssignedDailyTrainerSession>>;
+  try { session = await getAssignedDailyTrainerSession(context, sessionId); }
+  catch { return NextResponse.json({ error: "Impossible de vérifier l’affectation de cette session." }, { status: 500 }); }
   if (!session) return NextResponse.json({ error: "Session non affectée à ce formateur." }, { status: 404 });
 
   const [slotsResult, enrolmentsResult] = await Promise.all([
