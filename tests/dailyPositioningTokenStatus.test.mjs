@@ -67,3 +67,52 @@ test("P0 private learner original refuses sent, suspended and unknown links befo
     assert.equal(h.writes.length, 0);
   }
 });
+
+// A corrupted expiry must never authorize reading a learner's positioning or its private PDF.
+for (const mode of ["selen", "off_platform"]) {
+  for (const method of ["get", "post"]) {
+    test(`P0 positioning ${mode} ${method}: malformed and expired links fail closed before private reads`, async () => {
+      for (const expiresAt of ["2020-01-01T00:00:00Z", "not-a-date", "", " ", 42]) {
+        const { h, [method]: call } = setup("pending", mode);
+        h.access.expires_at = expiresAt;
+        const tables = [];
+        const originalFrom = h.admin.from;
+        h.admin.from = (table) => { tables.push(table); return originalFrom(table); };
+        const response = await call();
+        assert.equal(response.status, 410, `${mode}/${method}/${String(expiresAt)}`);
+        assert.deepEqual(tables, ["daily_portal_access_tokens"]);
+        assert.equal(h.writes.length, 0);
+        assert.equal(h.uploads.length, 0);
+        assert.equal(h.downloads.length, 0);
+        assert.equal(h.sends.length, 0);
+      }
+    });
+  }
+}
+
+test("P0 private learner positioning PDF: malformed expiry is rejected before session or Storage access", async () => {
+  for (const expiresAt of ["2020-01-01T00:00:00Z", "broken", "", " ", 42]) {
+    const h = harness();
+    h.access.expires_at = expiresAt;
+    const tables = [];
+    const originalFrom = h.admin.from;
+    h.admin.from = (table) => { tables.push(table); return originalFrom(table); };
+    const response = await h.load(privateDocumentRoute).GET(
+      new Request("https://site.test/positioning-document"), h.params("learner-token"));
+    assert.equal(response.status, 410, String(expiresAt));
+    assert.deepEqual(tables, ["daily_portal_access_tokens"]);
+    assert.equal(h.downloads.length, 0);
+    assert.equal(h.writes.length, 0);
+  }
+});
+
+for (const mode of ["selen", "off_platform"]) {
+  for (const expiresAt of [null, "2099-01-01T00:00:00Z"]) {
+    test(`P0 positioning ${mode}: legitimate future and legacy null expiry remain accessible`, async () => {
+      const { h, get } = setup("viewed", mode);
+      h.access.expires_at = expiresAt;
+      assert.equal((await get()).status, 200);
+      assert.equal(h.sends.length, 0);
+    });
+  }
+}
