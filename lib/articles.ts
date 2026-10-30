@@ -32,6 +32,53 @@ export type Article = {
 // date de publication, mise à la une.
 export const articles: Article[] = [
   {
+    "slug": "animation-formation-faire-participer-apprenants",
+    "title": "Le conseil des fantômes : quand vos apprenants disparaissent en pleine formation 🎃",
+    "category": "Gestion quotidienne",
+    "excerpt": "Apprenants silencieux, bavards ou sceptiques ? Six antidotes pratiques pour faire participer vos groupes sans transformer la formation en séance de torture collective.",
+    "publishedAt": "2026-10-30",
+    "coverImage": "/plum.png",
+    "coverAlt": "Plume de la Gazette Selen sur fond parchemin",
+    "featured": true,
+    "readingTime": "8 min",
+    "introduction": "Vendredi 30 octobre, 9 h 03. Mathilde anime une formation sur la communication professionnelle. Huit adultes sont installés devant elle, huit personnes parfaitement capables de communiquer. En théorie. « Qui peut me donner un exemple de difficulté de communication au travail ? » Silence. Un participant contemple son stylo, un autre le plafond et une mouche hésite à intervenir. Mathilde finit par donner elle-même un exemple. Elle n'anime plus une formation, elle anime une réunion de fantômes. Puisque Halloween approche, voici six apparitions et les techniques pour y survivre.",
+    "sections": [
+      {
+        "title": "👻 Apparition n° 1 : le silence qui fait paniquer le formateur",
+        "body": "« Qu'en pensez-vous ? » : la question qui transforme instantanément une salle en bibliothèque. Un participant peut réfléchir, craindre de se tromper ou ne pas comprendre une question trop vaste. Le réflexe de parler immédiatement à sa place peut étouffer sa réflexion. L'antidote Selen : proposez une question précise, par exemple « Notez une situation dans laquelle une consigne professionnelle a été mal comprise ». Laissez une minute de réflexion personnelle, puis proposez une discussion en binôme avant de demander à quelques volontaires de partager un exemple. Le silence n'est pas forcément un échec pédagogique. Parfois, trente secondes d'attente valent mieux qu'un discours supplémentaire de cinq minutes."
+      },
+      {
+        "title": "🧛 Apparition n° 2 : le vampire du temps de parole",
+        "body": "Un participant raconte une anecdote. Puis une deuxième. Puis une troisième, impliquant une photocopieuse et un déjeuner d'équipe en 2019. Dix minutes plus tard, il parle toujours. Le but n'est pas de l'humilier, mais de rendre la parole aux autres. Essayez : « Ton exemple illustre bien la difficulté. Je vais m'arrêter sur ce point pour entendre d'autres expériences, puis nous reviendrons à la solution. » Vous pouvez fixer une minute par personne pour un premier tour ou demander à chacun de préparer une réponse écrite avant le débat. Un groupe n'est pas un concours de monologues, même si certains concurrents affichent une préparation redoutable."
+      },
+      {
+        "title": "🧟 Apparition n° 3 : « Je sais déjà tout ça »",
+        "body": "« Cela fait vingt ans que je travaille dans ce domaine », annonce un participant, bras croisés. Il a peut-être beaucoup d'expérience, ne voit pas l'utilité de la séquence ou a été inscrit sans être consulté. Au lieu de le contredire, demandez : « Même avec vingt ans de pratique, quelle situation reste difficile à gérer ? » Puis proposez un cas complexe pour mobiliser son expertise et permettre au groupe d'explorer plusieurs approches. Vous pouvez alors vérifier la compétence visée. Attention toutefois : avoir de l'expérience ne fait pas de lui votre coformateur bénévole."
+      },
+      {
+        "title": "🐺 Apparition n° 4 : le loup-garou de la mauvaise réponse",
+        "body": "Une participante donne une réponse erronée, deux collègues sourient. « Désolée, c'était idiot. » La prochaine fois, elle hésitera à parler. Essayez plutôt : « C'est une confusion assez fréquente. Voyons ce que donnerait cette solution en pratique. » Analysez la réponse et faites découvrir comment l'améliorer. Il ne s'agit pas de prétendre que tout est juste, mais de corriger sans ridiculiser. Un retour d'information utile explique ce qui manque dans le raisonnement et ce qui permet de progresser, au lieu de juger la personne. Le Conseil scientifique de l'éducation nationale souligne le rôle du feedback dans les apprentissages."
+      },
+      {
+        "title": "🕸️ Apparition n° 5 : huit participants, trois niveaux",
+        "body": "Trois participants terminent en cinq minutes, deux avancent normalement, trois peinent dès le départ. La fameuse homogénéité du groupe a disparu. L'antidote : une mission commune avec plusieurs degrés de difficulté. Niveau essentiel : identifier une situation et proposer une première réponse. Niveau approfondissement : comparer deux stratégies et leurs limites. Niveau défi : répondre à un scénario complexe avec plusieurs contraintes. Tout le monde poursuit le même objectif, sans imposer le même rythme ni reconstruire trois formations entières. « Ceux qui ont fini, attendez les autres » n'a jamais constitué un exercice pédagogique passionnant."
+      },
+      {
+        "title": "🦇 Apparition n° 6 : le participant qui ne veut pas jouer",
+        "body": "« Nous allons faire un jeu de rôle ! » Une participante se crispe : « Je préfère ne pas jouer devant tout le monde. » Participer ne signifie pas accepter toutes les modalités. Selon l'objectif, proposez un travail en binôme, une observation commentée ou une analyse écrite. Mais ne perdez pas de vue la compétence : si elle doit être démontrée dans une situation pratique, l'écrit ne suffit pas toujours à l'évaluer. Dans ce cas, trouvez un autre cadre d'entraînement adapté. Adapter les modalités n'est pas renoncer à l'objectif ; et la formation n'est pas une audition de téléréalité."
+      },
+      {
+        "title": "🧪 Le rituel anti-fantômes : une séquence de quinze minutes",
+        "body": "Deux minutes pour présenter un problème professionnel précis. Trois minutes de réflexion individuelle. Quatre minutes d'échange en binôme. Quatre minutes de mise en commun. Deux minutes de vérification des acquis par une micro-application ou une question courte. Ces durées sont indicatives et non réglementaires. La méthode s'adapte à une formation en bureautique, management, relation client ou sécurité. Elle ne nécessite ni logiciel coûteux ni spectacle son et lumière : une consigne claire, un cas pertinent et quelques feuilles peuvent suffire."
+      },
+      {
+        "title": "🎁 Bonus : une salle bruyante n'est pas toujours une salle qui apprend",
+        "body": "Un groupe enthousiaste peut participer à un jeu sans acquérir la compétence attendue. À l'inverse, une personne discrète peut progresser beaucoup. Terminez chaque séquence par une petite démonstration : reformuler une demande client, utiliser une fonction Excel, justifier une réponse à un désaccord ou repérer un risque dans un scénario. Comparez le résultat à l'objectif de formation. Notez ensuite trois observations utiles : ce qui a fonctionné, ce qui a coincé et ce que vous changerez. Une démarche d'amélioration continue est plus utile qu'un roman de commentaires vagues. Ressources de référence : Conseil scientifique de l'éducation nationale, « Qu'est-ce que le feedback ? » ; Réseau Canopé, « Pédagogies actives », 26 novembre 2024 ; Éduscol, démarche Qualéduc."
+      }
+    ],
+    "conclusion": "17 h 02. La formation est terminée. Mathilde comprend que ses apprenants n'étaient pas des fantômes, mais des personnes différentes : certains avaient besoin de réfléchir, d'autres de s'exprimer ou d'être rassurés. Son travail n'était pas de les faire tous participer de la même manière, mais de leur permettre d'apprendre. Elle éteint le vidéoprojecteur. Une dernière voix s'élève : « Excusez-moi, j'ai une petite anecdote à raconter… » Le vampire du temps de parole a survécu. Et manifestement, il a encore faim. L'équipe Selen Éditions. Article pédagogique du 30 octobre 2026. Les exemples sont fictifs ; les méthodes s'adaptent aux objectifs et aux publics."
+  },
+  {
     "slug": "qualiopi-novembre-2026-nouveau-referentiel-checklist",
     "title": "Qualiopi change dimanche : opération sauvetage avant minuit 🎃",
     "category": "Qualiopi",
