@@ -113,7 +113,7 @@ export async function POST(req: Request) {
   const email = text(learner?.email).toLowerCase();
   if (!email) return NextResponse.json({ error: "Aucune adresse e-mail n’est enregistrée pour cet apprenant." }, { status: 400 });
 
-  const { data: recent } = await context.admin
+  const { data: recent, error: recentError } = await context.admin
     .from("daily_attendance_access_tokens")
     .select("created_at")
     .eq("organisation_id", context.organisationId)
@@ -122,6 +122,9 @@ export async function POST(req: Request) {
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+  if (recentError) {
+    return NextResponse.json({ error: "Impossible de vérifier les relances précédentes. Aucun message n’a été envoyé." }, { status: 503 });
+  }
   if (recent?.created_at && Date.now() - new Date(recent.created_at).getTime() < 60_000) {
     return NextResponse.json({ error: "Un accès vient déjà d’être généré. Patientez une minute avant une nouvelle relance." }, { status: 429 });
   }
@@ -162,7 +165,7 @@ export async function POST(req: Request) {
     .eq("enrolment_id", enrolmentId)
     .eq("status", "active");
   if (revokeError) {
-    await context.admin.from("daily_communications").update({ status: "failed", failed_at: new Date().toISOString(), failure_reason: revokeError.message }).eq("id", communication.id);
+    await context.admin.from("daily_communications").update({ status: "failed", failed_at: new Date().toISOString(), failure_reason: revokeError.message }).eq("id", communication.id).eq("organisation_id", context.organisationId);
     return NextResponse.json({ error: revokeError.message }, { status: 500 });
   }
 
@@ -185,7 +188,7 @@ export async function POST(req: Request) {
     .select("id")
     .single();
   if (tokenError || !access) {
-    await context.admin.from("daily_communications").update({ status: "failed", failed_at: new Date().toISOString(), failure_reason: tokenError?.message ?? "Lien impossible à créer." }).eq("id", communication.id);
+    await context.admin.from("daily_communications").update({ status: "failed", failed_at: new Date().toISOString(), failure_reason: tokenError?.message ?? "Lien impossible à créer." }).eq("id", communication.id).eq("organisation_id", context.organisationId);
     return NextResponse.json({ error: tokenError?.message ?? "Lien impossible à créer." }, { status: 500 });
   }
 
@@ -216,7 +219,8 @@ export async function POST(req: Request) {
         ...(correction ? { review_version: String(correction.version), correction_reason: correction.reason } : {}),
       },
     })
-    .eq("id", communication.id);
+    .eq("id", communication.id)
+    .eq("organisation_id", context.organisationId);
 
   if (evidenceError) {
     await context.admin
@@ -224,11 +228,11 @@ export async function POST(req: Request) {
       .update({ status: "revoked" })
       .eq("id", access.id)
       .eq("organisation_id", context.organisationId);
-    await context.admin.from("daily_communications").update({ status: "failed", failed_at: new Date().toISOString(), failure_reason: evidenceError.message }).eq("id", communication.id);
+    await context.admin.from("daily_communications").update({ status: "failed", failed_at: new Date().toISOString(), failure_reason: evidenceError.message }).eq("id", communication.id).eq("organisation_id", context.organisationId);
     return NextResponse.json({ error: "La preuve d’envoi n’a pas pu être réservée. Le message n’a pas été envoyé et le lien a été révoqué." }, { status: 500 });
   }
 
-  const { data: attendanceBeforeSend } = await context.admin
+  const { data: attendanceBeforeSend, error: attendanceBeforeSendError } = await context.admin
     .from("daily_attendance_records")
     .select("status,evidence_metadata")
     .eq("organisation_id", context.organisationId)
@@ -236,6 +240,28 @@ export async function POST(req: Request) {
     .eq("slot_id", slotId)
     .eq("enrolment_id", enrolmentId)
     .maybeSingle();
+  if (attendanceBeforeSendError) {
+    const failedAt = new Date().toISOString();
+    const [revokeResult, evidenceResult] = await Promise.all([
+      context.admin
+        .from("daily_attendance_access_tokens")
+        .update({ status: "revoked" })
+        .eq("id", access.id)
+        .eq("organisation_id", context.organisationId),
+      context.admin
+        .from("daily_communications")
+        .update({ status: "failed", failed_at: failedAt, failure_reason: "attendance_state_unavailable" })
+        .eq("id", communication.id)
+        .eq("organisation_id", context.organisationId),
+    ]);
+    if (revokeResult.error || evidenceResult.error) {
+      console.error("Daily : échec de nettoyage après lecture de présence indisponible", {
+        revokeFailed: Boolean(revokeResult.error),
+        evidenceFailed: Boolean(evidenceResult.error),
+      });
+    }
+    return NextResponse.json({ error: "Impossible de vérifier la présence avant l’envoi. Aucun message n’a été envoyé." }, { status: 503 });
+  }
   const correctionBeforeSend = rejectedLateReview(attendanceBeforeSend);
   const correctionChanged = correction && correctionBeforeSend?.version !== correction.version;
   if (attendanceBeforeSend?.status !== "pending" || awaitingLateReview(attendanceBeforeSend) || correctionChanged) {
