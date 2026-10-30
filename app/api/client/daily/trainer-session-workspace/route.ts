@@ -13,7 +13,10 @@ export async function GET(request: Request) {
   const context = await getDailyTrainerWorkspaceContext();
   if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
   const sessionId = new URL(request.url).searchParams.get("session_id") ?? "";
-  const session = await getAssignedDailyTrainerSession(context, sessionId);
+  if (!sessionId) return NextResponse.json({ error: "Session requise." }, { status: 400 });
+  let session: Awaited<ReturnType<typeof getAssignedDailyTrainerSession>>;
+  try { session = await getAssignedDailyTrainerSession(context, sessionId); }
+  catch { return NextResponse.json({ error: "Impossible de vérifier l’affectation de cette session." }, { status: 500 }); }
   if (!session) return NextResponse.json({ error: "Session non affectée à ce formateur." }, { status: 404 });
   const [enrolmentsResult, slotsResult, recordsResult, documentsResult] = await Promise.all([
     context.admin.from("daily_session_enrolments").select("id,learner_id,status,daily_learners(id,first_name,last_name,email)").eq("organisation_id", context.orgId).eq("session_id", sessionId).not("status", "in", "(cancelled,declined,abandoned)"),
@@ -42,7 +45,10 @@ export async function POST(request: Request) {
   const slotId = text(formData.get("slot_id")) || null;
   const requestId = text(formData.get("request_id"));
   const file = formData.get("file");
-  const session = await getAssignedDailyTrainerSession(context, sessionId);
+  if (!sessionId) return NextResponse.json({ error: "Session requise." }, { status: 400 });
+  let session: Awaited<ReturnType<typeof getAssignedDailyTrainerSession>>;
+  try { session = await getAssignedDailyTrainerSession(context, sessionId); }
+  catch { return NextResponse.json({ error: "Impossible de vérifier l’affectation de cette session." }, { status: 500 }); }
   if (!session) return NextResponse.json({ error: "Session non affectée à ce formateur." }, { status: 404 });
   if (!["resource", "attendance_paper", "external_evaluation"].includes(kind)) return NextResponse.json({ error: "Type d’import invalide." }, { status: 400 });
   if (!(file instanceof File) || !file.size || file.size > 25 * 1024 * 1024) return NextResponse.json({ error: "Fichier requis, 25 Mo maximum." }, { status: 400 });
