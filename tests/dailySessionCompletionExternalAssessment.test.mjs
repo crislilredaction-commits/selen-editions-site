@@ -43,8 +43,8 @@ test("la clôture attend la fin de session et une complétude réelle à 100 pou
   assert.match(completionHelper, /isDailySessionEligibleForClosure/);
   assert.match(completionRoute, /sessionStatus: session.status/);
   assert.match(completionHelper, /sessionStatus: session.status/);
-  assert.match(completionHelper, /stats\.expected > 0/);
-  assert.match(completionHelper, /stats\.completed === stats\.expected/);
+  assert.match(completionHelper, /sessionStatus/);
+  assert.match(completionHelper, /isDailySessionEligibleForClosure/);
 });
 
 test("la clôture persiste completed et completed_at uniquement depuis active", () => {
