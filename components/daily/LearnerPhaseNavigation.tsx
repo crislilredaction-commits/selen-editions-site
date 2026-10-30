@@ -40,19 +40,32 @@ export default function LearnerPhaseNavigation({ role, token }: Props) {
   const [resources, setResources] = useState<Json[]>([]);
   const [selected, setSelected] = useState<Phase>("before");
   const [error, setError] = useState("");
+  const [resourcesError, setResourcesError] = useState("");
 
   useEffect(() => {
+    const controller = new AbortController();
+    setData(null);
+    setResources([]);
+    setError("");
+    setResourcesError("");
+    setSelected("before");
     Promise.all([
-      fetch(`/api/daily-portal/${token}`, { cache: "no-store" }),
-      fetch(`/api/daily-portal/${token}/resources`, { cache: "no-store" }).catch(() => ({ ok: false, json: async () => ({}) })),
+      fetch(`/api/daily-portal/${token}`, { cache: "no-store", signal: controller.signal }),
+      fetch(`/api/daily-portal/${token}/resources`, { cache: "no-store", signal: controller.signal }).catch(() => ({ ok: false, json: async () => ({}) })),
     ]).then(async ([portalResponse, resourcesResponse]) => {
       const portal = await portalResponse.json().catch(() => ({}));
       const docs = await resourcesResponse.json().catch(() => ({}));
+      if (controller.signal.aborted) return;
       if (!portalResponse.ok) throw new Error(portal.error ?? "Parcours indisponible.");
+      if (portal.access?.portalType !== "learner") throw new Error("Ce lien ne correspond pas à l’espace apprenant.");
       setData(portal);
-      setResources(resourcesResponse.ok ? docs.documents ?? [] : []);
+      if (resourcesResponse.ok) setResources(docs.documents ?? []);
+      else setResourcesError("Les documents sont temporairement indisponibles. Réessayez dans quelques instants.");
       setSelected(sessionPhase(portal.session));
-    }).catch((cause) => setError(cause instanceof Error ? cause.message : "Parcours indisponible."));
+    }).catch((cause) => {
+      if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Parcours indisponible.");
+    });
+    return () => controller.abort();
   }, [token]);
 
   const current = sessionPhase(data?.session);
@@ -67,7 +80,7 @@ export default function LearnerPhaseNavigation({ role, token }: Props) {
           : { label: "Positionnement", detail: "Le questionnaire reste consultable tant que votre inscription est active.", href: `/daily/portail/${role}/${token}/positionnement` },
         convocation
           ? { label: "Convocation", detail: "Retrouvez les informations pratiques de la session.", href: `/api/daily-portal/${token}/document?id=${convocation.id}` }
-          : { label: "Convocation", detail: "Aucune convocation publiée pour le moment." },
+          : { label: "Convocation", detail: resourcesError ? "Vérification des documents temporairement indisponible." : "Aucune convocation publiée pour le moment." },
       ];
     }
     if (selected === "during") {
@@ -93,14 +106,15 @@ export default function LearnerPhaseNavigation({ role, token }: Props) {
         ? { label: "Certificat de réalisation", detail: "Téléchargez votre certificat personnel finalisé.", href: `/api/daily-portal/${token}/document?id=${encodeURIComponent(completionCertificate.id)}` }
         : { label: "Certificat de réalisation", detail: "Il sera disponible ici après la session, une fois finalisé par votre organisme." },
     ];
-  }, [data, resources, role, selected, token]);
+  }, [data, resources, resourcesError, role, selected, token]);
 
   return <section style={{ maxWidth: 1100, margin: "1rem auto", padding: "0 1rem", color: "var(--ink)" }}>
     <div style={{ border: "1px solid var(--sepia-mid)", background: "var(--paper)", padding: "1rem" }}>
       <p style={{ margin: 0, fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".08em", color: "var(--rust)" }}>Mon parcours</p>
       <h2 style={{ margin: ".35rem 0 .5rem" }}>Avant · Pendant · Après</h2>
       <p style={{ margin: "0 0 1rem", color: "var(--ink-soft)", lineHeight: 1.55 }}>Vous pouvez consulter librement les trois étapes. L’étape actuelle est seulement mise en évidence : elle ne bloque jamais l’accès aux autres.</p>
-      {error ? <p style={{ padding: ".7rem", border: "1px solid #a64" }}>{error}</p> : null}
+      {error ? <p role="alert" style={{ padding: ".7rem", border: "1px solid #a64" }}>{error}</p> : null}
+      {resourcesError ? <p role="alert" style={{ padding: ".7rem", border: "1px solid #a64" }}>{resourcesError}</p> : null}
       <div role="tablist" aria-label="Étapes de la formation" style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 8 }}>
         {(Object.keys(labels) as Phase[]).map((phase) => <button key={phase} type="button" role="tab" aria-selected={selected === phase} onClick={() => setSelected(phase)} style={{ padding: ".75rem .55rem", border: selected === phase ? "2px solid var(--rust)" : "1px solid var(--sepia-mid)", background: current === phase ? "rgba(201,160,85,.18)" : "transparent", color: "var(--ink)", fontWeight: 800, cursor: "pointer" }}>{labels[phase]}{current === phase ? " · étape actuelle" : ""}</button>)}
       </div>

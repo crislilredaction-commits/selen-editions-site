@@ -115,7 +115,7 @@ async function render(name,{available=true,role='apprenant',resourceFailure=fals
   const {default:Component}=loadTypeScript(`components/daily/${name}.tsx`,{
     react:{useState(initial){const i=cursor++;if(!(i in state))state[i]=initial;return [state[i],v=>{state[i]=v;}];},useEffect(fn){effects.push(fn);},useMemo:fn=>fn()},
     'react/jsx-runtime':{jsx,jsxs:jsx}, '@/lib/daily/portalRoleConfig':roles,
-  },{fetch:async(path)=>{if(path.endsWith('/resources')){if(resourceFailure==='reject')throw new Error('Private resources unavailable');return {ok:!resourceFailure,json:async()=>({documents:docs})};}assert.equal(path,'/api/daily-portal/portal-secret');return {ok:true,json:async()=>portal};}});
+  },{AbortController,fetch:async(path)=>{if(path.endsWith('/resources')){if(resourceFailure==='reject')throw new Error('Private resources unavailable');return {ok:!resourceFailure,json:async()=>({documents:docs})};}assert.equal(path,'/api/daily-portal/portal-secret');return {ok:true,json:async()=>portal};}});
   Component({role,token:'portal-secret'}); effects[0]();await new Promise(resolve=>setImmediate(resolve));cursor=0;
   if(name==='LearnerPhaseNavigation')state[2]=selected;
   return Component({role,token:'portal-secret'});
@@ -124,7 +124,7 @@ for(const name of ['LearnerPhaseNavigation','DailyStakeholderWorkspace']) {
   for(const resourceFailure of [false,'http','reject']) test(`${name}: public link survives empty/failed private resources ${resourceFailure}`,async()=>{
     const tree=await render(name,{resourceFailure});const link=nodes(tree).find(n=>n.type==='a'&&n.props.href===url);
     assert.ok(link);assert.equal(link.props.children,'Télécharger le programme complet');assert.equal(link.props.target,'_blank');assert.equal(link.props.rel,'noreferrer');
-    const serialized=JSON.stringify(tree);assert.ok(!serialized.includes('Aucun document'));assert.ok(!serialized.includes('training_contract'));assert.ok(serialized.includes(name==='LearnerPhaseNavigation'?'Aucune convocation publiée':'Elle n\'est pas encore disponible'));
+    const serialized=JSON.stringify(tree);assert.ok(!serialized.includes('Aucun document'));assert.ok(!serialized.includes('training_contract'));assert.ok(serialized.includes(resourceFailure ? 'Vérification des documents temporairement indisponible' : name==='LearnerPhaseNavigation'?'Aucune convocation publiée':'Elle n\'est pas encore disponible'));
   });
   for(const options of [{available:false},{role:'entreprise'}])test(`${name}: unavailable/enterprise ${JSON.stringify(options)}`,async()=>{assert.ok(!nodes(await render(name,options)).some(n=>n.type==='a'&&n.props.href===url));});
   test(`${name}: existing private programme and published documents retained`,async()=>{const tree=await render(name,{docs:[{id:'private',document_type:'training_program'},{id:'published',logical_name:'Livret publié'}]});const links=nodes(tree).filter(n=>n.type==='a').map(n=>n.props.href);assert.ok(links.includes(url));for(const id of ['private','published'])assert.ok(links.includes(`/api/daily-portal/portal-secret/document?id=${id}`));});

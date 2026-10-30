@@ -31,34 +31,51 @@ export default function DailyStakeholderWorkspace({ role, token }: Props) {
   const [data, setData] = useState<Json | null>(null);
   const [resources, setResources] = useState<Json[]>([]);
   const [followup, setFollowup] = useState<Json[]>([]);
+  const [resourcesError, setResourcesError] = useState("");
+  const [followupError, setFollowupError] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [followupRequestId, setFollowupRequestId] = useState(() => crypto.randomUUID());
 
-  async function reload() {
+  async function reload(signal?: AbortSignal) {
     setLoading(true);
     setError("");
+    setData(null);
+    setResources([]);
+    setFollowup([]);
+    setResourcesError("");
+    setFollowupError("");
     try {
       const requests = [
-        fetch(`/api/daily-portal/${token}`, { cache: "no-store" }),
-        fetch(`/api/daily-portal/${token}/resources`, { cache: "no-store" }).catch(() => ({ ok: false, json: async () => ({}) })),
+        fetch(`/api/daily-portal/${token}`, { cache: "no-store", signal }),
+        fetch(`/api/daily-portal/${token}/resources`, { cache: "no-store", signal }).catch(() => ({ ok: false, json: async () => ({}) })),
       ];
-      if (normalizedRole === "trainer") requests.push(fetch(`/api/daily-portal/${token}/followup`, { cache: "no-store" }));
+      if (normalizedRole === "trainer") requests.push(fetch(`/api/daily-portal/${token}/followup`, { cache: "no-store", signal }).catch(() => ({ ok: false, json: async () => ({}) })));
       const responses = await Promise.all(requests);
       const payloads = await Promise.all(responses.map((response) => response.json().catch(() => ({}))));
+      if (signal?.aborted) return;
       if (!responses[0].ok) throw new Error(payloads[0].error ?? "Portail indisponible.");
+      if (payloads[0]?.access?.portalType !== normalizedRole) throw new Error("Ce lien ne correspond pas à cet espace.");
       setData(payloads[0]);
       if (responses[1].ok) setResources(payloads[1].documents ?? []);
-      if (normalizedRole === "trainer" && responses[2]?.ok) setFollowup(payloads[2].entries ?? []);
+      else setResourcesError("Les documents sont temporairement indisponibles. Réessayez dans quelques instants.");
+      if (normalizedRole === "trainer") {
+        if (responses[2]?.ok) setFollowup(payloads[2].entries ?? []);
+        else setFollowupError("Le suivi de session est temporairement indisponible.");
+      }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Portail indisponible.");
+      if (!signal?.aborted) setError(cause instanceof Error ? cause.message : "Portail indisponible.");
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }
 
-  useEffect(() => { void reload(); }, [token, normalizedRole]);
+  useEffect(() => {
+    const controller = new AbortController();
+    void reload(controller.signal);
+    return () => controller.abort();
+  }, [token, normalizedRole]);
 
   const config = normalizedRole ? PORTAL_ROLE_CONFIG[normalizedRole] : null;
   const formation = data?.session?.daily_formations;
@@ -82,12 +99,12 @@ export default function DailyStakeholderWorkspace({ role, token }: Props) {
     if (currentPhase === "before") {
       actions.push(convocation
         ? { label: "Consulter ma convocation", detail: "Vérifiez les dates, horaires et modalités pratiques.", href: `/api/daily-portal/${token}/document?id=${convocation.id}`, status: "todo" }
-        : { label: "Convocation", detail: "Elle n'est pas encore disponible dans votre espace.", status: "info" });
+        : { label: "Convocation", detail: resourcesError ? "Vérification des documents temporairement indisponible." : "Elle n'est pas encore disponible dans votre espace.", status: "info" });
     }
     if (currentPhase === "after") actions.push({ label: "Mon évaluation", detail: "Complétez votre évaluation de fin de formation.", href: `/daily/portail/${role}/${token}/evaluation`, status: "todo" });
     actions.push({ label: "Réclamation / suggestion", detail: "Signalez une difficulté ou transmettez une suggestion à tout moment.", href: `/daily/portail/${role}/${token}/feedback`, status: "info" });
     return actions;
-  }, [normalizedRole, data, resources, currentPhase, role, token]);
+  }, [normalizedRole, data, resources, resourcesError, currentPhase, role, token]);
 
   const genericActions = useMemo<PortalAction[]>(() => {
     if (!normalizedRole || normalizedRole === "learner") return [];
@@ -134,7 +151,9 @@ export default function DailyStakeholderWorkspace({ role, token }: Props) {
     </header>
 
     {loading ? <p>Ouverture de votre espace…</p> : null}
-    {error ? <p style={s.error}>{error}</p> : null}
+    {error ? <p role="alert" style={s.error}>{error}</p> : null}
+    {resourcesError ? <p role="alert" style={s.error}>{resourcesError}</p> : null}
+    {followupError ? <p role="alert" style={s.error}>{followupError}</p> : null}
     {message ? <p style={s.success}>{message}</p> : null}
 
     {data ? <div style={s.grid}>
@@ -174,7 +193,7 @@ export default function DailyStakeholderWorkspace({ role, token }: Props) {
       <section style={{ ...s.card, ...(polished ? s.polishedCard : {}), ...s.fullWidth }}>
         <div>{polished ? <span style={s.sectionKicker}>{isEnterprise ? "Dossier partagé" : "Ressources"}</span> : null}<h2 style={s.h2}>Mes documents</h2>{polished ? <p style={s.muted}>{isEnterprise ? "Retrouvez les documents autorisés pour votre organisation et cette session, sans mélange avec les dossiers des autres parties prenantes." : "Les documents applicables à votre inscription restent regroupés ici."}</p> : null}</div>
         {publicProgramPdfUrl ? <a style={s.documentLink} href={publicProgramPdfUrl} target="_blank" rel="noreferrer">Télécharger le programme complet</a> : null}
-        {resources.length ? <div style={s.documents}>{resources.map((doc: Json) => <a style={{ ...s.documentLink, ...(polished ? s.polishedDocumentLink : {}) }} key={doc.id} href={`/api/daily-portal/${token}/document?id=${doc.id}`} target="_blank" rel="noreferrer"><strong>{docLabel(doc)}</strong><span>{doc.version ? `Version ${doc.version}` : "Ouvrir le document"}</span></a>)}</div> : !publicProgramPdfUrl ? <p style={s.muted}>Aucun document n’est disponible pour le moment.</p> : null}
+        {resources.length ? <div style={s.documents}>{resources.map((doc: Json) => <a style={{ ...s.documentLink, ...(polished ? s.polishedDocumentLink : {}) }} key={doc.id} href={`/api/daily-portal/${token}/document?id=${doc.id}`} target="_blank" rel="noreferrer"><strong>{docLabel(doc)}</strong><span>{doc.version ? `Version ${doc.version}` : "Ouvrir le document"}</span></a>)}</div> : !publicProgramPdfUrl && !resourcesError ? <p style={s.muted}>Aucun document n’est disponible pour le moment.</p> : null}
       </section>
 
       {normalizedRole === "trainer" ? <section style={{ ...s.card, ...s.fullWidth }}><h2 style={s.h2}>Fiche de suivi de session</h2><form onSubmit={addFollowup} style={s.form}><select name="entry_type" defaultValue="incident"><option value="incident">Incident / difficulté</option><option value="adaptation">Adaptation</option></select><select name="level" defaultValue="info"><option value="info">Information</option><option value="attention">À suivre</option><option value="critical">Critique</option></select><input name="summary" required placeholder="Constat" /><textarea name="description" placeholder="Détails utiles" /><textarea name="action_taken" placeholder="Action engagée" /><button type="submit">Ajouter au suivi</button></form><div style={s.stack}>{followup.map((entry) => <article key={entry.id} style={s.followup}><strong>{entry.summary}</strong><span>{entry.entry_type} · {entry.level} · {entry.status === "resolved" ? "traité" : "ouvert"}</span>{entry.description ? <p>{entry.description}</p> : null}{entry.action_taken ? <p>Suite : {entry.action_taken}</p> : null}</article>)}</div></section> : null}
