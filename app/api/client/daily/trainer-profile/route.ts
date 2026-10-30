@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
-import { getDailyClientWorkspace } from "@/lib/server/dailyClientWorkspace";
-import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
+import { getDailyTrainerWorkspaceContext } from "@/lib/server/dailyTrainerWorkspaceContext";
 import { getDailyOrganisationReadContext } from "@/lib/server/dailyOrganisationContext";
 
 function clean(value:unknown){return String(value??"").trim()}
 function cleanArray(value:unknown){return Array.isArray(value)?[...new Set(value.map(clean).filter(Boolean))]:[]}
 function normalized(value:unknown){return clean(value).toLowerCase()}
-async function ownTrainer(){const context=await getDailyClientWorkspace();if(!context.ok)return context;const selfProfile=context.workspace.trainers.find(t=>String(t.user_id??"")===context.user.id||Boolean(context.user.email)&&normalized(t.professional_email)===normalized(context.user.email));const hasTrainerAccess=context.workspace.capabilities.trainer_self||context.workspace.membership.roles.includes("trainer")||Boolean(selfProfile);if(!hasTrainerAccess)return{ok:false as const,status:403,error:"Aucun profil formateur n’est associé à ce compte."};const profile=selfProfile??context.workspace.trainers.find(t=>String(t.user_id??"")===context.user.id);if(!profile?.id)return{ok:false as const,status:404,error:"Fiche formateur introuvable."};return{...context,profile,admin:getAdminSupabase(),organisationId:context.workspace.membership.organisation_id}}
+async function ownTrainer(){
+  const context=await getDailyTrainerWorkspaceContext();
+  if(!context.ok)return context;
+  return {...context,profile:{id:context.trainerId},organisationId:context.orgId};
+}
 export async function GET(req:Request){
   const delegated=await getDailyOrganisationReadContext(req,["trainers","sessions"]);
   if(delegated.ok&&delegated.assisted){
@@ -18,7 +21,7 @@ export async function GET(req:Request){
     const sessionRows=sessions??[];
     const sessionIds=sessionRows.map(s=>s.id);
     const {data:accesses,error:accessError}=sessionIds.length
-      ?await delegated.admin.from("daily_portal_access_tokens").select("id,session_id,entity_key,entity_name,entity_email,status,expires_at").in("session_id",sessionIds).eq("portal_type","trainer").not("status","in","(revoked,expired)")
+      ?await delegated.admin.from("daily_portal_access_tokens").select("id,session_id,entity_key,entity_name,entity_email,status,expires_at").eq("organisation_id",delegated.organisationId).in("session_id",sessionIds).eq("portal_type","trainer").not("status","in","(revoked,expired)")
       :{data:[],error:null};
     if(accessError)return NextResponse.json({error:accessError.message},{status:500});
     const now=Date.now();
