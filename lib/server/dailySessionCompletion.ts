@@ -1,4 +1,5 @@
 import { filterCurrentOwnPositioningEvidence } from "@/lib/server/dailyCurrentPositioningEvidence";
+import { isDailySessionEligibleForClosure } from "@/lib/daily/sessionCompletionEligibility.mjs";
 
 export const ACTIVE_ENROLMENT_STATUSES = new Set(["pending", "confirmed", "active", "completed"]);
 export const DONE_CHECKLIST_STATUSES = new Set(["validated", "not_applicable"]);
@@ -78,9 +79,8 @@ export function calculateDailySessionCompletion(args: {
   };
 }
 
-export function isDailySessionReadyToClose(endDate: string | null | undefined, stats: CompletionStats, now = new Date()) {
-  const today = now.toISOString().slice(0, 10);
-  return Boolean(endDate && endDate <= today && stats.expected > 0 && stats.completed === stats.expected);
+export function isDailySessionReadyToClose(sessionStatus: string | null | undefined, endDate: string | null | undefined, stats: CompletionStats, now = new Date()) {
+  return isDailySessionEligibleForClosure({ sessionStatus, endDate, stats, now });
 }
 
 export async function closeDailySessionDossierIfReady(args: {
@@ -88,15 +88,16 @@ export async function closeDailySessionDossierIfReady(args: {
   organisationId: string;
   sessionId: string;
   endDate?: string | null;
+  sessionStatus: string | null;
   stats: CompletionStats;
   dossier: DossierState;
   now?: Date;
 }) {
-  const { admin, organisationId, sessionId, endDate, stats, dossier, now = new Date() } = args;
+  const { admin, organisationId, sessionId, endDate, sessionStatus, stats, dossier, now = new Date() } = args;
   const currentStatus = dossier?.status ?? null;
   const currentCompletedAt = dossier?.completed_at ?? null;
 
-  if (!isDailySessionReadyToClose(endDate, stats, now) || currentStatus !== "active") {
+  if (!isDailySessionReadyToClose(sessionStatus, endDate, stats, now) || currentStatus !== "active") {
     return {
       ...stats,
       dossierStatus: currentStatus,
@@ -170,6 +171,7 @@ export async function reconcileDailySessionDossier(args: {
     organisationId,
     sessionId,
     endDate: session.end_date,
+    sessionStatus: session.status,
     stats,
     dossier,
     now,

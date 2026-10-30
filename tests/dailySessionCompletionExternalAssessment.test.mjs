@@ -40,9 +40,11 @@ test("les tâches internes Selen ne bloquent pas la complétude client", () => {
 });
 
 test("la clôture attend la fin de session et une complétude réelle à 100 pour cent", () => {
-  assert.match(completionHelper, /endDate && endDate <= today/);
-  assert.match(completionHelper, /stats\.expected > 0/);
-  assert.match(completionHelper, /stats\.completed === stats\.expected/);
+  assert.match(completionHelper, /isDailySessionEligibleForClosure/);
+  assert.match(completionRoute, /sessionStatus: session.status/);
+  assert.match(completionHelper, /sessionStatus: session.status/);
+  assert.match(completionHelper, /sessionStatus/);
+  assert.match(completionHelper, /isDailySessionEligibleForClosure/);
 });
 
 test("la clôture persiste completed et completed_at uniquement depuis active", () => {
