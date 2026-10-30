@@ -1,8 +1,14 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { deliverLearnerEmail, emailDeliveryId, provenDelivery } from "@/lib/server/dailyLearnerEmailDelivery";
 
 const text = (value: unknown) => typeof value === "string" ? value.trim() : "";
 const normalizedEmail = (value: unknown) => text(value).toLowerCase();
+const hasExpired = (value: unknown) => {
+  const expiry = text(value);
+  if (!expiry) return false;
+  const timestamp = Date.parse(expiry);
+  return !Number.isFinite(timestamp) || timestamp <= Date.now();
+};
 const asArray = (value: unknown): Record<string, unknown>[] => Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item)) : [];
 const escapeHtml = (value: string) => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
 
@@ -50,6 +56,7 @@ export async function ensureAndSendEnterprisePortalAccess(admin: AdminClient, in
   if (existingError) throw existingError;
 
   let access = existing;
+  let rotated = false;
   if (!access) {
     const token = randomBytes(32).toString("base64url");
     const { data: created, error: createError } = await admin.from("daily_portal_access_tokens").insert({
@@ -65,19 +72,32 @@ export async function ensureAndSendEnterprisePortalAccess(admin: AdminClient, in
     }).select("id,token,status,expires_at").single();
     if (createError) throw createError;
     access = created;
-  } else if (["revoked", "expired"].includes(String(access.status ?? ""))) {
+  } else if (["revoked", "expired"].includes(String(access.status ?? "")) || hasExpired(access.expires_at)) {
     const token = randomBytes(32).toString("base64url");
-    const { data: renewed, error: renewError } = await admin.from("daily_portal_access_tokens").update({ token, status: "pending", viewed_at: null, expires_at: null, entity_name: companyName || null, entity_email: email, updated_at: new Date().toISOString() }).eq("id", access.id).select("id,token,status,expires_at").single();
+    // A concurrent renewal must not overwrite a token that was just delivered.
+    const { data: renewed, error: renewError } = await admin.from("daily_portal_access_tokens").update({ token, status: "pending", viewed_at: null, expires_at: null, entity_name: companyName || null, entity_email: email, updated_at: new Date().toISOString() }).eq("id", access.id).eq("token", access.token).select("id,token,status,expires_at").maybeSingle();
     if (renewError) throw renewError;
-    access = renewed;
+    if (renewed) {
+      access = renewed;
+    } else {
+      const { data: current, error: currentError } = await admin.from("daily_portal_access_tokens").select("id,token,status,expires_at").eq("id", access.id).maybeSingle();
+      if (currentError || !current) throw currentError ?? new Error("Accès entreprise introuvable après renouvellement concurrent.");
+      access = current;
+    }
+    rotated = true;
   }
 
   const portalUrl = `${input.origin}/daily/portail/enterprise/${encodeURIComponent(access.token)}`;
-  const key = JSON.stringify(["enterprise_portal_access", session.organisation_id, session.id, entityKey, access.id]);
+  const legacyKey = JSON.stringify(["enterprise_portal_access", session.organisation_id, session.id, entityKey, access.id]);
+  // A renewed token needs a distinct durable delivery claim. Never store the raw token in the claim key.
+  const tokenFingerprint = createHash("sha256").update(access.token).digest("hex");
+  const tokenKey = JSON.stringify(["enterprise_portal_access", session.organisation_id, session.id, entityKey, access.id, tokenFingerprint]);
   const { data: previous, error: previousError } = await admin.from("daily_communications").select("id,status,sent_at,provider_message_id").eq("organisation_id", session.organisation_id).eq("session_id", session.id).eq("communication_type", "enterprise_portal_access").eq("recipient_email", email).contains("metadata", { portal_access_id: access.id }).order("created_at", { ascending: false }).limit(1).maybeSingle();
   if (previousError) throw previousError;
-  // Legacy attempts have no stable provider key: never automatically resend them.
-  if (previous && (previous.id !== emailDeliveryId(key) || previous.status !== "failed")) {
+  // Keep the original idempotency key for a legacy failed delivery of an unchanged link.
+  const key = !rotated && previous?.id === emailDeliveryId(legacyKey) ? legacyKey : tokenKey;
+  // A previous link is irrelevant after rotation. Uncertain attempts for the same link remain blocked.
+  if (!rotated && previous && (previous.id !== emailDeliveryId(key) || previous.status !== "failed")) {
     const status = provenDelivery(previous) === "already_sent" ? "already_sent" : "pending";
     return { sessionId: session.id, email, portalAccessId: access.id, status, communicationId: previous.id, portalUrl };
   }
