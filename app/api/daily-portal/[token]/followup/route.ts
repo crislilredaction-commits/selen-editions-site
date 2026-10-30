@@ -1,3 +1,4 @@
+import { isValidPortalExpiry } from "@/lib/daily/portalAttendanceAccess.mjs";
 import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 
@@ -9,20 +10,12 @@ const INACTIVE_ENROLMENTS = new Set(["declined", "cancelled", "abandoned", "comp
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const text = (value: unknown) => String(value ?? "").trim();
 
-// Legacy links may omit an expiry, but a corrupt expiry must never grant access.
-function isExpiredPortalAccess(expiresAt: unknown) {
-  if (expiresAt == null) return false;
-  if (typeof expiresAt !== "string" || !expiresAt.trim()) return true;
-  const deadline = Date.parse(expiresAt);
-  return !Number.isFinite(deadline) || deadline <= Date.now();
-}
-
 async function trainerAccess(token: string) {
   const admin = getAdminSupabase();
   const { data: access, error } = await admin.from("daily_portal_access_tokens").select("id,portal_type,session_id,status,expires_at,entity_name,entity_email").eq("token", token).maybeSingle();
   if (error) return { ok: false as const, status: 500, error: error.message };
   if (!access || access.portal_type !== "trainer") return { ok: false as const, status: 403, error: "Accès formateur requis." };
-  if (isExpiredPortalAccess(access.expires_at)) return { ok: false as const, status: 410, error: "Ce lien a expiré." };
+  if (!isValidPortalExpiry(access.expires_at)) return { ok: false as const, status: 410, error: "Ce lien a expiré." };
   if (!["pending", "viewed"].includes(String(access.status ?? ""))) return { ok: false as const, status: 403, error: "Cet accès n’est plus actif." };
   const { data: session, error: sessionError } = await admin.from("daily_sessions").select("id,organisation_id").eq("id", access.session_id).neq("status", "archived").maybeSingle();
   if (sessionError) return { ok: false as const, status: 500, error: sessionError.message };

@@ -1,3 +1,4 @@
+import { isValidPortalExpiry } from "@/lib/daily/portalAttendanceAccess.mjs";
 import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import {DAILY_PORTAL_RESOURCE_STATUSES,DAILY_PORTAL_RESOURCE_TYPES,isDailyPortalResourceVisible} from "@/lib/server/dailyPortalResourceVisibility";
@@ -9,8 +10,6 @@ import {resolveEnterprisePortalCompany} from "@/lib/daily/enterprisePortalIdenti
 type Params = { params: Promise<{ token: string }> };
 type Json = Record<string, unknown>;
 const text = (value: unknown) => String(value ?? "").trim();
-// Keep legacy links without an expiry, but never accept corrupt or blank deadlines.
-function isExpired(v?:string|null){if(v==null)return false;if(typeof v!=="string"||!v.trim())return true;const deadline=Date.parse(v);return !Number.isFinite(deadline)||deadline<=Date.now()}
 const email = (value: unknown) => text(value).toLowerCase();
 const array = (value: unknown): Json[] => Array.isArray(value) ? value.filter((v): v is Json => Boolean(v && typeof v === "object")) : [];
 
@@ -100,7 +99,7 @@ export async function GET(_request: Request, { params }: Params) {
   if (accessError) return NextResponse.json({ error: accessError.message }, { status: 500 });
   if (!access) return NextResponse.json({ error: "Portail introuvable." }, { status: 404 });
   if (!["pending", "viewed"].includes(String(access.status ?? ""))) return NextResponse.json({ error: "Cet accès n’est plus actif." }, { status: 403 });
-  if (isExpired(access.expires_at)) return NextResponse.json({ error: "Ce lien a expiré." }, { status: 410 });
+  if (!isValidPortalExpiry(access.expires_at)) return NextResponse.json({ error: "Ce lien a expiré." }, { status: 410 });
 
   const { data: session, error: sessionError } = await admin.from("daily_sessions").select("id,organisation_id,companies,end_date").eq("id", access.session_id).neq("status", "archived").maybeSingle();
   if (sessionError || !session) return NextResponse.json({ error: sessionError?.message ?? "Session introuvable." }, { status: sessionError ? 500 : 404 });

@@ -1,3 +1,4 @@
+import { isValidPortalExpiry } from "@/lib/daily/portalAttendanceAccess.mjs";
 import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import {DAILY_PORTAL_RESOURCE_STATUSES,isDailyPortalResourceVisible} from "@/lib/server/dailyPortalResourceVisibility";
@@ -11,7 +12,6 @@ const learnerWorkspaceDocumentTypes=["training_program","convocation","registrat
 const cleanToken=(v?:string|null)=>String(v??"").trim();const normalizedEmail=(v:unknown)=>String(v??"").trim().toLowerCase();
 function asArray(v:unknown):JsonRecord[]{return Array.isArray(v)?v.filter(x=>x&&typeof x==="object") as JsonRecord[]:[]}
 function portalRole(v:string){return v==="learner"?"apprenant":v==="enterprise"?"entreprise":"formateur"}
-function isExpired(v?:string|null){if(v==null)return false;if(typeof v!=="string"||!v.trim())return true;const deadline=Date.parse(v);return !Number.isFinite(deadline)||deadline<=Date.now()}
 function relatedLearner(v:unknown):JsonRecord|null{return Array.isArray(v)?v[0]&&typeof v[0]==="object"?v[0] as JsonRecord:null:v&&typeof v==="object"?v as JsonRecord:null}
 
 async function loadLearnerDocuments(supabase:ReturnType<typeof getAdminSupabase>,session:JsonRecord,enrolment:JsonRecord|null){
@@ -21,7 +21,7 @@ async function loadLearnerDocuments(supabase:ReturnType<typeof getAdminSupabase>
 }
 
 export async function GET(_request:Request,{params}:Params){
- const{token}=await params;const clean=cleanToken(token);if(!clean)return NextResponse.json({error:"Lien invalide."},{status:400});const supabase=getAdminSupabase();const{data:access,error:accessError}=await supabase.from("daily_portal_access_tokens").select("*").eq("token",clean).maybeSingle();if(accessError)return NextResponse.json({error:accessError.message},{status:500});if(!access)return NextResponse.json({error:"Portail introuvable."},{status:404});if(!["learner","trainer","enterprise"].includes(String(access.portal_type??"")))return NextResponse.json({error:"Rôle de portail non autorisé."},{status:403});if(!["pending","viewed"].includes(String(access.status??"")))return NextResponse.json({error:"Cet accès n’est plus actif."},{status:403});if(isExpired(access.expires_at)){await supabase.from("daily_portal_access_tokens").update({status:"expired"}).eq("id",access.id);return NextResponse.json({error:"Ce lien de portail a expiré."},{status:410})}
+ const{token}=await params;const clean=cleanToken(token);if(!clean)return NextResponse.json({error:"Lien invalide."},{status:400});const supabase=getAdminSupabase();const{data:access,error:accessError}=await supabase.from("daily_portal_access_tokens").select("*").eq("token",clean).maybeSingle();if(accessError)return NextResponse.json({error:accessError.message},{status:500});if(!access)return NextResponse.json({error:"Portail introuvable."},{status:404});if(!["learner","trainer","enterprise"].includes(String(access.portal_type??"")))return NextResponse.json({error:"Rôle de portail non autorisé."},{status:403});if(!["pending","viewed"].includes(String(access.status??"")))return NextResponse.json({error:"Cet accès n’est plus actif."},{status:403});if(!isValidPortalExpiry(access.expires_at)){await supabase.from("daily_portal_access_tokens").update({status:"expired"}).eq("id",access.id);return NextResponse.json({error:"Ce lien de portail a expiré."},{status:410})}
  const[sessionR,onboardingR,responsesR,conventionsR,trainersR,convocationsR,enrolmentsR]=await Promise.all([
   supabase.from("daily_sessions").select("*, daily_formations(id,title,status,global_objective,target_audience,duration_hours,duration_days,modality,prerequisites,evaluation_methods)").eq("id",access.session_id).neq("status","archived").maybeSingle(),
   supabase.from("daily_onboarding").select("organisation_name,platform_contact_first_name,platform_contact_last_name,platform_contact_email,address").eq("user_id",access.user_id).maybeSingle(),
