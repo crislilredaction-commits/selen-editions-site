@@ -1,3 +1,4 @@
+import { isValidPortalExpiry } from "../lib/daily/portalAttendanceAccess.mjs";
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { jsPDF } from 'jspdf';
@@ -49,6 +50,7 @@ function fixture(options = {}) {
   } };
   const { GET } = loadTypeScript('app/api/daily-portal/[token]/route.ts', {
     'next/server': { NextResponse: Response }, '@/lib/server/clientNdaAccess': { getAdminSupabase:()=>admin },
+    '@/lib/daily/portalAttendanceAccess.mjs': { isValidPortalExpiry },
     '@/lib/server/dailyPortalResourceVisibility': resourceVisibility,
     '@/lib/server/dailyPersonalAttendance': personalAttendance,
     '@/lib/server/dailyPortalLearnerIdentity': learnerIdentity,
