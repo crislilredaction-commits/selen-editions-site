@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { loadTypeScript } from "./helpers/loadTypeScript.mjs";
+import { isActivePortalAttendanceToken } from "../lib/daily/portalAttendanceAccess.mjs";
 
 const identity = loadTypeScript("lib/server/dailyPortalLearnerIdentity.ts");
 const routes = [
@@ -13,12 +14,12 @@ const active = (id = "a", organisation_id = "org") => ({
 });
 const cancelled = { ...active("b"), status: "cancelled" };
 
-function setup(path, { entityKey = null, status = "pending", enrolments = [active(), cancelled] } = {}) {
+function setup(path, { entityKey = null, status = "pending", expiresAt = null, enrolments = [active(), cancelled] } = {}) {
   const db = {
     daily_portal_access_tokens: [{
       id: "access", token: "secret", portal_type: "learner", status,
       session_id: "session", entity_key: entityKey, entity_email: "shared@example.test",
-      expires_at: null,
+      expires_at: expiresAt,
     }],
     daily_sessions: [{
       id: "session", organisation_id: "org", formation_id: "formation",
@@ -62,6 +63,7 @@ function setup(path, { entityKey = null, status = "pending", enrolments = [activ
   };
   const dependencies = {
     "next/server": { NextResponse: Response },
+    "@/lib/daily/portalAttendanceAccess.mjs": { isActivePortalAttendanceToken },
     "@/lib/server/clientNdaAccess": { getAdminSupabase: () => admin },
     "@/lib/server/dailyPortalLearnerIdentity": identity,
     "@/lib/daily/endOfTraining": {
@@ -113,6 +115,21 @@ for (const path of routes) {
 
   test(`${path}: unique legacy identity remains available within the correct organisation`, async () => {
     const h = setup(path, { enrolments: [active(), active("outside", "other-org")] });
+    assert.equal((await h.get()).status, 200);
+  });
+}
+
+for (const path of routes) {
+  for (const expiry of ["2000-01-01T00:00:00.000Z", "not-a-date", "", " ", 1234, Number.NaN]) {
+    test(`${path}: rejects invalid expiry ${String(expiry)} before private GET and POST reads`, async () => {
+      const h = setup(path, { entityKey: "learner:learner-a", expiresAt: expiry });
+      assert.equal((await h.get()).status, 410);
+      assert.equal((await h.post()).status, 410);
+      assert.deepEqual(h.reads, ["daily_portal_access_tokens", "daily_portal_access_tokens"]);
+    });
+  }
+  test(`${path}: future expiry remains valid for canonical learner`, async () => {
+    const h = setup(path, { entityKey: "learner:learner-a", expiresAt: "2099-01-01T00:00:00.000Z" });
     assert.equal((await h.get()).status, 200);
   });
 }

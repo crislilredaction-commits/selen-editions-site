@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isActivePortalAttendanceToken } from "@/lib/daily/portalAttendanceAccess.mjs";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import { findUniqueDailyLearnerPortalEnrolment } from "@/lib/server/dailyPortalLearnerIdentity";
 import { getLearnerSatisfactionAvailability } from "@/lib/daily/endOfTraining";
@@ -33,7 +34,7 @@ async function resolveLearner(token: string) {
   if (!access) return { error: "Portail introuvable.", status: 404 } as const;
   if (access.portal_type !== "learner") return { error: "Questionnaire réservé à l’apprenant.", status: 403 } as const;
   if (!["pending", "viewed"].includes(String(access.status ?? ""))) return { error: "Cet accès n’est plus actif.", status: 403 } as const;
-  if (access.expires_at && new Date(access.expires_at).getTime() < Date.now()) return { error: "Ce lien de portail a expiré.", status: 410 } as const;
+  if (!isActivePortalAttendanceToken(access.status, access.expires_at)) return { error: "Ce lien de portail a expiré.", status: 410 } as const;
 
   const { data: session, error: sessionError } = await supabase
     .from("daily_sessions")
