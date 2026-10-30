@@ -38,7 +38,7 @@ function fixture({ slotsReadError = false, enrolmentsReadError = false, forbidde
           throw new Error("Unexpected single read: " + table);
         },
         then(resolve, reject) {
-          queries.push({ table, filters: [...filters] });
+          if (operation === "select") queries.push({ table, filters: [...filters] });
           let result;
           if (operation === "upsert") {
             result = { error: null };
