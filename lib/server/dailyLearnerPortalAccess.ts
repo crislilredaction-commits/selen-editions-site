@@ -120,7 +120,29 @@ export async function ensureAndSendLearnerPortalAccess(admin: AdminClient, input
       .limit(1)
       .maybeSingle();
     if (legacyError) throw legacyError;
-    existingAccess = legacyAccess;
+    // An email can belong to several learners in one session. Never reuse a
+    // different learner's canonical token, or an ambiguous legacy email token.
+    const legacyKey = text(legacyAccess?.entity_key).toLowerCase();
+    const isEmailKeyedLegacyAccess = !legacyKey || legacyKey === email || legacyKey === `learner:${email}`;
+    if (legacyAccess && isEmailKeyedLegacyAccess) {
+      const { data: legacyEnrolments, error: legacyEnrolmentsError } = await admin
+        .from("daily_session_enrolments")
+        .select("learner_id,daily_learners(email)")
+        .eq("session_id", session.id)
+        .eq("organisation_id", enrolment.organisation_id);
+      if (legacyEnrolmentsError) throw legacyEnrolmentsError;
+      const rows = (legacyEnrolments ?? []) as Array<{
+        learner_id?: string | null;
+        daily_learners?: { email?: string | null } | Array<{ email?: string | null }> | null;
+      }>;
+      const sameEmailLearners = new Set(rows.filter((row) => {
+        const related = Array.isArray(row.daily_learners) ? row.daily_learners[0] : row.daily_learners;
+        return text(related?.email).toLowerCase() === email;
+      }).map((row) => text(row.learner_id)).filter(Boolean));
+      if (sameEmailLearners.size === 1 && sameEmailLearners.has(learner.id)) {
+        existingAccess = legacyAccess;
+      }
+    }
   }
 
   let access = existingAccess;
