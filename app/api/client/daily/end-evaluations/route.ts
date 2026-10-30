@@ -125,7 +125,12 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({})) as Record<string, unknown>;
   const sessionId = text(body, "session_id");
   const action = text(body, "action");
-  const session = sessionId ? await sessionExists(context.admin, context.organisationId, sessionId) : null;
+  let session: Awaited<ReturnType<typeof sessionExists>> = null;
+  try {
+    session = sessionId ? await sessionExists(context.admin, context.organisationId, sessionId) : null;
+  } catch {
+    return NextResponse.json({ error: "Impossible de vérifier la session pour le moment." }, { status: 503 });
+  }
   if (!session) return NextResponse.json({ error: "Session introuvable." }, { status: 404 });
 
   if (action === "prepare") {
@@ -158,13 +163,14 @@ export async function POST(request: Request) {
     if ((score === null) !== (scoreMax === null) || (score !== null && scoreMax !== null && (score < 0 || scoreMax <= 0 || score > scoreMax))) {
       return NextResponse.json({ error: "Le score et le score maximum doivent être cohérents." }, { status: 400 });
     }
-    const { data: enrolment } = await context.admin
+    const { data: enrolment, error: enrolmentError } = await context.admin
       .from("daily_session_enrolments")
       .select("id,status")
       .eq("organisation_id", context.organisationId)
       .eq("session_id", sessionId)
       .eq("id", enrolmentId)
       .maybeSingle();
+    if (enrolmentError) return NextResponse.json({ error: "Impossible de vérifier l'inscription pour le moment." }, { status: 503 });
     if (!enrolment || !activeDailyEnrolment(enrolment.status)) return NextResponse.json({ error: "Inscription introuvable ou inactive." }, { status: 404 });
     const now = new Date().toISOString();
     const { data, error } = await context.admin.from("daily_learning_assessments").upsert({
@@ -189,21 +195,23 @@ export async function POST(request: Request) {
   if (action === "create_feedback_link") {
     const enrolmentId = text(body, "enrolment_id");
     if (!enrolmentId) return NextResponse.json({ error: "Inscription requise." }, { status: 400 });
-    const { data: enrolment } = await context.admin
+    const { data: enrolment, error: enrolmentError } = await context.admin
       .from("daily_session_enrolments")
       .select("id,status")
       .eq("organisation_id", context.organisationId)
       .eq("session_id", sessionId)
       .eq("id", enrolmentId)
       .maybeSingle();
+    if (enrolmentError) return NextResponse.json({ error: "Impossible de vérifier l'inscription pour le moment." }, { status: 503 });
     if (!enrolment || !activeDailyEnrolment(enrolment.status)) return NextResponse.json({ error: "Inscription introuvable ou inactive." }, { status: 404 });
-    await context.admin
+    const { error: revokeError } = await context.admin
       .from("daily_learner_feedback_tokens")
       .update({ status: "revoked" })
       .eq("organisation_id", context.organisationId)
       .eq("session_id", sessionId)
       .eq("enrolment_id", enrolmentId)
       .eq("status", "active");
+    if (revokeError) return NextResponse.json({ error: "Impossible de renouveler le lien de satisfaction pour le moment." }, { status: 503 });
     const { token, tokenHash } = createDailyFeedbackToken();
     const base = session.end_date ? new Date(`${session.end_date}T12:00:00.000Z`) : new Date();
     base.setUTCDate(base.getUTCDate() + 30);
