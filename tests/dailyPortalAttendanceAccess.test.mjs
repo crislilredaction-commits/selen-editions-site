@@ -11,7 +11,7 @@ for (const status of ["pending", "viewed"]) {
     assert.equal(isActivePortalAttendanceToken(status, null, now), true);
   });
   test(`un accès ${status} est refusé si son échéance est passée, immédiate ou illisible`, () => {
-    for (const expiry of ["2026-10-28T18:40:00.000Z", "2026-10-29T18:40:00.000Z", "date-invalide", "", " ", 1234, NaN]) {
+    for (const expiry of ["2026-10-28T18:40:00.000Z", "2026-10-29T18:40:00.000Z", "date-invalide", "", " ", 1234, NaN, "9999", "2030", "12/31/9999", "2030-02-30T00:00:00Z", "2030-01-01T00:00:00"]) {
       assert.equal(isActivePortalAttendanceToken(status, expiry, now), false, `expiry=${String(expiry)}`);
     }
   });
@@ -30,4 +30,10 @@ test("les deux parcours d'émargement appliquent le même garde avant toute lect
     assert.match(route, /isActivePortalAttendanceToken\(access\.status, access\.expires_at\)/);
     assert.ok(route.indexOf("isActivePortalAttendanceToken(access.status, access.expires_at)") < route.indexOf('from("daily_sessions")'));
   }
+});
+
+test("les dates ISO valides avec décalage et les jours bissextiles restent acceptés", () => {
+  assert.equal(isActivePortalAttendanceToken("pending", "2030-01-01T00:00:00.123456+01:00", now), true);
+  assert.equal(isActivePortalAttendanceToken("viewed", "2028-02-29T12:00:00Z", now), true);
+  assert.equal(isActivePortalAttendanceToken("pending", "2030-02-29T12:00:00Z", now), false);
 });

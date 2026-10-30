@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { loadTypeScript } from "./helpers/loadTypeScript.mjs";
+import { isValidPortalExpiry } from "../lib/daily/portalAttendanceAccess.mjs";
 
 function setup(kind, options = {}) {
  const role = options.role ?? "learner";
@@ -41,6 +42,7 @@ function setup(kind, options = {}) {
   } },
   "@/lib/server/dailyPortalLearnerIdentity": { matchesDailyLearnerPortalAccess: () => true, hasUniqueDailyLearnerRecipientEmail: () => true },
   "@/lib/daily/enterprisePortalIdentity.mjs": { resolveEnterprisePortalCompany: () => ({ status: options.companyStatus ?? "ok", company: { name: "Company" } }) },
+  "@/lib/daily/portalAttendanceAccess.mjs": { isValidPortalExpiry },
  }, { Response });
  return { get: () => GET(new Request(`https://selen.test.invalid/api/daily-portal/secret/${kind}?id=doc`), { params: Promise.resolve({ token: "secret" }) }), signed: () => signed };
 }
@@ -53,6 +55,10 @@ for (const kind of ["convention","convocation"]) {
   ["malformed expiry",{expiresAt:"not-a-date"},404],
   ["blank expiry",{expiresAt:" "},404],
   ["numeric expiry",{expiresAt:42},404],
+  ["numeric future year string",{expiresAt:"9999"},404],
+  ["ambiguous numeric year string",{expiresAt:"2030"},404],
+  ["non-ISO future date",{expiresAt:"12/31/9999"},404],
+  ["impossible ISO date",{expiresAt:"2030-02-30T00:00:00Z"},404],
   ["revoked",{status:"revoked"},403],["unknown token state",{status:"disabled"},403],
   ["archived session",{archived:true},404],["SQL error",{sqlError:true},500],
   ["cross-OF path",{path:"daily/other/private.pdf"},404],

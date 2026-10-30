@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import { matchesDailyLearnerPortalAccess, hasUniqueDailyLearnerRecipientEmail } from "@/lib/server/dailyPortalLearnerIdentity";
 import { resolveEnterprisePortalCompany } from "@/lib/daily/enterprisePortalIdentity.mjs";
+import { isValidPortalExpiry } from "@/lib/daily/portalAttendanceAccess.mjs";
 
 type Params = { params: Promise<{ token: string }> };
 
@@ -12,14 +13,6 @@ function clean(value?: string | null) {
 
 function normalizedEmail(value: unknown) {
   return String(value ?? "").trim().toLowerCase();
-}
-
-function isExpired(expiresAt?: string | null) {
-  // Legacy links without an expiry remain valid; corrupted expiry values fail closed.
-  if (expiresAt == null) return false;
-  if (typeof expiresAt !== "string" || !expiresAt.trim()) return true;
-  const deadline = Date.parse(expiresAt);
-  return !Number.isFinite(deadline) || deadline <= Date.now();
 }
 
 export async function GET(request: Request, { params }: Params) {
@@ -38,7 +31,7 @@ export async function GET(request: Request, { params }: Params) {
     .maybeSingle();
 
   if (accessError) return NextResponse.json({ error: accessError.message }, { status: 500 });
-  if (!access || isExpired(access.expires_at)) {
+  if (!access || !isValidPortalExpiry(access.expires_at)) {
     return NextResponse.json({ error: "Portail introuvable ou expire." }, { status: 404 });
   }
   if (!["pending", "viewed"].includes(String(access.status ?? ""))) {
