@@ -248,19 +248,25 @@ export async function POST(req: Request) {
       .maybeSingle();
     if (slotError) return NextResponse.json({ error: slotError.message }, { status: 500 });
     if (!slot) return NextResponse.json({ error: "Créneau introuvable." }, { status: 404 });
+    if (["closed", "cancelled"].includes(slot.status)) {
+      return NextResponse.json({ error: "Ce créneau est fermé ou annulé. Aucun nouveau lien ne peut être créé." }, { status: 409 });
+    }
 
     const individual = slot.mode === "distanciel_asynchrone" || Boolean(enrolmentId);
     if (individual && !enrolmentId) {
       return NextResponse.json({ error: "Un apprenant est requis pour ce lien individuel." }, { status: 400 });
     }
     if (enrolmentId) {
-      const { data: enrolment } = await context.admin
+      const { data: enrolment, error: enrolmentError } = await context.admin
         .from("daily_session_enrolments")
         .select("id,status")
         .eq("organisation_id", context.organisationId)
         .eq("session_id", sessionId)
         .eq("id", enrolmentId)
         .maybeSingle();
+      if (enrolmentError) {
+        return NextResponse.json({ error: "Impossible de vérifier l’inscription pour cet émargement. Réessayez." }, { status: 503 });
+      }
       if (!enrolment || !activeEnrolment(enrolment.status)) {
         return NextResponse.json({ error: "Inscription introuvable ou inactive." }, { status: 404 });
       }
@@ -312,12 +318,16 @@ export async function POST(req: Request) {
       .eq("session_id", sessionId)
       .eq("id", slotId);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    await context.admin
+    const { error: revokeError } = await context.admin
       .from("daily_attendance_access_tokens")
       .update({ status: "revoked" })
       .eq("organisation_id", context.organisationId)
+      .eq("session_id", sessionId)
       .eq("slot_id", slotId)
       .eq("status", "active");
+    if (revokeError) {
+      return NextResponse.json({ error: "Créneau fermé, mais la révocation des liens n’a pas pu être confirmée. Réessayez." }, { status: 503 });
+    }
     await refreshDailyAttendanceChecklist(context.admin, context.organisationId, sessionId);
     await tryEnsurePosttrainingDocuments(context.admin, context.organisationId, context.user.id, sessionId);
     return NextResponse.json({ ok: true });
