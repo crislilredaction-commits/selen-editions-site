@@ -36,13 +36,17 @@ function makeAdmin(failure = {}) {
         update(value) { operation = "update"; writes.push({ table, operation, value }); return this; },
         upsert(value) { operation = "upsert"; writes.push({ table, operation, value }); return this; },
         insert(value) { operation = "insert"; writes.push({ table, operation, value }); return this; },
-        result() {
+        result(asList = false) {
           const failed = failure.table === table && failure.operation === operation;
-          return { data: data[table] ?? null, error: failed ? { message: "PRIVATE_SQL_ERROR" } : null };
+          const value = data[table] ?? null;
+          return {
+            data: asList && table === "daily_session_enrolments" ? [value] : value,
+            error: failed ? { message: "PRIVATE_SQL_ERROR" } : null,
+          };
         },
         maybeSingle() { return Promise.resolve(this.result()); },
         single() { return Promise.resolve(this.result()); },
-        then(resolve, reject) { return Promise.resolve(this.result()).then(resolve, reject); },
+        then(resolve, reject) { return Promise.resolve(this.result(true)).then(resolve, reject); },
       };
       return query;
     },
