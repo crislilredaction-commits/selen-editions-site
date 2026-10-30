@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
+import { isActivePortalAttendanceToken } from "@/lib/daily/portalAttendanceAccess.mjs";
 
 type Params = { params: Promise<{ token: string }> };
 type SupportedPortalType = "enterprise" | "trainer";
@@ -68,7 +69,8 @@ async function resolveSatisfactionPortal(token: string) {
   if (!["pending", "viewed"].includes(String(access.status ?? ""))) {
     return { error: "Cet accès n’est plus actif.", status: 403 as const };
   }
-  if (access.expires_at && new Date(access.expires_at).getTime() < Date.now()) {
+  // Fail closed for corrupt or blank deadlines; null remains valid for legacy links.
+  if (!isActivePortalAttendanceToken(access.status, access.expires_at)) {
     return { error: "Ce lien de portail a expiré.", status: 410 as const };
   }
 

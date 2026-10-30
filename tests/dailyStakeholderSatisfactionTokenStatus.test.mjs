@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
 import ts from "typescript";
+import { isActivePortalAttendanceToken } from "../lib/daily/portalAttendanceAccess.mjs";
 
 const source = fs.readFileSync("app/api/daily-portal/[token]/satisfaction/route.ts", "utf8");
 const compiled = ts.transpileModule(source, {
@@ -59,6 +60,7 @@ function setup(status, role = "trainer", expiresAt = null) {
   const requireMock = (id) => {
     if (id === "next/server") return { NextResponse };
     if (id === "@/lib/server/clientNdaAccess") return { getAdminSupabase: () => admin };
+    if (id === "@/lib/daily/portalAttendanceAccess.mjs") return { isActivePortalAttendanceToken };
     throw new Error("Unexpected import: " + id);
   };
   vm.runInNewContext(compiled, { module, exports, require: requireMock, Date, Intl });
@@ -95,6 +97,31 @@ for (const role of ["trainer", "enterprise"]) {
       const response = await portal[method]();
       assert.equal(response.status, 410);
       assert.deepEqual(portal.reads, ["daily_portal_access_tokens"]);
+    });
+  }
+}
+
+for (const role of ["trainer", "enterprise"]) {
+  for (const method of ["get", "post"]) {
+    for (const [label, expiresAt] of [
+      ["malformed", "not-a-date"],
+      ["empty", ""],
+      ["whitespace", "   "],
+      ["numeric", 1234],
+      ["NaN", Number.NaN],
+    ]) {
+      test(`P0 ${role} satisfaction ${method}: ${label} expiry denies before session read`, async () => {
+        const portal = setup("viewed", role, expiresAt);
+        const response = await portal[method]();
+        assert.equal(response.status, 410);
+        assert.deepEqual(portal.reads, ["daily_portal_access_tokens"]);
+      });
+    }
+    test(`P0 ${role} satisfaction ${method}: valid future deadline stays accessible`, async () => {
+      const portal = setup("pending", role, "2099-01-01T00:00:00.000Z");
+      const response = await portal[method]();
+      assert.equal(response.status, method === "get" ? 200 : 201);
+      assert.ok(portal.reads.includes("daily_sessions"));
     });
   }
 }
