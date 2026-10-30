@@ -1,3 +1,4 @@
+import { isValidPortalExpiry } from "../lib/daily/portalAttendanceAccess.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { loadTypeScript } from "./helpers/loadTypeScript.mjs";
@@ -38,6 +39,7 @@ function setup({ publishedAttendance = false, attendanceStatus = "published", fi
   const { GET } = loadTypeScript("app/api/daily-portal/[token]/resources/route.ts", {
     "next/server": { NextResponse: { json: (body, options) => Response.json(body, options) } },
     "@/lib/server/clientNdaAccess": { getAdminSupabase: () => admin },
+    "@/lib/daily/portalAttendanceAccess.mjs": { isValidPortalExpiry },
     "@/lib/server/dailyPortalResourceVisibility": { DAILY_PORTAL_RESOURCE_STATUSES: ["published"], DAILY_PORTAL_RESOURCE_TYPES: ["training_program"], isDailyPortalResourceVisible: () => false },
     "@/lib/server/dailyPersonalAttendance": { attendanceIsSettled: () => true, isPostsessionDownloadAvailable: () => postsession, personalAttendanceDocumentId: id => "attendance:" + id },
     "@/lib/server/dailyPersonalAssessment": { isFinalAssessmentResult: (outcome, date) => outcome === "achieved" && Boolean(date), personalAssessmentEvidenceDocumentId: id => "evidence:" + id, personalAssessmentResultDocumentId: id => "assessment:" + id },

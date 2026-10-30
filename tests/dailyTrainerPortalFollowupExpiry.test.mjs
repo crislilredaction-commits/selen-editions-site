@@ -1,3 +1,4 @@
+import { isValidPortalExpiry } from "../lib/daily/portalAttendanceAccess.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -49,6 +50,7 @@ function makeTrainerPortal(expiresAt, options = {}) {
       NextResponse: { json: (body, init = {}) => ({ status: init.status ?? 200, body }) },
     };
     if (id === "@/lib/server/clientNdaAccess") return { getAdminSupabase: () => admin };
+    if (id === "@/lib/daily/portalAttendanceAccess.mjs") return { isValidPortalExpiry };
     throw new Error("Unexpected dependency " + id);
   };
   vm.runInNewContext(compiled, { module, exports, require: requireMock, Date, Promise });
@@ -63,6 +65,9 @@ for (const [label, expiry] of [
   ["blank", ""],
   ["whitespace", "   "],
   ["numeric corruption", "999999999999999999"],
+  ["permissive numeric year", "9999"],
+  ["impossible calendar day", "2030-02-30T00:00:00Z"],
+  ["timezone omitted", "2030-01-01T00:00:00"],
 ]) {
   test("trainer followup denies " + label + " expiry before reading private session data", async () => {
     const portal = makeTrainerPortal(expiry);

@@ -37,3 +37,19 @@ test("les dates ISO valides avec décalage et les jours bissextiles restent acce
   assert.equal(isActivePortalAttendanceToken("viewed", "2028-02-29T12:00:00Z", now), true);
   assert.equal(isActivePortalAttendanceToken("pending", "2030-02-29T12:00:00Z", now), false);
 });
+
+
+test("les espaces publics apprenant, formateur et entreprise partagent le garde ISO strict avant les lectures privées", async () => {
+  const base = new URL("../app/api/daily-portal/[token]/", import.meta.url);
+  for (const [path, firstPrivateRead] of [
+    ["route.ts", "const[sessionR"],
+    ["resources/route.ts", 'from("daily_sessions")'],
+    ["followup/route.ts", 'from("daily_sessions")'],
+  ]) {
+    const source = await readFile(new URL(path, base), "utf8");
+    const guard = source.indexOf("isValidPortalExpiry(access.expires_at)");
+    assert.ok(guard > 0, path + " must validate the complete timestamp");
+    assert.ok(guard < source.indexOf(firstPrivateRead), path + " must reject before private session reads");
+    assert.doesNotMatch(source, /function isExpired(?:PortalAccess)?\(/, path);
+  }
+});

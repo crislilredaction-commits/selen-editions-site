@@ -1,3 +1,4 @@
+import { isValidPortalExpiry } from "../lib/daily/portalAttendanceAccess.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { loadTypeScript } from "./helpers/loadTypeScript.mjs";
@@ -17,6 +18,7 @@ function setup({entityKey="",status="pending",expiresAt=null,enrolments=[active,
  const common={
   "next/server":{NextResponse:Response},
   "@/lib/server/clientNdaAccess":{getAdminSupabase:()=>admin},
+  "@/lib/daily/portalAttendanceAccess.mjs":{isValidPortalExpiry},
   "@/lib/server/dailyPortalLearnerIdentity":identity,
   "@/lib/server/dailyPortalResourceVisibility":{DAILY_PORTAL_RESOURCE_STATUSES:["published"],DAILY_PORTAL_RESOURCE_TYPES:["organisation_shared"],isDailyPortalResourceVisible:()=>false},
   "@/lib/server/dailyPersonalAttendance":{isPostsessionDownloadAvailable:()=>false,attendanceIsSettled:()=>false,personalAttendanceDocumentId:id=>id},
@@ -45,7 +47,7 @@ for(const route of ["root","resources"]){
 
 for(const route of ["root","resources"]){
  test(route+" refuses corrupt or expired portal links before any session or document read",async()=>{
-  for(const expiresAt of ["2020-01-01T00:00:00.000Z","not-a-date","", " ",42]){
+  for(const expiresAt of ["2020-01-01T00:00:00.000Z","not-a-date","", " ",42,"9999","2030","2030-02-30T00:00:00Z","2030-01-01T00:00:00"]){
    const h=setup({entityKey:"learner:learner-a",expiresAt});
    const response=await h[route]();
    assert.equal(response.status,410,`route=${route} expiresAt=${String(expiresAt)}`);

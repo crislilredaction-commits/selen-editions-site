@@ -1,3 +1,4 @@
+import { isValidPortalExpiry } from "../lib/daily/portalAttendanceAccess.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -38,6 +39,7 @@ function makePortal(failedTable = null, role = "trainer") {
   const requireMock = (id) => {
     if (id === "next/server") return { NextResponse };
     if (id === "@/lib/server/clientNdaAccess") return { getAdminSupabase: () => admin };
+    if (id === "@/lib/daily/portalAttendanceAccess.mjs") return { isValidPortalExpiry };
     if (id === "@/lib/server/dailyPortalResourceVisibility") return {
       DAILY_PORTAL_RESOURCE_STATUSES: [], isDailyPortalResourceVisible: () => false,
     };
