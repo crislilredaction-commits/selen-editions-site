@@ -67,3 +67,56 @@ test('session company helper targets contacts, skips missing email, preserves pe
   const results=await h.helper.sendEnterprisePortalAccessForSessionCompanies(h.admin,{sessionId:'session',origin:'https://site.test'});
   assert.deepEqual(Array.from(results,r=>r.status),['pending','pending']); assert.deepEqual(h.sends.map(s=>s.message.to),['contact@example.test','other@example.test']);
 });
+
+test('expired enterprise link gets a fresh token, a new delivery proof and no duplicate on retry', async () => {
+  const h=enterprise();
+  const first=await h.sendEnterprise();
+  const access=h.db.daily_portal_access_tokens[0];
+  access.expires_at='2026-01-01T00:00:00Z';
+  const renewed=await h.sendEnterprise();
+  assert.equal(renewed.status,'sent');
+  assert.notEqual(access.token,'canonical');
+  assert.equal(access.expires_at,null);
+  assert.notEqual(renewed.communicationId,first.communicationId);
+  assert.equal(h.sends.length,2);
+  assert.ok(h.sends[1].message.text.includes('/daily/portail/enterprise/'+access.token));
+  assert.equal((await h.sendEnterprise()).status,'already_sent');
+  assert.equal(h.sends.length,2);
+});
+
+test('expired link bypasses a legacy sent proof without reusing the dead URL', async () => {
+  const h=enterprise();
+  const access=h.db.daily_portal_access_tokens[0];
+  access.expires_at='2026-01-01T00:00:00Z';
+  h.db.daily_communications.push({
+    id:'legacy',organisation_id:'org',session_id:'session',
+    communication_type:'enterprise_portal_access',recipient_email:'contact@example.test',
+    metadata:{portal_access_id:'enterprise-access'},status:'sent',
+    provider_message_id:'old-provider',sent_at:'2026-01-01',
+  });
+  const result=await h.sendEnterprise();
+  assert.equal(result.status,'sent');
+  assert.notEqual(result.communicationId,'legacy');
+  assert.equal(h.sends.length,1);
+  assert.notEqual(access.token,'canonical');
+});
+
+test('concurrent expired-link renewals keep one live token and at most one new email', async () => {
+  const h=enterprise();
+  h.db.daily_portal_access_tokens[0].expires_at='2026-01-01T00:00:00Z';
+  const results=await Promise.all(Array.from({length:6},()=>h.sendEnterprise()));
+  assert.ok(results.every(r=>['sent','already_sent','pending'].includes(r.status)));
+  assert.equal(h.sends.length,1);
+  assert.equal(h.db.daily_communications.length,1);
+  assert.equal(new Set(results.map(r=>r.portalUrl)).size,1);
+});
+
+test('revoked enterprise access renews and a definite delivery failure can be retried', async () => {
+  const h=enterprise({provider:'error'});
+  h.db.daily_portal_access_tokens[0].status='revoked';
+  assert.equal((await h.sendEnterprise()).status,'send_failed');
+  h.setProvider('success');
+  assert.equal((await h.sendEnterprise()).status,'sent');
+  assert.equal(h.db.daily_communications.length,1);
+  assert.equal(h.sends.length,2);
+});
