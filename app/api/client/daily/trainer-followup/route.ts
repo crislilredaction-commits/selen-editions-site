@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { getDailyClientWorkspace } from "@/lib/server/dailyClientWorkspace";
-import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
+import { getDailyTrainerWorkspaceContext } from "@/lib/server/dailyTrainerWorkspaceContext";
 
 const ENTRY_TYPES = new Set(["incident", "adaptation", "note", "absence"]);
 const LEVELS = new Set(["info", "attention", "critical"]);
@@ -16,36 +15,18 @@ function trainerIds(value: unknown): string[] {
   return value.map((item) => String(item)).filter(Boolean);
 }
 
-function normalizedEmail(value: unknown) {
-  return String(value ?? "").trim().toLowerCase();
-}
-
 async function getTrainerContext() {
-  const workspace = await getDailyClientWorkspace();
-  if (!workspace.ok) return workspace;
-
-  const linkedTrainer = workspace.workspace.trainers.find((item) => String(item.user_id ?? "") === workspace.user.id);
-  const trainer = linkedTrainer ?? workspace.workspace.trainers.find((item) =>
-    Boolean(workspace.user.email)
-      && normalizedEmail(item.professional_email) === normalizedEmail(workspace.user.email),
-  );
-  const hasTrainerAccess = workspace.workspace.capabilities.trainer_self
-    || workspace.workspace.membership.roles.includes("trainer")
-    || Boolean(trainer);
-  if (!hasTrainerAccess) {
-    return { ok: false as const, status: 403, error: "Cet espace est réservé au formateur concerné." };
-  }
-  if (!trainer?.id) {
-    return { ok: false as const, status: 404, error: "Fiche formateur introuvable." };
-  }
-
+  // Share the canonical personal identity resolver with trainer profile and sessions.
+  // Never choose the first match on a shared email or a profile bound to another account.
+  const context = await getDailyTrainerWorkspaceContext();
+  if (!context.ok) return context;
   return {
     ok: true as const,
-    admin: getAdminSupabase(),
-    user: workspace.user,
-    organisationId: workspace.workspace.membership.organisation_id,
-    trainerProfileId: String(trainer.id),
-    trainerName: String(trainer.display_name ?? trainer.professional_email ?? workspace.user.email ?? "Formateur").trim() || "Formateur",
+    admin: context.admin,
+    user: context.user,
+    organisationId: context.orgId,
+    trainerProfileId: context.trainerId,
+    trainerName: context.trainerName,
   };
 }
 

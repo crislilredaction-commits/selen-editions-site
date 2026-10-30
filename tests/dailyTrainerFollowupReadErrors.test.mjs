@@ -9,7 +9,7 @@ const compiled = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText;
 
-function makeFollowup({ sessionError = false, assigned = true, enrolmentError = false } = {}) {
+function makeFollowup({ sessionError = false, assigned = true, enrolmentError = false, authError = null } = {}) {
   const calls = [];
   const admin = {
     from(table) {
@@ -37,21 +37,19 @@ function makeFollowup({ sessionError = false, assigned = true, enrolmentError = 
       };
     },
   };
-  const workspace = {
+  const trainerContext = authError ?? {
     ok: true,
+    admin,
     user: { id: "user-1", email: "trainer@example.test" },
-    workspace: {
-      trainers: [{ id: "trainer-1", user_id: "user-1", display_name: "Formateur" }],
-      capabilities: { trainer_self: true },
-      membership: { roles: ["trainer"], organisation_id: "of-1" },
-    },
+    orgId: "of-1",
+    trainerId: "trainer-1",
+    trainerName: "Formateur",
   };
   const exports = {};
   const module = { exports };
   const requireMock = (id) => {
     if (id === "next/server") return { NextResponse: { json: (body, init = {}) => ({ status: init.status ?? 200, body }) } };
-    if (id === "@/lib/server/dailyClientWorkspace") return { getDailyClientWorkspace: async () => workspace };
-    if (id === "@/lib/server/clientNdaAccess") return { getAdminSupabase: () => admin };
+    if (id === "@/lib/server/dailyTrainerWorkspaceContext") return { getDailyTrainerWorkspaceContext: async () => trainerContext };
     throw new Error("Unexpected dependency " + id);
   };
   vm.runInNewContext(compiled, { module, exports, require: requireMock, URL, Date, Promise });
@@ -99,5 +97,22 @@ test("une panne de lecture d'inscription bloque l'écriture et retourne 500", as
   for (const call of route.calls) {
     assert.ok(call.clauses.some(([key, value]) => key === "organisation_id" && value === "of-1"));
     assert.ok(call.clauses.some(([key, value]) => key === "session_id" && value === "session-1") || call.table === "daily_sessions");
+  }
+});
+
+test("GET et POST refusent une identité ambiguë ou étrangère avant toute lecture métier", async () => {
+  for (const [status, error] of [
+    [409, "Plusieurs fiches formateur correspondent à votre identité."],
+    [403, "Aucun profil formateur personnel identifié."],
+  ]) {
+    for (const verb of ["GET", "POST"]) {
+      const route = makeFollowup({ authError: { ok: false, status, error } });
+      const response = await route[verb](verb === "GET"
+        ? { url: "https://selen.example.test/api/client/daily/trainer-followup?session_id=session-1" }
+        : validRequest);
+      assert.equal(response.status, status);
+      assert.equal(response.body.error, error);
+      assert.equal(route.calls.length, 0, "aucune lecture ou écriture avec une identité refusée");
+    }
   }
 });

@@ -18,21 +18,23 @@ test("le suivi annuel et ses téléversements refusent une fiche formateur désa
   }
 });
 
-test("le suivi de session exige la fiche formateur liée au compte connecté", async () => {
+test("le suivi de session partage le résolveur canonique de l'identité formateur", async () => {
   const source = await read("app/api/client/daily/trainer-followup/route.ts");
-
-  assert.match(source, /workspace\.workspace\.trainers\.find\(\(item\) => String\(item\.user_id \?\? ""\) === workspace\.user\.id\)/);
-  assert.doesNotMatch(source, /workspace\.workspace\.trainers\[0\]/);
-  assert.match(source, /if \(!trainer\?\.id\) \{[\s\S]*?status: 404[\s\S]*?Fiche formateur introuvable\./);
+  const resolver = await read("lib/server/dailyTrainerWorkspaceContext.ts");
+  assert.match(source, /getDailyTrainerWorkspaceContext\(\)/);
+  assert.doesNotMatch(source, /workspace\.workspace\.trainers\.find|normalizedEmail/);
+  assert.match(resolver, /linked\.length>1\|\|\(!linked\.length&&emailMatches\.length>1\)/);
+  assert.match(resolver, /!item\.user_id/);
+  assert.match(resolver, /item\.active!==false&&item\.status!=="archived"/);
 });
 
-test("un dirigeant n'obtient l'espace formateur que s'il possède réellement une fiche ou un rôle formateur", async () => {
+test("un dirigeant n'obtient le suivi formateur qu'avec une fiche personnelle admissible", async () => {
   const source = await read("app/api/client/daily/trainer-followup/route.ts");
-
-  assert.match(source, /const hasTrainerAccess = workspace\.workspace\.capabilities\.trainer_self[\s\S]*?workspace\.workspace\.membership\.roles\.includes\("trainer"\)[\s\S]*?Boolean\(trainer\)/);
-  assert.match(source, /if \(!hasTrainerAccess\) \{[\s\S]*?status: 403[\s\S]*?réservé au formateur concerné/);
-  assert.doesNotMatch(source, /membership\.roles\.includes\("owner"\)/);
-  assert.doesNotMatch(source, /membership\.roles\.includes\("admin"\)/);
+  const resolver = await read("lib/server/dailyTrainerWorkspaceContext.ts");
+  assert.match(source, /if \(!context\.ok\) return context/);
+  assert.match(resolver, /membership\.roles\.includes\("manager"\)/);
+  assert.match(resolver, /engagement_type==="owner"&&\(!item\.user_id\|\|String\(item\.user_id\)===workspace\.user\.id\)/);
+  assert.doesNotMatch(source, /membership\.roles\.includes\("owner"\)|membership\.roles\.includes\("admin"\)/);
 });
 
 test("les sessions visibles restent limitées au profil formateur assigné", async () => {
