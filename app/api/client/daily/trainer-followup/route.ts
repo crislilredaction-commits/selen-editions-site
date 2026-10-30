@@ -104,13 +104,12 @@ export async function GET(request: Request) {
   const session = await getAssignedSession(context.admin, context.organisationId, context.trainerProfileId, sessionId).catch(() => null);
   if (!session) return NextResponse.json({ error: "Session introuvable ou non affectée à ce formateur." }, { status: 404 });
 
-  const [{ data: entries, error: entriesError }, { data: enrolments, error: enrolmentsError }, { data: portalRows, error: portalError }] = await Promise.all([
+  const [{ data: entries, error: entriesError }, { data: enrolments, error: enrolmentsError }] = await Promise.all([
     context.admin.from("daily_session_followup_entries").select("id,session_id,enrolment_id,entry_type,level,occurred_at,summary,description,action_taken,status,resolved_at,created_by,author_role,author_name,created_at,updated_at").eq("organisation_id", context.organisationId).eq("session_id", sessionId).order("occurred_at", { ascending: false }),
     context.admin.from("daily_session_enrolments").select("id,learner_id,status,positioning_status,prerequisites_status,daily_learners(id,first_name,last_name,email)").eq("organisation_id", context.organisationId).eq("session_id", sessionId).not("status", "in", "(cancelled,declined,abandoned,completed)"),
-    context.admin.from("daily_portal_access_tokens").select("id,session_id,entity_name,entity_email,token,status,expires_at,viewed_at").eq("session_id", sessionId).eq("portal_type", "learner").not("status", "eq", "expired"),
   ]);
-  if (entriesError || enrolmentsError || portalError) {
-    return NextResponse.json({ error: entriesError?.message ?? enrolmentsError?.message ?? portalError?.message }, { status: 500 });
+  if (entriesError || enrolmentsError) {
+    return NextResponse.json({ error: entriesError?.message ?? enrolmentsError?.message }, { status: 500 });
   }
 
   const enrolmentRows = enrolments ?? [];
@@ -119,20 +118,7 @@ export async function GET(request: Request) {
     ? await context.admin.from("daily_enrolment_support_needs").select("enrolment_id,has_specific_needs,planned_accommodations,contact_requested").eq("organisation_id", context.organisationId).in("enrolment_id", enrolmentIds)
     : { data: [], error: null };
   if (supportNeedsError) return NextResponse.json({ error: supportNeedsError.message }, { status: 500 });
-  const portalAccess = enrolmentRows.flatMap((enrolment) => {
-    const learnerValue = enrolment.daily_learners;
-    const learner = Array.isArray(learnerValue) ? learnerValue[0] : learnerValue;
-    const learnerEmail = normalizedEmail(learner?.email);
-    const learnerName = [learner?.first_name, learner?.last_name].map((part) => String(part ?? "").trim()).filter(Boolean).join(" ").toLowerCase();
-    const portal = (portalRows ?? []).find((row) => {
-      const portalEmail = normalizedEmail(row.entity_email);
-      const portalName = String(row.entity_name ?? "").trim().toLowerCase();
-      return Boolean((learnerEmail && portalEmail === learnerEmail) || (learnerName && portalName === learnerName));
-    });
-    return portal ? [{ ...portal, enrolment_id: enrolment.id }] : [];
-  });
-
-  return NextResponse.json({ session, entries: entries ?? [], enrolments: enrolmentRows, supportNeeds: supportNeeds ?? [], portalAccess });
+  return NextResponse.json({ session, entries: entries ?? [], enrolments: enrolmentRows, supportNeeds: supportNeeds ?? [] });
 }
 
 export async function POST(request: Request) {
