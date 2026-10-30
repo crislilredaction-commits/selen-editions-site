@@ -4,6 +4,7 @@ import fs from "node:fs";
 
 const trainersPage = fs.readFileSync("app/client/daily/formateurs/page.tsx", "utf8");
 const trainerFollowupRoute = fs.readFileSync("app/api/client/daily/trainer-followup/route.ts", "utf8");
+const canonicalTrainerContext = fs.readFileSync("lib/server/dailyTrainerWorkspaceContext.ts", "utf8");
 const invitationsRoute = fs.readFileSync("app/api/client/daily/workspace/invitations/route.ts", "utf8");
 
 test("manual trainer creation provisions canonical trainer workspace access", () => {
@@ -44,10 +45,12 @@ test("trainer record can resend secure access through the canonical invitation r
   assert.match(invitationsRoute, /sendDailyOrganisationInvitation/);
 });
 
-test("dirigeant trainer can resolve the trainer profile by professional email", () => {
-  assert.match(trainerFollowupRoute, /normalizedEmail\(item\.professional_email\)\s*===\s*normalizedEmail\(workspace\.user\.email\)/);
-  assert.match(trainerFollowupRoute, /workspace\.workspace\.membership\.roles\.includes\("trainer"\)/);
-  assert.match(trainerFollowupRoute, /\|\| Boolean\(trainer\)/);
+test("dirigeant formateur: le suivi utilise le profil canonique sans usurpation par email partagé", () => {
+  assert.match(trainerFollowupRoute, /getDailyTrainerWorkspaceContext\(\)/);
+  assert.match(canonicalTrainerContext, /membership\.roles\.includes\("manager"\)/);
+  assert.match(canonicalTrainerContext, /engagement_type==="owner"&&\(!item\.user_id\|\|String\(item\.user_id\)===workspace\.user\.id\)/);
+  assert.match(canonicalTrainerContext, /!item\.user_id&&Boolean\(workspace\.user\.email\)/);
+  assert.doesNotMatch(trainerFollowupRoute, /workspace\.workspace\.trainers\.find/);
 });
 
 test("trainer follow-up remains restricted to explicitly assigned sessions", () => {

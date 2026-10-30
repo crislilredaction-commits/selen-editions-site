@@ -20,7 +20,8 @@ test("suivi organisme: l’auteur vient de l’utilisateur authentifié et est r
 });
 
 test("suivi formateur authentifié: l’auteur vient de la fiche formateur", () => {
-  assert.match(trainer, /trainerName: String\(trainer\.display_name/);
+  assert.match(trainer, /getDailyTrainerWorkspaceContext\(\)/);
+  assert.match(trainer, /trainerName: context\.trainerName/);
   assert.match(trainer, /author_role: "Formateur"/);
   assert.match(trainer, /author_name: context\.trainerName/);
   assert.match(trainer, /author_role,author_name/);
