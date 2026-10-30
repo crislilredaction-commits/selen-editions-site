@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { loadTypeScript } from "./helpers/loadTypeScript.mjs";
+import { isActivePortalAttendanceToken } from "../lib/daily/portalAttendanceAccess.mjs";
 
 function setup({ failSummaryWrite = false, existingResponse = false, summary = null } = {}) {
   const saved = existingResponse ? {
@@ -66,6 +67,7 @@ function setup({ failSummaryWrite = false, existingResponse = false, summary = n
   };
   const { GET, POST } = loadTypeScript("app/api/daily-portal/[token]/assessment/route.ts", {
     "next/server": { NextResponse: { json: (body, options) => Response.json(body, options) } },
+    "@/lib/daily/portalAttendanceAccess.mjs": { isActivePortalAttendanceToken },
     "@/lib/server/clientNdaAccess": { getAdminSupabase: () => admin },
     "@/lib/server/dailyPortalLearnerIdentity": { findUniqueDailyLearnerPortalEnrolment: (_access, list) => list[0] ?? null },
   }, { Response, Request, Date, Intl, Set });
