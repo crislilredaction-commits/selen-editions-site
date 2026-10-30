@@ -42,10 +42,9 @@ test("les sessions visibles restent limitées au profil formateur assigné", asy
   assert.match(source, /if \(!data \|\| !trainerIds\(data\.trainer_ids\)\.includes\(trainerProfileId\)\) return null/);
 });
 
-test("le suivi formateur utilise la colonne Supabase viewed_at sans recréer last_viewed_at", async () => {
+test("le suivi formateur ne lit pas les jetons ponctuels des apprenants", async () => {
   const source = await read("app/api/client/daily/trainer-followup/route.ts");
 
-  assert.match(source, /daily_portal_access_tokens[\s\S]*?expires_at,viewed_at/);
-  assert.doesNotMatch(source, /last_viewed_at/);
-  assert.match(source, /\.eq\("portal_type", "learner"\)/);
+  assert.doesNotMatch(source, /daily_portal_access_tokens|portalAccess|viewed_at|last_viewed_at/);
+  assert.match(source, /getAssignedSession\(context\.admin, context\.organisationId, context\.trainerProfileId, sessionId\)/);
 });
