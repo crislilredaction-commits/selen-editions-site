@@ -60,6 +60,48 @@ test("a legacy email-keyed access is reused before creating another token", () =
   assert.match(helper, /existingAccess = legacyAccess/);
 });
 
+test("another learner sharing the same email never inherits a canonical portal token", async () => {
+  const { harness } = await import("./helpers/dailyAcceptanceHarness.mjs");
+  const h = harness({ materialized: true });
+  h.db.daily_portal_access_tokens[0].entity_email = h.learner.email;
+  h.db.daily_session_enrolments.push({
+    ...h.enrolment, id: "second-enrolment", learner_id: "second-learner",
+    daily_learners: { ...h.learner, id: "second-learner" },
+  });
+  const result = await h.ensure({ enrolmentId: "second-enrolment", source: "manual_enrolment" });
+  assert.equal(result.status, "sent");
+  assert.equal(h.db.daily_portal_access_tokens.length, 2);
+  assert.equal(h.db.daily_portal_access_tokens[1].entity_key, "learner:second-learner");
+  assert.notEqual(h.db.daily_portal_access_tokens[1].token, h.db.daily_portal_access_tokens[0].token);
+});
+
+test("a unique legacy email-keyed token remains reusable for its learner", async () => {
+  const { harness } = await import("./helpers/dailyAcceptanceHarness.mjs");
+  const h = harness({ materialized: true });
+  h.db.daily_portal_access_tokens[0].entity_key = `learner:${h.learner.email}`;
+  h.db.daily_portal_access_tokens[0].entity_email = h.learner.email;
+  const result = await h.ensure({ source: "manual_enrolment" });
+  assert.equal(result.status, "sent");
+  assert.equal(result.portalAccessId, "access");
+  assert.equal(h.db.daily_portal_access_tokens.length, 1);
+});
+
+test("an ambiguous legacy email token is not reused for either learner", async () => {
+  const { harness } = await import("./helpers/dailyAcceptanceHarness.mjs");
+  const h = harness({ materialized: true });
+  h.db.daily_portal_access_tokens[0].entity_key = `learner:${h.learner.email}`;
+  h.db.daily_portal_access_tokens[0].entity_email = h.learner.email;
+  h.db.daily_session_enrolments.push({
+    ...h.enrolment, id: "second-enrolment", learner_id: "second-learner",
+    daily_learners: { ...h.learner, id: "second-learner" },
+  });
+  const result = await h.ensure({ source: "manual_enrolment" });
+  assert.equal(result.status, "sent");
+  assert.equal(h.db.daily_portal_access_tokens.length, 2);
+  assert.equal(h.db.daily_portal_access_tokens[1].entity_key, "learner:learner");
+  assert.notEqual(result.portalAccessId, "access");
+});
+
 test("missing email or a provider failure never cancels the enrolment", () => {
   assert.match(helper, /status: "missing_email"/);
   assert.match(helper, /status: "send_failed"/);
