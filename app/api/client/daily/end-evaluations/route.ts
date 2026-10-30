@@ -204,19 +204,12 @@ export async function POST(request: Request) {
       .maybeSingle();
     if (enrolmentError) return NextResponse.json({ error: "Impossible de vérifier l'inscription pour le moment." }, { status: 503 });
     if (!enrolment || !activeDailyEnrolment(enrolment.status)) return NextResponse.json({ error: "Inscription introuvable ou inactive." }, { status: 404 });
-    const { error: revokeError } = await context.admin
-      .from("daily_learner_feedback_tokens")
-      .update({ status: "revoked" })
-      .eq("organisation_id", context.organisationId)
-      .eq("session_id", sessionId)
-      .eq("enrolment_id", enrolmentId)
-      .eq("status", "active");
-    if (revokeError) return NextResponse.json({ error: "Impossible de renouveler le lien de satisfaction pour le moment." }, { status: 503 });
+    // Insert the replacement first: a failed insertion must not revoke the old link.
     const { token, tokenHash } = createDailyFeedbackToken();
     const base = session.end_date ? new Date(`${session.end_date}T12:00:00.000Z`) : new Date();
     base.setUTCDate(base.getUTCDate() + 30);
     const expiresAt = base.toISOString();
-    const { error } = await context.admin.from("daily_learner_feedback_tokens").insert({
+    const { error: insertError } = await context.admin.from("daily_learner_feedback_tokens").insert({
       organisation_id: context.organisationId,
       session_id: sessionId,
       enrolment_id: enrolmentId,
@@ -225,7 +218,33 @@ export async function POST(request: Request) {
       expires_at: expiresAt,
       created_by: context.user.id,
     });
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (insertError) return NextResponse.json({ error: "Impossible de renouveler le lien de satisfaction pour le moment." }, { status: 503 });
+
+    // Only revoke the old links for this learner, session and organisation.
+    const { error: revokeError } = await context.admin
+      .from("daily_learner_feedback_tokens")
+      .update({ status: "revoked" })
+      .eq("organisation_id", context.organisationId)
+      .eq("session_id", sessionId)
+      .eq("enrolment_id", enrolmentId)
+      .eq("status", "active")
+      .neq("token_hash", tokenHash);
+    if (revokeError) {
+      // Never expose the replacement on a failed rotation; compensate by
+      // revoking only the new token. The old link remains valid if unchanged.
+      const { error: rollbackError } = await context.admin
+        .from("daily_learner_feedback_tokens")
+        .update({ status: "revoked" })
+        .eq("organisation_id", context.organisationId)
+        .eq("session_id", sessionId)
+        .eq("enrolment_id", enrolmentId)
+        .eq("token_hash", tokenHash)
+        .eq("status", "active");
+      if (rollbackError) console.error("[daily] feedback link compensation failed", {
+        organisationId: context.organisationId, sessionId, enrolmentId,
+      });
+      return NextResponse.json({ error: "Impossible de renouveler le lien de satisfaction pour le moment." }, { status: 503 });
+    }
     return NextResponse.json({ ok: true, path: dailyFeedbackPath(token), expires_at: expiresAt });
   }
 

@@ -31,13 +31,17 @@ function makeAdmin(failure = {}) {
   const admin = {
     from(table) {
       let operation = "read";
+      const filters = [];
       const query = {
-        select() { return this; }, eq() { return this; }, neq() { return this; },
-        update(value) { operation = "update"; writes.push({ table, operation, value }); return this; },
-        upsert(value) { operation = "upsert"; writes.push({ table, operation, value }); return this; },
-        insert(value) { operation = "insert"; writes.push({ table, operation, value }); return this; },
+        select() { return this; },
+        eq(key, value) { filters.push(["eq", key, value]); return this; },
+        neq(key, value) { filters.push(["neq", key, value]); return this; },
+        update(value) { operation = "update"; writes.push({ table, operation, value, filters }); return this; },
+        upsert(value) { operation = "upsert"; writes.push({ table, operation, value, filters }); return this; },
+        insert(value) { operation = "insert"; writes.push({ table, operation, value, filters }); return this; },
         result(asList = false) {
-          const failed = failure.table === table && failure.operation === operation;
+          const phase = filters.some(([kind, key]) => kind === "eq" && key === "token_hash") ? "compensation" : "rotation";
+          const failed = failure.table === table && failure.operation === operation && (!failure.phase || failure.phase === phase);
           const value = data[table] ?? null;
           return {
             data: asList && table === "daily_session_enrolments" ? [value] : value,
@@ -114,22 +118,38 @@ for (const action of ["save_assessment", "create_feedback_link"]) {
   });
 }
 
-test("P0: a failed old-token revocation cannot issue a new feedback link", async () => {
-  const { admin, writes } = makeAdmin({ table: "daily_learner_feedback_tokens", operation: "update" });
+test("P0: failed new-token insertion preserves the previous satisfaction link", async () => {
+  const { admin, writes } = makeAdmin({ table: "daily_learner_feedback_tokens", operation: "insert" });
   const response = await routeWith(admin).POST(request("create_feedback_link"));
   assert.equal(response.status, 503);
-  assert.equal(writes.some((write) => write.operation === "insert"), false);
+  assert.deepEqual(writes.map((write) => write.operation), ["insert"]);
+  assert.equal(response.body.path, undefined);
   assert.doesNotMatch(response.body.error, /PRIVATE_SQL_ERROR/);
 });
 
-test("P0: valid enrolment can still create a scoped feedback link", async () => {
+test("P0: failed old-token revocation compensates the replacement without returning its link", async () => {
+  const { admin, writes } = makeAdmin({ table: "daily_learner_feedback_tokens", operation: "update", phase: "rotation" });
+  const response = await routeWith(admin).POST(request("create_feedback_link"));
+  assert.equal(response.status, 503);
+  assert.equal(response.body.path, undefined);
+  assert.deepEqual(writes.map((write) => write.operation), ["insert", "update", "update"]);
+  assert.deepEqual(writes[1].filters.at(-1), ["neq", "token_hash", "test-hash"]);
+  assert.ok(writes[2].filters.some((filter) => filter[0] === "eq" && filter[1] === "token_hash" && filter[2] === "test-hash"));
+  assert.doesNotMatch(response.body.error, /PRIVATE_SQL_ERROR/);
+});
+
+test("P0: valid enrolment rotates a scoped feedback link only after insertion", async () => {
   const { admin, writes } = makeAdmin();
   const response = await routeWith(admin).POST(request("create_feedback_link"));
   assert.equal(response.status, 200);
   assert.equal(response.body.path, "/daily-satisfaction/test-token");
-  assert.deepEqual(writes.map((write) => write.operation), ["update", "insert"]);
-  assert.equal(writes[1].value.organisation_id, "of-1");
-  assert.equal(writes[1].value.enrolment_id, "learner-1");
+  assert.deepEqual(writes.map((write) => write.operation), ["insert", "update"]);
+  assert.equal(writes[0].value.organisation_id, "of-1");
+  assert.equal(writes[0].value.enrolment_id, "learner-1");
+  for (const key of ["organisation_id", "session_id", "enrolment_id", "status"]) {
+    assert.ok(writes[1].filters.some((filter) => filter[0] === "eq" && filter[1] === key));
+  }
+  assert.deepEqual(writes[1].filters.at(-1), ["neq", "token_hash", "test-hash"]);
 });
 
 for (const table of ["daily_session_enrolments", "daily_learning_assessments", "daily_learner_feedback_responses"]) {
