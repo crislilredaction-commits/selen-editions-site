@@ -210,10 +210,13 @@ export async function POST(req: Request) {
       if (revokeError) return NextResponse.json({ error: revokeError.message }, { status: 500 });
     }
 
-    const [{ data: slots }, { data: enrolments }] = await Promise.all([
+    const [{ data: slots, error: slotsReadError }, { data: enrolments, error: enrolmentsReadError }] = await Promise.all([
       context.admin.from("daily_attendance_slots").select("id,slot_key,status").eq("organisation_id", context.organisationId).eq("session_id", sessionId),
       context.admin.from("daily_session_enrolments").select("id,status").eq("organisation_id", context.organisationId).eq("session_id", sessionId),
     ]);
+    if (slotsReadError || enrolmentsReadError) {
+      return NextResponse.json({ error: "Impossible de vérifier les créneaux et inscriptions pour préparer l’émargement. Réessayez." }, { status: 503 });
+    }
     const currentSlots = (slots ?? []).filter((slot) => desiredKeys.has(slot.slot_key) && slot.status !== "cancelled");
     const rows = currentSlots.flatMap((slot) =>
       (enrolments ?? []).filter((enrolment) => activeEnrolment(enrolment.status)).map((enrolment) => ({
