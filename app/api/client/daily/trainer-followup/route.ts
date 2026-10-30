@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getDailyTrainerWorkspaceContext } from "@/lib/server/dailyTrainerWorkspaceContext";
+import type { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 
 const ENTRY_TYPES = new Set(["incident", "adaptation", "note", "absence"]);
 const LEVELS = new Set(["info", "attention", "critical"]);
