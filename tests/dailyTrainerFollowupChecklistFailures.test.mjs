@@ -14,7 +14,9 @@ function fixture(failure = null) {
     from(table) {
       const state = { table, operation: "read", filters: [] };
       const query = {
-        select() { return this; },
+        select(_columns, options) { state.count = options?.count === "exact"; return this; },
+        order() { return this; },
+        not() { return this; },
         eq(key, value) { state.filters.push([key, value]); return this; },
         neq() { return this; },
         in() { return this; },
@@ -24,21 +26,26 @@ function fixture(failure = null) {
           if (table === "daily_sessions") return { data: { id: sessionId, trainer_ids: ["trainer-test"] }, error: null };
           if (table === "daily_session_followup_entries" && state.operation === "update") {
             created.push({ resolved: true });
-            return { data: { id: requestId, status: "resolved" }, error: null };
+            return { data: failure === "resolve" ? null : { id: requestId, status: "resolved" }, error: failure === "resolve" ? { message: "private SQL" } : null };
           }
           throw new Error("Lecture inattendue " + table);
         },
         async single() {
           if (table !== "daily_session_followup_entries" || state.operation !== "insert") throw new Error("Insertion inattendue");
           created.push(state.payload);
-          return { data: { id: requestId, status: "open" }, error: null };
+          return { data: failure === "insert" ? null : { id: requestId, status: "open" }, error: failure === "insert" ? { message: "private SQL" } : null };
         },
         then(resolve, reject) {
           reads.push({ table, filters: [...state.filters] });
           let result;
-          if (table === "daily_attendance_slots") result = { data: [{ status: "closed" }], error: failure === "slots" ? { message: "private SQL" } : null };
+          if (table === "daily_sessions") result = { data: [{ id: sessionId, trainer_ids: ["trainer-test"] }], error: failure === "getSessions" ? { message: "private SQL" } : null };
+          else if (table === "daily_session_enrolments") result = { data: [{ id: "enrolment-test", status: "active" }], error: failure === "getEnrolments" ? { message: "private SQL" } : null };
+          else if (table === "daily_enrolment_support_needs") result = { data: [], error: failure === "getNeeds" ? { message: "private SQL" } : null };
+          else if (table === "daily_attendance_slots") result = { data: [{ status: "closed" }], error: failure === "slots" ? { message: "private SQL" } : null };
           else if (table === "daily_attendance_records") result = { data: [{ status: "present" }], error: failure === "records" ? { message: "private SQL" } : null };
-          else if (table === "daily_session_followup_entries") result = { count: failure === "nullCount" ? null : 0, error: failure === "entries" ? { message: "private SQL" } : null };
+          else if (table === "daily_session_followup_entries") result = state.count
+            ? { count: failure === "nullCount" ? null : 0, error: failure === "entries" ? { message: "private SQL" } : null }
+            : { data: [], error: failure === "getEntries" ? { message: "private SQL" } : null };
           else if (table === "daily_session_checklist_items" && state.operation === "update") {
             checklistUpdates.push({ status: state.payload.status, filters: [...state.filters] });
             result = { error: failure === "update" ? { message: "private SQL" } : null };
@@ -64,7 +71,8 @@ function fixture(failure = null) {
       summary: "Incident à suivre", level: "attention", id: requestId, action_taken: "Action réalisée",
     }),
   });
-  return { post, checklistUpdates, created, reads };
+  const get = (id = sessionId) => route.GET({ url: `https://selen.example.test/api/client/daily/trainer-followup${id ? `?session_id=${id}` : ""}` });
+  return { post, get, checklistUpdates, created, reads };
 }
 
 test("P0 : une lecture SQL en panne ne recalcule pas une checklist sur des données vides", async () => {
@@ -124,4 +132,26 @@ test("P0 : une simple note ne déclenche pas de calcul de checklist", async () =
   assert.equal(response.body.checklist_synced, true);
   assert.equal(f.reads.length, 0);
   assert.equal(f.checklistUpdates.length, 0);
+});
+
+
+test("P0 : les pannes SQL des lectures formateur ne divulguent pas de détails internes", async () => {
+  for (const failure of ["getSessions", "getEntries", "getEnrolments", "getNeeds"]) {
+    const f = fixture(failure);
+    const response = await f.get(failure === "getSessions" ? "" : sessionId);
+    assert.equal(response.status, 500, failure);
+    assert.match(response.body.error, /erreur technique/i);
+    assert.doesNotMatch(JSON.stringify(response.body), /private SQL/);
+  }
+});
+
+test("P0 : les pannes SQL des écritures formateur ne divulguent pas de détails internes", async () => {
+  for (const failure of ["insert", "resolve"]) {
+    const f = fixture(failure);
+    const response = await f.post(failure === "resolve" ? "resolve" : "create");
+    assert.equal(response.status, 500, failure);
+    assert.match(response.body.error, /erreur technique/i);
+    assert.doesNotMatch(JSON.stringify(response.body), /private SQL/);
+    assert.equal(f.checklistUpdates.length, 0);
+  }
 });
