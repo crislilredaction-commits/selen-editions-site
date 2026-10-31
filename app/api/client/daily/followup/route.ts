@@ -50,12 +50,13 @@ async function sessionExists(
   organisationId: string,
   sessionId: string,
 ) {
-  const { data } = await admin
+  const { data, error } = await admin
     .from("daily_sessions")
     .select("id")
     .eq("organisation_id", organisationId)
     .eq("id", sessionId)
     .maybeSingle();
+  if (error) throw new Error("session_lookup_failed");
   return Boolean(data);
 }
 
@@ -77,9 +78,13 @@ export async function GET(request: Request) {
     return NextResponse.json({ sessions: data ?? [] });
   }
 
-  if (!(await sessionExists(context.admin, context.organisationId, sessionId))) {
-    return NextResponse.json({ error: "Session introuvable." }, { status: 404 });
+  let sessionFound: boolean;
+  try {
+    sessionFound = await sessionExists(context.admin, context.organisationId, sessionId);
+  } catch {
+    return NextResponse.json({ error: "Impossible de vérifier la session pour le moment." }, { status: 503 });
   }
+  if (!sessionFound) return NextResponse.json({ error: "Session introuvable." }, { status: 404 });
 
   const [{ data: entries, error: entriesError }, { data: enrolments, error: enrolmentsError }] = await Promise.all([
     context.admin
@@ -106,9 +111,14 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({})) as Record<string, unknown>;
   const action = text(body, "action") || "create";
   const sessionId = text(body, "session_id");
-  if (!sessionId || !(await sessionExists(context.admin, context.organisationId, sessionId))) {
-    return NextResponse.json({ error: "Session introuvable." }, { status: 404 });
+  if (!sessionId) return NextResponse.json({ error: "Session introuvable." }, { status: 404 });
+  let sessionFound: boolean;
+  try {
+    sessionFound = await sessionExists(context.admin, context.organisationId, sessionId);
+  } catch {
+    return NextResponse.json({ error: "Impossible de vérifier la session pour le moment." }, { status: 503 });
   }
+  if (!sessionFound) return NextResponse.json({ error: "Session introuvable." }, { status: 404 });
 
   if (action === "create") {
     const entryType = text(body, "entry_type");
@@ -127,13 +137,14 @@ export async function POST(request: Request) {
     if (!summary || summary.length > 240) return NextResponse.json({ error: "Le résumé est obligatoire et limité à 240 caractères." }, { status: 400 });
 
     if (enrolmentId) {
-      const { data: enrolment } = await context.admin
+      const { data: enrolment, error: enrolmentError } = await context.admin
         .from("daily_session_enrolments")
         .select("id,status")
         .eq("organisation_id", context.organisationId)
         .eq("session_id", sessionId)
         .eq("id", enrolmentId)
         .maybeSingle();
+      if (enrolmentError) return NextResponse.json({ error: "Impossible de vérifier l'inscription pour le moment." }, { status: 503 });
       if (!enrolment || INACTIVE_ENROLMENTS.has(enrolment.status)) {
         return NextResponse.json({ error: "Inscription introuvable ou inactive." }, { status: 404 });
       }
