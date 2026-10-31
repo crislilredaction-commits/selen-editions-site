@@ -4,6 +4,7 @@ import type { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 
 const ENTRY_TYPES = new Set(["incident", "adaptation", "note", "absence"]);
 const LEVELS = new Set(["info", "attention", "critical"]);
+const TECHNICAL_ERROR = "Une erreur technique empêche le suivi de cette session. Réessayez.";
 const INACTIVE_ENROLMENTS = new Set(["cancelled", "declined", "abandoned", "completed"]);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -87,7 +88,7 @@ export async function GET(request: Request) {
 
   if (!sessionId) {
     const { data, error } = await context.admin.from("daily_sessions").select("id,internal_reference,start_date,end_date,status,trainer_ids,daily_formations(id,title)").eq("organisation_id", context.organisationId).neq("status", "archived").order("start_date", { ascending: false });
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return NextResponse.json({ error: TECHNICAL_ERROR }, { status: 500 });
     const sessions = (data ?? []).filter((session) => trainerIds(session.trainer_ids).includes(context.trainerProfileId));
     return NextResponse.json({ sessions });
   }
@@ -105,7 +106,7 @@ export async function GET(request: Request) {
     context.admin.from("daily_session_enrolments").select("id,learner_id,status,positioning_status,prerequisites_status,daily_learners(id,first_name,last_name,email)").eq("organisation_id", context.organisationId).eq("session_id", sessionId).not("status", "in", "(cancelled,declined,abandoned,completed)"),
   ]);
   if (entriesError || enrolmentsError) {
-    return NextResponse.json({ error: entriesError?.message ?? enrolmentsError?.message }, { status: 500 });
+    return NextResponse.json({ error: TECHNICAL_ERROR }, { status: 500 });
   }
 
   const enrolmentRows = enrolments ?? [];
@@ -113,7 +114,7 @@ export async function GET(request: Request) {
   const { data: supportNeeds, error: supportNeedsError } = enrolmentIds.length
     ? await context.admin.from("daily_enrolment_support_needs").select("enrolment_id,has_specific_needs,planned_accommodations,contact_requested").eq("organisation_id", context.organisationId).in("enrolment_id", enrolmentIds)
     : { data: [], error: null };
-  if (supportNeedsError) return NextResponse.json({ error: supportNeedsError.message }, { status: 500 });
+  if (supportNeedsError) return NextResponse.json({ error: TECHNICAL_ERROR }, { status: 500 });
   return NextResponse.json({ session, entries: entries ?? [], enrolments: enrolmentRows, supportNeeds: supportNeeds ?? [] });
 }
 
@@ -163,7 +164,7 @@ export async function POST(request: Request) {
       const { data: replay } = await context.admin.from("daily_session_followup_entries").select("*").eq("id", requestId).eq("organisation_id", context.organisationId).eq("session_id", sessionId).maybeSingle();
       if (replay) return NextResponse.json({ ok: true, entry: replay, replayed: true });
     }
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return NextResponse.json({ error: TECHNICAL_ERROR }, { status: 500 });
     const checklistSynced = isNote || await refreshFollowupChecklist(context.admin, context.organisationId, sessionId);
     return NextResponse.json({ ok: true, entry: data, checklist_synced: checklistSynced, ...(checklistSynced ? {} : { warning: "Le suivi est enregistré, mais l'état des tâches n'a pas pu être actualisé. Vérifiez le tableau de bord plus tard." }) });
   }
@@ -174,7 +175,7 @@ export async function POST(request: Request) {
     if (!id || !actionTaken) return NextResponse.json({ error: "Élément et action réalisée requis." }, { status: 400 });
     const now = new Date().toISOString();
     const { data, error } = await context.admin.from("daily_session_followup_entries").update({ status: "resolved", action_taken: actionTaken, resolved_by: context.user.id, resolved_at: now, updated_at: now }).eq("organisation_id", context.organisationId).eq("session_id", sessionId).eq("id", id).neq("entry_type", "note").eq("status", "open").select("*").maybeSingle();
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return NextResponse.json({ error: TECHNICAL_ERROR }, { status: 500 });
     if (!data) return NextResponse.json({ error: "Élément déjà traité ou introuvable." }, { status: 404 });
     const checklistSynced = await refreshFollowupChecklist(context.admin, context.organisationId, sessionId);
     return NextResponse.json({ ok: true, entry: data, checklist_synced: checklistSynced, ...(checklistSynced ? {} : { warning: "Le suivi est enregistré, mais l'état des tâches n'a pas pu être actualisé. Vérifiez le tableau de bord plus tard." }) });
