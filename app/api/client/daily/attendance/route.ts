@@ -366,13 +366,19 @@ export async function POST(req: Request) {
     }
     const { data: currentRecord, error: currentRecordError } = await context.admin
       .from("daily_attendance_records")
-      .select("evidence_metadata")
+      .select("id,status,updated_at,evidence_metadata")
       .eq("organisation_id", context.organisationId)
       .eq("session_id", sessionId)
       .eq("slot_id", slotId)
       .eq("enrolment_id", enrolmentId)
       .maybeSingle();
-    if (currentRecordError) return NextResponse.json({ error: currentRecordError.message }, { status: 500 });
+    if (currentRecordError) {
+      return NextResponse.json({ error: "Impossible de vérifier cet émargement. Réessayez." }, { status: 503 });
+    }
+    if (!currentRecord) return NextResponse.json({ error: "Émargement introuvable." }, { status: 404 });
+    if (currentRecord.status === "present") {
+      return NextResponse.json({ error: "Une présence signée ne peut pas être remplacée par une absence." }, { status: 409 });
+    }
     const currentMetadata = currentRecord?.evidence_metadata && typeof currentRecord.evidence_metadata === "object"
       ? currentRecord.evidence_metadata as Record<string, unknown>
       : {};
@@ -382,15 +388,27 @@ export async function POST(req: Request) {
     if (currentMetadata.late_attendance === true && currentReview.state === "awaiting_validation") {
       return NextResponse.json({ error: "Validez ou rejetez d’abord la preuve de régularisation soumise." }, { status: 409 });
     }
-    const { error } = await context.admin
+    // Compare the version read above: a signature or correction arriving concurrently
+    // must not be overwritten by an absence decision based on stale evidence.
+    let update = context.admin
       .from("daily_attendance_records")
       .update({ status, updated_at: new Date().toISOString() })
+      .eq("id", currentRecord.id)
       .eq("organisation_id", context.organisationId)
       .eq("session_id", sessionId)
       .eq("slot_id", slotId)
       .eq("enrolment_id", enrolmentId)
       .neq("status", "present");
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    update = currentRecord.updated_at
+      ? update.eq("updated_at", currentRecord.updated_at)
+      : update.is("updated_at", null);
+    const { data: updated, error } = await update.select("id").maybeSingle();
+    if (error) {
+      return NextResponse.json({ error: "Impossible de modifier cet émargement. Réessayez." }, { status: 503 });
+    }
+    if (!updated) {
+      return NextResponse.json({ error: "Cet émargement a changé entre-temps. Rechargez la page." }, { status: 409 });
+    }
     await refreshDailyAttendanceChecklist(context.admin, context.organisationId, sessionId);
     await tryEnsurePosttrainingDocuments(context.admin, context.organisationId, context.user.id, sessionId);
     return NextResponse.json({ ok: true });
