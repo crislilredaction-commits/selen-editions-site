@@ -50,6 +50,7 @@ function fixture({ fail = "", sent = true, forbidden = false } = {}) {
       activeDailyEnrolment: (status) => status === "active",
       createDailyFeedbackToken: () => ({ token: "private-token", tokenHash: "hashed-token" }),
       dailyFeedbackPath: (token) => "/daily-feedback/" + token,
+      dailyFeedbackExpiresAt: () => "2026-11-30T00:00:00.000Z",
     },
     "@/lib/server/dailyEndEvaluationEmails": {
       prepareDailySatisfactionRequestEmail: () => ({ subject: "Satisfaction", text: "Texte", html: "<p>Texte</p>" }),

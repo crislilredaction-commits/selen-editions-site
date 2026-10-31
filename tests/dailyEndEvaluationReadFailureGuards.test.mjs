@@ -76,6 +76,7 @@ function routeWith(admin) {
       activeDailyEnrolment: (status) => status === "active",
       createDailyFeedbackToken: () => ({ token: "test-token", tokenHash: "test-hash" }),
       dailyFeedbackPath: (token) => "/daily-satisfaction/" + token,
+      dailyFeedbackExpiresAt: () => "2026-11-30T00:00:00.000Z",
     },
     "@/lib/server/dailyEndEvaluationLifecycle": {
       refreshDailyEndEvaluationsChecklist: async () => {},
