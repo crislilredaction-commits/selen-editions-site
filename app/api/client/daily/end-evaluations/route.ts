@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { blockedAgentAssistanceResponse, getAssistanceTokenFromRequest } from "@/lib/server/agentAssistance";
 import { getDailyOrganisationContext, getDailyOrganisationReadContext } from "@/lib/server/dailyOrganisationContext";
-import { activeDailyEnrolment, createDailyFeedbackToken, dailyFeedbackPath } from "@/lib/server/dailyEndEvaluations";
+import { activeDailyEnrolment, createDailyFeedbackToken, dailyFeedbackExpiresAt, dailyFeedbackPath } from "@/lib/server/dailyEndEvaluations";
 import { refreshDailyEndEvaluationsChecklist, tryEnsureDailyPosttrainingDocuments as tryEnsurePosttrainingDocuments } from "@/lib/server/dailyEndEvaluationLifecycle";
 
 const OUTCOMES = new Set(["pending", "achieved", "partially_achieved", "not_achieved", "not_applicable"]);
@@ -206,9 +206,7 @@ export async function POST(request: Request) {
     if (!enrolment || !activeDailyEnrolment(enrolment.status)) return NextResponse.json({ error: "Inscription introuvable ou inactive." }, { status: 404 });
     // Insert the replacement first: a failed insertion must not revoke the old link.
     const { token, tokenHash } = createDailyFeedbackToken();
-    const base = session.end_date ? new Date(`${session.end_date}T12:00:00.000Z`) : new Date();
-    base.setUTCDate(base.getUTCDate() + 30);
-    const expiresAt = base.toISOString();
+    const expiresAt = dailyFeedbackExpiresAt(session.end_date);
     const { error: insertError } = await context.admin.from("daily_learner_feedback_tokens").insert({
       organisation_id: context.organisationId,
       session_id: sessionId,
