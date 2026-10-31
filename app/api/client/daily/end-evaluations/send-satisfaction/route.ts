@@ -74,14 +74,8 @@ export async function POST(request: Request) {
   const formation = one(session.daily_formations as { title?: string | null } | { title?: string | null }[] | null);
   const formationTitle = text(formation?.title) || "votre formation";
 
-  const { error: revokeError } = await context.admin
-    .from("daily_learner_feedback_tokens")
-    .update({ status: "revoked" })
-    .eq("organisation_id", context.organisationId)
-    .eq("session_id", sessionId)
-    .eq("enrolment_id", enrolmentId)
-    .eq("status", "active");
-  if (revokeError) return NextResponse.json({ error: revokeError.message }, { status: 500 });
+  // Preserve existing usable links until the replacement has actually been sent.
+  // A failed insert, evidence reservation or email must not strand the learner.
 
   const { token, tokenHash } = createDailyFeedbackToken();
   const expiryBase = session.end_date ? new Date(`${session.end_date}T12:00:00.000Z`) : new Date();
@@ -101,7 +95,7 @@ export async function POST(request: Request) {
     .select("id")
     .single();
   if (tokenError || !tokenRow) {
-    return NextResponse.json({ error: tokenError?.message ?? "Lien de satisfaction impossible à créer." }, { status: 500 });
+    return NextResponse.json({ error: "Impossible de préparer le lien de satisfaction. Réessayez." }, { status: 503 });
   }
 
   const feedbackUrl = new URL(dailyFeedbackPath(token), request.url).toString();
@@ -159,6 +153,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "La demande de satisfaction n’a pas pu être envoyée. Le lien a été révoqué et la tentative est conservée." }, { status: 503 });
   }
 
+  // Sending succeeded: revoke only older links in this exact OF/session/enrolment.
+  // Keep the newly delivered token active; a failed revocation is reported
+  // separately rather than falsely telling the OF that sending failed.
+  const { error: previousLinkError } = await context.admin
+    .from("daily_learner_feedback_tokens")
+    .update({ status: "revoked" })
+    .eq("organisation_id", context.organisationId)
+    .eq("session_id", sessionId)
+    .eq("enrolment_id", enrolmentId)
+    .eq("status", "active")
+    .neq("token_hash", tokenHash);
+  if (previousLinkError) {
+    console.error("Daily : satisfaction envoyée mais anciens liens non révoqués", {
+      organisationId: context.organisationId, sessionId, enrolmentId,
+    });
+  }
+
   const sentAt = new Date().toISOString();
   const { error: finalizeError } = await context.admin
     .from("daily_communications")
@@ -182,6 +193,8 @@ export async function POST(request: Request) {
     sentAt,
     expiresAt,
     evidenceRecorded: !finalizeError,
+    previousLinksRevoked: !previousLinkError,
+    ...((previousLinkError || finalizeError) ? { warning: "Message envoyé, mais certaines opérations de suivi nécessitent une vérification." } : {}),
     communicationId: communication.id,
   });
 }
