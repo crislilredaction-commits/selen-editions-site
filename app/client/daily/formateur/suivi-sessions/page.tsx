@@ -163,7 +163,7 @@ export default function TrainerSessionFollowupPage() {
     setActionTaken("");
     setRequestId(crypto.randomUUID());
     setEnrolmentId("");
-    setMessage(entryType === "note" ? "Note de suivi enregistrée." : "Élément de suivi enregistré.");
+    setMessage((entryType === "note" ? "Note de suivi enregistrée." : "Élément de suivi enregistré.") + (data.warning ? " " + data.warning : ""));
     await loadSession(sessionId);
   }
 
@@ -181,7 +181,7 @@ export default function TrainerSessionFollowupPage() {
     const data = await response.json().catch(() => ({}));
     setBusy(false);
     if (!response.ok) return setError(data.error ?? "Mise à jour impossible.");
-    setMessage("Situation marquée comme traitée.");
+    setMessage("Situation marquée comme traitée." + (data.warning ? " " + data.warning : ""));
     await loadSession(sessionId);
   }
 

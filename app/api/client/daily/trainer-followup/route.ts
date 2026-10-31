@@ -53,11 +53,15 @@ async function refreshFollowupChecklist(
   organisationId: string,
   sessionId: string,
 ) {
-  const [{ data: slots }, { data: records }, { count: openOperationalEntries }] = await Promise.all([
+  try {
+    const [{ data: slots, error: slotsError }, { data: records, error: recordsError }, { count: openOperationalEntries, error: entriesError }] = await Promise.all([
     admin.from("daily_attendance_slots").select("status").eq("organisation_id", organisationId).eq("session_id", sessionId),
     admin.from("daily_attendance_records").select("status").eq("organisation_id", organisationId).eq("session_id", sessionId),
     admin.from("daily_session_followup_entries").select("id", { count: "exact", head: true }).eq("organisation_id", organisationId).eq("session_id", sessionId).eq("status", "open").in("entry_type", ["incident", "adaptation", "absence"]),
   ]);
+
+  // Une lecture incomplète ne doit jamais marquer le suivi comme prêt à clôturer.
+  if (slotsError || recordsError || entriesError || openOperationalEntries === null) return false;
 
   const allSlotsClosed = (slots ?? []).length > 0 && (slots ?? []).every((slot) => ["closed", "cancelled"].includes(slot.status));
   const allRecordsDecided = (records ?? []).length > 0 && (records ?? []).every((record) => record.status !== "pending");
@@ -66,7 +70,12 @@ async function refreshFollowupChecklist(
   if ((openOperationalEntries ?? 0) > 0 || hasAttendanceActivity) status = "in_progress";
   if ((openOperationalEntries ?? 0) === 0 && allSlotsClosed && allRecordsDecided) status = "to_review";
 
-  await admin.from("daily_session_checklist_items").update({ status }).eq("organisation_id", organisationId).eq("session_id", sessionId).eq("item_key", "attendance_followup").neq("status", "not_applicable");
+  const { error: checklistError } = await admin.from("daily_session_checklist_items").update({ status }).eq("organisation_id", organisationId).eq("session_id", sessionId).eq("item_key", "attendance_followup").neq("status", "not_applicable");
+  return !checklistError;
+  } catch {
+    // L'écriture du suivi a déjà réussi : ne pas la présenter comme échouée.
+    return false;
+  }
 }
 
 export async function GET(request: Request) {
@@ -155,8 +164,8 @@ export async function POST(request: Request) {
       if (replay) return NextResponse.json({ ok: true, entry: replay, replayed: true });
     }
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    if (!isNote) await refreshFollowupChecklist(context.admin, context.organisationId, sessionId);
-    return NextResponse.json({ ok: true, entry: data });
+    const checklistSynced = isNote || await refreshFollowupChecklist(context.admin, context.organisationId, sessionId);
+    return NextResponse.json({ ok: true, entry: data, checklist_synced: checklistSynced, ...(checklistSynced ? {} : { warning: "Le suivi est enregistré, mais l'état des tâches n'a pas pu être actualisé. Vérifiez le tableau de bord plus tard." }) });
   }
 
   if (action === "resolve") {
@@ -167,8 +176,8 @@ export async function POST(request: Request) {
     const { data, error } = await context.admin.from("daily_session_followup_entries").update({ status: "resolved", action_taken: actionTaken, resolved_by: context.user.id, resolved_at: now, updated_at: now }).eq("organisation_id", context.organisationId).eq("session_id", sessionId).eq("id", id).neq("entry_type", "note").eq("status", "open").select("*").maybeSingle();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     if (!data) return NextResponse.json({ error: "Élément déjà traité ou introuvable." }, { status: 404 });
-    await refreshFollowupChecklist(context.admin, context.organisationId, sessionId);
-    return NextResponse.json({ ok: true, entry: data });
+    const checklistSynced = await refreshFollowupChecklist(context.admin, context.organisationId, sessionId);
+    return NextResponse.json({ ok: true, entry: data, checklist_synced: checklistSynced, ...(checklistSynced ? {} : { warning: "Le suivi est enregistré, mais l'état des tâches n'a pas pu être actualisé. Vérifiez le tableau de bord plus tard." }) });
   }
 
   return NextResponse.json({ error: "Action inconnue." }, { status: 400 });
