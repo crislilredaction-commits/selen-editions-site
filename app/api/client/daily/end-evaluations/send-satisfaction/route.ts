@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getDailyOrganisationContext } from "@/lib/server/dailyOrganisationContext";
-import { activeDailyEnrolment, createDailyFeedbackToken, dailyFeedbackPath } from "@/lib/server/dailyEndEvaluations";
+import { activeDailyEnrolment, createDailyFeedbackToken, dailyFeedbackExpiresAt, dailyFeedbackPath } from "@/lib/server/dailyEndEvaluations";
 import { prepareDailySatisfactionRequestEmail, sendDailySatisfactionRequest } from "@/lib/server/dailyEndEvaluationEmails";
 
 function text(value: unknown) {
@@ -78,9 +78,7 @@ export async function POST(request: Request) {
   // A failed insert, evidence reservation or email must not strand the learner.
 
   const { token, tokenHash } = createDailyFeedbackToken();
-  const expiryBase = session.end_date ? new Date(`${session.end_date}T12:00:00.000Z`) : new Date();
-  expiryBase.setUTCDate(expiryBase.getUTCDate() + 30);
-  const expiresAt = expiryBase.toISOString();
+  const expiresAt = dailyFeedbackExpiresAt(session.end_date);
   const { data: tokenRow, error: tokenError } = await context.admin
     .from("daily_learner_feedback_tokens")
     .insert({
