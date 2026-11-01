@@ -185,8 +185,23 @@ export async function POST(request: Request) {
       .select("*")
       .single();
     if (error?.code === "23505") {
-      const { data: replay } = await context.admin.from("daily_session_followup_entries").select("*").eq("id", requestId).eq("organisation_id", context.organisationId).eq("session_id", sessionId).maybeSingle();
-      if (replay) return NextResponse.json({ ok: true, entry: replay, replayed: true });
+      // Un nouvel essai après une réponse perdue doit aussi réparer la checklist
+      // si le premier enregistrement a réussi mais pas sa synchronisation.
+      const { data: replay, error: replayError } = await context.admin
+        .from("daily_session_followup_entries")
+        .select("*")
+        .eq("id", requestId)
+        .eq("organisation_id", context.organisationId)
+        .eq("session_id", sessionId)
+        .maybeSingle();
+      if (replayError) return NextResponse.json({ error: TECHNICAL_ERROR }, { status: 503 });
+      if (replay) {
+        const checklistSynced = await refreshFollowupChecklist(context.admin, context.organisationId, sessionId);
+        return NextResponse.json({
+          ok: true, entry: replay, replayed: true, checklist_synced: checklistSynced,
+          ...(checklistSynced ? {} : { warning: "Le suivi est enregistré, mais l’état des tâches n’a pas pu être actualisé. Vérifiez le tableau de bord plus tard." }),
+        });
+      }
     }
     if (error) return NextResponse.json({ error: TECHNICAL_ERROR }, { status: 500 });
     const checklistSynced = await refreshFollowupChecklist(context.admin, context.organisationId, sessionId);
