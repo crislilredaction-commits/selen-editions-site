@@ -112,8 +112,8 @@ for (const failingRead of [
 }
 
 test("la route PDF n'expose plus les messages de la base et reste en lecture seule", () => {
-  assert.doesNotMatch(source, /error:\\s*(?:accessError|readError|scopeError|attendanceError)\\.message/);
-  assert.doesNotMatch(source, /\\.(?:insert|update|upsert|delete|upload)\\(/);
-  assert.match(source, /enrolment\\.organisation_id !== session\\.organisation_id/);
+  assert.doesNotMatch(source, /error:\s*(?:accessError|readError|scopeError|attendanceError)\.message/);
+  assert.doesNotMatch(source, /\.(?:insert|update|upsert|delete|upload)\(/);
+  assert.match(source, /enrolment\.organisation_id !== session\.organisation_id/);
   assert.match(source, /findUniqueDailyLearnerPortalEnrolment/);
 });
