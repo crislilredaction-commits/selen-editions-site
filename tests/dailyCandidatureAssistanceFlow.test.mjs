@@ -79,6 +79,41 @@ test('Page réelle → transport → API réelle → PostgreSQL : décisions et 
     assert.match(missing,/Sélectionnez une session compatible/);
     assert.equal(h.requests.filter(req=>req.method==='POST').length,0);
   });
+  await t.test('analyse Studio absente : aucune décision ni notification ; transition ready_for_of puis inscription autorisée',async()=>{
+    await h.reset();
+    await h.q("update daily_formation_registration_requests set decision_status='pending',agent_analysis_completed_at=null where id=$1",[ids.request]);
+    const denied=await h.api.POST(h.request({decision:'accepted',session_id:ids.session}));
+    assert.equal(denied.status,409);
+    assert.match((await denied.json()).error,/analyse Selen|analysis required/i);
+    assert.equal((await h.q('select count(*)::int as n from daily_registration_request_decisions')).rows[0].n,0);
+    assert.equal(h.sends.length,0);
+    // Simulate the persisted outcome of Studio's human analysis. The Studio server action
+    // itself is not executed here and must be covered separately before authenticated recette.
+    await h.q("update daily_formation_registration_requests set decision_status='ready_for_of',agent_analysis_completed_at=now() where id=$1",[ids.request]);
+    const f=pageFixture(h);await f.mount();
+    const html=renderToStaticMarkup(await f.click('Accepter et créer l’inscription'));
+    assert.match(html,/Inscription créée/);
+    assert.equal((await h.q('select count(*)::int as n from daily_session_enrolments')).rows[0].n,1);
+    assert.equal((await h.q('select actor_user_id from daily_registration_request_decisions')).rows[0].actor_user_id,ids.agent);
+  });
+  await t.test('deux OF fictifs : délégation A ne peut ni décider le dossier B ni rattacher une session B',async()=>{
+    await h.reset();
+    const foreign=await h.api.POST(h.request({request_id:ids.foreignRequest,decision:'accepted',session_id:ids.foreignSession}));
+    assert.ok(foreign.status>=400, `Cross-OF request unexpectedly accepted: ${foreign.status}`);
+    const wrongSession=await h.api.POST(h.request({decision:'accepted',session_id:ids.foreignSession}));
+    assert.ok(wrongSession.status>=400, `Cross-OF session unexpectedly accepted: ${wrongSession.status}`);
+    assert.equal((await h.q('select count(*)::int as n from daily_registration_request_decisions')).rows[0].n,0);
+    assert.equal((await h.q('select count(*)::int as n from daily_session_enrolments')).rows[0].n,0);
+    assert.equal(h.sends.length,0);
+    const f=pageFixture(h);const html=renderToStaticMarkup(await f.mount());
+    assert.match(html,/Alice Exemple/);assert.doesNotMatch(html,/Foreign/);
+    const accepted=renderToStaticMarkup(await f.click('Accepter et créer l’inscription'));
+    assert.match(accepted,/Inscription créée/);
+    const local=(await h.q('select organisation_id from daily_registration_request_decisions')).rows;
+    assert.equal(local.length,1);assert.equal(local[0].organisation_id,ids.org);
+    const untouched=(await h.q('select decision_status from daily_formation_registration_requests where id=$1',[ids.foreignRequest])).rows[0];
+    assert.equal(untouched.decision_status,'ready_for_of');
+  });
   await t.test('choix de la session historique : double confirmation et dossier conservé après changement de version',async()=>{
     await h.reset();const f=pageFixture(h);await f.mount();f.choose(ids.oldSession);
     const html=renderToStaticMarkup(await f.click('Accepter et créer l’inscription'));

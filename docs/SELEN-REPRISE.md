@@ -50,6 +50,14 @@
 - Cahier maître : écriture `FAILED_PRECONDITION` ; passation enregistrée puis relue dans le [journal complémentaire Selen](https://docs.google.com/document/d/1WNJM7EkWlB4a9X_Acnr9nXSXyyx_IxSvqxH3_H-rdMQ/edit).
 - Fiche unique : présente mise à jour documentaire sur branche/PR, à relire après écriture et à fusionner seulement avec contrôles CI/Preview.
 
+## Passage complémentaire P0-01 — 01/11/2026, 23h (Paris)
+- Après #493 fusionnée (Daily main `76c753e36a4ae3e9eb752dfcfd2395b813555cdc`), extension sur branche `test/daily-p0-candidature-multi-of-handoff-20261101` du test intégré réel **page Daily → API déléguée → RPC PostgreSQL/PGlite**.
+- Deux sous-tests candidats : (1) décision refusée tant que l'analyse Studio n'a pas abouti, puis transition simulée `pending → ready_for_of` et inscription ; (2) deux OF fictifs, refus du dossier et de la session étrangers, aucune notification ni écriture, puis inscription locale.
+- **Limite explicite :** le dépôt public et l'action serveur Studio ne sont PAS exécutés dans ces nouveaux sous-tests. La transition Studio est simulée dans la fixture SQL ; ne pas annoncer un E2E complet ni une recette authentifiée. Aucun email réel envoyé.
+- **Statut : À RECETTER** inchangé ; nouveaux sous-tests à valider par CI sur HEAD exacte. Aucun parcours TERMINÉ. Mesures : 10 au total, 0 terminé, 10 restant à valider, 1 à recetter, 9 à auditer, 1 bloqué en recette authentifiée. Delta depuis le passage précédent : 0 clôturé, 0 nouveau blocage.
+- **Prochaine action unique :** contrôler les tests/TS/ESLint/build, CI et Preview de cette branche ; corriger sur la même branche si rouge, puis fusionner seulement après protections. Ensuite tester réellement le POST public de candidature et l'action d'analyse Studio avec deux OF fictifs, puis recette sandbox authentifiée.
+- Aucune donnée réelle, migration, signature, mail réel, ni autre automatisation modifiée.
+
 ## Répartition
 - **Développement horaire :** propriétaire de l'action active, code/tests, mise à jour de cette fiche.
 - **Work contrôle :** contrôle CI/Preview/production, vérification indépendante des preuves et indicateurs; ne change pas la prochaine action sans motif documenté.
