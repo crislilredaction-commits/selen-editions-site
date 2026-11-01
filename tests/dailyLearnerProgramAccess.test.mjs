@@ -104,7 +104,7 @@ for(const [name,options,status,mutation] of [
   ['past expiry',{access:{expires_at:'2000-01-01'}},410,'expired'],['archived session',{session:{status:'archived'}},404,null],
   ...['declined','cancelled','abandoned'].map(status=>[status,{enrolment:{status}},403,'revoked']),
 ]) test(`existing refusal precedes public read: ${name}`,async()=>{const h=fixture(options);const r=await h.get();assert.equal(r.status,status);assert.ok(!h.calls.some(c=>c.table==='daily_formations'));assert.deepEqual(h.mutations.map(m=>m.status),mutation?[mutation]:[]);});
-test('public read error is an explicit 500',async()=>{const h=fixture({readError:true});const r=await h.get();assert.equal(r.status,500);assert.deepEqual(await r.json(),{error:'Public programme read failed'});});
+test('public programme read error is retryable and does not disclose SQL details',async()=>{const h=fixture({readError:true});const r=await h.get();assert.equal(r.status,503);assert.deepEqual(await r.json(),{error:'Les informations de cet espace sont temporairement indisponibles. Réessayez.'});assert.equal(r.headers.get('Cache-Control'),'private, no-store');});
 
 const jsx=(type,props)=>({type,props});
 function nodes(tree) { if(!tree||typeof tree!=='object')return [];if(Array.isArray(tree))return tree.flatMap(nodes);return [tree,...nodes(tree.props?.children)]; }
