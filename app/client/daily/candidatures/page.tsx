@@ -103,12 +103,17 @@ export default function RegistrationRequestsPage() {
       setHistoricalSessions(body.historical_sessions ?? []);
       setActorTypes(body.actor_types ?? []);
       setSelectedSessions((current) => {
-        const next = { ...current };
+        const next: Record<string, string> = {};
         for (const request of nextRequests) {
-          if (next[request.id]) continue;
-          const compatible = nextSessions.filter((session) => session.formation_id === request.formation_id);
-          const preferred = compatible.find((session) => session.id === request.attached_session_id) ?? compatible[0];
-          if (preferred) next[request.id] = preferred.id;
+          const compatibleIds = new Set([
+            ...nextSessions.filter((session) => session.formation_id === request.formation_id).map((session) => session.id),
+            ...(body.historical_sessions ?? []).filter((session) => session.source_formation_ids?.includes(request.formation_id)).map((session) => session.id),
+          ]);
+          // Never silently enroll someone in the first available session.
+          // Preserve an explicit choice only while it remains in scope.
+          const selected = current[request.id];
+          if (selected && compatibleIds.has(selected)) next[request.id] = selected;
+          else if (request.attached_session_id && compatibleIds.has(request.attached_session_id)) next[request.id] = request.attached_session_id;
         }
         return next;
       });
@@ -132,12 +137,14 @@ export default function RegistrationRequestsPage() {
       ? `Accepter la candidature de ${request.applicant_label} après analyse Selen${isDelegated ? " pour le compte de cet organisme, avec votre identité Studio enregistrée" : ""} ?`
       : `Refuser définitivement la candidature de ${request.applicant_label} après analyse Selen${isDelegated ? " pour le compte de cet organisme, avec votre identité Studio enregistrée" : ""} ?`;
     const chosenSession = selectedSessions[request.id] ?? "";
+    const compatibleSession = sessions.some(session => session.id === chosenSession && session.formation_id === request.formation_id)
+      || historicalSessions.some(session => session.id === chosenSession && session.source_formation_ids?.includes(request.formation_id));
+    if (decision === "accepted" && !compatibleSession) return setError("Sélectionnez une session compatible avant d’accepter la candidature.");
     const historical = decision === "accepted" ? historicalSessions.find(session => session.id === chosenSession) : undefined;
     if (historical && !window.confirm("Session historique : " + sessionLabel(historical) + ". Confirmez-vous que cette ancienne version du programme convient et que la candidature doit être régularisée sur cette session passée ?")) return;
     if (!window.confirm(wording)) { setMessage("Décision annulée, aucune candidature modifiée."); return; }
     const reason = historical ? window.prompt("Motif obligatoire de la régularisation historique (12 caractères minimum) :", "") : null;
     if (historical && (!reason || reason.trim().length < 12)) return setError("Motif de régularisation obligatoire (12 caractères minimum).");
-    if (decision === "accepted" && !(selectedSessions[request.id] ?? "")) return setError("Sélectionnez une session avant de créer l’inscription.");
     const comment = window.prompt("Commentaire facultatif", "") ?? "";
     setBusyId(request.id);
     setError("");
@@ -165,7 +172,7 @@ export default function RegistrationRequestsPage() {
 
   async function materialize(request: RegistrationRequest) {
     const sessionId = selectedSessions[request.id] ?? "";
-    if (!sessionId) return setError("Choisissez la session dans laquelle inscrire le candidat.");
+    if (!sessionId || !sessions.some(session => session.id === sessionId && session.formation_id === request.formation_id)) return setError("Choisissez une session compatible pour cette candidature.");
     if (!request.can_materialize) return setError("Cette inscription ne peut pas être matérialisée dans son état actuel.");
     if (isDelegated && !window.confirm("Créer l’inscription dans cette session pour le compte de l’organisme, avec votre identité Studio enregistrée ?")) return;
     setBusyId(request.id);
@@ -308,7 +315,7 @@ export default function RegistrationRequestsPage() {
               ) : null}
               <div style={s.materializeBox}>
                 <strong>Session de l’inscription (sessions passées comprises pour régularisation)</strong>
-                {(sessions.some((session) => session.formation_id === request.formation_id) || historicalSessions.some(session => session.source_formation_ids?.includes(request.formation_id))) ? <select value={selectedSessions[request.id] ?? ""} onChange={(event) => setSelectedSessions((current) => ({ ...current, [request.id]: event.target.value }))} style={s.select}>
+                {(sessions.some((session) => session.formation_id === request.formation_id) || historicalSessions.some(session => session.source_formation_ids?.includes(request.formation_id))) ? <select aria-label={`Session d'inscription pour ${request.applicant_label}`} value={selectedSessions[request.id] ?? ""} onChange={(event) => setSelectedSessions((current) => ({ ...current, [request.id]: event.target.value }))} style={s.select}>
                   <option value="">Choisir une session</option>
                   {sessions.filter((session) => session.formation_id === request.formation_id).map((session) => <option key={session.id} value={session.id}>{sessionLabel(session)}</option>)}
                   {historicalSessions.filter(session => session.source_formation_ids?.includes(request.formation_id)).map(session => <option key={session.id} value={session.id}>Ancienne version · {sessionLabel(session)}</option>)}
@@ -346,7 +353,7 @@ export default function RegistrationRequestsPage() {
                       <strong>Choisir la session</strong>
                       {compatibleSessions.length ? (
                         <>
-                          <select value={selectedSessions[request.id] ?? ""} onChange={(event) => setSelectedSessions((current) => ({ ...current, [request.id]: event.target.value }))} style={s.select}>
+                          <select aria-label={`Session à régulariser pour ${request.applicant_label}`} value={selectedSessions[request.id] ?? ""} onChange={(event) => setSelectedSessions((current) => ({ ...current, [request.id]: event.target.value }))} style={s.select}>
                             <option value="">Choisir une session</option>
                             {compatibleSessions.map((session) => <option key={session.id} value={session.id}>{sessionLabel(session)}</option>)}
                           </select>
