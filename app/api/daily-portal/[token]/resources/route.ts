@@ -13,6 +13,13 @@ const text = (value: unknown) => String(value ?? "").trim();
 const email = (value: unknown) => text(value).toLowerCase();
 const array = (value: unknown): Json[] => Array.isArray(value) ? value.filter((v): v is Json => Boolean(v && typeof v === "object")) : [];
 
+function temporarilyUnavailable() {
+  return NextResponse.json(
+    { error: "Les documents sont temporairement indisponibles. Réessayez." },
+    { status: 503, headers: { "Cache-Control": "no-store" } },
+  );
+}
+
 function matchesLearnerRecipient(row: Json, access: Json) {
   const entityEmail = email(access.entity_email);
   return row.recipient_type === "beneficiary" && Boolean(entityEmail) && email(row.recipient_email) === entityEmail;
@@ -96,15 +103,16 @@ async function loadLearnerPretrainingResources(admin: ReturnType<typeof getAdmin
 export async function GET(_request: Request, { params }: Params) {
   const { token } = await params; const admin = getAdminSupabase();
   const { data: access, error: accessError } = await admin.from("daily_portal_access_tokens").select("*").eq("token", text(token)).maybeSingle();
-  if (accessError) return NextResponse.json({ error: accessError.message }, { status: 500 });
+  if (accessError) return temporarilyUnavailable();
   if (!access) return NextResponse.json({ error: "Portail introuvable." }, { status: 404 });
   if (!["pending", "viewed"].includes(String(access.status ?? ""))) return NextResponse.json({ error: "Cet accès n’est plus actif." }, { status: 403 });
   if (!isValidPortalExpiry(access.expires_at)) return NextResponse.json({ error: "Ce lien a expiré." }, { status: 410 });
 
   const { data: session, error: sessionError } = await admin.from("daily_sessions").select("id,organisation_id,companies,end_date").eq("id", access.session_id).neq("status", "archived").maybeSingle();
-  if (sessionError || !session) return NextResponse.json({ error: sessionError?.message ?? "Session introuvable." }, { status: sessionError ? 500 : 404 });
+  if (sessionError) return temporarilyUnavailable();
+  if (!session) return NextResponse.json({ error: "Session introuvable." }, { status: 404 });
   const { data: documents, error: documentError } = await admin.from("daily_documents").select("id,document_type,linked_object_type,linked_object_id,logical_name,version,status,mime_type,created_at,metadata,session_id,enrolment_id,learner_id").eq("organisation_id", session.organisation_id).eq("is_current", true).is("archived_at", null).in("status", DAILY_PORTAL_RESOURCE_STATUSES).in("document_type", DAILY_PORTAL_RESOURCE_TYPES).order("created_at", { ascending: false });
-  if (documentError) return NextResponse.json({ error: documentError.message }, { status: 500 });
+  if (documentError) return temporarilyUnavailable();
 
   let allowedEnrolmentIds: string[] = [];
   let allowedLearnerIds: string[] = [];
@@ -113,7 +121,7 @@ export async function GET(_request: Request, { params }: Params) {
   let companyName = "";
   if (access.portal_type === "learner") {
     const { data: rows, error: enrolmentError } = await admin.from("daily_session_enrolments").select("id,learner_id,status,daily_learners(email)").eq("session_id", session.id).eq("organisation_id", session.organisation_id);
-    if (enrolmentError) return NextResponse.json({ error: enrolmentError.message }, { status: 500 });
+    if (enrolmentError) return temporarilyUnavailable();
     learnerEmailRecipientUnique = hasUniqueDailyLearnerRecipientEmail(access, rows ?? []);
     // Resolve on every enrolment, including cancelled rows, before allowing access.
     const identityMatches = (rows ?? []).filter((row: Json) => matchesDailyLearnerPortalAccess(access, row));
@@ -130,7 +138,7 @@ export async function GET(_request: Request, { params }: Params) {
     const participantEmails = new Set(array(company?.participants).map((item) => email(item.email)).filter(Boolean));
     if (participantEmails.size) {
       const { data: rows, error: participantReadError } = await admin.from("daily_session_enrolments").select("id,daily_learners(email)").eq("session_id", session.id).eq("organisation_id", session.organisation_id).not("status", "in", "(declined,cancelled,abandoned)");
-      if (participantReadError) return NextResponse.json({ error: "Les documents sont temporairement indisponibles. Réessayez." }, { status: 503 });
+      if (participantReadError) return temporarilyUnavailable();
       allowedEnrolmentIds = (rows ?? []).filter((row: Json) => { const learner = Array.isArray(row.daily_learners) ? row.daily_learners[0] : row.daily_learners; return participantEmails.has(email((learner as Json | undefined)?.email)); }).map((row: Json) => text(row.id)).filter(Boolean);
     }
   }
@@ -151,7 +159,7 @@ export async function GET(_request: Request, { params }: Params) {
       .in("status", ["published", "signed"])
       .limit(1)
       .maybeSingle();
-    if (publicationError) return NextResponse.json({ error: publicationError.message }, { status: 500 });
+    if (publicationError) return temporarilyUnavailable();
     attendancePublished = Boolean(publishedAttendance);
   }
 
@@ -166,7 +174,7 @@ export async function GET(_request: Request, { params }: Params) {
       admin.from("daily_documents").select("id,enrolment_id,learner_id,linked_object_type,linked_object_id,logical_name,mime_type,created_at").eq("organisation_id", session.organisation_id).eq("session_id", session.id).eq("document_type", "learning_assessment_evidence").eq("is_current", true).is("archived_at", null).in("enrolment_id", allowedEnrolmentIds),
     ]);
     const assessmentError = assessmentsError ?? assessmentEvidenceError;
-    if (assessmentError) return NextResponse.json({ error: assessmentError.message }, { status: 500 });
+    if (assessmentError) return temporarilyUnavailable();
     for (const assessment of assessments ?? []) {
       if (!isFinalAssessmentResult(assessment.outcome, assessment.assessed_at)) continue;
       const enrolmentId = text(assessment.enrolment_id);
@@ -206,7 +214,7 @@ export async function GET(_request: Request, { params }: Params) {
         admin.from("daily_attendance_records").select("slot_id,enrolment_id,status").eq("organisation_id", session.organisation_id).eq("session_id", session.id).in("enrolment_id", allowedEnrolmentIds),
       ]);
       const attendanceError = slotsError ?? recordsError;
-      if (attendanceError) return NextResponse.json({ error: attendanceError.message }, { status: 500 });
+      if (attendanceError) return temporarilyUnavailable();
       const slotIds = (slots ?? []).map((slot: Json) => slot.id);
       for (const row of matchingRows) {
         const enrolmentId = text(row.id);
@@ -228,8 +236,8 @@ export async function GET(_request: Request, { params }: Params) {
   let pretrainingResources: Json[] = [];
   try {
     pretrainingResources = learnerEmailRecipientUnique ? await loadLearnerPretrainingResources(admin, session.id, access as Json) : [];
-  } catch (cause) {
-    return NextResponse.json({ error: cause instanceof Error ? cause.message : "Documents avant formation indisponibles." }, { status: 500 });
+  } catch {
+    return temporarilyUnavailable();
   }
 
   return NextResponse.json({ documents: [...pretrainingResources, ...visible, ...personalAttendanceResources, ...personalAssessmentResources, ...personalAssessmentEvidenceResources] });

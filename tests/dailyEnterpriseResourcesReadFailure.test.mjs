@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { loadTypeScript } from "./helpers/loadTypeScript.mjs";
 
-function setup({ failParticipants = false, participants = [{ email: "learner@alpha.test" }], expiresAt = null } = {}) {
+function setup({ failAccess = false, failSession = false, failDocuments = false, failParticipants = false, participants = [{ email: "learner@alpha.test" }], expiresAt = null } = {}) {
   const reads = [];
   const access = { token: "secret", status: "viewed", portal_type: "enterprise",
     entity_email: "contact@alpha.test", session_id: "session-1", expires_at: expiresAt };
@@ -17,7 +17,10 @@ function setup({ failParticipants = false, participants = [{ email: "learner@alp
       const result = () => ({
         data: table === "daily_portal_access_tokens" ? [access]
           : table === "daily_sessions" ? [session] : [],
-        error: table === "daily_session_enrolments" && failParticipants
+        error: ((table === "daily_portal_access_tokens" && failAccess)
+          || (table === "daily_sessions" && failSession)
+          || (table === "daily_documents" && failDocuments)
+          || (table === "daily_session_enrolments" && failParticipants))
           ? { message: "internal SQL details must not leak" } : null,
       });
       const query = {
@@ -102,5 +105,24 @@ test("P0 enterprise resources: non-ISO future dates cannot expose documents", as
     const response = await portal.get();
     assert.equal(response.status, 410, expiresAt);
     assert.deepEqual(portal.reads.map(({ table }) => table), ["daily_portal_access_tokens"]);
+  }
+});
+
+
+test("P0 enterprise resources: upstream SQL read failures are sanitized, retryable and never cached", async () => {
+  for (const [label, failure, table] of [
+    ["token", { failAccess: true }, "daily_portal_access_tokens"],
+    ["session", { failSession: true }, "daily_sessions"],
+    ["documents", { failDocuments: true }, "daily_documents"],
+    ["participants", { failParticipants: true }, "daily_session_enrolments"],
+  ]) {
+    const portal = setup(failure);
+    const response = await portal.get();
+    assert.equal(response.status, 503, label);
+    assert.equal(response.headers.get("cache-control"), "no-store", label);
+    const body = await response.json();
+    assert.match(body.error, /temporairement indisponibles/, label);
+    assert.doesNotMatch(JSON.stringify(body), /SQL|internal/i, label);
+    assert.ok(portal.reads.some(entry => entry.table === table), label);
   }
 });
