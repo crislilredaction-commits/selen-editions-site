@@ -21,10 +21,15 @@ export async function POST(req: Request) {
     .select("id,convention_id,session_id,signatory_type,signatory_name,signatory_email,token,status,expires_at")
     .eq("id", signatureId)
     .maybeSingle();
-  if (signatureError) return NextResponse.json({ error: signatureError.message }, { status: 500 });
+  if (signatureError) return NextResponse.json({ error: "Erreur technique lors de la lecture de la signature." }, { status: 500 });
   if (!signature) return NextResponse.json({ error: "Signature introuvable." }, { status: 404 });
   if (["signed", "expired", "cancelled", "revoked"].includes(String(signature.status))) {
     return NextResponse.json({ error: "Cette signature ne peut plus être relancée." }, { status: 409 });
+  }
+
+  const expiresAt = Date.parse(String(signature.expires_at ?? ""));
+  if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+    return NextResponse.json({ error: "Le lien de signature a expiré ou sa date de validité est indisponible. Renouvelez l’invitation avant toute relance." }, { status: 409 });
   }
 
   const { data: convention, error: conventionError } = await context.admin
@@ -34,14 +39,14 @@ export async function POST(req: Request) {
     .eq("organisation_id", context.organisationId)
     .eq("session_id", signature.session_id)
     .maybeSingle();
-  if (conventionError) return NextResponse.json({ error: conventionError.message }, { status: 500 });
+  if (conventionError) return NextResponse.json({ error: "Erreur technique lors de la lecture de la convention." }, { status: 500 });
   if (!convention) return NextResponse.json({ error: "Convention introuvable pour cet organisme." }, { status: 404 });
 
   const email = text(signature.signatory_email || convention.recipient_email).toLowerCase();
   const signatoryName = text(signature.signatory_name || convention.recipient_name || convention.company_name);
   if (!email) return NextResponse.json({ error: "Aucune adresse e-mail n’est enregistrée pour ce signataire." }, { status: 400 });
 
-  const { data: initial } = await context.admin
+  const { data: initial, error: initialError } = await context.admin
     .from("daily_communications")
     .select("id,sent_at")
     .eq("organisation_id", context.organisationId)
@@ -52,13 +57,18 @@ export async function POST(req: Request) {
     .order("sent_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+  if (initialError) return NextResponse.json({ error: "Erreur technique lors de la vérification de l’envoi initial." }, { status: 500 });
   if (!initial?.sent_at) return NextResponse.json({ error: "Aucun envoi initial confirmé n’est enregistré." }, { status: 409 });
-  if (Date.now() - new Date(initial.sent_at).getTime() < SLA_MS) {
+  const initialSentAt = Date.parse(initial.sent_at);
+  if (!Number.isFinite(initialSentAt) || initialSentAt > Date.now()) {
+    return NextResponse.json({ error: "La date de l’envoi initial est invalide. Vérifiez la preuve d’envoi avant toute relance." }, { status: 409 });
+  }
+  if (Date.now() - initialSentAt < SLA_MS) {
     return NextResponse.json({ error: "La relance manuelle sera disponible 72 h après l’envoi initial." }, { status: 409 });
   }
 
   const since = new Date(Date.now() - WINDOW_MS).toISOString();
-  const { data: recent } = await context.admin
+  const { data: recent, error: recentError } = await context.admin
     .from("daily_communications")
     .select("id,sent_at,status")
     .eq("organisation_id", context.organisationId)
@@ -70,6 +80,7 @@ export async function POST(req: Request) {
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+  if (recentError) return NextResponse.json({ error: "Erreur technique lors de la vérification des relances existantes." }, { status: 500 });
   if (recent) return NextResponse.json({ ok: true, alreadyRecorded: true, communicationId: recent.id, sentAt: recent.sent_at });
 
   const session = one(convention.daily_sessions as any);
