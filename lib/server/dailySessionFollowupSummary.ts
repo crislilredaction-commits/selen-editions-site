@@ -46,10 +46,15 @@ function signatureRows(conventions: any[], communications: any[]) {
     return rows.map((signature: any) => {
       const evidence = evidenceBySignature.get(String(signature.id)) ?? null;
       const sentAt = evidence?.sent_at ?? null;
-      const followupDueAt = sentAt ? new Date(new Date(sentAt).getTime() + 72 * 60 * 60 * 1000).toISOString() : null;
+      const sentTime = sentAt ? Date.parse(sentAt) : NaN;
+      const dueTime = sentTime + 72 * 60 * 60 * 1000;
+      const expiryTime = signature.expires_at ? Date.parse(signature.expires_at) : NaN;
+      const followupDueAt = Number.isFinite(dueTime) && Math.abs(dueTime) <= 8.64e15 ? new Date(dueTime).toISOString() : null;
       const needsFollowup = Boolean(
         followupDueAt
-        && new Date(followupDueAt).getTime() <= Date.now()
+        && dueTime <= Date.now()
+        && Number.isFinite(expiryTime) && expiryTime > Date.now()
+        && ["sent", "delivered"].includes(String(evidence?.status))
         && !["signed", "cancelled", "revoked", "expired"].includes(String(signature.status)),
       );
       return {
