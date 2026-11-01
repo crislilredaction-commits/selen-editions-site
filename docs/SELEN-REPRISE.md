@@ -13,45 +13,42 @@
 
 ## Chantier actif
 - Identifiant : **SELEN-P0-CANDIDATURE** (P0-01).
-- Parcours : candidature publique → analyse agent Studio → décision OF ou délégation identifiée → inscription et accès ponctuels.
-- État au 01/11/2026 : **CODÉ NON TESTÉ pour le lot #492**, CI en cours ; les précédents tests automatisés du socle ne constituent pas une recette authentifiée.
-- HEAD de référence avant lot : Daily main `b850a44b68b055e2e9ce24386d4556dd2d4d6c61` (fiche #491 fusionnée, pas de nouveau code métier), Studio main `a7e94a5784b5c666dbd121cd936e0000b48a6ae5` (#448 déjà fusionnée).
-- PR active : [Daily #492](https://github.com/crislilredaction-commits/selen-editions-site/pull/492), branche `fix/daily-candidature-explicit-session-20261101`, HEAD code corrigée `7350c8d17a5c125f5dd7e722a92527edc874a0e3` (avant présente mise à jour documentaire).
-- Maillon identifié : l'interface Daily sélectionnait silencieusement la première session compatible si aucune session n'était attachée à la candidature. Une décision OF pouvait donc inscrire dans une session non explicitement choisie. Les choix périmés pouvaient rester en mémoire au rechargement.
-- Correctif candidat : aucun choix implicite ; maintien seulement d'une sélection compatible et explicite ou d'une session déjà attachée ; contrôle avant confirmation et écriture ; filtrage des sessions archivées/annulées ; libellés accessibles ; deux nouveaux sous-tests intégrés UI/API/PGlite (choix explicite, session archivée). Aucun schéma/migration, aucune donnée réelle.
-- Première CI du lot : HEAD `7a9908a23b0ca9841ff319d10b81bba7f7fd3bf7`, 2240/2243 tests PASS, 3 FAIL (un test utilisait un statut SQL interdit par la fixture ; une assertion historique attendait l'ancien libellé ; échec parent induit). Corrections poussées sur la **même branche** en `7350c8d17a5c125f5dd7e722a92527edc874a0e3`. CI finale à vérifier, ne pas fusionner sans succès complet et Preview READY sur HEAD exacte.
-- Existant revérifié : Studio `src/app/agent/daily/candidatures/[id]/page.tsx` réalise l'analyse et les prérequis ; Daily `app/api/client/daily/registration-requests/route.ts` applique RPC atomique décision/inscription, et délégation auditée. Les anciennes PR #349/#357/#361/#365 sont ouvertes, non fusionnées et n'ont pas été dupliquées.
-- Critères d'acceptation P0-01 : dépôt candidature et positionnement ; analyse humaine horodatée Studio et vérification des prérequis ; décision OF ou agent Studio autorisé et identifié ; choix explicite d'une session compatible ; inscription unique et visible Daily/Studio ; envoi des liens ponctuels selon statut réel ; refus/erreurs compréhensibles ; isolation entre deux OF ; historique et tâches cohérents.
-- **Blocage de recette** : aucun compte/jeu de sessions fictifs authentifiés dédié n'a été fourni pour vérifier la chaîne complète, notamment les permissions multi-OF, notifications et email sandbox. Ne pas déclarer TERMINÉ.
-- **Prochaine action unique :** contrôler la CI et la Preview de la HEAD courante de la PR #492 ; corriger sur cette même branche si rouge, sinon actualiser cette fiche et fusionner uniquement après les garde-fous. Après livraison, étendre le test intégré au dépôt public et au passage analyse Studio → décision OF → inscription sur deux OF fictifs.
+- Parcours : candidature publique → analyse agent Studio → décision OF ou délégation identifiée → inscription et liens ponctuels.
+- **État : À RECETTER**, et non TERMINÉ. Tests automatisés réussis, aucune recette authentifiée complète.
+- Références revérifiées : Daily main `f2db26ab336d27a6ac3f7870ac23f4ee967383a4` (PR [#492](https://github.com/crislilredaction-commits/selen-editions-site/pull/492) fusionnée) ; Studio main `a7e94a5784b5c666dbd121cd936e0000b48a6ae5` (#448 tâches manuelles déjà fusionnée).
+- **Maillon corrigé** : la page Daily choisissait automatiquement la première session disponible lorsqu'aucune session n'était attachée. Elle exige désormais une sélection explicite et compatible, ne conserve que les choix encore valides et exclut les sessions archivées/annulées. Le choix historique garde sa double confirmation. Les sélecteurs ont un nom accessible.
+- Preuves : HEAD PR #492 `db56e63ef09c120687ccf5a7591d6af51bcdc31c` ; GitHub Automated Tests SUCCESS (2243/2243) ; Selen local check SUCCESS (tests, ESLint ciblé, TypeScript, build) ; Preview Vercel `dpl_Agi6aGRGa33W54rGCB9agQYpHJmK` READY sur HEAD exacte ; fusion squash Daily main `f2db26ab336d27a6ac3f7870ac23f4ee967383a4` ; CI post-fusion Automated Tests et Selen local check SUCCESS sur SHA main ; production Vercel `dpl_9RGuGWVp8gddhfj9SWrV6ubXPuQT` READY sur SHA main exacte. Deux sous-tests intégrés UI/API/PostgreSQL ajoutés (absence de session et session archivée), un garde statique historique adapté. Les CI rouges intermédiaires ont été corrigées sur la même branche, sans contournement.
+- Éléments existants : Studio `src/app/agent/daily/candidatures/[id]/page.tsx` traite analyse humaine/prérequis ; Daily `app/api/client/daily/registration-requests/route.ts` gère décision/inscription atomique et délégation auditée. Anciennes PR #349/#357/#361/#365 ouvertes, non dupliquées.
+- Critères d'acceptation restant à recetter : dépôt public candidature/positionnement, revue et analyse humaine horodatée Studio, décision autorisée OF/déléguée, inscription unique, visibilité Daily/Studio, accès ponctuels et notifications réelles en sandbox, refus et états d'erreur, isolation de deux OF, conservation historique/tâches. Aucun compte de test authentifié multi-OF ni boîte mail sandbox disponible pour prouver cette chaîne complète.
+- **Prochaine action unique :** étendre le test intégré du parcours P0-01 depuis le dépôt public de candidature jusqu'à la transition analyse Studio `pending → ready_for_of`, puis décision OF → inscription sur deux OF fictifs. Ne pas changer de parcours tant que cette chaîne n'est pas prouvée ou bloquée explicitement.
 
-## Matrice des parcours — suivi au 01/11/2026
-| ID | Parcours et critère d'acceptation | État | Preuve, blocage, prochaine validation |
+## Matrice des parcours — état au 01/11/2026
+| ID | Parcours / critères d'acceptation | État | Preuve, blocage, action |
 | --- | --- | --- | --- |
-| P0-01 | Candidature → analyse Studio → décision OF/déléguée → inscription unique, notification, multi-OF | CODÉ NON TESTÉ | #492 HEAD code `7350c8d` ; CI corrigée en cours ; recette authentifiée manquante ; contrôler CI puis chaîne fictive |
-| P0-02 | Avant : création programme/session, prérequis, documents diffusés avec preuve | À AUDITER | Routes et tests existent ; vérifier parcours intégral et publication réelle en sandbox |
-| P0-03 | Pendant : présence individuelle, signature formateur, absences, PDF sécurisé | À AUDITER | Tests partiels historiques ; vérifier signatures/PDF et droits multi-OF |
-| P0-04 | Évaluations et satisfaction de tous les rôles, résultat pédagogique correct | À AUDITER | Tests partiels historiques ; vérifier réponse → résultat → tâche |
-| P0-05 | Après : complétude, clôture, attestations, régularisations | À AUDITER | Vérifier preuves et blocages de clôture avec session fictive |
-| P0-06 | Tâches Daily ↔ Studio : source unique, décisions manuelles persistantes, traçabilité | À AUDITER | Studio #448 fusionnée ; recette persistance/rechargement/multi-OF non effectuée |
-| P0-07 | Apprenant : liens ponctuels sécurisés, documents, actions, erreurs | À AUDITER | Vérifier rôle sans compte permanent, expiration, données autorisées |
-| P0-08 | Formateur : affectation, suivi, émargement, évaluations, alertes | À AUDITER | Vérifier parcours complet et séparation OF |
-| P0-09 | Entreprise : documents, informations autorisées, satisfaction, notifications | À AUDITER | Vérifier identité et droits sur cas email partagé |
-| P0-10 | OF : gestionnaire, décision, délégation Studio, navigation et droits | À AUDITER | Vérifier droits manager et délégation réelle, mobile |
+| P0-01 | Candidature → analyse → décision OF/déléguée → inscription unique et notification multi-OF | À RECETTER | #492, HEAD `db56e63`, main `f2db26a`, 2243 tests PASS ; recette authentifiée/sandbox absente ; étendre test de dépôt public |
+| P0-02 | Avant : programme, session, prérequis, documents et diffusion prouvée | À AUDITER | Tests partiels ; auditer chaîne complète |
+| P0-03 | Pendant : présence individuelle, signature formateur, absences, PDF sécurisé | À AUDITER | Tester droits et PDF/signatures fictives |
+| P0-04 | Évaluations, acquis, satisfaction et parties prenantes | À AUDITER | Vérifier réponses, résultats et tâches |
+| P0-05 | Après : complétude, clôture, attestations et régularisations | À AUDITER | Vérifier session fictive et blocages |
+| P0-06 | Tâches/relances Daily ↔ Studio, décisions manuelles persistantes, traçabilité | À AUDITER | Studio #448 fusionnée ; recette réelle des deux dashboards manquante |
+| P0-07 | Apprenant : liens ponctuels, documents, actions, erreurs, isolation | À AUDITER | Sans compte permanent V1 ; vérifier expiration et accès |
+| P0-08 | Formateur : affectation, suivi, émargement, évaluations, notifications | À AUDITER | Vérifier parcours complet multi-OF |
+| P0-09 | Entreprise : documents, satisfaction, données autorisées, notifications | À AUDITER | Vérifier emails partagés et identité |
+| P0-10 | OF : manager, décision, délégation Studio, navigation et permissions | À AUDITER | Vérifier rôles et assistance authentifiée |
 
-États autorisés : À AUDITER; NON DÉVELOPPÉ; CODÉ NON TESTÉ; TESTS AUTOMATISÉS OK; À RECETTER; BLOQUÉ; TERMINÉ. **TERMINÉ exige une recette authentifiée de bout en bout prouvée.**
+États autorisés : À AUDITER ; NON DÉVELOPPÉ ; CODÉ NON TESTÉ ; TESTS AUTOMATISÉS OK ; À RECETTER ; BLOQUÉ ; TERMINÉ. **TERMINÉ uniquement sur preuve de recette bout-en-bout authentifiée.**
 
-## Mesures comparées à l'initialisation
-- Total : **10** parcours ; **0 TERMINÉ**, **10 restant à valider**.
-- **1** parcours en correction/test (P0-01), **9** non audités ; **1** parcours nécessitant une recette authentifiée avec comptes fictifs (ne pas confondre avec une panne de production).
-- Delta depuis la fiche initiale : **0** parcours clos ; **-1** À AUDITER, **+1** CODÉ NON TESTÉ ; aucune validation inventée.
+## Mesures et delta
+- **Total 10 ; TERMINÉ 0 ; restant à valider 10 ; À RECETTER 1 ; À AUDITER 9.**
+- Bloqués pour recette authentifiée : **1 parcours (P0-01)**, faute de comptes/sessions fictifs et messagerie sandbox. Ce blocage n'est pas un incident de production.
+- Delta depuis la fiche initiale : **0 clôturé**, **-1 À AUDITER**, **+1 À RECETTER**. Le code et les tests avancent, mais le nombre de parcours TERMINÉS ne bouge pas.
 
 ## Compte rendu de passage
-- Chantier : P0-01, sélection explicite et compatible de session à la décision.
-- Preuve : Daily main `b850a44b`, Studio main `a7e94a57`, PR #492 candidate ; premier run CI rouge documenté, corrections sur même branche, Preview/CI finale à vérifier.
-- Tests locaux complets : impossibles (DNS GitHub indisponible pour checkout), ne pas prétendre exécutés.
-- Aucune donnée réelle, email, signature, migration ou autre automatisation modifiée.
-- Fiche de reprise : mise à jour sur branche PR #492, lecture après écriture obligatoire. Cahier maître : à journaliser si écriture possible, sinon journal complémentaire explicite.
+- Lot fonctionnel P0-01 : sélection de session sûre et explicite ; aucun changement de données métier, mail réel, signature, migration ou autre automatisation.
+- GitHub/Preview/production : preuves SHA et états ci-dessus ; Studio inchangé.
+- Tests locaux complets hors CI : indisponibles (DNS GitHub du conteneur), CI et build GitHub vérifiés ; recette mobile/multi-OF authentifiée NON EFFECTUÉE.
+- Cahier maître : écriture `FAILED_PRECONDITION` ; passation enregistrée puis relue dans le [journal complémentaire Selen](https://docs.google.com/document/d/1WNJM7EkWlB4a9X_Acnr9nXSXyyx_IxSvqxH3_H-rdMQ/edit).
+- Fiche unique : présente mise à jour documentaire sur branche/PR, à relire après écriture et à fusionner seulement avec contrôles CI/Preview.
 
 ## Répartition
 - **Développement horaire :** propriétaire de l'action active, code/tests, mise à jour de cette fiche.
