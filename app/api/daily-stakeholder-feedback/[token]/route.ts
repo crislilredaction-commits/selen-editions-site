@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isActivePortalAttendanceToken } from "@/lib/daily/portalAttendanceAccess.mjs";
 import { getAdminSupabase } from "@/lib/server/clientNdaAccess";
 import { findUniqueDailyLearnerPortalEnrolment } from "@/lib/server/dailyPortalLearnerIdentity";
 
@@ -16,19 +17,19 @@ function stakeholderType(portalType: unknown) {
   return "other";
 }
 
-function isExpired(expiresAt?: string | null) {
-  return Boolean(expiresAt && new Date(expiresAt).getTime() < Date.now());
-}
-
 function portalAccessError(access: JsonRecord) {
   if (!["learner", "trainer", "enterprise"].includes(String(access.portal_type ?? ""))) {
     return { error: "Rôle de portail non autorisé.", status: 403 };
   }
-  if (access.status === "expired" || isExpired(access.expires_at as string | null)) {
+  if (access.status === "expired") {
     return { error: "Ce lien de portail a expiré.", status: 410 };
   }
   if (!["pending", "viewed"].includes(String(access.status ?? ""))) {
     return { error: "Cet accès n’est plus actif.", status: 403 };
+  }
+  // Null deadlines remain valid for legacy links; malformed or elapsed dates fail closed.
+  if (!isActivePortalAttendanceToken(access.status, access.expires_at)) {
+    return { error: "Ce lien de portail a expiré.", status: 410 };
   }
   return null;
 }
@@ -50,7 +51,7 @@ async function loadAccess(rawToken: string) {
     .eq("id", access.session_id)
     .maybeSingle();
   if (sessionError) throw new Error(sessionError.message);
-  if (!session?.organisation_id || session.status === "archived") throw new Error("Session active introuvable.");
+  if (!session?.organisation_id || session.status === "archived") return null;
 
   return { admin, access: { ...access, organisation_id: session.organisation_id } };
 }
@@ -100,7 +101,7 @@ export async function GET(_request: Request, { params }: Params) {
       submitterEmail: clean(access.entity_email, 320),
     });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Ouverture impossible." }, { status: 500 });
+    return NextResponse.json({ error: "Ouverture du formulaire temporairement indisponible." }, { status: 503 });
   }
 }
 
@@ -145,9 +146,9 @@ export async function POST(request: Request, { params }: Params) {
       .select("id,created_at,status")
       .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return NextResponse.json({ error: "Enregistrement temporairement indisponible." }, { status: 503 });
     return NextResponse.json({ ok: true, reference: data.id, submittedAt: data.created_at, status: data.status });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Enregistrement impossible." }, { status: 500 });
+    return NextResponse.json({ error: "Enregistrement temporairement indisponible." }, { status: 503 });
   }
 }
