@@ -25,10 +25,23 @@ export async function GET(req:Request){
       :{data:[],error:null};
     if(accessError)return NextResponse.json({error:accessError.message},{status:500});
     const now=Date.now();
-    const choices=(trainers??[]).map(trainer=>{
+    const trainerRows=trainers??[];
+    const usableAccesses=(accesses??[]).filter(a=>!a.expires_at||new Date(a.expires_at).getTime()>now);
+    const choices=trainerRows.map(trainer=>{
       const assigned=sessionRows.filter(s=>Array.isArray(s.trainer_ids)&&s.trainer_ids.map(String).includes(String(trainer.id)));
-      const portals=(accesses??[]).filter(a=>assigned.some(s=>s.id===a.session_id)&&(!a.expires_at||new Date(a.expires_at).getTime()>now)&&(a.entity_key===`trainer:${trainer.id}`||normalized(a.entity_email)===normalized(trainer.professional_email)));
-      return{...trainer,sessions:assigned.map(s=>({id:s.id,internal_reference:s.internal_reference,start_date:s.start_date,end_date:s.end_date,title:Array.isArray(s.daily_formations)?s.daily_formations[0]?.title:(s.daily_formations as {title?:string|null}|null)?.title,portal_access_id:portals.find(a=>a.session_id===s.id)?.id??null}))};
+      return {...trainer,sessions:assigned.map(s=>{
+        // Prefer the immutable trainer ID. A shared email must never assign
+        // another trainer's canonical or historical portal access.
+        const canonical=usableAccesses.find(a=>a.session_id===s.id&&a.entity_key===`trainer:${trainer.id}`);
+        const address=normalized(trainer.professional_email);
+        const assignedIds=new Set(Array.isArray(s.trainer_ids)?s.trainer_ids.map(String):[]);
+        const emailOwners=address?trainerRows.filter(candidate=>assignedIds.has(String(candidate.id))&&normalized(candidate.professional_email)===address):[];
+        const legacy=emailOwners.length===1?usableAccesses.find(a=>
+          a.session_id===s.id&&normalized(a.entity_email)===address&&
+          (!normalized(a.entity_key)||normalized(a.entity_key)===address||normalized(a.entity_key)===`trainer:${address}`)
+        ):null;
+        return {id:s.id,internal_reference:s.internal_reference,start_date:s.start_date,end_date:s.end_date,title:Array.isArray(s.daily_formations)?s.daily_formations[0]?.title:(s.daily_formations as {title?:string|null}|null)?.title,portal_access_id:canonical?.id??legacy?.id??null};
+      })};
     }).filter(t=>t.sessions.length>0);
     return NextResponse.json({assistance:true,trainers:choices});
   }
