@@ -107,19 +107,15 @@ test("P0 satisfaction POST does not expose SQL insertion errors", async () => {
   assert.doesNotMatch(JSON.stringify(result.body), /PRIVATE_SQL_ERROR/);
 });
 
-for (const table of ["daily_session_enrolments", "daily_learning_assessments", "daily_learner_feedback_responses"]) {
-  test("P0 satisfaction POST preserves answer without falsely recalculating checklist on " + table + " read failure", async () => {
-    // The first enrolment/response read is required before insert; exercise checklist failure on assessments only.
-    if (table !== "daily_learning_assessments") return;
-    const f = fixture({ failure: table + ":read" });
-    const result = await f.route.POST(f.request, f.params);
-    assert.equal(result.status, 200);
-    assert.equal(result.body.ok, true);
-    assert.equal(result.body.checklist_synced, false);
-    assert.match(result.body.warning, /suivi/);
-    assert.equal(f.writes.filter(write => write.table === "daily_session_checklist_items").length, 0);
-  });
-}
+test("P0 satisfaction POST preserves saved response without recalculating checklist on assessment read failure", async () => {
+  const f = fixture({ failure: "daily_learning_assessments:read" });
+  const result = await f.route.POST(f.request, f.params);
+  assert.equal(result.status, 200);
+  assert.equal(result.body.ok, true);
+  assert.equal(result.body.checklist_synced, false);
+  assert.match(result.body.warning, /suivi/);
+  assert.equal(f.writes.filter(write => write.table === "daily_session_checklist_items").length, 0);
+});
 
 test("P0 satisfaction POST reports failed checklist update but keeps saved response", async () => {
   const f = fixture({ failure: "daily_session_checklist_items:update" });
