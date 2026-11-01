@@ -157,17 +157,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: reservationError?.code === "23505" ? "Cette relance est déjà enregistrée." : "La preuve d’envoi n’a pas pu être réservée. Aucun message n’a été envoyé." }, { status: reservationError?.code === "23505" ? 409 : 500 });
   }
 
-  const { error: revokeError } = await context.admin
-    .from("daily_attendance_access_tokens")
-    .update({ status: "revoked" })
-    .eq("organisation_id", context.organisationId)
-    .eq("slot_id", slotId)
-    .eq("enrolment_id", enrolmentId)
-    .eq("status", "active");
-  if (revokeError) {
-    await context.admin.from("daily_communications").update({ status: "failed", failed_at: new Date().toISOString(), failure_reason: revokeError.message }).eq("id", communication.id).eq("organisation_id", context.organisationId);
-    return NextResponse.json({ error: revokeError.message }, { status: 500 });
-  }
+  // Keep any previously delivered link usable until the replacement is sent.
 
   const { token, tokenHash } = createAttendanceToken();
   const expiresAt = linkExpiry(slot.slot_date, Boolean(correction));
@@ -189,7 +179,7 @@ export async function POST(req: Request) {
     .single();
   if (tokenError || !access) {
     await context.admin.from("daily_communications").update({ status: "failed", failed_at: new Date().toISOString(), failure_reason: tokenError?.message ?? "Lien impossible à créer." }).eq("id", communication.id).eq("organisation_id", context.organisationId);
-    return NextResponse.json({ error: tokenError?.message ?? "Lien impossible à créer." }, { status: 500 });
+    return NextResponse.json({ error: "Lien d’émargement impossible à créer. Aucun message n’a été envoyé." }, { status: 503 });
   }
 
   const origin = new URL(req.url).origin;
@@ -293,6 +283,23 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "La relance n’a pas pu être envoyée. Le lien a été révoqué et la tentative est conservée." }, { status: 503 });
   }
 
+  // Only rotate previously delivered links after the new email was sent.
+  // Scope the rotation to this OF, session, slot and enrolment.
+  const { error: previousLinkError } = await context.admin
+    .from("daily_attendance_access_tokens")
+    .update({ status: "revoked" })
+    .eq("organisation_id", context.organisationId)
+    .eq("session_id", sessionId)
+    .eq("slot_id", slotId)
+    .eq("enrolment_id", enrolmentId)
+    .eq("status", "active")
+    .neq("token_hash", tokenHash);
+  if (previousLinkError) {
+    console.error("Daily : relance envoyée mais anciens liens d'émargement non révoqués", {
+      organisationId: context.organisationId, sessionId, slotId, enrolmentId,
+    });
+  }
+
   const sentAt = new Date().toISOString();
   const { error: finalizeError } = await context.admin
     .from("daily_communications")
@@ -316,6 +323,8 @@ export async function POST(req: Request) {
     sentAt,
     expiresAt,
     evidenceRecorded: !finalizeError,
+    previousLinksRevoked: !previousLinkError,
+    ...((previousLinkError || finalizeError) ? { warning: "Relance envoyée, mais certaines opérations de suivi nécessitent une vérification." } : {}),
     communicationId: communication.id,
     kind: correction ? "correction" : "reminder",
   });
