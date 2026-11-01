@@ -194,7 +194,7 @@ export async function GET(_request: Request, { params }: Params) {
       consentText: DAILY_ATTENDANCE_CONSENT,
       requiresEmailCode: access.access_type === "shared",
     });
-  } catch (error) {
+  } catch {
     return attendanceJson({ error: "Ouverture temporairement indisponible. Réessayez." }, { status: 503 });
   }
 }
@@ -429,7 +429,7 @@ export async function POST(request: Request, { params }: Params) {
     await admin.from("daily_attendance_access_tokens").update({ last_used_at: signedAt }).eq("id", access.id);
     await refreshDailyAttendanceChecklist(admin, access.organisation_id, access.session_id);
     return attendanceJson({ ok: true, signedAt });
-  } catch (error) {
+  } catch {
     return attendanceJson({ error: "Émargement temporairement indisponible. Réessayez." }, { status: 503 });
   }
 }
