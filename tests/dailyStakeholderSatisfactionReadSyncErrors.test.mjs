@@ -134,3 +134,11 @@ for (const role of ["trainer", "enterprise"]) {
     assert.equal(response.headers["Cache-Control"], "private, no-store");
   });
 }
+
+test("P0: external satisfaction page announces partial follow-up synchronization accessibly", () => {
+  const page = fs.readFileSync("app/daily/portail/[role]/[token]/satisfaction/page.tsx", "utf8");
+  assert.match(page, /payload\?\.followupPending/);
+  assert.match(page, /setFollowupWarning/);
+  assert.match(page, /role="status" aria-live="polite"/);
+  assert.match(page, /\{followupWarning\}/);
+});
