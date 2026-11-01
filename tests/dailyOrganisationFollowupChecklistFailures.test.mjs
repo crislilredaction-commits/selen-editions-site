@@ -23,19 +23,29 @@ function fixture(failure = null, forbidden = false) {
         update(payload) { state.operation = "update"; writes.push({ table, payload }); return this; },
         async single() {
           if (table !== "daily_session_followup_entries" || state.operation !== "insert") throw Error("Unexpected insert");
-          return { data: failure === "insert" ? null : { id: requestId, status: "open" }, error: failure === "insert" ? { message: "private SQL insert" } : null };
+          const duplicate = failure?.startsWith("duplicate");
+          return {
+            data: failure === "insert" || duplicate ? null : { id: requestId, status: "open" },
+            error: duplicate ? { code: "23505", message: "private SQL duplicate" } : failure === "insert" ? { message: "private SQL insert" } : null,
+          };
         },
         async maybeSingle() {
           if (table === "daily_sessions") return { data: { id: sessionId }, error: null };
           if (table === "daily_session_followup_entries" && state.operation === "update") {
             return { data: failure === "resolve" ? null : { id: requestId, status: "resolved" }, error: failure === "resolve" ? { message: "private SQL update" } : null };
           }
+          if (table === "daily_session_followup_entries" && failure?.startsWith("duplicate")) {
+            return {
+              data: failure === "duplicateLookup" ? null : { id: requestId, status: "open" },
+              error: failure === "duplicateLookup" ? { message: "private SQL replay" } : null,
+            };
+          }
           throw Error("Unexpected single " + table);
         },
         then(resolve, reject) {
           reads.push({ table, filters: [...state.filters] });
           let result;
-          if (table === "daily_attendance_slots") result = { data: [{ status: "closed" }], error: failure === "slots" ? { message: "private SQL slots" } : null };
+          if (table === "daily_attendance_slots") result = { data: [{ status: "closed" }], error: ["slots", "duplicateSlots"].includes(failure) ? { message: "private SQL slots" } : null };
           else if (table === "daily_attendance_records") result = { data: [{ status: "present" }], error: failure === "records" ? { message: "private SQL records" } : null };
           else if (table === "daily_session_followup_entries") result = state.count
             ? { count: failure === "nullCount" ? null : 0, error: failure === "entries" ? { message: "private SQL entries" } : null }
@@ -144,4 +154,43 @@ test("P0 OF : refus des droits avant toute lecture et écriture", async () => {
   assert.equal((await f.get()).status, 403);
   assert.deepEqual(f.reads, []);
   assert.deepEqual(f.writes, []);
+});
+
+test("P0 OF : rejeu idempotent resynchronise la checklist après une réponse perdue", async () => {
+  const f = fixture("duplicate");
+  const response = await f.post();
+  assert.equal(response.status, 200);
+  assert.equal(response.body.ok, true);
+  assert.equal(response.body.replayed, true);
+  assert.equal(response.body.checklist_synced, true);
+  assert.equal(response.body.warning, undefined);
+  assert.equal(f.checklistUpdates.length, 1);
+  assert.equal(f.writes.filter(w => w.table === "daily_session_followup_entries").length, 1);
+  for (const key of ["organisation_id", "session_id", "item_key"]) {
+    assert.ok(f.checklistUpdates[0].filters.some(([k]) => k === key));
+  }
+  assert.doesNotMatch(JSON.stringify(response.body), /private SQL/);
+});
+
+test("P0 OF : rejeu conserve la preuve et avertit si la checklist ne peut être réparée", async () => {
+  const f = fixture("duplicateSlots");
+  const response = await f.post();
+  assert.equal(response.status, 200);
+  assert.equal(response.body.replayed, true);
+  assert.equal(response.body.checklist_synced, false);
+  assert.match(response.body.warning, /tâches/);
+  assert.equal(f.checklistUpdates.length, 0);
+  assert.doesNotMatch(JSON.stringify(response.body), /private SQL/);
+});
+
+test("P0 OF : une lecture du rejeu en échec ne prétend jamais avoir réussi", async () => {
+  const f = fixture("duplicateLookup");
+  const response = await f.post();
+  assert.equal(response.status, 503);
+  assert.equal(response.body.ok, undefined);
+  assert.equal(f.checklistUpdates.length, 0);
+  assert.doesNotMatch(JSON.stringify(response.body), /private SQL/);
+  assert.ok(f.reads.length === 0 || f.reads.every(read =>
+    read.filters.some(([key, value]) => key === "organisation_id" && value === organisationId)
+    && read.filters.some(([key, value]) => key === "session_id" && value === sessionId)));
 });
