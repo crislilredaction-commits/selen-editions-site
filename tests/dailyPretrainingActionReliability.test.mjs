@@ -93,7 +93,7 @@ test("diffusion : l'interface ferme toujours son état occupé et le tableau mas
 });
 
 test("candidatures : un clic sans session explique le blocage et une annulation est visible", () => {
-  assert.match(candidaturesPage, /Sélectionnez une session avant de créer l’inscription/);
+  assert.match(candidaturesPage, /Sélectionnez une session compatible avant d’accepter la candidature/);
   assert.match(candidaturesPage, /Décision annulée, aucune candidature modifiée/);
   assert.doesNotMatch(candidaturesPage, /disabled=\{!request\.can_decide \|\| busyId === request\.id \|\| !\(selectedSessions\[request\.id\]/);
 });

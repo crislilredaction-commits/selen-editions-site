@@ -42,6 +42,7 @@ test('Page réelle → transport → API réelle → PostgreSQL : décisions et 
     const html=renderToStaticMarkup(await f.click('Accepter et créer l’inscription'));
     assert.match(f.confirmations[0],/votre identité Studio enregistrée/);assert.match(html,/Décision annulée/);
     assert.equal(h.requests.filter(req=>req.method==='POST').length,0);
+    assert.equal(f.confirmations.length,0);
     assert.equal((await h.q('select count(*)::int as n from daily_registration_request_decisions')).rows[0].n,0);
   });
   await t.test('accepter produit l’inscription, la confirmation visible et le véritable auteur',async()=>{
@@ -69,8 +70,8 @@ test('Page réelle → transport → API réelle → PostgreSQL : décisions et 
     assert.equal(h.requests.filter(req=>req.method==='POST').length,1);
     assert.equal((await h.q('select attached_session_id from daily_formation_registration_requests where id=$1',[ids.request])).rows[0].attached_session_id,ids.session);
   });
-  await t.test('session annulée : non proposée et aucune décision écrite',async()=>{
-    await h.reset();await h.q("update daily_sessions set status='cancelled' where id=$1",[ids.session]);
+  await t.test('session archivée : non proposée et aucune décision écrite',async()=>{
+    await h.reset();await h.q("update daily_sessions set status='archived' where id=$1",[ids.session]);
     const f=pageFixture(h);const html=renderToStaticMarkup(await f.mount());
     assert.doesNotMatch(html,/28.11.2026/);
     const missing=renderToStaticMarkup(await f.click('Accepter et créer l’inscription'));
