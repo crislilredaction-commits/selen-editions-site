@@ -50,7 +50,7 @@ export async function POST(req: Request) {
     .select("id,created_at,status")
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error || !data) return NextResponse.json({ error: "Impossible d’enregistrer votre demande pour le moment." }, { status: 503 });
   return NextResponse.json({ ok: true, reference: data.id, submittedAt: data.created_at, status: data.status });
 }
 
@@ -73,7 +73,7 @@ export async function PATCH(req: Request) {
     .eq("organisation_id", context.organisationId)
     .maybeSingle();
 
-  if (readError) return NextResponse.json({ error: readError.message }, { status: 500 });
+  if (readError) return NextResponse.json({ error: "Impossible de vérifier cette demande pour le moment." }, { status: 503 });
   if (!current) return NextResponse.json({ error: "Demande introuvable pour votre organisme." }, { status: 404 });
   if (current.status !== "forwarded_to_organisation") {
     return NextResponse.json({ error: "Cette demande n’est pas disponible pour une nouvelle réponse." }, { status: 409 });
@@ -87,8 +87,9 @@ export async function PATCH(req: Request) {
     .eq("organisation_id", context.organisationId)
     .eq("status", "forwarded_to_organisation")
     .select("id,status,organisation_response,updated_at")
-    .single();
+    .maybeSingle();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return NextResponse.json({ error: "Impossible d’enregistrer la réponse pour le moment." }, { status: 503 });
+  if (!data) return NextResponse.json({ error: "Cette demande a changé de statut. Actualisez la page avant de répondre." }, { status: 409 });
   return NextResponse.json({ ok: true, feedback: data });
 }
