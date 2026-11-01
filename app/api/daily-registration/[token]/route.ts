@@ -340,7 +340,7 @@ export async function POST(request: Request, { params }: Params) {
     }).select("id,status,attached_session_id,submitted_at,signature_signed_at").single();
     if (error) {
       if (submission) { const replay = await candidateSubmissionReplay(submission, "formation", formation.id, formation.user_id); if (replay?.response) return replay.response; }
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: "La candidature n’a pas pu être enregistrée. Réessayez ou contactez votre organisme." }, { status: 500, headers: { "Cache-Control": "no-store" } });
     }
     await supabase.from("daily_formations").update({ spontaneous_registration_task_status: attachedSession ? "none" : "to_attach" }).eq("id", formation.id);
     const organisation = await findOrganisation(formation.user_id);
@@ -360,7 +360,7 @@ export async function POST(request: Request, { params }: Params) {
   }).select("id,status,submitted_at,signature_signed_at").single();
   if (error) {
     if (submission) { const replay = await candidateSubmissionReplay(submission, "session", session.id, session.user_id); if (replay?.response) return replay.response; }
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: "La candidature n’a pas pu être enregistrée. Réessayez ou contactez votre organisme." }, { status: 500, headers: { "Cache-Control": "no-store" } });
   }
   const { data: responses } = await supabase.from("daily_registration_responses").select("response_type,respondent_first_name,respondent_last_name,company_name,need_answers,positioning_answers,adaptation_needed").eq("session_id", session.id).eq("status", "submitted");
   const summary = buildDailyRegistrationSummary(responses ?? []);
