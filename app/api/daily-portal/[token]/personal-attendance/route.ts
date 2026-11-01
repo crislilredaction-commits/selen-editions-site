@@ -13,6 +13,10 @@ import {
 type Params = { params: Promise<{ token: string }> };
 type Json = Record<string, unknown>;
 const text = (value: unknown) => String(value ?? "").trim();
+const personalAttendanceReadError = () => NextResponse.json(
+  { error: "Impossible de préparer la feuille individuelle pour le moment. Réessayez plus tard." },
+  { status: 500, headers: { "Cache-Control": "no-store" } },
+);
 const one = (value: unknown): Json => Array.isArray(value) ? (value[0] as Json | undefined) ?? {} : value && typeof value === "object" ? value as Json : {};
 
 function formatDate(value: unknown, withTime = false) {
@@ -40,7 +44,7 @@ export async function GET(request: Request, { params }: Params) {
     .select("session_id,portal_type,entity_key,entity_name,entity_email,status,expires_at")
     .eq("token", text(token))
     .maybeSingle();
-  if (accessError) return NextResponse.json({ error: accessError.message }, { status: 500 });
+  if (accessError) return personalAttendanceReadError();
   if (!access || access.portal_type !== "learner") return NextResponse.json({ error: "Document introuvable." }, { status: 404 });
   if (!["pending", "viewed"].includes(text(access.status))) return NextResponse.json({ error: "Cet accès n’est plus actif." }, { status: 403 });
   if (!isActivePortalAttendanceToken(access.status, access.expires_at)) return NextResponse.json({ error: "Ce lien de portail a expiré." }, { status: 410 });
@@ -61,7 +65,7 @@ export async function GET(request: Request, { params }: Params) {
       .maybeSingle(),
   ]);
   const readError = sessionError ?? enrolmentError;
-  if (readError) return NextResponse.json({ error: readError.message }, { status: 500 });
+  if (readError) return personalAttendanceReadError();
   if (!session || !enrolment || enrolment.organisation_id !== session.organisation_id) return NextResponse.json({ error: "Document introuvable." }, { status: 404 });
   const learner = one(enrolment.daily_learners);
   if (!matchesDailyLearnerPortalAccess(access, enrolment)) return NextResponse.json({ error: "Document introuvable." }, { status: 404 });
@@ -72,7 +76,7 @@ export async function GET(request: Request, { params }: Params) {
     .select("id,learner_id,status,daily_learners(email)")
     .eq("organisation_id", session.organisation_id)
     .eq("session_id", session.id);
-  if (scopeError) return NextResponse.json({ error: scopeError.message }, { status: 500 });
+  if (scopeError) return personalAttendanceReadError();
   if (findUniqueDailyLearnerPortalEnrolment(access, sessionEnrolments ?? [])?.id !== enrolment.id)
     return NextResponse.json({ error: "Document introuvable." }, { status: 404 });
 
@@ -118,7 +122,7 @@ export async function GET(request: Request, { params }: Params) {
       .eq("is_current", true),
   ]);
   const attendanceError = slotsError ?? recordsError ?? organisationError ?? publicationError ?? trainerSignatureError;
-  if (attendanceError) return NextResponse.json({ error: attendanceError.message }, { status: 500 });
+  if (attendanceError) return personalAttendanceReadError();
   if (!publishedAttendance) {
     return NextResponse.json({ error: "La feuille individuelle sera disponible après validation et publication du relevé d’émargement." }, { status: 409 });
   }
