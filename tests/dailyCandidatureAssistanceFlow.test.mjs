@@ -72,7 +72,7 @@ test('Page réelle → transport → API réelle → PostgreSQL : décisions et 
   await t.test('session annulée : non proposée et aucune décision écrite',async()=>{
     await h.reset();await h.q("update daily_sessions set status='cancelled' where id=$1",[ids.session]);
     const f=pageFixture(h);const html=renderToStaticMarkup(await f.mount());
-    assert.doesNotMatch(html,/28\\/11\\/2026/);
+    assert.doesNotMatch(html,/28.11.2026/);
     const missing=renderToStaticMarkup(await f.click('Accepter et créer l’inscription'));
     assert.match(missing,/Sélectionnez une session compatible/);
     assert.equal(h.requests.filter(req=>req.method==='POST').length,0);
