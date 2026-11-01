@@ -4,6 +4,7 @@ import { getDailyOrganisationContext, getDailyOrganisationReadContext } from "@/
 
 const ENTRY_TYPES = new Set(["incident", "adaptation", "absence"]);
 const LEVELS = new Set(["info", "attention", "critical"]);
+const TECHNICAL_ERROR = "Une erreur technique empêche le suivi de cette session. Réessayez.";
 const INACTIVE_ENROLMENTS = new Set(["cancelled", "declined", "abandoned", "completed"]);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -21,28 +22,41 @@ async function refreshFollowupChecklist(
   admin: ReturnType<typeof import("@/lib/server/clientNdaAccess").getAdminSupabase>,
   organisationId: string,
   sessionId: string,
-) {
-  const [{ data: slots }, { data: records }, { count: openEntries }] = await Promise.all([
-    admin.from("daily_attendance_slots").select("status").eq("organisation_id", organisationId).eq("session_id", sessionId),
-    admin.from("daily_attendance_records").select("status").eq("organisation_id", organisationId).eq("session_id", sessionId),
-    admin.from("daily_session_followup_entries").select("id", { count: "exact", head: true }).eq("organisation_id", organisationId).eq("session_id", sessionId).eq("status", "open"),
-  ]);
+): Promise<boolean> {
+  try {
+    const [
+      { data: slots, error: slotsError },
+      { data: records, error: recordsError },
+      { count: openEntries, error: entriesError },
+    ] = await Promise.all([
+      admin.from("daily_attendance_slots").select("status").eq("organisation_id", organisationId).eq("session_id", sessionId),
+      admin.from("daily_attendance_records").select("status").eq("organisation_id", organisationId).eq("session_id", sessionId),
+      admin.from("daily_session_followup_entries").select("id", { count: "exact", head: true }).eq("organisation_id", organisationId).eq("session_id", sessionId).eq("status", "open"),
+    ]);
 
-  const allSlotsClosed = (slots ?? []).length > 0 && (slots ?? []).every((slot) => ["closed", "cancelled"].includes(slot.status));
-  const allRecordsDecided = (records ?? []).length > 0 && (records ?? []).every((record) => record.status !== "pending");
-  const hasAttendanceActivity = (slots ?? []).some((slot) => slot.status !== "draft") || (records ?? []).some((record) => record.status !== "pending");
+    // Ne jamais recalculer une obligation à partir de données partielles ou d'un comptage inconnu.
+    if (slotsError || recordsError || entriesError || openEntries == null || !slots || !records) return false;
 
-  let status = "todo";
-  if ((openEntries ?? 0) > 0 || hasAttendanceActivity) status = "in_progress";
-  if ((openEntries ?? 0) === 0 && allSlotsClosed && allRecordsDecided) status = "to_review";
+    const allSlotsClosed = slots.length > 0 && slots.every((slot) => ["closed", "cancelled"].includes(slot.status));
+    const allRecordsDecided = records.length > 0 && records.every((record) => record.status !== "pending");
+    const hasAttendanceActivity = slots.some((slot) => slot.status !== "draft") || records.some((record) => record.status !== "pending");
 
-  await admin
-    .from("daily_session_checklist_items")
-    .update({ status })
-    .eq("organisation_id", organisationId)
-    .eq("session_id", sessionId)
-    .eq("item_key", "attendance_followup")
-    .neq("status", "not_applicable");
+    let status = "todo";
+    if (openEntries > 0 || hasAttendanceActivity) status = "in_progress";
+    if (openEntries === 0 && allSlotsClosed && allRecordsDecided) status = "to_review";
+
+    const { error: checklistError } = await admin
+      .from("daily_session_checklist_items")
+      .update({ status })
+      .eq("organisation_id", organisationId)
+      .eq("session_id", sessionId)
+      .eq("item_key", "attendance_followup")
+      .neq("status", "not_applicable");
+    return !checklistError;
+  } catch {
+    // Le suivi métier est déjà enregistré : signaler une synchronisation incomplète, sans faux échec.
+    return false;
+  }
 }
 
 async function sessionExists(
@@ -74,7 +88,7 @@ export async function GET(request: Request) {
       .eq("organisation_id", context.organisationId)
       .neq("status", "archived")
       .order("start_date", { ascending: false });
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return NextResponse.json({ error: TECHNICAL_ERROR }, { status: 500 });
     return NextResponse.json({ sessions: data ?? [] });
   }
 
@@ -100,7 +114,7 @@ export async function GET(request: Request) {
       .eq("session_id", sessionId)
       .not("status", "in", "(cancelled,declined,abandoned,completed)"),
   ]);
-  if (entriesError || enrolmentsError) return NextResponse.json({ error: entriesError?.message ?? enrolmentsError?.message }, { status: 500 });
+  if (entriesError || enrolmentsError) return NextResponse.json({ error: TECHNICAL_ERROR }, { status: 500 });
   return NextResponse.json({ entries: entries ?? [], enrolments: enrolments ?? [] });
 }
 
@@ -174,9 +188,9 @@ export async function POST(request: Request) {
       const { data: replay } = await context.admin.from("daily_session_followup_entries").select("*").eq("id", requestId).eq("organisation_id", context.organisationId).eq("session_id", sessionId).maybeSingle();
       if (replay) return NextResponse.json({ ok: true, entry: replay, replayed: true });
     }
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    await refreshFollowupChecklist(context.admin, context.organisationId, sessionId);
-    return NextResponse.json({ ok: true, entry: data });
+    if (error) return NextResponse.json({ error: TECHNICAL_ERROR }, { status: 500 });
+    const checklistSynced = await refreshFollowupChecklist(context.admin, context.organisationId, sessionId);
+    return NextResponse.json({ ok: true, entry: data, checklist_synced: checklistSynced, ...(checklistSynced ? {} : { warning: "Le suivi est enregistré, mais l’état des tâches n’a pas pu être actualisé. Vérifiez le tableau de bord plus tard." }) });
   }
 
   if (action === "resolve") {
@@ -194,10 +208,10 @@ export async function POST(request: Request) {
       .eq("status", "open")
       .select("*")
       .maybeSingle();
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return NextResponse.json({ error: TECHNICAL_ERROR }, { status: 500 });
     if (!data) return NextResponse.json({ error: "Élément déjà traité ou introuvable." }, { status: 404 });
-    await refreshFollowupChecklist(context.admin, context.organisationId, sessionId);
-    return NextResponse.json({ ok: true, entry: data });
+    const checklistSynced = await refreshFollowupChecklist(context.admin, context.organisationId, sessionId);
+    return NextResponse.json({ ok: true, entry: data, checklist_synced: checklistSynced, ...(checklistSynced ? {} : { warning: "Le suivi est enregistré, mais l’état des tâches n’a pas pu être actualisé. Vérifiez le tableau de bord plus tard." }) });
   }
 
   return NextResponse.json({ error: "Action inconnue." }, { status: 400 });
