@@ -24,6 +24,7 @@ function fixture({ failure = "", expiry = "2099-01-01T00:00:00.000Z", existing =
         select() { return this; },
         eq(key, value) { filters.push([key, value]); return this; },
         not() { return this; },
+        neq() { return this; },
         update(value) { operation = "update"; writes.push({ table, operation, value, filters }); return this; },
         insert(value) { operation = "insert"; writes.push({ table, operation, value, filters }); return this; },
         result(single) {
