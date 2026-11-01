@@ -42,7 +42,7 @@ test('Page réelle → transport → API réelle → PostgreSQL : décisions et 
     const html=renderToStaticMarkup(await f.click('Accepter et créer l’inscription'));
     assert.match(f.confirmations[0],/votre identité Studio enregistrée/);assert.match(html,/Décision annulée/);
     assert.equal(h.requests.filter(req=>req.method==='POST').length,0);
-    assert.equal(f.confirmations.length,0);
+    assert.equal(f.confirmations.length,1);
     assert.equal((await h.q('select count(*)::int as n from daily_registration_request_decisions')).rows[0].n,0);
   });
   await t.test('accepter produit l’inscription, la confirmation visible et le véritable auteur',async()=>{
@@ -63,6 +63,7 @@ test('Page réelle → transport → API réelle → PostgreSQL : décisions et 
     const missing=renderToStaticMarkup(await f.click('Accepter et créer l’inscription'));
     assert.match(missing,/Sélectionnez une session compatible/);
     assert.equal(h.requests.filter(req=>req.method==='POST').length,0);
+    assert.equal(f.confirmations.length,0);
     assert.equal((await h.q('select count(*)::int as n from daily_registration_request_decisions')).rows[0].n,0);
     f.choose(ids.session);
     const accepted=renderToStaticMarkup(await f.click('Accepter et créer l’inscription'));
