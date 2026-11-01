@@ -5,6 +5,12 @@ import { isActivePortalAttendanceToken } from "@/lib/daily/portalAttendanceAcces
 type Params = { params: Promise<{ token: string }> };
 type SupportedPortalType = "enterprise" | "trainer";
 const PHONE_FOLLOWUP_SOURCE = "satisfaction_phone_followup";
+const privateResponse = (body: Record<string, unknown>, options: { status?: number } = {}) =>
+  NextResponse.json(body, { ...options, headers: { "Cache-Control": "private, no-store" } });
+const temporarilyUnavailable = () => privateResponse(
+  { error: "Le questionnaire est temporairement indisponible. Réessayez plus tard." },
+  { status: 503 },
+);
 
 function clean(value: unknown) {
   return String(value ?? "").trim();
@@ -61,7 +67,7 @@ async function resolveSatisfactionPortal(token: string) {
     .eq("token", token)
     .maybeSingle();
 
-  if (accessError) return { error: accessError.message, status: 500 as const };
+  if (accessError) return { error: "Le questionnaire est temporairement indisponible. Réessayez plus tard.", status: 503 as const };
   if (!access) return { error: "Portail introuvable.", status: 404 as const };
   if (access.portal_type !== "enterprise" && access.portal_type !== "trainer") {
     return { error: "Ce questionnaire n’est pas disponible depuis ce portail.", status: 403 as const };
@@ -82,7 +88,7 @@ async function resolveSatisfactionPortal(token: string) {
     .neq("status", "archived")
     .maybeSingle();
 
-  if (sessionError) return { error: sessionError.message, status: 500 as const };
+  if (sessionError) return { error: "Le questionnaire est temporairement indisponible. Réessayez plus tard.", status: 503 as const };
   if (!session) return { error: "Session introuvable.", status: 404 as const };
   if (!session.end_date) return { error: "La date de fin de session n’est pas encore définie.", status: 409 as const };
 
@@ -102,7 +108,7 @@ async function resolveSatisfactionPortal(token: string) {
 export async function GET(_request: Request, { params }: Params) {
   const { token } = await params;
   const portal = await resolveSatisfactionPortal(clean(token));
-  if ("error" in portal) return NextResponse.json({ error: portal.error }, { status: portal.status });
+  if ("error" in portal) return privateResponse({ error: portal.error }, { status: portal.status });
 
   const { data: response, error: responseError } = await portal.admin
     .from("daily_stakeholder_satisfaction_responses")
@@ -112,11 +118,11 @@ export async function GET(_request: Request, { params }: Params) {
     .eq("entity_key", portal.access.entity_key)
     .maybeSingle();
 
-  if (responseError) return NextResponse.json({ error: responseError.message }, { status: 500 });
+  if (responseError) return temporarilyUnavailable();
 
   const formationRelation = portal.session.daily_formations;
   const formation = Array.isArray(formationRelation) ? formationRelation[0] : formationRelation;
-  return NextResponse.json({
+  return privateResponse({
     available: portal.isAvailable,
     availableFrom: portal.availableFrom,
     alreadySubmitted: Boolean(response),
@@ -139,9 +145,9 @@ export async function GET(_request: Request, { params }: Params) {
 export async function POST(request: Request, { params }: Params) {
   const { token } = await params;
   const portal = await resolveSatisfactionPortal(clean(token));
-  if ("error" in portal) return NextResponse.json({ error: portal.error }, { status: portal.status });
+  if ("error" in portal) return privateResponse({ error: portal.error }, { status: portal.status });
   if (!portal.isAvailable) {
-    return NextResponse.json({
+    return privateResponse({
       error: portal.portalType === "enterprise"
         ? "Le questionnaire entreprise sera disponible 15 jours après la fin de la formation."
         : "Le questionnaire formateur sera disponible le dernier jour de la formation.",
@@ -150,7 +156,7 @@ export async function POST(request: Request, { params }: Params) {
   }
 
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
-  if (!body) return NextResponse.json({ error: "Réponse invalide." }, { status: 400 });
+  if (!body) return privateResponse({ error: "Réponse invalide." }, { status: 400 });
 
   const overallRating = rating(body.overall_rating, true);
   const objectivesRating = rating(body.objectives_rating);
@@ -162,7 +168,7 @@ export async function POST(request: Request, { params }: Params) {
     trainerRating === null ||
     organisationRating === null
   ) {
-    return NextResponse.json({ error: "Les notes doivent être comprises entre 1 et 5." }, { status: 400 });
+    return privateResponse({ error: "Les notes doivent être comprises entre 1 et 5." }, { status: 400 });
   }
 
   const { data: existing, error: existingError } = await portal.admin
@@ -172,8 +178,8 @@ export async function POST(request: Request, { params }: Params) {
     .eq("stakeholder_type", portal.stakeholderType)
     .eq("entity_key", portal.access.entity_key)
     .maybeSingle();
-  if (existingError) return NextResponse.json({ error: existingError.message }, { status: 500 });
-  if (existing) return NextResponse.json({ error: "Ce questionnaire a déjà été transmis." }, { status: 409 });
+  if (existingError) return temporarilyUnavailable();
+  if (existing) return privateResponse({ error: "Ce questionnaire a déjà été transmis." }, { status: 409 });
 
   const { data: inserted, error: insertError } = await portal.admin
     .from("daily_stakeholder_satisfaction_responses")
@@ -196,9 +202,12 @@ export async function POST(request: Request, { params }: Params) {
     .select("id,submitted_at")
     .single();
 
-  if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
+  if (insertError?.code === "23505") {
+    return privateResponse({ error: "Ce questionnaire a déjà été transmis." }, { status: 409 });
+  }
+  if (insertError || !inserted) return temporarilyUnavailable();
 
-  await portal.admin
+  const { error: followupError } = await portal.admin
     .from("daily_quality_actions")
     .update({
       status: "closed",
@@ -210,5 +219,18 @@ export async function POST(request: Request, { params }: Params) {
     .eq("source_id", portal.access.id)
     .in("status", ["open", "planned"]);
 
-  return NextResponse.json({ ok: true, response: inserted }, { status: 201 });
+  if (followupError) {
+    console.error("Daily : satisfaction enregistrée, synchronisation du suivi impossible", {
+      portalType: portal.portalType,
+      sessionId: portal.session.id,
+    });
+    return privateResponse({
+      ok: true,
+      response: inserted,
+      followupPending: true,
+      warning: "Votre réponse est enregistrée, mais le suivi administratif doit être synchronisé.",
+    }, { status: 202 });
+  }
+
+  return privateResponse({ ok: true, response: inserted, followupPending: false }, { status: 201 });
 }
