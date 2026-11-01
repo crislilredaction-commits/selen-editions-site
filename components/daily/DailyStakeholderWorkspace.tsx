@@ -134,8 +134,9 @@ export default function DailyStakeholderWorkspace({ role, token }: Props) {
     if (!response.ok) return setError(payload.error ?? "Enregistrement impossible.");
     event.currentTarget.reset();
     setFollowupRequestId(crypto.randomUUID());
-    setMessage("Le suivi de session a été complété.");
     await reload();
+    setMessage("Le suivi de session a été enregistré.");
+    if (payload.checklist_synced === false) setFollowupError(payload.warning ?? "Les tâches de session ne sont pas encore synchronisées.");
   }
 
   if (!normalizedRole || !config) return <main style={s.page}><p style={s.error}>Rôle de portail invalide.</p></main>;
