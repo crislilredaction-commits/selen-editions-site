@@ -42,6 +42,7 @@ test('Page réelle → transport → API réelle → PostgreSQL : décisions et 
     const html=renderToStaticMarkup(await f.click('Accepter et créer l’inscription'));
     assert.match(f.confirmations[0],/votre identité Studio enregistrée/);assert.match(html,/Décision annulée/);
     assert.equal(h.requests.filter(req=>req.method==='POST').length,0);
+    assert.equal(f.confirmations.length,1);
     assert.equal((await h.q('select count(*)::int as n from daily_registration_request_decisions')).rows[0].n,0);
   });
   await t.test('accepter produit l’inscription, la confirmation visible et le véritable auteur',async()=>{
@@ -55,6 +56,28 @@ test('Page réelle → transport → API réelle → PostgreSQL : décisions et 
     await h.reset();const f=pageFixture(h);await f.mount();const html=renderToStaticMarkup(await f.click('Refuser la candidature'));
     assert.match(html,/Refusée/);assert.match(html,/Agent Studio · Agent Réel/);assert.equal(h.sends.length,0);
     assert.equal((await h.q('select count(*)::int as n from daily_session_enrolments')).rows[0].n,0);
+  });
+  await t.test('aucune session attachée : refus de décider sans choix explicite, puis inscription dans la session choisie',async()=>{
+    await h.reset();await h.q('update daily_formation_registration_requests set attached_session_id=null where id=$1',[ids.request]);
+    const f=pageFixture(h);await f.mount();
+    const missing=renderToStaticMarkup(await f.click('Accepter et créer l’inscription'));
+    assert.match(missing,/Sélectionnez une session compatible/);
+    assert.equal(h.requests.filter(req=>req.method==='POST').length,0);
+    assert.equal(f.confirmations.length,0);
+    assert.equal((await h.q('select count(*)::int as n from daily_registration_request_decisions')).rows[0].n,0);
+    f.choose(ids.session);
+    const accepted=renderToStaticMarkup(await f.click('Accepter et créer l’inscription'));
+    assert.match(accepted,/Inscription créée/);
+    assert.equal(h.requests.filter(req=>req.method==='POST').length,1);
+    assert.equal((await h.q('select attached_session_id from daily_formation_registration_requests where id=$1',[ids.request])).rows[0].attached_session_id,ids.session);
+  });
+  await t.test('session archivée : non proposée et aucune décision écrite',async()=>{
+    await h.reset();await h.q("update daily_sessions set status='archived' where id=$1",[ids.session]);
+    const f=pageFixture(h);const html=renderToStaticMarkup(await f.mount());
+    assert.doesNotMatch(html,/28.11.2026/);
+    const missing=renderToStaticMarkup(await f.click('Accepter et créer l’inscription'));
+    assert.match(missing,/Sélectionnez une session compatible/);
+    assert.equal(h.requests.filter(req=>req.method==='POST').length,0);
   });
   await t.test('choix de la session historique : double confirmation et dossier conservé après changement de version',async()=>{
     await h.reset();const f=pageFixture(h);await f.mount();f.choose(ids.oldSession);

@@ -161,7 +161,7 @@ export async function GET(req: Request) {
         .select("id,formation_id,response_type,respondent_first_name,respondent_last_name,respondent_email,company_name,participants,adaptation_needed,submitted_at,attached_session_id,materialized_at,status,decision_status,accepted_at,agent_review_requested_at,agent_analysis_completed_at,agent_analysis_summary,positioning_answers")
         .in("formation_id", formationIds).neq("status", "archived").order("submitted_at", { ascending: false }),
       (access.isManager || assisted)
-        ? access.admin.from("daily_sessions").select("id,formation_id,internal_reference,start_date,end_date,status").eq("organisation_id", access.organisationId).in("formation_id", formationIds).neq("status", "archived").order("start_date", { ascending: true })
+        ? access.admin.from("daily_sessions").select("id,formation_id,internal_reference,start_date,end_date,status").eq("organisation_id", access.organisationId).in("formation_id", formationIds).not("status", "in", "(archived,cancelled)").order("start_date", { ascending: true })
         : Promise.resolve({ data: [], error: null }),
     ]);
     if (requestError || sessionError) throw new Error(requestError?.message ?? sessionError?.message ?? "Chargement impossible.");
