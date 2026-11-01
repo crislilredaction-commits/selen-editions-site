@@ -33,7 +33,8 @@ async function loadToken(rawToken: string) {
 }
 
 function unavailable(token: { status: string; expires_at: string }) {
-  return !["active", "submitted"].includes(token.status) || new Date(token.expires_at).getTime() < Date.now();
+  const expiry = Date.parse(token.expires_at);
+  return !["active", "submitted"].includes(token.status) || !Number.isFinite(expiry) || expiry <= Date.now();
 }
 
 export async function GET(_request: Request, { params }: Params) {
@@ -45,11 +46,12 @@ export async function GET(_request: Request, { params }: Params) {
     if (!loaded) return NextResponse.json({ error: "Lien de satisfaction introuvable." }, { status: 404 });
     const { admin, token } = loaded;
     if (unavailable(token)) return NextResponse.json({ error: "Ce lien de satisfaction n'est plus actif." }, { status: 410 });
-    const [{ data: session }, { data: enrolment }, { data: response }] = await Promise.all([
+    const [{ data: session, error: sessionError }, { data: enrolment, error: enrolmentError }, { data: response, error: responseError }] = await Promise.all([
       admin.from("daily_sessions").select("id,start_date,end_date,daily_formations(id,title)").eq("id", token.session_id).eq("organisation_id", token.organisation_id).maybeSingle(),
       admin.from("daily_session_enrolments").select("id,status,daily_learners(id,first_name,last_name)").eq("id", token.enrolment_id).eq("session_id", token.session_id).eq("organisation_id", token.organisation_id).maybeSingle(),
-      admin.from("daily_learner_feedback_responses").select("submitted_at").eq("session_id", token.session_id).eq("enrolment_id", token.enrolment_id).maybeSingle(),
+      admin.from("daily_learner_feedback_responses").select("submitted_at").eq("organisation_id", token.organisation_id).eq("session_id", token.session_id).eq("enrolment_id", token.enrolment_id).maybeSingle(),
     ]);
+    if (sessionError || enrolmentError || responseError) return NextResponse.json({ error: "Le questionnaire est temporairement indisponible. Réessayez." }, { status: 503 });
     if (!session || !enrolment || !activeDailyEnrolment(enrolment.status)) return NextResponse.json({ error: "Cette inscription n'est plus active." }, { status: 410 });
     await admin.from("daily_learner_feedback_tokens").update({ last_used_at: new Date().toISOString() }).eq("id", token.id);
     const learner = Array.isArray(enrolment.daily_learners) ? enrolment.daily_learners[0] : enrolment.daily_learners;
@@ -59,8 +61,8 @@ export async function GET(_request: Request, { params }: Params) {
       alreadySubmitted: Boolean(response),
       submittedAt: response?.submitted_at ?? null,
     });
-  } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Ouverture impossible." }, { status: 500 });
+  } catch {
+    return NextResponse.json({ error: "Le questionnaire est temporairement indisponible. Réessayez." }, { status: 503 });
   }
 }
 
@@ -75,18 +77,20 @@ export async function POST(request: Request, { params }: Params) {
     const { admin, token } = loaded;
     if (unavailable(token)) return NextResponse.json({ error: "Ce lien de satisfaction n'est plus actif." }, { status: 410 });
 
-    const { data: enrolment } = await admin
+    const { data: enrolment, error: enrolmentError } = await admin
       .from("daily_session_enrolments")
       .select("id,status")
       .eq("id", token.enrolment_id)
       .eq("session_id", token.session_id)
       .eq("organisation_id", token.organisation_id)
       .maybeSingle();
+    if (enrolmentError) return NextResponse.json({ error: "Impossible de vérifier l’inscription. Réessayez." }, { status: 503 });
     if (!enrolment || !activeDailyEnrolment(enrolment.status)) {
       return NextResponse.json({ error: "Cette inscription n'est plus active." }, { status: 410 });
     }
 
-    const { data: existing } = await admin.from("daily_learner_feedback_responses").select("id,submitted_at").eq("session_id", token.session_id).eq("enrolment_id", token.enrolment_id).maybeSingle();
+    const { data: existing, error: existingError } = await admin.from("daily_learner_feedback_responses").select("id,submitted_at").eq("organisation_id", token.organisation_id).eq("session_id", token.session_id).eq("enrolment_id", token.enrolment_id).maybeSingle();
+    if (existingError) return NextResponse.json({ error: "Impossible de vérifier une réponse précédente. Réessayez." }, { status: 503 });
     if (existing) {
       try {
         await finalizeDailyLearnerSatisfaction(admin, {
@@ -128,7 +132,7 @@ export async function POST(request: Request, { params }: Params) {
       free_comment: text(body, "free_comment"),
       submitted_at: submittedAt,
     });
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return NextResponse.json({ error: "Impossible d’enregistrer le questionnaire. Réessayez." }, { status: 503 });
     try {
       await finalizeDailyLearnerSatisfaction(admin, {
         organisationId: token.organisation_id,
@@ -140,17 +144,21 @@ export async function POST(request: Request, { params }: Params) {
       return NextResponse.json({ ok: true, submittedAt, warning: "Questionnaire enregistré ; finalisation des relances à retenter." }, { status: 207 });
     }
 
-    const [{ data: active }, { data: assessments }, { data: responses }] = await Promise.all([
+    const [{ data: active, error: activeError }, { data: assessments, error: assessmentsError }, { data: responses, error: responsesError }] = await Promise.all([
       admin.from("daily_session_enrolments").select("id,status").eq("organisation_id", token.organisation_id).eq("session_id", token.session_id).not("status", "in", "(cancelled,declined,abandoned)"),
       admin.from("daily_learning_assessments").select("enrolment_id,outcome").eq("organisation_id", token.organisation_id).eq("session_id", token.session_id),
       admin.from("daily_learner_feedback_responses").select("enrolment_id").eq("organisation_id", token.organisation_id).eq("session_id", token.session_id),
     ]);
+    if (activeError || assessmentsError || responsesError) {
+      return NextResponse.json({ ok: true, submittedAt, checklist_synced: false, warning: "Questionnaire enregistré ; suivi des évaluations à vérifier." });
+    }
     const assessmentMap = new Map((assessments ?? []).map((row) => [row.enrolment_id, row.outcome]));
     const feedbackSet = new Set((responses ?? []).map((row) => row.enrolment_id));
     const complete = (active ?? []).length > 0 && (active ?? []).every((row) => assessmentMap.get(row.id) && assessmentMap.get(row.id) !== "pending" && feedbackSet.has(row.id));
-    await admin.from("daily_session_checklist_items").update({ status: complete ? "to_review" : "in_progress" }).eq("organisation_id", token.organisation_id).eq("session_id", token.session_id).eq("item_key", "end_evaluations").neq("status", "not_applicable");
-    return NextResponse.json({ ok: true, submittedAt });
-  } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Enregistrement impossible." }, { status: 500 });
+    const { error: checklistError } = await admin.from("daily_session_checklist_items").update({ status: complete ? "to_review" : "in_progress" }).eq("organisation_id", token.organisation_id).eq("session_id", token.session_id).eq("item_key", "end_evaluations").neq("status", "not_applicable");
+    if (checklistError) return NextResponse.json({ ok: true, submittedAt, checklist_synced: false, warning: "Questionnaire enregistré ; suivi des évaluations à vérifier." });
+    return NextResponse.json({ ok: true, submittedAt, checklist_synced: true });
+  } catch {
+    return NextResponse.json({ error: "Enregistrement temporairement indisponible. Réessayez." }, { status: 503 });
   }
 }
