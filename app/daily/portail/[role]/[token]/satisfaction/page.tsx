@@ -50,6 +50,7 @@ export default function StakeholderSatisfactionPage({ params }: { params: Promis
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
+  const [followupWarning, setFollowupWarning] = useState("");
 
   useEffect(() => {
     async function load() {
@@ -95,6 +96,7 @@ export default function StakeholderSatisfactionPage({ params }: { params: Promis
       setError(payload?.error ?? "Impossible d’enregistrer votre réponse.");
       return;
     }
+    setFollowupWarning(payload?.followupPending ? (payload?.warning ?? "Le suivi administratif reste à synchroniser.") : "");
     setSuccess(true);
   }
 
@@ -132,6 +134,7 @@ export default function StakeholderSatisfactionPage({ params }: { params: Promis
         <section style={s.panel}>
           <h2 style={s.panelTitle}>Merci pour votre retour</h2>
           <p style={s.text}>Votre questionnaire a bien été enregistré. Il sera intégré à l’analyse de satisfaction de la session.</p>
+          {followupWarning ? <p role="status" aria-live="polite" style={s.notice}>{followupWarning}</p> : null}
         </section>
       ) : null}
 
