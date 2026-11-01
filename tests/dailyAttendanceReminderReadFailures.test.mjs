@@ -8,10 +8,11 @@ const sessionId = "session-a";
 const slotId = "slot-a";
 const enrolmentId = "enrolment-a";
 
-function fixture({ recentReadError = false, finalReadError = false, finalStatus = "pending", forbidden = false, correction = false } = {}) {
+function fixture({ recentReadError = false, finalReadError = false, finalStatus = "pending", forbidden = false, correction = false, tokenInsertError = false, sendError = false, previousLinkError = false } = {}) {
   const reads = [];
   const writes = [];
   const sends = [];
+  const events = [];
   let recordReads = 0;
   const admin = {
     from(table) {
@@ -21,10 +22,11 @@ function fixture({ recentReadError = false, finalReadError = false, finalStatus 
       const query = {
         select() { return this; },
         eq(field, value) { filters.push([field, value]); return this; },
+        neq(field, value) { filters.push(["neq:" + field, value]); return this; },
         order() { return this; },
         limit() { return this; },
-        insert(data) { operation = "insert"; payload = data; writes.push({ table, operation, data, filters }); return this; },
-        update(data) { operation = "update"; payload = data; writes.push({ table, operation, data, filters }); return this; },
+        insert(data) { operation = "insert"; payload = data; writes.push({ table, operation, data, filters }); events.push(table + ":insert"); return this; },
+        update(data) { operation = "update"; payload = data; writes.push({ table, operation, data, filters }); events.push(table + ":update"); return this; },
         async maybeSingle() {
           reads.push({ table, filters: [...filters] });
           if (table === "daily_sessions") return { data: { id: sessionId, status: "active", daily_formations: { title: "Formation test" } }, error: null };
@@ -42,11 +44,13 @@ function fixture({ recentReadError = false, finalReadError = false, finalStatus 
         },
         async single() {
           assert.equal(operation, "insert");
+          if (table === "daily_attendance_access_tokens" && tokenInsertError) return { data: null, error: { message: "private SQL detail" } };
           return { data: { id: table === "daily_communications" ? "communication-a" : "access-a" }, error: null };
         },
         then(resolve, reject) {
           assert.equal(operation, "update");
-          return Promise.resolve({ error: null }).then(resolve, reject);
+          const isPreviousRotation = table === "daily_attendance_access_tokens" && filters.some(([key]) => key === "neq:token_hash");
+          return Promise.resolve({ error: isPreviousRotation && previousLinkError ? { message: "private SQL detail" } : null }).then(resolve, reject);
         },
       };
       return query;
@@ -65,14 +69,14 @@ function fixture({ recentReadError = false, finalReadError = false, finalStatus 
     "@/lib/server/dailyAttendanceEmails": {
       prepareDailyAttendanceCorrection: () => ({ subject: "Correction", text: "Texte", html: "<p>Texte</p>" }),
       prepareDailyAttendanceReminder: () => ({ subject: "Relance", text: "Texte", html: "<p>Texte</p>" }),
-      sendDailyAttendanceCorrection: async () => { sends.push("correction"); return { sent: true, message: { providerMessageId: "provider-a" } }; },
-      sendDailyAttendanceReminder: async () => { sends.push("reminder"); return { sent: true, message: { providerMessageId: "provider-a" } }; },
+      sendDailyAttendanceCorrection: async () => { sends.push("correction"); events.push("send"); return sendError ? { sent: false, reason: "provider_failure" } : { sent: true, message: { providerMessageId: "provider-a" } }; },
+      sendDailyAttendanceReminder: async () => { sends.push("reminder"); events.push("send"); return sendError ? { sent: false, reason: "provider_failure" } : { sent: true, message: { providerMessageId: "provider-a" } }; },
     },
   });
   const request = { url: "https://selen.example.test/api/client/daily/attendance/reminder", json: async () => ({
     session_id: sessionId, slot_id: slotId, enrolment_id: enrolmentId,
   }) };
-  return { route, request, reads, writes, sends, get recordReads() { return recordReads; } };
+  return { route, request, reads, writes, sends, events, get recordReads() { return recordReads; } };
 }
 
 test("P0: lecture des anciens jetons en panne = 503 sans réservation ni envoi", async () => {
@@ -139,4 +143,48 @@ test("P0: accès refusé = 403 avant toute lecture et sans envoi", async () => {
   assert.equal(f.reads.length, 0);
   assert.equal(f.writes.length, 0);
   assert.equal(f.sends.length, 0);
+});
+
+test("P0: insertion du nouveau jeton échouée : aucun ancien lien révoqué", async () => {
+  const f = fixture({ tokenInsertError: true });
+  const result = await f.route.POST(f.request);
+  assert.equal(result.status, 500);
+  assert.equal(f.sends.length, 0);
+  assert.equal(f.writes.filter(w => w.table === "daily_attendance_access_tokens" && w.operation === "update").length, 0);
+  assert.doesNotMatch(JSON.stringify(result.body), /private SQL detail/);
+});
+
+test("P0: envoi échoué : seul le nouveau jeton est révoqué", async () => {
+  const f = fixture({ sendError: true });
+  const result = await f.route.POST(f.request);
+  assert.equal(result.status, 503);
+  assert.deepEqual(f.sends, ["reminder"]);
+  const updates = f.writes.filter(w => w.table === "daily_attendance_access_tokens" && w.operation === "update");
+  assert.equal(updates.length, 1);
+  assert.ok(updates[0].filters.some(([key, value]) => key === "id" && value === "access-a"));
+  assert.ok(!updates[0].filters.some(([key]) => key === "neq:token_hash"));
+  assert.ok(f.writes.some(w => w.table === "daily_communications" && w.data.status === "failed"));
+});
+
+test("P0: rotation seulement après envoi et limitée au même OF, session, créneau et apprenant", async () => {
+  const f = fixture();
+  const result = await f.route.POST(f.request);
+  assert.equal(result.status, 200);
+  assert.equal(result.body.previousLinksRevoked, true);
+  const old = f.writes.filter(w => w.table === "daily_attendance_access_tokens" && w.operation === "update");
+  assert.equal(old.length, 1);
+  for (const [key, value] of [["organisation_id", orgId], ["session_id", sessionId], ["slot_id", slotId], ["enrolment_id", enrolmentId], ["neq:token_hash", "hashed-token"]]) {
+    assert.ok(old[0].filters.some(([k, v]) => k === key && v === value), key);
+  }
+  assert.ok(f.events.indexOf("send") < f.events.indexOf("daily_attendance_access_tokens:update"));
+});
+
+test("P0: échec de rotation après envoi : succès avec avertissement", async () => {
+  const f = fixture({ previousLinkError: true });
+  const result = await f.route.POST(f.request);
+  assert.equal(result.status, 200);
+  assert.equal(result.body.previousLinksRevoked, false);
+  assert.match(result.body.warning, /vérification/);
+  assert.deepEqual(f.sends, ["reminder"]);
+  assert.doesNotMatch(JSON.stringify(result.body), /private SQL detail/);
 });
