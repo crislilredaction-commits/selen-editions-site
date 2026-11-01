@@ -11,7 +11,6 @@ const fundingTypes=new Set(["employer","self_funded","opco","public_funder","oth
 const positioningStatuses=new Set(["not_started","sent","submitted","reviewed"]);
 const prerequisiteStatuses=new Set(["not_reviewed","met","not_met","to_clarify"]);
 function text(value:unknown){const result=typeof value==="string"?value.trim():"";return result||null}
-function normalizedEmail(value:unknown){return String(value??"").trim().toLowerCase()}
 async function belongsToOrganisation(admin:any,table:string,id:string,organisationId:string){const{data,error}=await admin.from(table).select("id").eq("id",id).eq("organisation_id",organisationId).maybeSingle();if(error)throw new Error(error.message);return Boolean(data)}
 
 export async function GET(req:Request){
