@@ -148,7 +148,7 @@ test("P0: accès refusé = 403 avant toute lecture et sans envoi", async () => {
 test("P0: insertion du nouveau jeton échouée : aucun ancien lien révoqué", async () => {
   const f = fixture({ tokenInsertError: true });
   const result = await f.route.POST(f.request);
-  assert.equal(result.status, 500);
+  assert.equal(result.status, 503);
   assert.equal(f.sends.length, 0);
   assert.equal(f.writes.filter(w => w.table === "daily_attendance_access_tokens" && w.operation === "update").length, 0);
   assert.doesNotMatch(JSON.stringify(result.body), /private SQL detail/);
