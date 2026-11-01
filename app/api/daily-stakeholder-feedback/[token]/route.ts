@@ -100,7 +100,7 @@ export async function GET(_request: Request, { params }: Params) {
       submitterName: clean(access.entity_name, 200),
       submitterEmail: clean(access.entity_email, 320),
     });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: "Ouverture du formulaire temporairement indisponible." }, { status: 503 });
   }
 }
@@ -148,7 +148,7 @@ export async function POST(request: Request, { params }: Params) {
 
     if (error) return NextResponse.json({ error: "Enregistrement temporairement indisponible." }, { status: 503 });
     return NextResponse.json({ ok: true, reference: data.id, submittedAt: data.created_at, status: data.status });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: "Enregistrement temporairement indisponible." }, { status: 503 });
   }
 }
