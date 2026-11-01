@@ -43,6 +43,7 @@ export default function DailySessionFollowupPage() {
   const [actionTaken, setActionTaken] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [warning, setWarning] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -68,7 +69,7 @@ export default function DailySessionFollowupPage() {
 
   async function createEntry() {
     if (!summary.trim()) return setError("Ajoutez un résumé de ce qui s'est passé.");
-    setBusy(true); setError(""); setMessage("");
+    setBusy(true); setError(""); setMessage(""); setWarning(""); setWarning("");
     const response = await assistanceFetch("/api/client/daily/followup", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -80,6 +81,7 @@ export default function DailySessionFollowupPage() {
     setSummary(""); setDescription(""); setActionTaken(""); setEnrolmentId("");
     setRequestId(crypto.randomUUID());
     setMessage(entryType === "adaptation" ? "Adaptation enregistrée." : "Incident enregistré.");
+    setWarning(typeof data.warning === "string" ? data.warning : "");
     await load(sessionId);
   }
 
@@ -96,6 +98,7 @@ export default function DailySessionFollowupPage() {
     setBusy(false);
     if (!response.ok) return setError(data.error ?? "Mise à jour impossible.");
     setMessage("Suivi clôturé et conservé dans le dossier de session.");
+    setWarning(typeof data.warning === "string" ? data.warning : "");
     await load(sessionId);
   }
 
@@ -104,7 +107,8 @@ export default function DailySessionFollowupPage() {
     <h1>Déroulement, incidents & adaptations</h1>
     <p>Consignez uniquement les événements utiles au dossier : difficulté rencontrée, incident ou adaptation effectivement mise en place.</p>
     {error ? <p style={{ padding: ".7rem", border: "1px solid #8a4b24" }}>{error}</p> : null}
-    {message ? <p style={{ padding: ".7rem", border: "1px solid #6a8a4a" }}>{message}</p> : null}
+    {message ? <p role="status" style={{ padding: ".7rem", border: "1px solid #6a8a4a" }}>{message}</p> : null}
+    {warning ? <p role="alert" style={{ padding: ".7rem", border: "1px solid #b47718", background: "#fff5d6" }}>{warning}</p> : null}
 
     <section style={{ padding: "1rem", background: "#fffaf0", border: "1px solid #d8b989", marginBottom: "1rem" }}>
       <label style={{ display: "grid", gap: ".4rem" }}>Session
