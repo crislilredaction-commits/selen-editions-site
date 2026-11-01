@@ -179,7 +179,7 @@ export async function POST(req: Request) {
     .single();
   if (tokenError || !access) {
     await context.admin.from("daily_communications").update({ status: "failed", failed_at: new Date().toISOString(), failure_reason: tokenError?.message ?? "Lien impossible à créer." }).eq("id", communication.id).eq("organisation_id", context.organisationId);
-    return NextResponse.json({ error: tokenError?.message ?? "Lien impossible à créer." }, { status: 500 });
+    return NextResponse.json({ error: "Lien d’émargement impossible à créer. Aucun message n’a été envoyé." }, { status: 503 });
   }
 
   const origin = new URL(req.url).origin;
