@@ -54,6 +54,7 @@ function fixture() {
   }};
   const route = compile('app/api/client/daily/learners/route.ts', {
     '@/lib/dailyContractingParty': helper,
+    '@/lib/dailyLearnerPortalDirectory': compile('lib/dailyLearnerPortalDirectory.ts'),
     'next/server': {NextResponse:{json:(body,options={})=>({body,status:options.status??200})}},
     '@/lib/server/dailyOrganisationContext': {getDailyOrganisationContext:async()=>({ok:true,admin,organisationId:'org',user:{id:'user'}})},
     '@/lib/server/dailyLearnerPortalAccess': {ensureAndSendLearnerPortalAccess:async()=>{accessCalls++;return {status:'mocked'};}},
