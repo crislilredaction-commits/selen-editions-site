@@ -46,7 +46,6 @@ export async function GET(_request:Request,{params}:Params){
   const learnerEmailRecipientUnique=access.portal_type==="learner"&&hasUniqueDailyLearnerRecipientEmail(access,enrolmentsR.data??[]);
  const activeLearnerEnrolment=learnerMatches.length===1&&!["declined","cancelled","abandoned"].includes(String(learnerMatches[0].status??""))?learnerMatches[0]:null;
  if(access.portal_type==="learner"&&!activeLearnerEnrolment){if(learnerMatches.length>1)return portalJson({error:"Identité apprenant ambiguë. Contactez votre organisme de formation."},{status:409});await supabase.from("daily_portal_access_tokens").update({status:"revoked",updated_at:new Date().toISOString()}).eq("id",access.id);return portalJson({error:"Cette inscription n’est plus active."},{status:403})}
- if(access.status==="pending")await supabase.from("daily_portal_access_tokens").update({status:"viewed",viewed_at:new Date().toISOString()}).eq("id",access.id);
  let learnerDocuments:JsonRecord[]=[];try{learnerDocuments=await loadLearnerDocuments(supabase,session as JsonRecord,activeLearnerEnrolment as JsonRecord|null) as JsonRecord[]}catch{return portalReadFailure()}
  // The learner portal URL is authorized by its active private access token.
  let publicProgramPdfUrl:string|undefined;
@@ -85,5 +84,16 @@ export async function GET(_request:Request,{params}:Params){
  const filteredConventions=access.portal_type==="learner"?(learnerEmailRecipientUnique?conventionRows.filter(c=>c.recipient_type==="beneficiary"&&(entityEmail&&normalizedEmail(c.recipient_email)===entityEmail)):[]):access.portal_type==="enterprise"?conventionRows.filter(c=>c.recipient_type==="company"&&matchesEnterprisePortalRecipient(c.recipient_email,entityEmail)):[];
  const convocationRows=convocationsR.data??[];const filteredConvocations=access.portal_type==="learner"?(learnerEmailRecipientUnique?convocationRows.filter(c=>c.recipient_type==="beneficiary"&&(entityEmail&&normalizedEmail(c.recipient_email)===entityEmail)):[]):access.portal_type==="enterprise"?convocationRows.filter(c=>c.recipient_type==="company"&&matchesEnterprisePortalRecipient(c.recipient_email,entityEmail)):convocationRows.filter(c=>c.recipient_type==="trainer"&&entityEmail&&normalizedEmail(c.recipient_email)===entityEmail);
  const publicSession={id:session.id,internal_reference:session.internal_reference,modality:session.modality,distance_mode:session.distance_mode,blended_elearning_periods:session.blended_elearning_periods,blended_in_person_days:session.blended_in_person_days,schedule_blocks:session.schedule_blocks,location_address:session.location_address,remote_url:session.remote_url,status:session.status,start_date:session.start_date,end_date:session.end_date,max_participants:session.max_participants,daily_formations:session.daily_formations};
+ // Record a view only after the recipient has been authorized and the entire portal has loaded.
+ // The status guard prevents a concurrent revocation from being overwritten by a stale read.
+ if(access.status==="pending"){
+  const viewedAt=new Date().toISOString();
+  const{data:marked,error:markError}=await supabase.from("daily_portal_access_tokens")
+   .update({status:"viewed",viewed_at:viewedAt})
+   .eq("id",access.id).eq("token",clean).eq("status","pending").select("id");
+  if(markError)return portalReadFailure();
+  if(!marked?.length)return portalJson({error:"Cet accès a changé. Actualisez le lien."},{status:409});
+  access.viewed_at=viewedAt;
+ }
  return portalJson({access:{portalType:access.portal_type,roleLabel:portalRole(access.portal_type),entityName:access.entity_name,entityEmail:access.entity_email,viewedAt:access.viewed_at},session:publicSession,onboarding:onboardingR.data,learner,enrolment,company,companies:access.portal_type==="trainer"?companies:company?[company]:[],participants:access.portal_type==="enterprise"?enterpriseParticipants:access.portal_type==="trainer"?[...individualLearners,...companyLearners,...companies.flatMap(item=>asArray(item.participants))]:learner?[learner]:[],participantProgress,trainers:trainersR.data??[],responses:filteredResponses,conventions:filteredConventions,convocations:filteredConvocations,documents:learnerDocuments,...(publicProgramPdfUrl?{publicProgramPdfUrl}:{})})
 }
