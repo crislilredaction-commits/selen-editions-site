@@ -36,6 +36,8 @@ function makeAdmin(failure = {}) {
         select() { return this; },
         eq(key, value) { filters.push(["eq", key, value]); return this; },
         neq(key, value) { filters.push(["neq", key, value]); return this; },
+        is() { return this; },
+        not() { return this; },
         update(value) { operation = "update"; writes.push({ table, operation, value, filters }); return this; },
         upsert(value) { operation = "upsert"; writes.push({ table, operation, value, filters }); return this; },
         insert(value) { operation = "insert"; writes.push({ table, operation, value, filters }); return this; },
@@ -58,7 +60,7 @@ function makeAdmin(failure = {}) {
   return { admin, writes };
 }
 
-function routeWith(admin) {
+function routeWith(admin, { checklistFails = false, documentCalls = [] } = {}) {
   const NextResponse = { json: (body, options = {}) => ({ body, status: options.status ?? 200 }) };
   return load("app/api/client/daily/end-evaluations/route.ts", {
     "next/server": { NextResponse },
@@ -79,8 +81,8 @@ function routeWith(admin) {
       dailyFeedbackExpiresAt: () => "2026-11-30T00:00:00.000Z",
     },
     "@/lib/server/dailyEndEvaluationLifecycle": {
-      refreshDailyEndEvaluationsChecklist: async () => {},
-      tryEnsureDailyPosttrainingDocuments: async () => {},
+      refreshDailyEndEvaluationsChecklist: async () => { if (checklistFails) throw new Error("PRIVATE_SQL_ERROR"); },
+      tryEnsureDailyPosttrainingDocuments: async () => { documentCalls.push("attempted"); },
     },
   });
 }
@@ -179,3 +181,57 @@ test("P0: complete end evaluations still reach to_review when all reads succeed"
   assert.equal(writes[0].table, "daily_session_checklist_items");
   assert.equal(writes[0].value.status, "to_review");
 });
+
+test("P0: prepare blocks on enrolment read failure without writing or leaking SQL", async () => {
+  const { admin, writes } = makeAdmin({ table: "daily_session_enrolments", operation: "read" });
+  const response = await routeWith(admin).POST(request("prepare"));
+  assert.equal(response.status, 503);
+  assert.equal(writes.length, 0);
+  assert.doesNotMatch(JSON.stringify(response.body), /PRIVATE_SQL_ERROR/);
+});
+
+test("P0: prepare reports failed assessment insertion without false success or SQL leak", async () => {
+  const { admin, writes } = makeAdmin({ table: "daily_learning_assessments", operation: "upsert" });
+  const response = await routeWith(admin).POST(request("prepare"));
+  assert.equal(response.status, 503);
+  assert.equal(response.body.ok, undefined);
+  assert.equal(writes.length, 1);
+  assert.doesNotMatch(JSON.stringify(response.body), /PRIVATE_SQL_ERROR/);
+});
+
+test("P0: save_assessment reports failed persistence without false success or SQL leak", async () => {
+  const { admin, writes } = makeAdmin({ table: "daily_learning_assessments", operation: "upsert" });
+  const response = await routeWith(admin).POST(request("save_assessment"));
+  assert.equal(response.status, 503);
+  assert.equal(response.body.ok, undefined);
+  assert.equal(writes.length, 1);
+  assert.doesNotMatch(JSON.stringify(response.body), /PRIVATE_SQL_ERROR/);
+});
+
+for (const action of ["prepare", "save_assessment"]) {
+  test("P0: " + action + " preserves successful persistence and warns on checklist failure", async () => {
+    const { admin, writes } = makeAdmin();
+    const documentCalls = [];
+    const response = await routeWith(admin, { checklistFails: true, documentCalls }).POST(request(action));
+    assert.equal(response.status, 200);
+    assert.equal(response.body.ok, true);
+    assert.equal(response.body.checklist_synced, false);
+    assert.match(response.body.warning, /tâches de suivi/);
+    assert.ok(writes.some((write) => write.table === "daily_learning_assessments" && write.operation === "upsert"));
+    assert.doesNotMatch(JSON.stringify(response.body), /PRIVATE_SQL_ERROR/);
+    if (action === "save_assessment") assert.deepEqual(documentCalls, ["attempted"]);
+  });
+}
+
+for (const action of ["prepare", "save_assessment"]) {
+  test("P0: " + action + " preserves the normal response when checklist succeeds", async () => {
+    const { admin } = makeAdmin();
+    const response = await routeWith(admin).POST(request(action));
+    assert.equal(response.status, 200);
+    assert.equal(response.body.ok, true);
+    assert.equal(response.body.checklist_synced, true);
+    assert.equal(response.body.warning, undefined);
+    if (action === "prepare") assert.ok(response.body.overview);
+    else assert.ok(response.body.assessment);
+  });
+}

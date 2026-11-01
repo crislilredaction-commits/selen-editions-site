@@ -139,7 +139,7 @@ export async function POST(request: Request) {
       .select("id,status")
       .eq("organisation_id", context.organisationId)
       .eq("session_id", sessionId);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return NextResponse.json({ error: "Impossible de vérifier les inscriptions pour le moment." }, { status: 503 });
     const rows = (enrolments ?? []).filter((row) => activeDailyEnrolment(row.status)).map((row) => ({
       organisation_id: context.organisationId,
       session_id: sessionId,
@@ -148,10 +148,21 @@ export async function POST(request: Request) {
     }));
     if (rows.length > 0) {
       const { error: upsertError } = await context.admin.from("daily_learning_assessments").upsert(rows, { onConflict: "session_id,enrolment_id", ignoreDuplicates: true });
-      if (upsertError) return NextResponse.json({ error: upsertError.message }, { status: 500 });
+      if (upsertError) return NextResponse.json({ error: "Impossible de préparer les évaluations pour le moment." }, { status: 503 });
     }
-    await refreshDailyEndEvaluationsChecklist(context.admin, context.organisationId, sessionId);
-    return NextResponse.json({ ok: true, overview: await loadOverview(context.admin, context.organisationId, sessionId) });
+    let checklistSynced = true;
+    try {
+      await refreshDailyEndEvaluationsChecklist(context.admin, context.organisationId, sessionId);
+    } catch {
+      checklistSynced = false;
+    }
+    // The assessment rows were saved: a failed dashboard refresh must not imply they were lost.
+    return NextResponse.json({
+      ok: true,
+      overview: await loadOverview(context.admin, context.organisationId, sessionId),
+      checklist_synced: checklistSynced,
+      ...(checklistSynced ? {} : { warning: "Les évaluations sont préparées, mais les tâches de suivi n'ont pas été synchronisées." }),
+    });
   }
 
   if (action === "save_assessment") {
@@ -186,10 +197,20 @@ export async function POST(request: Request) {
       assessed_at: outcome === "pending" ? null : now,
       updated_at: now,
     }, { onConflict: "session_id,enrolment_id" }).select("*").single();
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    await refreshDailyEndEvaluationsChecklist(context.admin, context.organisationId, sessionId);
+    if (error) return NextResponse.json({ error: "Impossible d'enregistrer l'évaluation pour le moment." }, { status: 503 });
+    let checklistSynced = true;
+    try {
+      await refreshDailyEndEvaluationsChecklist(context.admin, context.organisationId, sessionId);
+    } catch {
+      checklistSynced = false;
+    }
     await tryEnsurePosttrainingDocuments(context.admin, context.organisationId, context.user.id, sessionId);
-    return NextResponse.json({ ok: true, assessment: data });
+    return NextResponse.json({
+      ok: true,
+      assessment: data,
+      checklist_synced: checklistSynced,
+      ...(checklistSynced ? {} : { warning: "L'évaluation est enregistrée, mais les tâches de suivi n'ont pas été synchronisées." }),
+    });
   }
 
   if (action === "create_feedback_link") {
