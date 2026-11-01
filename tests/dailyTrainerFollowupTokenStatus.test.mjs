@@ -30,6 +30,6 @@ test("P0: GET, POST et PATCH passent tous par le même garde formateur", () => {
     const next = route.indexOf("export async function ", start + 1);
     const body = route.slice(start, next < 0 ? undefined : next);
     assert.match(body, /trainerAccess\(text\(token\)\)/);
-    assert.match(body, /if \(!auth\.ok\) return NextResponse\.json/);
+    assert.match(body, /if \(!auth\.ok\) return portalResponse/);
   }
 });
