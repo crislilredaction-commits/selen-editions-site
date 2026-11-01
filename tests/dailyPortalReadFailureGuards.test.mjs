@@ -10,12 +10,13 @@ const compiled = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText;
 
-function makePortal(failedTable = null, role = "trainer") {
+function makePortal(failedTable = null, role = "trainer", options = {}) {
   const calls = [];
   const access = { id: "token-id", token: "valid", portal_type: role, status: "viewed",
-    session_id: "session-1", user_id: "owner-1", entity_key: "learner:learner-1", entity_email: "trainer@example.test" };
+    session_id: "session-1", user_id: "owner-1", entity_key: "learner:learner-1", entity_email: role === "enterprise" ? "enterprise@example.test" : "trainer@example.test" };
   const session = { id: "session-1", organisation_id: "of-1", status: "scheduled", formation_id: "formation-1",
-    beneficiaries: [], individual_beneficiaries: [], companies: [], daily_formations: null };
+    beneficiaries: [], individual_beneficiaries: [], trainer_ids: options.trainerIds ?? [],
+    companies: role === "enterprise" ? [{ name: "Acme", email: "enterprise@example.test" }] : [], daily_formations: null };
   const admin = {
     from(table) {
       calls.push(table);
@@ -24,6 +25,7 @@ function makePortal(failedTable = null, role = "trainer") {
           : table === "daily_sessions" ? session
           : table === "daily_session_enrolments" ? [{ id: "enrol-1", learner_id: "learner-1", status: "active", daily_learners: { id: "learner-1", email: "trainer@example.test" } }]
           : table === "daily_formations" ? { id: "formation-1", organisation_id: "of-1", status: "validated", creation_mode: "selen_form" }
+          : table === "daily_trainers" ? options.trainers ?? []
           : [],
         error: table === failedTable ? { message: "database read failed" } : null,
       });
@@ -52,7 +54,7 @@ function makePortal(failedTable = null, role = "trainer") {
       matchesDailyLearnerPortalAccess: () => true, hasUniqueDailyLearnerRecipientEmail: () => true,
     };
     if (id === "@/lib/daily/enterprisePortalIdentity.mjs") return {
-      resolveEnterprisePortalCompany: () => null, matchesEnterprisePortalRecipient: () => false,
+      resolveEnterprisePortalCompany: () => ({ status: "ok", company: { name: "Acme", email: "enterprise@example.test" } }), matchesEnterprisePortalRecipient: () => false,
     };
     throw new Error("Unexpected module: " + id);
   };
@@ -113,4 +115,33 @@ test("P0 portal: successful private payload is never cached", async () => {
 test("P0 portal: source-programme read failure does not leak SQL details", () => {
   assert.match(source, /if\(sourceError\)return portalReadFailure\(\)/);
   assert.doesNotMatch(source, /(?:accessError|sessionR\.error|enrolmentsR\.error|formationError|sourceError)\.message/);
+});
+
+for (const role of ["learner", "trainer", "enterprise"]) {
+  test("P0 portal: " + role + " sees only trainers assigned to the session", async () => {
+    const portal = makePortal(null, role, {
+      trainerIds: ["assigned-1"],
+      trainers: [
+        { id: "assigned-1", first_name: "Ada", last_name: "Lovelace", email: "ada@example.test" },
+        { id: "unrelated-2", first_name: "Other", last_name: "Trainer", email: "private@example.test" },
+      ],
+    });
+    const response = await portal.GET({}, { params: Promise.resolve({ token: "valid" }) });
+    assert.equal(response.status, 200);
+    assert.deepEqual(JSON.parse(JSON.stringify(response.body.trainers)), [
+      { id: "assigned-1", first_name: "Ada", last_name: "Lovelace",
+        ...(role === "trainer" ? { email: "ada@example.test" } : {}) },
+    ]);
+    assert.equal(response.headers["Cache-Control"], "private, no-store");
+    assert.doesNotMatch(JSON.stringify(response.body), /private@example.test/);
+  });
+}
+
+test("P0 portal: missing session trainer assignment does not reveal the OF directory", async () => {
+  const portal = makePortal(null, "trainer", {
+    trainers: [{ id: "unrelated-2", first_name: "Other", last_name: "Trainer", email: "private@example.test" }],
+  });
+  const response = await portal.GET({}, { params: Promise.resolve({ token: "valid" }) });
+  assert.equal(response.status, 200);
+  assert.deepEqual(Array.from(response.body.trainers), []);
 });
