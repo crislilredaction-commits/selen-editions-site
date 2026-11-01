@@ -106,15 +106,15 @@ export async function GET(request: Request) {
       .eq("organisation_id", context.organisationId)
       .not("status", "in", "(archived,cancelled)")
       .order("end_date", { ascending: false });
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return NextResponse.json({ error: "Impossible de charger les sessions pour le moment." }, { status: 503 });
     return NextResponse.json({ sessions: data ?? [] });
   }
   try {
     const overview = await loadOverview(context.admin, context.organisationId, sessionId);
     if (!overview) return NextResponse.json({ error: "Session introuvable." }, { status: 404 });
     return NextResponse.json({ overview });
-  } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Lecture impossible." }, { status: 500 });
+  } catch {
+    return NextResponse.json({ error: "Impossible de charger les évaluations pour le moment." }, { status: 503 });
   }
 }
 
