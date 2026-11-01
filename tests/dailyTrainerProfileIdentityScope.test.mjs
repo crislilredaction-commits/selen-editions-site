@@ -75,3 +75,57 @@ test("profil formateur : accès délégués bornés à l'OF assisté avant toute
   assert.equal(result.body.trainers[0].sessions[0].portal_access_id, "access-a");
   assert.ok(calls.some((call) => call[0] === "daily_portal_access_tokens" && call[1] === "eq" && call[2] === "organisation_id" && call[3] === "of-a"));
 });
+
+test("assistance formateur : email partagé n'attribue jamais le lien canonique ou historique d'un collègue", async () => {
+  const calls = [];
+  const admin = { from: (table) => queryFor(table, {
+    daily_trainer_profiles: { data: [
+      { id: "trainer-a", professional_email: "shared@example.test" },
+      { id: "trainer-b", professional_email: "shared@example.test" },
+    ], error: null },
+    daily_sessions: { data: [{ id: "session-a", trainer_ids: ["trainer-a", "trainer-b"], daily_formations: { title: "Session" } }], error: null },
+    daily_portal_access_tokens: { data: [
+      { id: "legacy", session_id: "session-a", entity_key: "shared@example.test", entity_email: "shared@example.test", expires_at: null },
+      { id: "canonical-a", session_id: "session-a", entity_key: "trainer:trainer-a", entity_email: "shared@example.test", expires_at: null },
+    ], error: null },
+  }[table], calls) };
+  const api = loadRoute({ delegated: { ok: true, assisted: true, organisationId: "of-a", admin } });
+  const result = await api.GET(new Request("https://example.test/api/client/daily/trainer-profile"));
+  assert.equal(result.status, 200);
+  const byId = Object.fromEntries(result.body.trainers.map(t => [t.id, t.sessions[0].portal_access_id]));
+  assert.equal(byId["trainer-a"], "canonical-a");
+  assert.equal(byId["trainer-b"], null);
+});
+
+test("assistance formateur : lien historique accepté seulement pour une identité email unique dans la session", async () => {
+  const calls = [];
+  const admin = { from: (table) => queryFor(table, {
+    daily_trainer_profiles: { data: [
+      { id: "trainer-a", professional_email: "solo@example.test" },
+      { id: "trainer-b", professional_email: "other@example.test" },
+    ], error: null },
+    daily_sessions: { data: [{ id: "session-a", trainer_ids: ["trainer-a"], daily_formations: { title: "Session" } }], error: null },
+    daily_portal_access_tokens: { data: [
+      { id: "foreign-canonical", session_id: "session-a", entity_key: "trainer:trainer-b", entity_email: "solo@example.test", expires_at: null },
+      { id: "legacy-a", session_id: "session-a", entity_key: "solo@example.test", entity_email: "solo@example.test", expires_at: null },
+    ], error: null },
+  }[table], calls) };
+  const api = loadRoute({ delegated: { ok: true, assisted: true, organisationId: "of-a", admin } });
+  const result = await api.GET(new Request("https://example.test/api/client/daily/trainer-profile"));
+  assert.equal(result.status, 200);
+  assert.equal(result.body.trainers.length, 1);
+  assert.equal(result.body.trainers[0].sessions[0].portal_access_id, "legacy-a");
+});
+
+test("assistance formateur : un jeton canonique étranger ne devient pas un accès par email", async () => {
+  const calls = [];
+  const admin = { from: (table) => queryFor(table, {
+    daily_trainer_profiles: { data: [{ id: "trainer-a", professional_email: "solo@example.test" }], error: null },
+    daily_sessions: { data: [{ id: "session-a", trainer_ids: ["trainer-a"], daily_formations: { title: "Session" } }], error: null },
+    daily_portal_access_tokens: { data: [{ id: "foreign", session_id: "session-a", entity_key: "trainer:other", entity_email: "solo@example.test", expires_at: null }], error: null },
+  }[table], calls) };
+  const api = loadRoute({ delegated: { ok: true, assisted: true, organisationId: "of-a", admin } });
+  const result = await api.GET(new Request("https://example.test/api/client/daily/trainer-profile"));
+  assert.equal(result.status, 200);
+  assert.equal(result.body.trainers[0].sessions[0].portal_access_id, null);
+});
