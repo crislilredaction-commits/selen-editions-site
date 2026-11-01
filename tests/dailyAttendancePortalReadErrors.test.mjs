@@ -134,5 +134,5 @@ test("attendance portal: revoked token is rejected without reading session data"
 test("attendance portal: SQL messages cannot be serialized and endpoint stays read-only", () => {
   assert.doesNotMatch(source, /error:(?:accessError|sessionError|readError)\.message/);
   assert.doesNotMatch(source, /\.(?:insert|update|upsert|delete)\(/);
-  assert.match(source, /\.eq\("session_id",session\.id\\)\.eq\("organisation_id",session\.organisation_id\\)/);
+  assert.ok(source.includes('.eq("session_id",session.id).eq("organisation_id",session.organisation_id)'));
 });
