@@ -88,16 +88,16 @@ test('invalid company validation leaves opposite document current without upload
 });
 for(const failure of ['read','upload','late-upload','insert','render']) test(`${failure} error preserves opposite and replaced contractual documents`,async()=>{
   for(const config of [{documents:[contract()]},{enrolments:[enrolment('one','individual')],documents:[agreement()]},{companies:[{name:'A',siret:'456'}],documents:[agreement()]}]) {
-    const f=fixture({...config,failure}), response=await f.post();assert.equal(response.status,400);assert.match(response.body.error,/failed/);assert.equal(f.rows[0].is_current,true);assert.equal(f.calls.filter(c=>c.operation==='update').length,0);
+    const f=fixture({...config,failure}), response=await f.post();assert.equal(response.status,503);assert.doesNotMatch(response.body.error,/failed|SQL|storage/i);assert.match(response.body.error,/Vérifiez les pièces/);assert.equal(f.rows[0].is_current,true);assert.equal(f.calls.filter(c=>c.operation==='update').length,0);
   }
 });
 test('retirement failure propagates without false success',async()=>{
-  const f=fixture({failure:'retire'}), response=await f.post();assert.equal(response.status,400);assert.equal(response.body.error,'retire failed');assert.equal(f.rows[0].is_current,true);assert.equal(response.body.documents,undefined);
+  const f=fixture({failure:'retire'}), response=await f.post();assert.equal(response.status,503);assert.doesNotMatch(response.body.error,/retire failed/);assert.equal(f.rows[0].is_current,true);assert.equal(response.body.documents,undefined);
 });
 
 test('successful retry after agreement retirement failure leaves exactly one current version',async()=>{
   const f=fixture({documents:[agreement()],failure:'retire'});
-  assert.equal((await f.post()).status,400);
+  assert.equal((await f.post()).status,503);
   f.clearFailure();
   assert.equal((await f.post()).status,200);
   assert.equal(current(f,'training_agreement').length,1);
@@ -106,7 +106,7 @@ for(const failure of ['retire','late-upload']) for(const party of ['company','in
   const original=party==='company'?agreement():contract();
   const type=original.document_type;
   const f=fixture({enrolments:[enrolment('one',party)],documents:[original],failure});
-  assert.equal((await f.post()).status,400);
+  assert.equal((await f.post()).status,503);
   assert.equal(current(f,type).length,2);
   assert.deepEqual(f.rows[0],original);
   const previous=structuredClone(current(f,type));
@@ -134,14 +134,14 @@ test('a successful pack retires the previous convocation only after every replac
 for(const failure of ['late-upload','render']) test(`${failure} preserves the previous canonical convocation`,async()=>{
   const original=convocation(), f=fixture({documents:[original],failure});
   const response=await f.post();
-  assert.equal(response.status,400);
+  assert.equal(response.status,503);
   assert.deepEqual(f.rows[0],original);
   assert.equal(current(f,'convocation').length,1);
   assert.equal(f.calls.filter(call=>call.operation==='update').length,0);
 });
 test('retry after a partial convocation failure leaves exactly one current version per logical document',async()=>{
   const f=fixture({documents:[convocation()],failure:'late-upload'});
-  assert.equal((await f.post()).status,400);
+  assert.equal((await f.post()).status,503);
   assert.equal(current(f,'convocation').length,1);
   f.clearFailure();
   assert.equal((await f.post()).status,200);

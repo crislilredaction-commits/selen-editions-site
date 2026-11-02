@@ -7,8 +7,9 @@ export async function GET(req:Request) {
   const id = new URL(req.url).searchParams.get("id") ?? "";
   if (!id) return NextResponse.json({error:"Document manquant."},{status:400});
   const { data:document,error } = await context.admin.from("daily_documents").select("id,organisation_id,document_type,bucket,storage_path,logical_name,version").eq("id",id).eq("organisation_id",context.organisationId).in("document_type",["training_program","training_agreement","training_contract","convocation","registration_positioning","welcome_booklet","internal_regulations"]).eq("is_current",true).single();
-  if (error || !document) return NextResponse.json({error:"Document introuvable."},{status:404});
+  if (error) return NextResponse.json({error:"Lecture des documents temporairement indisponible."},{status:503,headers:{"Cache-Control":"private, no-store"}});
+  if (!document) return NextResponse.json({error:"Document introuvable."},{status:404});
   const { data:signed,error:signError } = await context.admin.storage.from(document.bucket).createSignedUrl(document.storage_path,120);
-  if (signError || !signed?.signedUrl) return NextResponse.json({error:"Téléchargement indisponible."},{status:500});
-  return NextResponse.redirect(signed.signedUrl);
+  if (signError || !signed?.signedUrl) return NextResponse.json({error:"Téléchargement indisponible."},{status:503,headers:{"Cache-Control":"private, no-store"}});
+  return NextResponse.redirect(signed.signedUrl,{headers:{"Cache-Control":"private, no-store"}});
 }
