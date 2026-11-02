@@ -107,9 +107,10 @@ for(const failure of ['retire','late-upload']) for(const party of ['company','in
   const type=original.document_type;
   const f=fixture({enrolments:[enrolment('one',party)],documents:[original],failure});
   assert.equal((await f.post()).status,503);
-  assert.equal(current(f,type).length,2);
+  assert.equal(current(f,type).length,1,'ancienne version seule courante après échec');
   assert.deepEqual(f.rows[0],original);
   const previous=structuredClone(current(f,type));
+  assert.ok(f.rows.slice(1).every(row=>row.is_current===false));
   f.clearFailure();
   const response=await f.post();
   assert.equal(response.status,200);
