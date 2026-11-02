@@ -1,10 +1,17 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { buildDailyPortalAuthEntryUrl } from "@/lib/server/dailyPortalAuthEntry";
 import { acceptanceEmail, acceptanceRecipients, acceptanceFormationFields, acceptanceSessionFields } from "@/lib/server/dailyAcceptanceEmail";
 import { deliverLearnerEmail, provenDelivery } from "@/lib/server/dailyLearnerEmailDelivery";
 
 function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function hasExpired(value: unknown) {
+  const expiry = text(value);
+  if (!expiry) return false;
+  const timestamp = Date.parse(expiry);
+  return !Number.isFinite(timestamp) || timestamp <= Date.now();
 }
 
 function escapeHtml(value: string) {
@@ -98,7 +105,7 @@ export async function ensureAndSendLearnerPortalAccess(admin: AdminClient, input
   const entityKey = `learner:${learner.id}`;
   const { data: canonicalAccess, error: canonicalError } = await admin
     .from("daily_portal_access_tokens")
-    .select("id,token,status,expires_at,entity_key,entity_email")
+    .select("id,token,status,expires_at,entity_key,entity_email,metadata")
     .eq("session_id", session.id)
     .eq("portal_type", "learner")
     .eq("entity_key", entityKey)
@@ -112,7 +119,7 @@ export async function ensureAndSendLearnerPortalAccess(admin: AdminClient, input
   if (!existingAccess) {
     const { data: legacyAccess, error: legacyError } = await admin
       .from("daily_portal_access_tokens")
-      .select("id,token,status,expires_at,entity_key,entity_email")
+      .select("id,token,status,expires_at,entity_key,entity_email,metadata")
       .eq("session_id", session.id)
       .eq("portal_type", "learner")
       .eq("entity_email", email)
@@ -166,27 +173,50 @@ export async function ensureAndSendLearnerPortalAccess(admin: AdminClient, input
           source,
         },
       })
-      .select("id,token,status,expires_at")
+      .select("id,token,status,expires_at,metadata")
       .single();
     if (createError) throw createError;
     access = created;
-  } else if (["revoked", "expired"].includes(String(access.status ?? ""))) {
+  } else if (["revoked", "expired"].includes(String(access.status ?? "")) || hasExpired(access.expires_at)) {
+    const previousToken = access.token;
     const token = randomBytes(32).toString("base64url");
+    const fingerprint = createHash("sha256").update(token).digest("hex");
+    const oldMetadata = access.metadata && typeof access.metadata === "object" && !Array.isArray(access.metadata) ? access.metadata : {};
     const { data: renewed, error: renewError } = await admin
       .from("daily_portal_access_tokens")
-      .update({ token, status: "pending", viewed_at: null, expires_at: null, entity_name: learnerName || null, entity_email: email, updated_at: new Date().toISOString() })
+      .update({ token, status: "pending", viewed_at: null, expires_at: null, entity_name: learnerName || null, entity_email: email,
+        metadata: { ...oldMetadata, delivery_token_fingerprint: fingerprint }, updated_at: new Date().toISOString() })
       .eq("id", access.id)
-      .select("id,token,status,expires_at")
-      .single();
+      .eq("token", previousToken)
+      .select("id,token,status,expires_at,metadata")
+      .maybeSingle();
     if (renewError) throw renewError;
-    access = renewed;
+    if (renewed) {
+      access = renewed;
+    } else {
+      // A second worker may have renewed this access first. Reuse its new
+      // token rather than overwriting it or sending a stale link.
+      const { data: current, error: currentError } = await admin.from("daily_portal_access_tokens")
+        .select("id,token,status,expires_at,metadata").eq("id", access.id).maybeSingle();
+      if (currentError || !current || current.token === previousToken ||
+        ["revoked", "expired"].includes(String(current.status ?? "")) || hasExpired(current.expires_at)) {
+        throw currentError ?? new Error("Renouvellement concurrent de l'accès apprenant non confirmé.");
+      }
+      access = current;
+    }
   }
 
   const portalUrl = `${input.origin}/daily/portail/learner/${encodeURIComponent(access.token)}`;
   const communicationType = source === "post_signature" ? "learner_start_pack_available" : "learner_portal_access";
+  const tokenFingerprint = createHash("sha256").update(access.token).digest("hex");
+  // Existing, unchanged links keep their historic idempotency key. Renewed
+  // links must not inherit delivery evidence from a previous, expired token.
+  const versionedDelivery = access.metadata?.delivery_token_fingerprint === tokenFingerprint;
+  const deliveryMetadata = versionedDelivery ? { delivery_token_fingerprint: tokenFingerprint } : {};
+  const deliveryKey = `${communicationType}:${enrolment.organisation_id}:${enrolment.id}:${access.id}:${email}${versionedDelivery ? `:${tokenFingerprint}` : ""}`;
   if (force) {
     const cooldownStart = new Date(Date.now() - 60_000).toISOString();
-    const { data: recent, error: recentError } = await admin.from("daily_communications").select("id,status,sent_at,provider_message_id,created_at").eq("organisation_id", enrolment.organisation_id).eq("session_id", session.id).eq("enrolment_id", enrolment.id).eq("communication_type", communicationType).eq("recipient_email", email).contains("metadata", { portal_access_id: access.id, auth_protected: true }).in("status", ["queued", "sent", "delivered"]).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    const { data: recent, error: recentError } = await admin.from("daily_communications").select("id,status,sent_at,provider_message_id,created_at").eq("organisation_id", enrolment.organisation_id).eq("session_id", session.id).eq("enrolment_id", enrolment.id).eq("communication_type", communicationType).eq("recipient_email", email) .contains("metadata", { portal_access_id: access.id, auth_protected: true, ...deliveryMetadata }).in("status", ["queued", "sent", "delivered"]).order("created_at", { ascending: false }).limit(1).maybeSingle();
     if (recentError) throw recentError;
     if (recent?.created_at && recent.created_at >= cooldownStart) return { enrolmentId: enrolment.id, learnerId: learner.id, email, portalAccessId: access.id, status: provenDelivery(recent), communicationId: recent.id, portalUrl };
   }
@@ -199,7 +229,7 @@ export async function ensureAndSendLearnerPortalAccess(admin: AdminClient, input
       .eq("communication_type", communicationType)
       .eq("recipient_email", email)
       .contains("metadata", { portal_access_id: access.id, enrolment_id: enrolment.id })
-      .contains("metadata", { auth_protected: true })
+      .contains("metadata", { auth_protected: true, ...deliveryMetadata })
       .in("status", ["queued", "sent", "delivered", "bounced"])
       .order("created_at", { ascending: false })
       .limit(1)
@@ -211,13 +241,13 @@ export async function ensureAndSendLearnerPortalAccess(admin: AdminClient, input
   }
 
   const delivery = await deliverLearnerEmail(admin, {
-    key: `${communicationType}:${enrolment.organisation_id}:${enrolment.id}:${access.id}:${email}`,
+    key: deliveryKey,
     force,
     row: {
       organisation_id: enrolment.organisation_id, session_id: session.id, enrolment_id: enrolment.id,
       communication_type: communicationType, channel: "email", recipient_email: email,
       recipient_name: learnerName || null, provider: "resend", created_by: input.createdBy ?? session.user_id,
-      metadata: { portal_access_id: access.id, learner_id: learner.id, enrolment_id: enrolment.id, registration_request_id: input.registrationRequestId ?? null, source, auth_protected: true },
+      metadata: { portal_access_id: access.id, learner_id: learner.id, enrolment_id: enrolment.id, registration_request_id: input.registrationRequestId ?? null, source, auth_protected: true, ...deliveryMetadata },
     },
     message: async () => {
       const authUrl = await buildDailyPortalAuthEntryUrl({ email, portalType: "learner", token: access.token });
