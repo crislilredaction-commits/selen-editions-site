@@ -11,7 +11,7 @@
 5. Ne jamais déclarer TERMINÉ sur la seule base de tests verts, fusion ou Vercel READY : une recette bout-en-bout authentifiée et des critères d'acceptation prouvés sont nécessaires. Sans comptes de test : À RECETTER.
 6. Aucune modification de données réelles, signature pour autrui, email réel, migration risquée ou désactivation de protections.
 
-## Chantier actif — actualisé le 02/11/2026 à 04h35 (Paris)
+## Chantier actif — actualisé le 02/11/2026 à 05h40 (Paris)
 - Identifiant : **SELEN-P0-AVANT** (P0-02). P0-01 reste **TESTS AUTOMATISÉS OK / À RECETTER**, bloqué pour la recette authentifiée multi-OF et email sandbox ; il n'est pas terminé.
 - Parcours : préparation → validation → diffusion des documents avant formation → preuve → consultation/téléchargement. **État global : TESTS AUTOMATISÉS OK / À RECETTER** sur #499/#501, sans recette authentifiée.
 - Daily main contrôlée : `cb8f62d4722c868d2326464f113edf35dbbe49c8` (#501 fusionnée, 2274/2274 tests, CI et production READY). Studio main `adcd01565e398b83d8aacebfbde1660c1fe98fd6` (#449).
@@ -154,3 +154,10 @@
 - Branche `fix/p0-avant-convocation-integrity-20261102-0435`, commits code `45e796cc5fa1ad34fb24c2065fa950fe5bf07953`, tests `878ab6e8b35d4881270e74b1b3a0f4a9338e3b6b`. **Candidat CODÉ NON TESTÉ au moment de l'écriture ; CI/Preview non encore validées.** Aucun changement Studio ni donnée réelle.
 - Mesures : 10 total, 0 TERMINÉ, 10 restant, 2 À RECETTER, 8 À AUDITER, 1 bloqué recette authentifiée ; delta clôturé 0.
 - **Prochaine action unique :** CI GitHub et Preview Vercel sur HEAD exacte de la PR (y compris mise à jour de ce fichier), corriger si rouge ; fusionner uniquement après protections puis vérifier production SHA ; sinon laisser PR ouverte avec passation.
+
+## Lot candidat P0-02 — 02/11/2026, 05h40 (Paris)
+- Sources relues : cahier maître, journal complémentaire, Daily main `b1172dd14d2af09f1a66ff32938d6cd6bb714951` (#502 fusionnée), Studio main `adcd01565e398b83d8aacebfbde1660c1fe98fd6` ; PR ouvertes contrôlées, aucune PR concurrente Avant/documents.
+- Maillon manquant confirmé : téléchargement d'un document Avant remplacé/absent : `.single()` renvoyait PGRST116, traité comme panne SQL 503 au lieu de 404. Une exception de stockage pouvait interrompre le parcours ; un emplacement vide ne doit pas être signé. Correction candidate : `.maybeSingle()`, distinction 404/503, refus d'emplacement vide, exceptions de signature maîtrisées, `Cache-Control: private, no-store` sur les réponses privées. Permissions et périmètre OF inchangés.
+- Branche `fix/p0-avant-document-download-reliability-20261102-0540`, lot cohérent : route de téléchargement, tests runtime et test statique, présente fiche unique. **Tests CI/TypeScript/ESLint/build et Preview sur HEAD à vérifier ; ne pas fusionner sans SUCCESS/READY.** Aucun E2E authentifié prétendu.
+- Mesures : 10 parcours, TERMINÉ 0, restant 10, TESTS AUTOMATISÉS OK / À RECETTER 2 (P0-01, P0-02 sur lots précédents), À AUDITER 8, bloqué recette authentifiée 1 ; delta terminés 0, restant 0, bloqués 0.
+- **Prochaine action unique :** vérifier CI et Preview sur SHA finale de ce lot, corriger sur même branche si nécessaire, fusionner uniquement après protections puis vérifier production SHA ; ensuite recette P0-02 complète avec deux OF fictifs, sessions, stockage et messagerie sandbox. Aucun email, signature, donnée réelle, migration ni autre automatisation modifié.
