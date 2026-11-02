@@ -98,3 +98,21 @@
 - Studio main après fusion `adcd01565e398b83d8aacebfbde1660c1fe98fd6`, production Vercel `dpl_3F67ygq1WruLWfnpqVFav6XGCE4s` **READY** sur cette SHA exacte, `aliasError=null`, domaines `studio.selen-editions.fr` et `selen-studio.vercel.app` associés. CI post-fusion Studio main **non prouvée** (workflow PR uniquement, aucune check-run retournée sur la SHA main) ; ne pas la déclarer SUCCESS.
 - L'action réelle `saveAnalysis` a été exécutée en tests isolés Studio pour deux OF/agents fictifs ; la décision OF et le POST public ne sont pas dans **ce même** test inter-dépôts. **P0-01 : TESTS AUTOMATISÉS OK / À RECETTER, pas TERMINÉ**. Mesures 10 total, 0 terminé, 10 restant, 1 à recetter, 9 à auditer, 1 bloqué pour recette authentifiée, delta 0.
 - **Prochaine action unique :** rapprocher les scénarios testés Daily (POST public et décision) et Studio (action réelle), puis exécuter une recette authentifiée complète sur deux OF fictifs avec email sandbox ; sans comptes/sessions, conserver À RECETTER. Ne pas modifier les autres parcours ni les automatisations.
+
+
+## Développement horaire P0-01 — 02/11/2026, 01h41 (Paris) : erreurs décision OF / délégation
+- Daily main initial `271ca8a109a90be83719117482d24337ba9cc29c`, Studio main `adcd01565e398b83d8aacebfbde1660c1fe98fd6`, PR #497/#449 déjà fusionnées. Cahier maître et journal relus ; pas de doublon.
+- Recette authentifiée bloquée faute de comptes fictifs A/B, sessions et emails sandbox. Anomalie confirmée : erreurs SQL brutes des décisions OF et Studio déléguées, matérialisation, régularisation et lecture.
+- Lot sur branche `fix/p0-registration-decision-errors-20261102-0141` : réponses génériques 503 en cas de panne SQL, messages métier explicites 400/403/404/409, aucun changement des RPC, droits, transactions ou envois ; 7 tests runtime de non-divulgation, droits, refus inter-OF, absence de notification.
+- **État candidat** : tests/TypeScript/ESLint/build/CI/Preview à contrôler sur HEAD exacte ; aucune fusion ni production prétendue. Corriger sur même branche si échec.
+- Mesure : 10 parcours, TERMINÉ 0, restant 10, P0-01 TESTS AUTOMATISÉS OK sur lots précédents / À RECETTER authentifié, 9 À AUDITER, 1 bloqué pour recette ; delta terminés 0, bloqués 0.
+- **Prochaine action unique :** valider CI/Preview de ce lot et fusionner uniquement après protections ; puis recette sandbox publique → Studio réelle → décision OF → inscription sur deux OF fictifs, sans données réelles.
+
+- **CI rouge intermédiaire identifiée sur HEAD deed50a7 :** 2252/2256 tests PASS, 4 échecs de non-régression attendent HTTP 409 pour les rejets atomiques PostgreSQL (intégrité 23502/23514 et exception métier P0001). Sept nouveaux tests P0-01 PASS. Correction sur la MÊME branche : conserver 409 sans fuite SQL pour ces codes et ajouter trois tests dédiés ; relancer toute la CI, ne pas fusionner avant SUCCESS.
+
+- **Deuxième contrôle CI sur HEAD 39528bed :** 2258/2259 PASS, dernier échec historique de rejet atomique sans code SQL (`materialization failed`) attendu en HTTP 409. Ajout d'un message métier sûr pour ce cas et d'un test runtime supplémentaire, toujours sur la même PR #498. Nouvelle HEAD à valider intégralement ; pas de fusion sur CI rouge.
+
+### Contrôle technique PR #498 — 02/11/2026 (Paris)
+- HEAD de code `3e99257e1418641348a12177dc44d3f9911d5015` : **2260/2260 tests PASS**, Automated Tests run `41369484285` SUCCESS ; Selen local check runs `41369484298` (PR) et `41369480182` (push) SUCCESS, couvrant tests, TypeScript, ESLint ciblé et build. Les deux HEAD intermédiaires rouges ont été corrigées sur la même branche, sans désactiver les protections.
+- Preview Vercel `dpl_C5wDTWmLHoS1qAHkvSK4aQDN2641` READY, `aliasError=null`, SHA exacte `3e99257e1418641348a12177dc44d3f9911d5015`. PR #498 mergeable. Cette mise à jour documentaire crée une nouvelle HEAD qui doit elle-même repasser CI/Preview avant fusion.
+- **Limite métier :** aucune recette authentifiée ni sandbox inter-dépôts, P0-01 reste TESTS AUTOMATISÉS OK / À RECETTER. 0/10 TERMINÉ, 10 à valider, 1 bloqué pour recette ; delta 0. Prochaine action : contrôles finaux sur HEAD documentaire puis fusion/production SHA, ensuite recette E2E fictive.

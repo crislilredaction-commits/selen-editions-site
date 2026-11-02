@@ -11,6 +11,24 @@ type DecisionStatus = "pending" | "ready_for_of" | "accepted" | "refused";
 type ActorType = "organisation" | "studio_agent";
 type Decision = "accepted" | "refused";
 
+// Keep expected business errors actionable without exposing SQL diagnostics.
+function registrationDecisionFailure(error: { message?: string; code?: string } | null) {
+  const detail = String(error?.message ?? "").toLowerCase();
+  if (detail.includes("analysis required")) return { status: 409, message: "L’analyse Selen doit être terminée avant la décision OF." };
+  if (detail.includes("prerequisites")) return { status: 409, message: "Les prérequis doivent être vérifiés avant la décision." };
+  if (detail.includes("already decided") || error?.code === "23505") return { status: 409, message: "Cette candidature a déjà reçu une décision finale." };
+  if (detail.includes("materialization failed")) return { status: 409, message: "L’inscription n’a pas pu être finalisée. Aucune décision n’a été enregistrée." };
+  if (detail.includes("permission required") || error?.code === "42501") return { status: 403, message: "Action non autorisée pour cet organisme." };
+  if (error?.code === "P0002") return { status: 404, message: "Candidature ou session introuvable." };
+  if (error?.code === "22023") return { status: 400, message: "Paramètres de décision invalides." };
+  // SQL integrity violations and explicit domain exceptions mean the atomic
+  // transaction was rejected; keep 409 without exposing constraint names.
+  if (error?.code === "P0001" || /^23[0-9A-Z]{3}$/.test(String(error?.code ?? ""))) {
+    return { status: 409, message: "La décision n’a pas pu être finalisée. Vérifiez le dossier." };
+  }
+  return { status: 503, message: "La décision est temporairement indisponible. Réessayez dans quelques instants." };
+}
+
 type FormationRow = { id: string; organisation_id: string; title: string; status?: string; previous_version_id?: string | null; allowed_trainer_ids?: unknown };
 type SessionRow = { id: string; formation_id: string; internal_reference?: string | null; start_date?: string | null; end_date?: string | null; status?: string | null };
 type DecisionHistoryRow = { id: string; registration_request_id: string; actor_type: string; actor_user_id: string; decision: string; comment?: string | null; decided_at: string; trainer_profile_id?: string | null; actor_label: string | null };
@@ -260,7 +278,7 @@ export async function GET(req: Request) {
       }; }),
     });
   } catch (cause) {
-    return NextResponse.json({ error: cause instanceof Error ? cause.message : "Chargement des candidatures impossible." }, { status: 500 });
+    return NextResponse.json({ error: "Chargement des candidatures temporairement indisponible." }, { status: 503 });
   }
 }
 
@@ -289,13 +307,8 @@ async function postDelegatedDecision(req: Request, admin: ReturnType<typeof getA
     p_confirmed: true, p_historical_reason: action === "accept_historical" ? reason : null,
   });
   if (error) {
-    const status = error.code === "42501" ? 403 : error.code === "P0002" ? 404 : error.code === "22023" ? 400 : error.code === "PGRST202" ? 503 : 409;
-    const message = error.message.includes("prerequisites") ? "Les prérequis doivent être vérifiés avant la décision."
-      : error.message.includes("analysis required") ? "L’analyse Selen doit être terminée avant la décision."
-        : error.message.includes("already decided") ? "Cette candidature a déjà reçu une décision finale."
-          : status === 403 ? "Délégation expirée, invalide ou hors périmètre."
-            : status === 503 ? "Le parcours de décision déléguée n’est pas encore disponible." : error.message;
-    return NextResponse.json({ error: message }, { status });
+    const failure = registrationDecisionFailure(error);
+    return NextResponse.json({ error: failure.message }, { status: failure.status });
   }
   if (decision === "refused") return NextResponse.json({ ok: true, result: data, materialized: false, delegated: true });
   // Provision only after the SQL transaction (including its durable audit) succeeds.
@@ -334,7 +347,10 @@ export async function POST(req: Request) {
       const { error: reconciliationError } = await access.admin.rpc("daily_accept_historical_registration_request", {
         p_request_id: requestId, p_session_id: sessionId, p_actor_user_id: access.user.id, p_reason: reason,
       });
-      if (reconciliationError) return NextResponse.json({ error: reconciliationError.message }, { status: 409 });
+      if (reconciliationError) {
+        const failure = registrationDecisionFailure(reconciliationError);
+        return NextResponse.json({ error: failure.message }, { status: failure.status });
+      }
       const { learnerAccess, enterpriseAccess } = await provisionAcceptedAccesses(access, requestId, sessionId, req);
       return NextResponse.json({ ok: true, reconciled: true, learner_access: learnerAccess, enterprise_access: enterpriseAccess });
     }
@@ -351,7 +367,10 @@ export async function POST(req: Request) {
       const { data: sessionScope, error: scopeError } = await access.admin.from("daily_sessions").select("id,organisation_id,formation_id").eq("id", sessionId).eq("organisation_id", access.organisationId).eq("formation_id", requestRow.formation_id).not("status", "in", "(archived,cancelled)").maybeSingle();
       if (scopeError || !sessionScope) return NextResponse.json({ error: "Session hors du périmètre de cette candidature." }, { status: 403 });
       const { data, error } = await access.admin.rpc("daily_materialize_registration_request", { p_request_id: requestId, p_session_id: sessionId });
-      if (error) return NextResponse.json({ error: error.message }, { status: 409 });
+      if (error) {
+        const failure = registrationDecisionFailure(error);
+        return NextResponse.json({ error: failure.message }, { status: failure.status });
+      }
       const { learnerAccess, enterpriseAccess } = await provisionAcceptedAccesses(access, requestId, sessionId, req);
       return NextResponse.json({ ok: true, materialized: true, result: data, learner_access: learnerAccess, enterprise_access: enterpriseAccess });
     }
@@ -406,8 +425,8 @@ export async function POST(req: Request) {
     };
     const { data, error } = await access.admin.rpc(rpcName, rpcArgs);
     if (error) {
-      const known = error.message.includes("already decided") ? "Cette candidature a déjà reçu une décision finale." : error.message.includes("analysis required") ? "L’analyse Selen doit être terminée avant la décision OF." : error.message.includes("permission required") ? "Vous n’êtes pas autorisé à statuer sur cette candidature." : error.message;
-      return NextResponse.json({ error: known }, { status: 409 });
+      const failure = registrationDecisionFailure(error);
+      return NextResponse.json({ error: failure.message }, { status: failure.status });
     }
 
     if (decision === "accepted") {
@@ -416,6 +435,6 @@ export async function POST(req: Request) {
     }
     return NextResponse.json({ ok: true, result: data, materialized: false });
   } catch (cause) {
-    return NextResponse.json({ error: cause instanceof Error ? cause.message : "Décision impossible." }, { status: 500 });
+    return NextResponse.json({ error: "Décision temporairement indisponible. Réessayez." }, { status: 503 });
   }
 }
