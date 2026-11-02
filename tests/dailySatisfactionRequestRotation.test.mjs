@@ -4,7 +4,7 @@ import { loadTypeScript } from "./helpers/loadTypeScript.mjs";
 
 const routePath = "app/api/client/daily/end-evaluations/send-satisfaction/route.ts";
 
-function fixture({ fail = "", sent = true, forbidden = false } = {}) {
+function fixture({ fail = "", sent = true, forbidden = false, sessionStatus = "active" } = {}) {
   const operations = [];
   const sends = [];
   const organisationId = "of-a";
@@ -24,7 +24,7 @@ function fixture({ fail = "", sent = true, forbidden = false } = {}) {
           const error = fail === table + ":" + operation ? { message: "PRIVATE_SQL_ERROR" } : null;
           if (operation === "read") {
             const data = {
-              daily_sessions: { id: "session-a", status: "active", end_date: "2026-10-31", daily_formations: { title: "Formation test" } },
+              daily_sessions: { id: "session-a", status: sessionStatus, end_date: "2026-10-31", daily_formations: { title: "Formation test" } },
               daily_session_enrolments: { id: "enrolment-a", status: "active", daily_learners: { first_name: "Camille", last_name: "Test", email: "camille@example.test" } },
               daily_learner_feedback_responses: null,
             };
@@ -40,7 +40,7 @@ function fixture({ fail = "", sent = true, forbidden = false } = {}) {
     },
   };
   const route = loadTypeScript(routePath, {
-    "next/server": { NextResponse: { json: (body, options = {}) => ({ status: options.status ?? 200, body }) } },
+    "next/server": { NextResponse: { json: (body, options = {}) => ({ status: options.status ?? 200, body, headers: options.headers ?? {} }) } },
     "@/lib/server/dailyOrganisationContext": {
       getDailyOrganisationContext: async () => forbidden
         ? { ok: false, status: 403, error: "Accès refusé." }
@@ -126,4 +126,35 @@ test("P0: unauthorised request never reads, writes or sends", async () => {
   assert.equal(result.status, 403);
   assert.equal(f.operations.length, 0);
   assert.equal(f.sends.length, 0);
+});
+
+for (const sessionStatus of ["cancelled", "archived"]) {
+  test("P0-04: satisfaction invitation rejects " + sessionStatus + " session before any write or send", async () => {
+    const f = fixture({ sessionStatus });
+    const result = await f.route.POST(f.request);
+    assert.equal(result.status, 404);
+    assert.equal(f.sends.length, 0);
+    assert.equal(f.operations.length, 0);
+    assert.equal(result.headers["Cache-Control"], "private, no-store");
+  });
+}
+
+for (const table of ["daily_sessions", "daily_session_enrolments", "daily_learner_feedback_responses"]) {
+  test("P0-04: " + table + " read error is private, retryable and cannot send", async () => {
+    const f = fixture({ fail: table + ":read" });
+    const result = await f.route.POST(f.request);
+    assert.equal(result.status, 503);
+    assert.doesNotMatch(JSON.stringify(result.body), /PRIVATE_SQL_ERROR/);
+    assert.equal(result.headers["Cache-Control"], "private, no-store");
+    assert.equal(f.sends.length, 0);
+    assert.equal(f.operations.length, 0);
+  });
+}
+
+test("P0-04: successful satisfaction invitation response cannot be cached", async () => {
+  const f = fixture();
+  const result = await f.route.POST(f.request);
+  assert.equal(result.status, 200);
+  assert.equal(result.headers["Cache-Control"], "private, no-store");
+  assert.equal(f.sends.length, 1);
 });
