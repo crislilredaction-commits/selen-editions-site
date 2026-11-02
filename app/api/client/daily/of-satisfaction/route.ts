@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { getDailyOrganisationContext, getDailyOrganisationReadContext } from "@/lib/server/dailyOrganisationContext";
 
+function privateJson(body: Record<string, unknown>, options: { status?: number } = {}) {
+  return NextResponse.json(body, { ...options, headers: { "Cache-Control": "private, no-store" } });
+}
+
 function clean(value: unknown) { return String(value ?? "").trim(); }
 function rating(value: unknown) {
   const parsed = Number(value);
@@ -16,7 +20,7 @@ function one<T>(value: T | T[] | null | undefined): T | null {
 
 export async function GET(request: Request) {
   const context = await getDailyOrganisationReadContext(request, ["sessions", "trainings"]);
-  if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
+  if (!context.ok) return privateJson({ error: context.error }, { status: context.status });
 
   const { admin, organisationId } = context;
   const { data: dossiers, error: dossierError } = await admin
@@ -24,10 +28,10 @@ export async function GET(request: Request) {
     .select("session_id")
     .eq("organisation_id", organisationId)
     .eq("status", "completed");
-  if (dossierError) return NextResponse.json({ error: dossierError.message }, { status: 500 });
+  if (dossierError) return privateJson({ error: "Impossible de charger les dossiers de session pour le moment." }, { status: 503 });
 
   const sessionIds = [...new Set((dossiers ?? []).map((row) => row.session_id).filter(Boolean))];
-  if (!sessionIds.length) return NextResponse.json({ sessions: [] });
+  if (!sessionIds.length) return privateJson({ sessions: [] });
 
   const [sessionsResult, responsesResult] = await Promise.all([
     admin.from("daily_sessions")
@@ -43,10 +47,10 @@ export async function GET(request: Request) {
       .in("session_id", sessionIds),
   ]);
   const error = sessionsResult.error ?? responsesResult.error;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return privateJson({ error: "Impossible de charger les réponses de satisfaction pour le moment." }, { status: 503 });
   const responseBySession = new Map((responsesResult.data ?? []).map((row) => [row.session_id, row]));
 
-  return NextResponse.json({
+  return privateJson({
     sessions: (sessionsResult.data ?? []).map((session) => ({
       id: session.id,
       reference: session.internal_reference,
@@ -60,14 +64,14 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const context = await getDailyOrganisationContext(request, "sessions");
-  if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
-  if (context.assisted) return NextResponse.json({ error: "La satisfaction OF doit être transmise par l’organisme de formation." }, { status: 403 });
+  if (!context.ok) return privateJson({ error: context.error }, { status: context.status });
+  if (context.assisted) return privateJson({ error: "La satisfaction OF doit être transmise par l’organisme de formation." }, { status: 403 });
 
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
-  if (!body) return NextResponse.json({ error: "Réponse invalide." }, { status: 400 });
+  if (!body) return privateJson({ error: "Réponse invalide." }, { status: 400 });
   const sessionId = clean(body.session_id);
   const overallRating = rating(body.overall_rating);
-  if (!sessionId || overallRating === null) return NextResponse.json({ error: "La session et une note de 1 à 5 sont obligatoires." }, { status: 400 });
+  if (!sessionId || overallRating === null) return privateJson({ error: "La session et une note de 1 à 5 sont obligatoires." }, { status: 400 });
 
   const { admin, organisationId, user } = context;
   const [{ data: session, error: sessionError }, { data: dossier, error: dossierError }] = await Promise.all([
@@ -75,13 +79,13 @@ export async function POST(request: Request) {
     admin.from("daily_session_dossiers").select("id,status").eq("session_id", sessionId).eq("organisation_id", organisationId).eq("status", "completed").maybeSingle(),
   ]);
   const readError = sessionError ?? dossierError;
-  if (readError) return NextResponse.json({ error: readError.message }, { status: 500 });
-  if (!session || !dossier) return NextResponse.json({ error: "La satisfaction OF n’est disponible qu’après clôture du dossier de session." }, { status: 409 });
+  if (readError) return privateJson({ error: "Impossible de vérifier la clôture de la session pour le moment." }, { status: 503 });
+  if (!session || !dossier) return privateJson({ error: "La satisfaction OF n’est disponible qu’après clôture du dossier de session." }, { status: 409 });
 
   const { data: existing, error: existingError } = await admin.from("daily_stakeholder_satisfaction_responses")
-    .select("id").eq("session_id", sessionId).eq("stakeholder_type", "client").eq("entity_key", organisationId).maybeSingle();
-  if (existingError) return NextResponse.json({ error: existingError.message }, { status: 500 });
-  if (existing) return NextResponse.json({ error: "Votre retour a déjà été transmis pour cette session." }, { status: 409 });
+    .select("id").eq("organisation_id", organisationId).eq("session_id", sessionId).eq("stakeholder_type", "client").eq("entity_key", organisationId).maybeSingle();
+  if (existingError) return privateJson({ error: "Impossible de vérifier les réponses existantes pour le moment." }, { status: 503 });
+  if (existing) return privateJson({ error: "Votre retour a déjà été transmis pour cette session." }, { status: 409 });
 
   const strengths = optionalText(body.strengths);
   const improvements = optionalText(body.improvements);
@@ -97,7 +101,8 @@ export async function POST(request: Request) {
     improvements,
     free_comment: freeComment,
   }).select("id,submitted_at").single();
-  if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
+  if (insertError?.code === "23505") return privateJson({ error: "Votre retour a déjà été transmis pour cette session." }, { status: 409 });
+  if (insertError || !inserted) return privateJson({ error: "Impossible d’enregistrer votre retour pour le moment." }, { status: 503 });
 
   const formationTitle = one(session.daily_formations)?.title ?? "Formation Daily";
   const noteParts = [
@@ -122,7 +127,7 @@ export async function POST(request: Request) {
     author_role: "Organisme de formation",
     author_name: clean(user.email) || "Organisme de formation",
   });
-  if (followupError) return NextResponse.json({ ok: true, response: inserted, warning: "Réponse enregistrée, mais la trace de suivi n’a pas pu être ajoutée." }, { status: 207 });
+  if (followupError) return privateJson({ ok: true, response: inserted, warning: "Réponse enregistrée, mais la trace de suivi n’a pas pu être ajoutée." }, { status: 207 });
 
-  return NextResponse.json({ ok: true, response: inserted }, { status: 201 });
+  return privateJson({ ok: true, response: inserted }, { status: 201 });
 }
