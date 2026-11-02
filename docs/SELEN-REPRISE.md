@@ -111,3 +111,8 @@
 - **CI rouge intermédiaire identifiée sur HEAD deed50a7 :** 2252/2256 tests PASS, 4 échecs de non-régression attendent HTTP 409 pour les rejets atomiques PostgreSQL (intégrité 23502/23514 et exception métier P0001). Sept nouveaux tests P0-01 PASS. Correction sur la MÊME branche : conserver 409 sans fuite SQL pour ces codes et ajouter trois tests dédiés ; relancer toute la CI, ne pas fusionner avant SUCCESS.
 
 - **Deuxième contrôle CI sur HEAD 39528bed :** 2258/2259 PASS, dernier échec historique de rejet atomique sans code SQL (`materialization failed`) attendu en HTTP 409. Ajout d'un message métier sûr pour ce cas et d'un test runtime supplémentaire, toujours sur la même PR #498. Nouvelle HEAD à valider intégralement ; pas de fusion sur CI rouge.
+
+### Contrôle technique PR #498 — 02/11/2026 (Paris)
+- HEAD de code `3e99257e1418641348a12177dc44d3f9911d5015` : **2260/2260 tests PASS**, Automated Tests run `41369484285` SUCCESS ; Selen local check runs `41369484298` (PR) et `41369480182` (push) SUCCESS, couvrant tests, TypeScript, ESLint ciblé et build. Les deux HEAD intermédiaires rouges ont été corrigées sur la même branche, sans désactiver les protections.
+- Preview Vercel `dpl_C5wDTWmLHoS1qAHkvSK4aQDN2641` READY, `aliasError=null`, SHA exacte `3e99257e1418641348a12177dc44d3f9911d5015`. PR #498 mergeable. Cette mise à jour documentaire crée une nouvelle HEAD qui doit elle-même repasser CI/Preview avant fusion.
+- **Limite métier :** aucune recette authentifiée ni sandbox inter-dépôts, P0-01 reste TESTS AUTOMATISÉS OK / À RECETTER. 0/10 TERMINÉ, 10 à valider, 1 bloqué pour recette ; delta 0. Prochaine action : contrôles finaux sur HEAD documentaire puis fusion/production SHA, ensuite recette E2E fictive.
