@@ -88,7 +88,7 @@ test('invalid company validation leaves opposite document current without upload
 });
 for(const failure of ['read','upload','late-upload','insert','render']) test(`${failure} error preserves opposite and replaced contractual documents`,async()=>{
   for(const config of [{documents:[contract()]},{enrolments:[enrolment('one','individual')],documents:[agreement()]},{companies:[{name:'A',siret:'456'}],documents:[agreement()]}]) {
-    const f=fixture({...config,failure}), response=await f.post();assert.equal(response.status,503);assert.doesNotMatch(response.body.error,/failed|SQL|storage/i);assert.match(response.body.error,/Vérifiez les pièces/);assert.equal(f.rows[0].is_current,true);assert.equal(f.calls.filter(c=>c.operation==='update').length,0);
+    const f=fixture({...config,failure}), response=await f.post();assert.equal(response.status,503);assert.doesNotMatch(response.body.error,/failed|SQL|storage/i);assert.match(response.body.error,/Vérifiez les pièces/);assert.equal(f.rows[0].is_current,true);const updates=f.calls.filter(c=>c.operation==='update');assert.equal(updates.length,['late-upload','render'].includes(failure)?1:0);assert.ok(f.rows.slice(1).every(row=>row.is_current===false));
   }
 });
 test('retirement failure propagates without false success',async()=>{
