@@ -3,6 +3,10 @@ import { getDailyOrganisationContext } from "@/lib/server/dailyOrganisationConte
 import { activeDailyEnrolment, createDailyFeedbackToken, dailyFeedbackExpiresAt, dailyFeedbackPath } from "@/lib/server/dailyEndEvaluations";
 import { prepareDailySatisfactionRequestEmail, sendDailySatisfactionRequest } from "@/lib/server/dailyEndEvaluationEmails";
 
+function privateJson(body: Record<string, unknown>, options: { status?: number } = {}) {
+  return NextResponse.json(body, { ...options, headers: { "Cache-Control": "private, no-store" } });
+}
+
 function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -14,16 +18,16 @@ function one<T>(value: T | T[] | null | undefined): T | null {
 
 export async function POST(request: Request) {
   const context = await getDailyOrganisationContext(request, "sessions");
-  if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
+  if (!context.ok) return privateJson({ error: context.error }, { status: context.status });
   if (context.assisted) {
-    return NextResponse.json({ error: "L’assistance agent est en lecture seule." }, { status: 403 });
+    return privateJson({ error: "L’assistance agent est en lecture seule." }, { status: 403 });
   }
 
   const body = await request.json().catch(() => ({})) as Record<string, unknown>;
   const sessionId = text(body.session_id);
   const enrolmentId = text(body.enrolment_id);
   if (!sessionId || !enrolmentId) {
-    return NextResponse.json({ error: "Session et inscription requises." }, { status: 400 });
+    return privateJson({ error: "Session et inscription requises." }, { status: 400 });
   }
 
   const [{ data: session, error: sessionError }, { data: enrolment, error: enrolmentError }] = await Promise.all([
@@ -43,13 +47,13 @@ export async function POST(request: Request) {
   ]);
 
   if (sessionError || enrolmentError) {
-    return NextResponse.json({ error: sessionError?.message ?? enrolmentError?.message ?? "Lecture impossible." }, { status: 500 });
+    return privateJson({ error: "Impossible de vérifier la session et l’inscription pour le moment." }, { status: 503 });
   }
-  if (!session || session.status === "archived") {
-    return NextResponse.json({ error: "Session introuvable ou archivée." }, { status: 404 });
+  if (!session || ["archived", "cancelled"].includes(session.status)) {
+    return privateJson({ error: "Session introuvable, annulée ou archivée." }, { status: 404 });
   }
   if (!enrolment || !activeDailyEnrolment(enrolment.status)) {
-    return NextResponse.json({ error: "Inscription introuvable ou inactive." }, { status: 404 });
+    return privateJson({ error: "Inscription introuvable ou inactive." }, { status: 404 });
   }
 
   const { data: existingFeedback, error: feedbackError } = await context.admin
@@ -59,16 +63,16 @@ export async function POST(request: Request) {
     .eq("session_id", sessionId)
     .eq("enrolment_id", enrolmentId)
     .maybeSingle();
-  if (feedbackError) return NextResponse.json({ error: feedbackError.message }, { status: 500 });
+  if (feedbackError) return privateJson({ error: "Impossible de vérifier les réponses de satisfaction pour le moment." }, { status: 503 });
   if (existingFeedback) {
-    return NextResponse.json({ error: "Le questionnaire de satisfaction a déjà été complété." }, { status: 409 });
+    return privateJson({ error: "Le questionnaire de satisfaction a déjà été complété." }, { status: 409 });
   }
 
   const learner = one(enrolment.daily_learners as { first_name?: string | null; last_name?: string | null; email?: string | null } | { first_name?: string | null; last_name?: string | null; email?: string | null }[] | null);
   const email = text(learner?.email).toLowerCase();
   const learnerName = [learner?.first_name, learner?.last_name].map(text).filter(Boolean).join(" ");
   if (!email) {
-    return NextResponse.json({ error: "Aucune adresse e-mail n’est enregistrée pour cet apprenant." }, { status: 400 });
+    return privateJson({ error: "Aucune adresse e-mail n’est enregistrée pour cet apprenant." }, { status: 400 });
   }
 
   const formation = one(session.daily_formations as { title?: string | null } | { title?: string | null }[] | null);
@@ -93,7 +97,7 @@ export async function POST(request: Request) {
     .select("id")
     .single();
   if (tokenError || !tokenRow) {
-    return NextResponse.json({ error: "Impossible de préparer le lien de satisfaction. Réessayez." }, { status: 503 });
+    return privateJson({ error: "Impossible de préparer le lien de satisfaction. Réessayez." }, { status: 503 });
   }
 
   const feedbackUrl = new URL(dailyFeedbackPath(token), request.url).toString();
@@ -130,7 +134,7 @@ export async function POST(request: Request) {
       .update({ status: "revoked" })
       .eq("id", tokenRow.id)
       .eq("organisation_id", context.organisationId);
-    return NextResponse.json({ error: "La preuve d’envoi n’a pas pu être réservée. Le message n’a pas été envoyé et le lien a été révoqué." }, { status: 500 });
+    return privateJson({ error: "La preuve d’envoi n’a pas pu être réservée. Le message n’a pas été envoyé et le lien a été révoqué." }, { status: 500 });
   }
 
   const sent = await sendDailySatisfactionRequest(emailInput);
@@ -148,7 +152,7 @@ export async function POST(request: Request) {
         .eq("id", communication.id)
         .eq("organisation_id", context.organisationId),
     ]);
-    return NextResponse.json({ error: "La demande de satisfaction n’a pas pu être envoyée. Le lien a été révoqué et la tentative est conservée." }, { status: 503 });
+    return privateJson({ error: "La demande de satisfaction n’a pas pu être envoyée. Le lien a été révoqué et la tentative est conservée." }, { status: 503 });
   }
 
   // Sending succeeded: revoke only older links in this exact OF/session/enrolment.
@@ -185,7 +189,7 @@ export async function POST(request: Request) {
     console.error("Daily : satisfaction envoyée mais finalisation de la preuve impossible", finalizeError);
   }
 
-  return NextResponse.json({
+  return privateJson({
     ok: true,
     sentTo: email,
     sentAt,
