@@ -3,7 +3,7 @@ import test from "node:test";
 import { loadTypeScript } from "./helpers/loadTypeScript.mjs";
 import { isValidPortalExpiry } from "../lib/daily/portalAttendanceAccess.mjs";
 
-function fixture({ expiry = "2099-01-01T00:00:00Z", accessError = false, verificationExpiry = "not-a-date" } = {}) {
+function fixture({ expiry = "2099-01-01T00:00:00Z", accessError = false, verificationExpiry = "not-a-date", sessionStatus = "active" } = {}) {
   const reads = [];
   const writes = [];
   const token = {
@@ -27,7 +27,7 @@ function fixture({ expiry = "2099-01-01T00:00:00Z", accessError = false, verific
           }
           const data = {
             daily_attendance_slots: { id: "slot-1", status: "open", slot_date: "2026-11-01" },
-            daily_sessions: { id: "session-1", internal_reference: "S1", daily_formations: { title: "Test" } },
+            daily_sessions: { id: "session-1", status: sessionStatus, internal_reference: "S1", daily_formations: { title: "Test" } },
             daily_learners: { id: "learner-1", email: "alice@example.test", first_name: "Alice" },
             daily_session_enrolments: { id: "enrolment-1", learner_id: "learner-1", status: "active" },
             daily_attendance_verifications: { id: "verification-1", status: "pending", expires_at: verificationExpiry },
@@ -114,4 +114,18 @@ test("P0: malformed verification expiry rejects a shared attendance signature be
   assert.match(response.body.error, /expiré/);
   assert.ok(f.writes.some(write => write.table === "daily_attendance_verifications" && write.value.status === "expired"));
   assert.ok(!f.writes.some(write => write.table === "daily_attendance_records"));
+});
+
+test("P0-03: un ancien lien actif ne permet ni lecture ni demande de code après annulation ou archivage", async () => {
+  for (const sessionStatus of ["cancelled", "archived"]) {
+    const f = fixture({ sessionStatus });
+    const get = await f.get();
+    const post = await f.post({ action: "request_code", email: "alice@example.test" });
+    assert.equal(get.status, 410, sessionStatus);
+    assert.equal(post.status, 410, sessionStatus);
+    assert.equal(get.headers["Cache-Control"], "private, no-store");
+    assert.equal(post.headers["Cache-Control"], "private, no-store");
+    assert.ok(!f.reads.includes("daily_attendance_verifications"), sessionStatus);
+    assert.deepEqual(f.writes, [], sessionStatus);
+  }
 });
