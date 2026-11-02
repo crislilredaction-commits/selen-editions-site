@@ -17,6 +17,7 @@ function registrationDecisionFailure(error: { message?: string; code?: string } 
   if (detail.includes("analysis required")) return { status: 409, message: "L’analyse Selen doit être terminée avant la décision OF." };
   if (detail.includes("prerequisites")) return { status: 409, message: "Les prérequis doivent être vérifiés avant la décision." };
   if (detail.includes("already decided") || error?.code === "23505") return { status: 409, message: "Cette candidature a déjà reçu une décision finale." };
+  if (detail.includes("materialization failed")) return { status: 409, message: "L’inscription n’a pas pu être finalisée. Aucune décision n’a été enregistrée." };
   if (detail.includes("permission required") || error?.code === "42501") return { status: 403, message: "Action non autorisée pour cet organisme." };
   if (error?.code === "P0002") return { status: 404, message: "Candidature ou session introuvable." };
   if (error?.code === "22023") return { status: 400, message: "Paramètres de décision invalides." };

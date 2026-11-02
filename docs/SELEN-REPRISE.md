@@ -109,3 +109,5 @@
 - **Prochaine action unique :** valider CI/Preview de ce lot et fusionner uniquement après protections ; puis recette sandbox publique → Studio réelle → décision OF → inscription sur deux OF fictifs, sans données réelles.
 
 - **CI rouge intermédiaire identifiée sur HEAD deed50a7 :** 2252/2256 tests PASS, 4 échecs de non-régression attendent HTTP 409 pour les rejets atomiques PostgreSQL (intégrité 23502/23514 et exception métier P0001). Sept nouveaux tests P0-01 PASS. Correction sur la MÊME branche : conserver 409 sans fuite SQL pour ces codes et ajouter trois tests dédiés ; relancer toute la CI, ne pas fusionner avant SUCCESS.
+
+- **Deuxième contrôle CI sur HEAD 39528bed :** 2258/2259 PASS, dernier échec historique de rejet atomique sans code SQL (`materialization failed`) attendu en HTTP 409. Ajout d'un message métier sûr pour ce cas et d'un test runtime supplémentaire, toujours sur la même PR #498. Nouvelle HEAD à valider intégralement ; pas de fusion sur CI rouge.

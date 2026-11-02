@@ -89,3 +89,9 @@ for(const code of ['23502','23514','P0001']) test('P0-01 échec atomique '+code+
   await safe(await h.route.POST(h.request()),409,/décision.*finalisée/i);
   assert.equal(h.rpcCalls,1);assert.equal(h.notifications,0);
 });
+
+test('P0-01 échec de matérialisation sans code SQL : conflit sûr et aucune notification',async()=>{
+  const h=fixture({rpcError:{message:'materialization failed'}});
+  await safe(await h.route.POST(h.request()),409,/inscription.*finalisée/i);
+  assert.equal(h.rpcCalls,1);assert.equal(h.notifications,0);
+});
