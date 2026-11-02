@@ -143,3 +143,72 @@ for (const mode of ["personal", "delegated"]) {
     }
   });
 }
+
+
+function workspaceFixture(options = {}) {
+  const queries = [];
+  const admin = {
+    from(table) {
+      const filters = [];
+      queries.push({ table, filters });
+      const query = {
+        select() { return this; },
+        eq(key, value) { filters.push([key, value]); return this; },
+        neq() { return this; },
+        not() { return this; },
+        in() { return this; },
+        order() { return this; },
+        then(resolve, reject) {
+          const signatureRead = table === "daily_documents" && filters.some(([key, value]) => key === "document_type" && value === "trainer_signature_evidence");
+          const error = options.sqlError && table === "daily_attendance_slots" || options.signatureError && signatureRead
+            ? { message: SQL_SECRET } : null;
+          return Promise.resolve({ data: error ? null : [], error }).then(resolve, reject);
+        },
+      };
+      return query;
+    },
+  };
+  const context = { ok: true, admin, orgId: ORG, trainerId: TRAINER, trainerName: "Formateur", user: { id: "user-a" } };
+  const api = loadTypeScript("app/api/client/daily/trainer-session-workspace/route.ts", {
+    "next/server": next,
+    "@/lib/server/dailyTrainerPersonalSignature": { recordDailyTrainerPersonalSignature() {} },
+    "@/lib/server/dailyEndEvaluationLifecycle": { refreshDailyEndEvaluationsChecklist() {}, tryEnsureDailyPosttrainingDocuments() {} },
+    "@/lib/server/dailyAttendanceChecklist": { refreshDailyAttendanceChecklist() {} },
+    "@/lib/server/dailyEndEvaluations": { activeDailyEnrolment: () => true },
+    "@/lib/server/dailyTrainerWorkspaceContext": {
+      getDailyTrainerWorkspaceContext: async () => options.unauthorized ? { ok: false, status: 403, error: "Accès refusé" } : context,
+      getAssignedDailyTrainerSession: async () => options.unassigned ? null : { id: SESSION, trainer_ids: [TRAINER] },
+    },
+  });
+  return { get: () => api.GET({ url: "https://daily.invalid/api/client/daily/trainer-session-workspace?session_id=" + SESSION }), queries };
+}
+
+test("P0-08 espace formateur : liste privée, bornée à l'OF et à la session", async () => {
+  const f = workspaceFixture();
+  const r = await f.get();
+  assert.equal(r.status, 200);
+  assert.equal(r.headers["Cache-Control"], "private, no-store");
+  assert.equal(f.queries.length, 5);
+  for (const q of f.queries) {
+    assert.ok(q.filters.some(([key, value]) => key === "organisation_id" && value === ORG));
+    assert.ok(q.filters.some(([key, value]) => key === "session_id" && value === SESSION));
+  }
+});
+
+test("P0-08 espace formateur : panne SQL ou signature non divulguée, aucun résultat partiel", async () => {
+  for (const options of [{ sqlError: true }, { signatureError: true }]) {
+    const f = workspaceFixture(options);
+    const r = await f.get();
+    assert.equal(r.status, 503);
+    assert.equal(r.headers["Cache-Control"], "private, no-store");
+    assert.doesNotMatch(JSON.stringify(r.body), /SQL PRIVATE|organisation_id/);
+    assert.equal(r.body.session, undefined);
+  }
+  for (const options of [{ unauthorized: true }, { unassigned: true }]) {
+    const f = workspaceFixture(options);
+    const r = await f.get();
+    assert.equal(r.status, options.unauthorized ? 403 : 404);
+    assert.equal(f.queries.length, 0);
+    assert.equal(r.headers["Cache-Control"], "private, no-store");
+  }
+});
