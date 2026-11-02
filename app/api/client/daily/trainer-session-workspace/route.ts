@@ -5,19 +5,22 @@ import { refreshDailyAttendanceChecklist } from "@/lib/server/dailyAttendanceChe
 import { activeDailyEnrolment } from "@/lib/server/dailyEndEvaluations";
 import { getAssignedDailyTrainerSession, getDailyTrainerWorkspaceContext } from "@/lib/server/dailyTrainerWorkspaceContext";
 
+const trainerPrivateJson = (body: unknown, init: { status?: number } = {}) =>
+  NextResponse.json(body, { ...init, headers: { "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } });
+
 const text = (value: unknown) => String(value ?? "").trim();
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ACQUISITION_OUTCOME: Record<string, string> = { acquis: "achieved", en_cours: "partially_achieved", non_acquis: "not_achieved" };
 
 export async function GET(request: Request) {
   const context = await getDailyTrainerWorkspaceContext();
-  if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
+  if (!context.ok) return trainerPrivateJson({ error: context.error }, { status: context.status });
   const sessionId = new URL(request.url).searchParams.get("session_id") ?? "";
-  if (!sessionId) return NextResponse.json({ error: "Session requise." }, { status: 400 });
+  if (!sessionId) return trainerPrivateJson({ error: "Session requise." }, { status: 400 });
   let session: Awaited<ReturnType<typeof getAssignedDailyTrainerSession>>;
   try { session = await getAssignedDailyTrainerSession(context, sessionId); }
-  catch { return NextResponse.json({ error: "Impossible de vérifier l’affectation de cette session." }, { status: 500 }); }
-  if (!session) return NextResponse.json({ error: "Session non affectée à ce formateur." }, { status: 404 });
+  catch { return trainerPrivateJson({ error: "Impossible de vérifier l’affectation de cette session." }, { status: 500 }); }
+  if (!session) return trainerPrivateJson({ error: "Session non affectée à ce formateur." }, { status: 404 });
   const [enrolmentsResult, slotsResult, recordsResult, documentsResult] = await Promise.all([
     context.admin.from("daily_session_enrolments").select("id,learner_id,status,daily_learners(id,first_name,last_name,email)").eq("organisation_id", context.orgId).eq("session_id", sessionId).not("status", "in", "(cancelled,declined,abandoned)"),
     context.admin.from("daily_attendance_slots").select("*").eq("organisation_id", context.orgId).eq("session_id", sessionId).neq("status", "cancelled").order("slot_date").order("starts_at"),
@@ -25,13 +28,13 @@ export async function GET(request: Request) {
     context.admin.from("daily_documents").select("id,document_type,logical_name,mime_type,created_at,metadata,enrolment_id,status,version").eq("organisation_id", context.orgId).eq("session_id", sessionId).eq("is_current", true).neq("status", "archived").in("document_type", ["trainer_resource", "attendance_paper_evidence", "learning_assessment_evidence"]).order("created_at", { ascending: false }),
   ]);
   const error = enrolmentsResult.error ?? slotsResult.error ?? recordsResult.error ?? documentsResult.error;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return trainerPrivateJson({ error: "Lecture de l’espace formateur temporairement indisponible." }, { status: 503 });
   const enrolments = enrolmentsResult.data ?? [], slots = slotsResult.data ?? [];
   const enrolmentIds = new Set(enrolments.map(row => row.id)), slotIds = new Set(slots.map(row => row.id));
   const records = (recordsResult.data ?? []).filter(row => enrolmentIds.has(row.enrolment_id) && slotIds.has(row.slot_id));
   const {data:signatures,error:signatureError}=await context.admin.from("daily_documents").select("id,signed_at,metadata").eq("organisation_id",context.orgId).eq("session_id",sessionId).eq("document_type","trainer_signature_evidence").eq("status","signed").eq("is_current",true);
-  if(signatureError)return NextResponse.json({error:signatureError.message},{status:500});
-  return NextResponse.json({ session, enrolments, slots, records, documents: documentsResult.data ?? [], trainer_signatures:(signatures??[]).filter(doc=>doc.metadata?.trainer_profile_id===context.trainerId) });
+  if(signatureError)return trainerPrivateJson({error:"Lecture des signatures temporairement indisponible."},{status:503});
+  return trainerPrivateJson({ session, enrolments, slots, records, documents: documentsResult.data ?? [], trainer_signatures:(signatures??[]).filter(doc=>doc.metadata?.trainer_profile_id===context.trainerId) });
 }
 
 export async function POST(request: Request) {

@@ -57,7 +57,7 @@ test("les espaces personnel et délégué partagent les présences actives de la
  assert.deepEqual(p.records.map(row=>row.id),delegated.records.map(row=>row.id));assert.equal(p.records.length,1);assert.equal(p.enrolments.length,1);assert.equal(JSON.stringify(h.db),before);
 });
 for(const failTable of ["daily_session_enrolments","daily_attendance_slots","daily_attendance_records","daily_documents"])test(`l'accès personnel signale l'échec ${failTable}`,async()=>{
- const h=exchangeHarness({assisted:false,failTable}),r=await h.load("app/api/client/daily/trainer-session-workspace/route.ts").GET(request(`?session_id=${ids.session}`));assert.equal(r.status,500);assert.match((await r.json()).error,/fixture read failure/);
+ const h=exchangeHarness({assisted:false,failTable}),r=await h.load("app/api/client/daily/trainer-session-workspace/route.ts").GET(request(`?session_id=${ids.session}`));assert.equal(r.status,503);const body=await r.json();assert.match(body.error,/temporairement indisponible/);assert.doesNotMatch(JSON.stringify(body),/fixture read failure/);
 });
 for(const change of [h=>h.session.trainer_ids=[],h=>h.session.organisation_id=ids.other])test("le suivi personnel refuse une session non affectée ou étrangère",async()=>{
  const h=exchangeHarness({assisted:false});change(h);const r=await h.load("app/api/client/daily/trainer-session-workspace/route.ts").GET(request(`?session_id=${ids.session}`));assert.equal(r.status,404);assert.ok(h.reads.every(read=>read.table==="daily_sessions"));
