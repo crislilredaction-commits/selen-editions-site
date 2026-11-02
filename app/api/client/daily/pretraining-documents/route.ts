@@ -55,7 +55,8 @@ async function generateCanonicalDocument(args: {
 
 async function loadSession(admin:any, organisationId:string, sessionId:string) {
   const { data: session, error } = await admin.from("daily_sessions").select("*,daily_formations(*)").eq("id",sessionId).eq("organisation_id",organisationId).single();
-  if (error || !session) throw new Error("Session introuvable.");
+  if (error && error.code !== "PGRST116") throw new Error("Lecture de la session impossible.");
+  if (!session) return null;
   const [{ data: enrolments, error: enrolmentError }, { data: needs, error: needsError }, { data: org, error: orgError }, { data: trainers, error: trainerError }] = await Promise.all([
     admin.from("daily_session_enrolments").select("*,daily_learners(*)").eq("session_id",sessionId).eq("organisation_id",organisationId).not("status","in",'(declined,cancelled,abandoned)'),
     admin.from("daily_enrolment_support_needs").select("*").eq("organisation_id",organisationId),
@@ -71,15 +72,20 @@ export async function GET(req:Request) {
   const context = await getDailyOrganisationContext(req,"sessions",{allowAssistanceRead:true});
   if (!context.ok) return NextResponse.json({error:context.error},{status:context.status});
   const sessionId = new URL(req.url).searchParams.get("session_id") ?? "";
+  // The session id is interpolated into a PostgREST filter below: reject syntax injection.
+  if (sessionId && !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(sessionId)) {
+    return NextResponse.json({error:"Identifiant de session invalide."},{status:400});
+  }
   let query = context.admin.from("daily_documents").select("*").eq("organisation_id",context.organisationId).in("document_type",[...documentTypes]).eq("is_current",true).order("created_at",{ascending:false});
   if (sessionId) {
-    const { data: enrolments } = await context.admin.from("daily_session_enrolments").select("id").eq("session_id",sessionId).eq("organisation_id",context.organisationId);
+    const { data: enrolments, error: enrolmentsError } = await context.admin.from("daily_session_enrolments").select("id").eq("session_id",sessionId).eq("organisation_id",context.organisationId);
+    if (enrolmentsError) return NextResponse.json({error:"Lecture des inscriptions temporairement indisponible."},{status:503,headers:{"Cache-Control":"private, no-store"}});
     const ids = (enrolments ?? []).map((row:any)=>row.id);
     query = ids.length ? query.or(`and(linked_object_type.eq.session,linked_object_id.eq.${sessionId}),and(linked_object_type.eq.enrolment,linked_object_id.in.(${ids.join(",")}))`) : query.eq("linked_object_type","session").eq("linked_object_id",sessionId);
   }
   const { data, error } = await query;
-  if (error) return NextResponse.json({error:error.message},{status:500});
-  return NextResponse.json({documents:data ?? []});
+  if (error) return NextResponse.json({error:"Lecture des documents temporairement indisponible."},{status:503,headers:{"Cache-Control":"private, no-store"}});
+  return NextResponse.json({documents:data ?? []},{headers:{"Cache-Control":"private, no-store"}});
 }
 
 export async function POST(req:Request) {
@@ -102,7 +108,9 @@ export async function POST(req:Request) {
   const enrolmentId = typeof body.enrolment_id==="string" ? body.enrolment_id.trim() : "";
   if(targeted && (!enrolmentId || body.only_missing!==true || typeof body.expected_enrolment_updated_at!=="string" || !body.expected_enrolment_updated_at.trim()))return NextResponse.json({error:"Inscription, version ouverte et conservation des pièces existantes requises."},{status:400});
   try {
-    const { session, enrolments:sessionEnrolments, needs, org, trainers } = await loadSession(context.admin,context.organisationId,sessionId);
+    const loaded = await loadSession(context.admin,context.organisationId,sessionId);
+    if (!loaded) return NextResponse.json({error:"Session introuvable."},{status:400});
+    const { session, enrolments:sessionEnrolments, needs, org, trainers } = loaded;
     if(["archived","cancelled"].includes(session.status))return NextResponse.json({error:"Session inaccessible."},{status:404});
     const enrolments = targeted ? sessionEnrolments.filter((row:any)=>row.id===enrolmentId) : sessionEnrolments;
     if(targeted && !enrolments.length)return NextResponse.json({error:"Inscription inaccessible dans cette session."},{status:404});
@@ -217,8 +225,10 @@ export async function POST(req:Request) {
       if (retirementError) throw new Error(retirementError.message);
     }
     if(context.assisted && context.assistance)await logAgentAssistanceAction({supabase:context.admin,req,assistance:context.assistance,action:"pretraining_documents_prepared",actionLabel:"Préparation documentaire avant formation",metadata:{session_id:sessionId,enrolment_id:enrolmentId||null,document_ids:created.map(doc=>doc.id)}});
-    return NextResponse.json({documents:created,count:created.length,enrolment_id:enrolmentId||null});
-  } catch (cause) {
-    return NextResponse.json({error:cause instanceof Error ? cause.message : "Génération impossible."},{status:400});
+    return NextResponse.json({documents:created,count:created.length,enrolment_id:enrolmentId||null},{headers:{"Cache-Control":"private, no-store"}});
+  } catch {
+    // Never expose SQL, storage or template failures. A failed attempt may have
+    // persisted partial drafts: inspect the existing pieces before retrying.
+    return NextResponse.json({error:"Préparation documentaire indisponible. Vérifiez les pièces avant de réessayer."},{status:503,headers:{"Cache-Control":"private, no-store"}});
   }
 }
