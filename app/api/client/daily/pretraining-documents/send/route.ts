@@ -47,7 +47,7 @@ export async function POST(req: Request) {
     .eq("is_current", true)
     .maybeSingle();
 
-  if (documentError) return NextResponse.json({ error: documentError.message }, { status: 500 });
+  if (documentError) return NextResponse.json({ error: "Lecture des convocations temporairement indisponible." }, { status: 503 });
   if (!document) return NextResponse.json({ error: "Convocation introuvable ou remplacée par une version plus récente." }, { status: 404 });
   if (!sendableStatuses.includes(document.status)) {
     return NextResponse.json({ error: "La convocation doit être validée par Selen avant son envoi." }, { status: 409 });
@@ -60,7 +60,7 @@ export async function POST(req: Request) {
     .eq("organisation_id", context.organisationId)
     .maybeSingle();
 
-  if (enrolmentError) return NextResponse.json({ error: enrolmentError.message }, { status: 500 });
+  if (enrolmentError) return NextResponse.json({ error: "Lecture des inscriptions temporairement indisponible." }, { status: 503 });
   if (!enrolment || ["declined", "cancelled", "abandoned"].includes(enrolment.status)) {
     return NextResponse.json({ error: "L’inscription liée à cette convocation n’est plus active." }, { status: 409 });
   }
@@ -77,8 +77,8 @@ export async function POST(req: Request) {
     .eq("organisation_id", context.organisationId)
     .maybeSingle();
 
-  if (sessionError) return NextResponse.json({ error: sessionError.message }, { status: 500 });
-  if (!session || session.status === "archived") {
+  if (sessionError) return NextResponse.json({ error: "Lecture de la session temporairement indisponible." }, { status: 503 });
+  if (!session || ["archived", "cancelled"].includes(session.status)) {
     return NextResponse.json({ error: "La session liée à cette convocation n’est plus disponible." }, { status: 409 });
   }
 
@@ -112,5 +112,5 @@ export async function POST(req: Request) {
       reason: result.reason,
       error: result.status === "pending" ? "En attente de confirmation. Aucun nouvel envoi automatique." : "Envoi rejeté avant acceptation confirmée.",
     }),
-  }, { status: confirmed ? 200 : result.status === "pending" ? 202 : 503 });
+  }, { status: confirmed ? 200 : result.status === "pending" ? 202 : 503, headers: { "Cache-Control": "private, no-store" } });
 }

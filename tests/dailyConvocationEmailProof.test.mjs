@@ -36,6 +36,7 @@ function harness(options = {}) {
         const fault = action==='insert' ? options.claim : action==='upsert' ? options.snapshot
           : action==='update' && payload.status==='sent' ? (table==='daily_communications' ? options.finalize : options.projection) : null;
         if(fault==='throw') throw new Error('simulated persistence failure');
+        if(action==='read' && table===options.readFaultTable) return {data:null,error:{message:'sensitive SQL schema daily_private, token secret'}};
         if(fault) return {data:null,error:fault==='zero' ? null : {message:'simulated failure'}};
         if(action==='insert') {
           assert.match(payload.id,/^[\da-f]{8}-[\da-f]{4}-5[\da-f]{3}-a[\da-f]{3}-[\da-f]{12}$/);
@@ -66,7 +67,7 @@ function harness(options = {}) {
     vm.runInNewContext(code,{module,exports:module.exports,Buffer,Date:Clock,console:{warn(){},error(){}},process:{env:{RESEND_API_KEY:options.noKey?'':'mock-only'}},fetch(){throw new Error('network forbidden');},require(name){
       if(name==='node:crypto')return crypto;
       if(name==='node:buffer')return {Buffer};
-      if(name==='next/server')return {NextResponse:{json:(data,init)=>({status:init?.status??200,body:data})}};
+      if(name==='next/server')return {NextResponse:{json:(data,init)=>({status:init?.status??200,body:data,headers:init?.headers??{}})}};
       if(name==='@/lib/server/dailyOrganisationContext')return {getDailyOrganisationContext:async()=>options.unauthorized?{ok:false,status:403,error:'unauthorized'}:{ok:true,assisted:options.assisted,admin,organisationId:options.org??'org',user:{id:'user'}}};
       if(name==='resend')return {Resend:class {emails={send:async(message,sendOptions)=>{
         assert.ok(sendOptions.idempotencyKey);sends.push(structuredClone({message,options:sendOptions}));
@@ -151,10 +152,10 @@ for(const historical of ['sent','viewed','sent_at']) test(`pack: historical ${hi
   const h=harness();if(historical==='sent_at')h.convocation.sent_at='2026-01-01T10:00:00Z';else h.convocation.status=historical;
   assert.equal(status(await h.pack()),'pending');assert.equal(h.sends.length,0);assert.equal(h.downloads.length,0);
 });
-for(const guard of ['unauthorized','assisted','wrong_org','replaced','unvalidated','declined','cancelled','abandoned','archived']) test(`manual: ${guard} precedes storage, claim and provider`,async()=>{
+for(const guard of ['unauthorized','assisted','wrong_org','replaced','unvalidated','declined','cancelled','abandoned','archived','cancelled_session']) test(`manual: ${guard} precedes storage, claim and provider`,async()=>{
   const h=harness({[guard]:true});
   if(guard==='wrong_org')h.options.org='other';if(guard==='replaced')h.document.is_current=false;if(guard==='unvalidated')h.document.status='draft';
-  if(['declined','cancelled','abandoned'].includes(guard))h.enrolment.status=guard;if(guard==='archived')h.session.status='archived';
+  if(['declined','cancelled','abandoned'].includes(guard))h.enrolment.status=guard;if(guard==='archived')h.session.status='archived';if(guard==='cancelled_session')h.session.status='cancelled';
   const result=await h.manual();assert.ok(result.status>=400);assert.equal(h.downloads.length,0);assert.equal(h.sends.length,0);assert.ok(h.calls.every(c=>c.action==='read'));
 });
 for(const guard of ['missing_signatures','incomplete_signatures','declined','cancelled','abandoned','archived']) test(`pack: ${guard} precedes storage, claim and provider`,async()=>{
@@ -188,4 +189,19 @@ test('pack: historical proof without exact legacy file stays uncertain',async()=
 
 for(const circuit of ['manual','pack']) test(`${circuit}: equivalent PostgreSQL timestamp timezone is accepted`,async()=>{
   const h=harness({postgresTime:true});assert.equal(status(await h[circuit]()),'sent');assert.equal(status(await h[circuit]()),'already_sent');assert.equal(h.sends.length,1);
+});
+
+for (const table of ['daily_documents', 'daily_session_enrolments', 'daily_sessions']) test(`manual: SQL read failure in ${table} is private and prevents delivery`, async () => {
+  const h = harness({readFaultTable:table});
+  const result = await h.manual();
+  assert.equal(result.status,503);
+  assert.doesNotMatch(JSON.stringify(result.body),/sensitive SQL|daily_private|token secret/);
+  assert.equal(h.sends.length,0);
+  assert.equal(h.downloads.length,0);
+  assert.ok(h.calls.every(call=>call.action==='read'));
+});
+test('manual: confirmed convocation response is never cached',async()=>{
+  const h=harness();const result=await h.manual();
+  assert.equal(result.status,200);
+  assert.equal(result.headers['Cache-Control'],'private, no-store');
 });
