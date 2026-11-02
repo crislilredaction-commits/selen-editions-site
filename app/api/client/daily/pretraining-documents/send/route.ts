@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getDailyOrganisationContext } from "@/lib/server/dailyOrganisationContext";
 import { sendDailyConvocation } from "@/lib/server/dailyPretrainingEmails";
@@ -14,6 +15,13 @@ function text(value: unknown) {
 function one<T>(value: T | T[] | null | undefined): T | null {
   if (Array.isArray(value)) return value[0] ?? null;
   return value ?? null;
+}
+
+function attachmentExtension(mimeType: unknown): "doc" | "docx" | "pdf" {
+  if (mimeType === "application/pdf") return "pdf";
+  if (mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") return "docx";
+  // The built-in HTML Word template and older documents use the .doc format.
+  return "doc";
 }
 
 function safeFilename(value: string) {
@@ -39,7 +47,7 @@ export async function POST(req: Request) {
 
   const { data: document, error: documentError } = await context.admin
     .from("daily_documents")
-    .select("id,organisation_id,document_type,linked_object_type,linked_object_id,version,status,logical_name,bucket,storage_path,mime_type,sha256,is_current,metadata")
+    .select("id,organisation_id,document_type,linked_object_type,linked_object_id,session_id,enrolment_id,learner_id,version,status,logical_name,bucket,storage_path,mime_type,sha256,is_current,metadata")
     .eq("id", documentId)
     .eq("organisation_id", context.organisationId)
     .eq("document_type", "convocation")
@@ -55,7 +63,7 @@ export async function POST(req: Request) {
 
   const { data: enrolment, error: enrolmentError } = await context.admin
     .from("daily_session_enrolments")
-    .select("id,session_id,status,daily_learners(first_name,last_name,email)")
+    .select("id,session_id,learner_id,status,daily_learners(first_name,last_name,email)")
     .eq("id", document.linked_object_id)
     .eq("organisation_id", context.organisationId)
     .maybeSingle();
@@ -63,6 +71,14 @@ export async function POST(req: Request) {
   if (enrolmentError) return NextResponse.json({ error: "Lecture des inscriptions temporairement indisponible." }, { status: 503 });
   if (!enrolment || ["declined", "cancelled", "abandoned"].includes(enrolment.status)) {
     return NextResponse.json({ error: "L’inscription liée à cette convocation n’est plus active." }, { status: 409 });
+  }
+
+  // A validated version must remain bound to the same session, enrolment and
+  // learner even if an enrolment is subsequently reassigned.
+  if ((document.session_id && document.session_id !== enrolment.session_id)
+    || (document.enrolment_id && document.enrolment_id !== enrolment.id)
+    || (document.learner_id && document.learner_id !== enrolment.learner_id)) {
+    return NextResponse.json({ error: "La convocation ne correspond plus à cette inscription. Régénérez-la et faites-la valider." }, { status: 409 });
   }
 
   const learner = one(enrolment.daily_learners as { first_name?: string | null; last_name?: string | null; email?: string | null } | { first_name?: string | null; last_name?: string | null; email?: string | null }[] | null);
@@ -96,11 +112,20 @@ export async function POST(req: Request) {
     load: async () => {
       const { data: file, error } = await context.admin.storage.from(document.bucket).download(document.storage_path);
       if (error || !file) throw new Error("Document introuvable");
+      const bytes = Buffer.from(await file.arrayBuffer());
+      if (!bytes.length) throw new Error("Document vide");
+      if (document.sha256 != null) {
+        const expected = text(document.sha256).toLowerCase();
+        if (!/^[a-f0-9]{64}$/.test(expected)
+          || createHash("sha256").update(bytes).digest("hex") !== expected) {
+          throw new Error("Le document ne correspond plus à la version validée");
+        }
+      }
       return {
         email, learnerName, formationTitle, sessionReference: text(session.internal_reference),
         startDate: text(session.start_date), endDate: text(session.end_date), documentVersion: document.version,
-        attachmentFilename: `${safeFilename(`convocation-${learnerName || "apprenant"}`)}-v${document.version}.doc`,
-        attachmentBase64: Buffer.from(await file.arrayBuffer()).toString("base64"),
+        attachmentFilename: `${safeFilename(`convocation-${learnerName || "apprenant"}`)}-v${document.version}.${attachmentExtension(document.mime_type)}`,
+        attachmentBase64: bytes.toString("base64"),
       };
     },
   });

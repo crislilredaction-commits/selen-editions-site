@@ -205,3 +205,68 @@ test('manual: confirmed convocation response is never cached',async()=>{
   assert.equal(result.status,200);
   assert.equal(result.headers['Cache-Control'],'private, no-store');
 });
+
+
+test('manual: PDF and DOCX convocations retain the real attachment extension', async () => {
+  for (const [mime, extension, bytes] of [
+    ['application/pdf', 'pdf', '%PDF-test-content'],
+    ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'docx', 'PK-docx-test-content'],
+  ]) {
+    const h = harness({bytes});
+    h.document.mime_type = mime;
+    h.document.sha256 = crypto.createHash('sha256').update(bytes).digest('hex');
+    assert.equal(status(await h.manual()), 'sent');
+    assert.equal(h.sends.length, 1);
+    assert.equal(h.sends[0].message.attachments[0].filename, `convocation-alice-nom-v1.${extension}`);
+    assert.equal(h.sends[0].message.attachments[0].content, Buffer.from(bytes).toString('base64'));
+    assert.equal(h.db.daily_communication_documents[0].sha256, h.document.sha256);
+  }
+});
+
+test('manual: valid canonical SHA-256 allows delivery of the exact validated bytes', async () => {
+  const h = harness();
+  h.document.sha256 = crypto.createHash('sha256').update('ORIGINAL BYTES').digest('hex');
+  assert.equal(status(await h.manual()), 'sent');
+  assert.equal(h.sends.length, 1);
+});
+
+for (const invalid of ['mismatch', 'malformed', 'empty']) {
+  test(`manual: ${invalid} canonical attachment is refused before proof and provider`, async () => {
+    const h = harness(invalid === 'empty' ? {bytes:''} : {});
+    h.document.sha256 = invalid === 'malformed' ? 'not-a-sha256'
+      : crypto.createHash('sha256').update('ORIGINAL BYTES').digest('hex');
+    if (invalid === 'mismatch') h.options.bytes = 'TAMPERED BYTES';
+    const result = await h.manual();
+    assert.equal(status(result), 'rejected');
+    assert.equal(result.status, 503);
+    assert.equal(h.sends.length, 0);
+    assert.equal(h.db.daily_communications.length, 0);
+    assert.equal(h.db.daily_communication_documents.length, 0);
+    assert.equal(h.downloads.length, 1);
+  });
+}
+
+for (const mismatch of ['session_id', 'enrolment_id', 'learner_id']) {
+  test(`manual: validated document bound to another ${mismatch} cannot be sent`, async () => {
+    const h = harness();
+    h.enrolment.learner_id = 'learner-a';
+    h.document[mismatch] = mismatch === 'session_id' ? 'another-session'
+      : mismatch === 'enrolment_id' ? 'another-enrolment' : 'another-learner';
+    const result = await h.manual();
+    assert.equal(result.status, 409);
+    assert.match(result.body.error, /convocation/i);
+    assert.equal(h.downloads.length, 0);
+    assert.equal(h.sends.length, 0);
+    assert.equal(h.db.daily_communications.length, 0);
+  });
+}
+
+test('manual: matching session, enrolment and learner binding preserves delivery', async () => {
+  const h = harness();
+  h.enrolment.learner_id = 'learner-a';
+  h.document.session_id = h.enrolment.session_id;
+  h.document.enrolment_id = h.enrolment.id;
+  h.document.learner_id = h.enrolment.learner_id;
+  assert.equal(status(await h.manual()), 'sent');
+  assert.equal(h.sends.length, 1);
+});
