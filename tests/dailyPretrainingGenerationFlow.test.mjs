@@ -135,12 +135,41 @@ test('génération canonique Daily : documents manquants, modèles et portail',a
   assert.equal(abandoned.length,2,'les deux brouillons produits avant la panne restent tracés mais non courants');
   assert.ok(abandoned.every(d=>d.status==='to_check'));
   assert.equal((await h.q('select status from daily_documents where id=$1',[previous[0]])).rows[0].status,'published');
+  // A partial draft has a higher version than the last published/current
+  // document. only_missing must reuse the current document, not regenerate it.
+  const rowCountBeforeRetry=(await h.q('select count(*)::int as n from daily_documents where session_id=$1',[f.session.id])).rows[0].n;
+  const uploadsBeforeRetry=uploadCount;
   uploadFailureAt=Infinity;
   const retry=await post({session_id:f.session.id});
   assert.equal(retry.status,200,JSON.stringify(await retry.clone().json()));
+  const retriedDocuments=(await retry.json()).documents;
+  assert.deepEqual(retriedDocuments.map(d=>d.id).sort(),previous,'only_missing restitue les versions courantes avant la panne');
+  assert.equal(uploadCount,uploadsBeforeRetry,'aucun nouveau fichier ne doit être envoyé au stockage');
+  assert.equal((await h.q('select count(*)::int as n from daily_documents where session_id=$1',[f.session.id])).rows[0].n,rowCountBeforeRetry,'aucune nouvelle version documentaire');
   const currentAfter=(await h.q('select document_type,linked_object_type,linked_object_id,logical_name from daily_documents where session_id=$1 and is_current=true',[f.session.id])).rows;
   assert.equal(currentAfter.length,6);
   assert.equal(new Set(currentAfter.map(d=>[d.document_type,d.linked_object_type,d.linked_object_id,d.logical_name].join('|'))).size,6,'une seule version courante par document logique');
+ });
+
+ await t.test('régénération explicite après panne : versions incrémentées et filiation depuis les pièces courantes',async()=>{
+  const f=await seedSession(370,[{party:'individual'}]);
+  assert.equal((await post({session_id:f.session.id})).status,200);
+  const originals=(await h.q('select id,document_type,version from daily_documents where session_id=$1 and is_current=true',[f.session.id])).rows;
+  const originalByType=new Map(originals.map(d=>[d.document_type,d]));
+  uploadFailureAt=uploadCount+2;
+  assert.equal((await post({session_id:f.session.id,only_missing:false})).status,503);
+  const drafts=(await h.q('select id,document_type,version from daily_documents where session_id=$1 and is_current=false',[f.session.id])).rows;
+  assert.equal(drafts.length,2);
+  uploadFailureAt=Infinity;
+  const retry=await post({session_id:f.session.id,only_missing:false});
+  assert.equal(retry.status,200,JSON.stringify(await retry.clone().json()));
+  const latest=(await h.q('select document_type,version,previous_document_id,is_current from daily_documents where session_id=$1 and is_current=true',[f.session.id])).rows;
+  assert.equal(latest.length,6);
+  for(const doc of latest){
+    assert.equal(doc.version,drafts.some(d=>d.document_type===doc.document_type)?3:2,'la version suit aussi les brouillons non courants');
+    assert.equal(doc.previous_document_id,originalByType.get(doc.document_type).id,'la filiation vise la version courante précédente');
+  }
+  assert.equal((await h.q('select count(*)::int as n from daily_documents where session_id=$1 and is_current=true',[f.session.id])).rows[0].n,6);
  });
 
  await t.test('confirmation absente, agent désactivé et session étrangère refusés sans nouvelle pièce',async()=>{assert.equal((await post({confirm_delegated:false})).status,400);assert.equal((await post({session_id:ids.foreignSession})).status,400);await h.db.exec('update agent_profiles set is_active=false');assert.equal((await post()).status,403);assert.equal((await h.q('select count(*)::int as n from daily_documents where session_id=$1',[ids.oldSession])).rows[0].n,6);});
