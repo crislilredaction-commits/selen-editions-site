@@ -24,7 +24,7 @@ async function sha256Bytes(value: Uint8Array) {
 }
 
 async function generateCanonicalDocument(args: {
-  onlyMissing?: boolean; template?: any; variables?: Record<string,string>; deferRetirement?: boolean; admin: any; organisationId: string; userId: string; documentType: DocumentType; linkedObjectType: "session"|"enrolment"; linkedObjectId: string; logicalName: string; filenameBase: string; html: string; metadata: Record<string,unknown>;
+  onlyMissing?: boolean; template?: any; variables?: Record<string,string>; deferRetirement?: boolean; onCreated?: (document: any) => void; admin: any; organisationId: string; userId: string; documentType: DocumentType; linkedObjectType: "session"|"enrolment"; linkedObjectId: string; logicalName: string; filenameBase: string; html: string; metadata: Record<string,unknown>;
 }) {
   const { admin, organisationId, userId, documentType, linkedObjectType, linkedObjectId, logicalName, filenameBase, html, metadata } = args;
   const { data: previousRows, error: previousError } = await admin.from("daily_documents").select("*").eq("organisation_id",organisationId).eq("document_type",documentType).eq("linked_object_type",linkedObjectType).eq("linked_object_id",linkedObjectId).eq("logical_name",logicalName).order("version",{ascending:false}).limit(1);
@@ -50,6 +50,7 @@ async function generateCanonicalDocument(args: {
     previous_document_id:previous?.id ?? null, metadata:{...metadata,...rendered.metadata,generated_by:"daily_lot2e",generated_at:new Date().toISOString()}
   }).select("*").single();
   if (error) { await admin.storage.from("documents").remove([storagePath]); throw new Error(error.message); }
+  args.onCreated?.(data);
   return data;
 }
 
@@ -107,6 +108,8 @@ export async function POST(req:Request) {
   const targeted = Object.hasOwn(body,"enrolment_id");
   const enrolmentId = typeof body.enrolment_id==="string" ? body.enrolment_id.trim() : "";
   if(targeted && (!enrolmentId || body.only_missing!==true || typeof body.expected_enrolment_updated_at!=="string" || !body.expected_enrolment_updated_at.trim()))return NextResponse.json({error:"Inscription, version ouverte et conservation des pièces existantes requises."},{status:400});
+  const newlyCreatedDocumentIds: string[] = [];
+  let cutoverCompleted = false;
   try {
     const loaded = await loadSession(context.admin,context.organisationId,sessionId);
     if (!loaded) return NextResponse.json({error:"Session introuvable."},{status:400});
@@ -131,7 +134,7 @@ export async function POST(req:Request) {
     const templates=new Map<string,any>();
     for(const template of templateRows??[]){const type=template.document_type==="internal_rules"?"internal_regulations":template.document_type;if(!templates.has(type))templates.set(type,template);}
     const variables={ORGANISME:common.organisationName,SIRET:common.organisationSiret,ADRESSE_ORGANISME:common.organisationAddress,NDA:common.organisationNda,FORMATION:common.formationTitle,DATES:[common.startDate,common.endDate].join(" → "),DUREE:text(formation.duration_hours)+" heures",HORAIRES:common.schedule,MODALITE:common.modality,MODALITES_PRATIQUES:common.location,CONTACT:[common.organisationEmail,common.organisationPhone].filter(Boolean).join(" · "),ACCESSIBILITE:text(formation.accessibility),TARIF:text(formation.price),OBJECTIF:text(formation.global_objective),PREREQUIS:text(formation.prerequisites),FORMATEUR:trainerNames,DATE_DOCUMENT:new Date().toLocaleDateString("fr-FR")};
-    const generateDocument=(args:Parameters<typeof generateCanonicalDocument>[0])=>generateCanonicalDocument({...args,onlyMissing:body.only_missing===true,deferRetirement:true,template:templates.get(args.documentType),metadata:{...args.metadata,session_name:common.formationTitle+" · "+common.startDate+" → "+common.endDate},variables:{...variables,SIRET_CLIENT:text(args.metadata.client_siret),BENEFICIAIRE:text(args.metadata.learner_name),CLIENT_OU_BENEFICIAIRE:text(args.metadata.company_name||args.metadata.learner_name)}});
+    const generateDocument=(args:Parameters<typeof generateCanonicalDocument>[0])=>generateCanonicalDocument({...args,onlyMissing:body.only_missing===true,deferRetirement:true,onCreated:(document:any)=>{if(document?.id)newlyCreatedDocumentIds.push(document.id);},template:templates.get(args.documentType),metadata:{...args.metadata,session_name:common.formationTitle+" · "+common.startDate+" → "+common.endDate},variables:{...variables,SIRET_CLIENT:text(args.metadata.client_siret),BENEFICIAIRE:text(args.metadata.learner_name),CLIENT_OU_BENEFICIAIRE:text(args.metadata.company_name||args.metadata.learner_name)}});
     const companies = asArray(session.companies) as Record<string,unknown>[];
     // The contractual party belongs to the enrolment. Never infer it from a SIRET,
     // the learner identity or the funding mode.
@@ -224,11 +227,24 @@ export async function POST(req:Request) {
         .in("document_type",[...documentTypes]).eq("is_current",true).in("id",retireDocumentIds);
       if (retirementError) throw new Error(retirementError.message);
     }
+    cutoverCompleted = true;
     if(context.assisted && context.assistance)await logAgentAssistanceAction({supabase:context.admin,req,assistance:context.assistance,action:"pretraining_documents_prepared",actionLabel:"Préparation documentaire avant formation",metadata:{session_id:sessionId,enrolment_id:enrolmentId||null,document_ids:created.map(doc=>doc.id)}});
     return NextResponse.json({documents:created,count:created.length,enrolment_id:enrolmentId||null},{headers:{"Cache-Control":"private, no-store"}});
   } catch {
-    // Never expose SQL, storage or template failures. A failed attempt may have
-    // persisted partial drafts: inspect the existing pieces before retrying.
+    // A failed pack must not expose half-generated drafts as current documents.
+    // Retain the rows and stored files as traceable drafts; do not delete evidence
+    // or retire the previous validated/published versions. The cutover itself is
+    // a single database update, so only compensate before that update succeeds.
+    if (!cutoverCompleted && newlyCreatedDocumentIds.length) {
+      try {
+        await context.admin.from("daily_documents")
+          .update({is_current:false,updated_by:actorUserId})
+          .eq("organisation_id",context.organisationId).eq("session_id",sessionId)
+          .eq("is_current",true).in("id",newlyCreatedDocumentIds);
+      } catch {
+        // A failed compensation requires human review before another attempt.
+      }
+    }
     return NextResponse.json({error:"Préparation documentaire indisponible. Vérifiez les pièces avant de réessayer."},{status:503,headers:{"Cache-Control":"private, no-store"}});
   }
 }
