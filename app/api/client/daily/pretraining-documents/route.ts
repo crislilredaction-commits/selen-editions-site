@@ -55,7 +55,8 @@ async function generateCanonicalDocument(args: {
 
 async function loadSession(admin:any, organisationId:string, sessionId:string) {
   const { data: session, error } = await admin.from("daily_sessions").select("*,daily_formations(*)").eq("id",sessionId).eq("organisation_id",organisationId).single();
-  if (error || !session) throw new Error("Session introuvable.");
+  if (error && error.code !== "PGRST116") throw new Error("Lecture de la session impossible.");
+  if (!session) return null;
   const [{ data: enrolments, error: enrolmentError }, { data: needs, error: needsError }, { data: org, error: orgError }, { data: trainers, error: trainerError }] = await Promise.all([
     admin.from("daily_session_enrolments").select("*,daily_learners(*)").eq("session_id",sessionId).eq("organisation_id",organisationId).not("status","in",'(declined,cancelled,abandoned)'),
     admin.from("daily_enrolment_support_needs").select("*").eq("organisation_id",organisationId),
@@ -107,7 +108,9 @@ export async function POST(req:Request) {
   const enrolmentId = typeof body.enrolment_id==="string" ? body.enrolment_id.trim() : "";
   if(targeted && (!enrolmentId || body.only_missing!==true || typeof body.expected_enrolment_updated_at!=="string" || !body.expected_enrolment_updated_at.trim()))return NextResponse.json({error:"Inscription, version ouverte et conservation des pièces existantes requises."},{status:400});
   try {
-    const { session, enrolments:sessionEnrolments, needs, org, trainers } = await loadSession(context.admin,context.organisationId,sessionId);
+    const loaded = await loadSession(context.admin,context.organisationId,sessionId);
+    if (!loaded) return NextResponse.json({error:"Session introuvable."},{status:400});
+    const { session, enrolments:sessionEnrolments, needs, org, trainers } = loaded;
     if(["archived","cancelled"].includes(session.status))return NextResponse.json({error:"Session inaccessible."},{status:404});
     const enrolments = targeted ? sessionEnrolments.filter((row:any)=>row.id===enrolmentId) : sessionEnrolments;
     if(targeted && !enrolments.length)return NextResponse.json({error:"Inscription inaccessible dans cette session."},{status:404});
