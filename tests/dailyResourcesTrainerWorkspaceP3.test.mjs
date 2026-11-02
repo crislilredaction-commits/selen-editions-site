@@ -11,7 +11,7 @@ test("P3 centralizes portal visibility, includes trainer resources and enforces 
 
 test("P3 trainer imports are traceable, scheduled, consultable and restricted to assigned sessions",async()=>{
   const[route,context,download,page]=await Promise.all([read("app/api/client/daily/trainer-session-workspace/route.ts"),read("lib/server/dailyTrainerWorkspaceContext.ts"),read("app/api/client/daily/trainer-session-workspace/document/route.ts"),read("app/client/daily/formateur/suivi-sessions/page.tsx")]);
-  assert.match(context,/trainer_ids/);assert.match(download,/getAssignedDailyTrainerSession/);assert.match(download,/\.eq\("organisation_id",context\.orgId\)/);assert.match(route,/available_from/);assert.match(route,/trainer_profile_id/);assert.match(route,/status:kind==="resource"\?"published":"active"/);assert.match(page,/Disponible à partir de/);assert.match(page,/trainer-session-workspace\/document/);assert.match(page,/status==="present"/);assert.match(page,/trainer_name/);
+  assert.match(context,/trainer_ids/);assert.match(download,/getAssignedDailyTrainerSession/);assert.match(download,/\.eq\("organisation_id",\s*context\.orgId\)/);assert.match(route,/available_from/);assert.match(route,/trainer_profile_id/);assert.match(route,/status:kind==="resource"\?"published":"active"/);assert.match(page,/Disponible à partir de/);assert.match(page,/trainer-session-workspace\/document/);assert.match(page,/status==="present"/);assert.match(page,/trainer_name/);
 });
 
 test("P3 delegated consultation remains read-only, scoped and logged",async()=>{
