@@ -18,6 +18,7 @@ test('génération canonique Daily : documents manquants, modèles et portail',a
  await h.db.exec(await readFile(new URL('../supabase/migrations/20261014012515_daily_trainer_personal_signature.sql',import.meta.url),'utf8'));
  await h.db.exec('grant all on all tables in schema public to service_role');
  const storage=new Map(),audits=[];
+ let uploadCount=0, uploadFailureAt=Infinity;
  const allowed=(await h.q("select tablename from pg_tables where schemaname='public'")).rows.map(r=>r.tablename);
  const admin={from(table){assert.ok(allowed.includes(table),table);const filters=[];let single=false,limit,order,operation='select',payload;
   const q={select(){return q;},eq(k,v){filters.push(r=>r[k]===v);return q;},in(k,v){filters.push(r=>v.includes(r[k]));return q;},not(k,op,v){assert.equal(op,'in');filters.push(r=>!v.slice(1,-1).split(',').includes(r[k]));return q;},order(k,{ascending=true}={}){order=[k,ascending];return q;},limit(n){limit=n;return q;},single(){single=true;return q;},maybeSingle(){single=true;return q;},insert(v){payload=v;operation='insert';return q;},update(v){payload=v;operation='update';return q;},then(resolve,reject){return(async()=>{
@@ -29,7 +30,7 @@ test('génération canonique Daily : documents manquants, modèles et portail',a
    if(table==='daily_session_enrolments')for(const row of rows)row.daily_learners=(await h.q('select * from daily_learners where id=$1',[row.learner_id])).rows[0];
    return{data:single?rows[0]??null:rows,error:null};
   })().then(resolve,reject);}};return q;
- },storage:{from(bucket){assert.equal(bucket,'documents');return{upload:async(path,blob)=>{assert.equal(storage.has(path),false);storage.set(path,Buffer.from(await blob.arrayBuffer()));return{error:null};},remove:async paths=>{paths.forEach(p=>storage.delete(p));return{error:null};},download:async path=>({data:storage.has(path)?new Blob([storage.get(path)]):null,error:null})};}},async rpc(name,args){assert.equal(name,'daily_assert_document_delegation');try{return{data:(await h.q('select daily_assert_document_delegation($1,$2,$3) as actor',[args.p_assistance_id,args.p_token_hash,args.p_organisation_id])).rows[0].actor,error:null};}catch(error){return{data:null,error:{code:error.code,message:error.message}};}}};
+ },storage:{from(bucket){assert.equal(bucket,'documents');return{upload:async(path,blob)=>{if(uploadCount>=uploadFailureAt)return{error:{message:'simulated storage outage'}};assert.equal(storage.has(path),false);storage.set(path,Buffer.from(await blob.arrayBuffer()));uploadCount++;return{error:null};},remove:async paths=>{paths.forEach(p=>storage.delete(p));return{error:null};},download:async path=>({data:storage.has(path)?new Blob([storage.get(path)]):null,error:null})};}},async rpc(name,args){assert.equal(name,'daily_assert_document_delegation');try{return{data:(await h.q('select daily_assert_document_delegation($1,$2,$3) as actor',[args.p_assistance_id,args.p_token_hash,args.p_organisation_id])).rows[0].actor,error:null};}catch(error){return{data:null,error:{code:error.code,message:error.message}};}}};
  const template=loadTypeScript('lib/server/dailyPretrainingTemplate.ts',{docxtemplater:{default:require('docxtemplater')},pizzip:{default:require('pizzip')}},{Buffer,TextEncoder,Error});
  const html=loadTypeScript('lib/server/dailyPretrainingDocumentHtml.ts');const party=loadTypeScript('lib/dailyContractingParty.ts');
  const context=async()=>({ok:true,admin,organisationId:ids.org,user:{id:ids.owner},assisted:true,assistance:(await h.q('select * from selen_agent_assistance_tokens where id=$1',[ids.assistance])).rows[0]});
@@ -115,6 +116,31 @@ test('génération canonique Daily : documents manquants, modèles et portail',a
   const html=storage.get(agreement.storage_path).toString();assert.match(html,/QA 300 Participant/);assert.match(html,/QA 301 Participant/);assert.doesNotMatch(html,/QA 302 Participant|QA 303 Participant/);
   const docs=(await h.q('select * from daily_documents where session_id=$1',[f.session.id])).rows;
   assert.ok(docs.filter(d=>d.linked_object_type==='enrolment').every(d=>d.enrolment_id===ready.id));assert.equal(docs.find(d=>d.id===preserved.id).status,'published');assert.equal(docs.find(d=>d.id===preserved.id).is_current,true);
+ });
+
+ await t.test('échec au milieu du pack : aucune nouvelle version courante, preuves conservées et reprise possible',async()=>{
+  const f=await seedSession(350,[{party:'individual'}]);
+  const first=await post({session_id:f.session.id});
+  assert.equal(first.status,200,JSON.stringify(await first.clone().json()));
+  const previous=(await h.q('select id from daily_documents where session_id=$1 and is_current=true',[f.session.id])).rows.map(r=>r.id).sort();
+  assert.equal(previous.length,6);
+  await h.q("update daily_documents set status='published' where id=$1",[previous[0]]);
+  uploadFailureAt=uploadCount+2;
+  const failed=await post({session_id:f.session.id,only_missing:false});
+  assert.equal(failed.status,503);
+  assert.doesNotMatch(JSON.stringify(await failed.json()),/simulated storage outage/);
+  const current=(await h.q('select id from daily_documents where session_id=$1 and is_current=true',[f.session.id])).rows.map(r=>r.id).sort();
+  assert.deepEqual(current,previous,'les versions courantes préexistantes sont conservées');
+  const abandoned=(await h.q('select * from daily_documents where session_id=$1 and is_current=false',[f.session.id])).rows;
+  assert.equal(abandoned.length,2,'les deux brouillons produits avant la panne restent tracés mais non courants');
+  assert.ok(abandoned.every(d=>d.status==='to_check'));
+  assert.equal((await h.q('select status from daily_documents where id=$1',[previous[0]])).rows[0].status,'published');
+  uploadFailureAt=Infinity;
+  const retry=await post({session_id:f.session.id});
+  assert.equal(retry.status,200,JSON.stringify(await retry.clone().json()));
+  const currentAfter=(await h.q('select document_type,linked_object_type,linked_object_id,logical_name from daily_documents where session_id=$1 and is_current=true',[f.session.id])).rows;
+  assert.equal(currentAfter.length,6);
+  assert.equal(new Set(currentAfter.map(d=>[d.document_type,d.linked_object_type,d.linked_object_id,d.logical_name].join('|'))).size,6,'une seule version courante par document logique');
  });
 
  await t.test('confirmation absente, agent désactivé et session étrangère refusés sans nouvelle pièce',async()=>{assert.equal((await post({confirm_delegated:false})).status,400);assert.equal((await post({session_id:ids.foreignSession})).status,400);await h.db.exec('update agent_profiles set is_active=false');assert.equal((await post()).status,403);assert.equal((await h.q('select count(*)::int as n from daily_documents where session_id=$1',[ids.oldSession])).rows[0].n,6);});
