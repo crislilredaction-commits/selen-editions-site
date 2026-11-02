@@ -102,6 +102,69 @@ test("an ambiguous legacy email token is not reused for either learner", async (
   assert.notEqual(result.portalAccessId, "access");
 });
 
+test("a pending learner link with a past expiry rotates and sends a new link exactly once", async () => {
+  const { harness } = await import("./helpers/dailyAcceptanceHarness.mjs");
+  const h = harness({ materialized: true });
+  const first = await h.ensure({ source: "manual_enrolment" });
+  assert.equal(first.status, "sent");
+  const oldToken = h.db.daily_portal_access_tokens[0].token;
+  h.db.daily_portal_access_tokens[0].expires_at = "2026-01-01T00:00:00.000Z";
+  const renewed = await h.ensure({ source: "manual_enrolment" });
+  assert.equal(renewed.status, "sent");
+  assert.notEqual(h.db.daily_portal_access_tokens[0].token, oldToken);
+  assert.equal(h.db.daily_portal_access_tokens[0].expires_at, null);
+  assert.equal(h.sends.length, 2);
+  assert.equal(h.db.daily_communications.length, 2);
+  assert.notEqual(h.db.daily_communications[0].id, h.db.daily_communications[1].id);
+  assert.ok(h.db.daily_communications[1].metadata.delivery_token_fingerprint);
+  const replay = await h.ensure({ source: "manual_enrolment" });
+  assert.equal(replay.status, "already_sent");
+  assert.equal(h.sends.length, 2);
+});
+
+test("a revoked learner link renews without reusing its previous delivery proof", async () => {
+  const { harness } = await import("./helpers/dailyAcceptanceHarness.mjs");
+  const h = harness({ materialized: true });
+  await h.ensure({ source: "manual_enrolment" });
+  h.db.daily_portal_access_tokens[0].status = "revoked";
+  const oldToken = h.db.daily_portal_access_tokens[0].token;
+  const renewed = await h.ensure({ source: "manual_enrolment" });
+  assert.equal(renewed.status, "sent");
+  assert.notEqual(h.db.daily_portal_access_tokens[0].token, oldToken);
+  assert.equal(h.db.daily_portal_access_tokens[0].status, "pending");
+  assert.equal(h.sends.length, 2);
+});
+
+test("manual resend after token rotation is not suppressed by an old-link cooldown", async () => {
+  const { harness } = await import("./helpers/dailyAcceptanceHarness.mjs");
+  const h = harness({ materialized: true });
+  await h.ensure({ source: "manual_resend", force: true });
+  h.db.daily_communications[0].created_at = new Date().toISOString();
+  h.db.daily_portal_access_tokens[0].expires_at = "2026-01-01T00:00:00.000Z";
+  const renewed = await h.ensure({ source: "manual_resend", force: true });
+  assert.equal(renewed.status, "sent");
+  assert.equal(h.sends.length, 2);
+  assert.equal(h.db.daily_communications.length, 2);
+});
+
+test("a future-dated active learner link keeps its token and delivery proof", async () => {
+  const { harness } = await import("./helpers/dailyAcceptanceHarness.mjs");
+  const h = harness({ materialized: true });
+  await h.ensure({ source: "manual_enrolment" });
+  const token = h.db.daily_portal_access_tokens[0].token;
+  h.db.daily_portal_access_tokens[0].expires_at = "2099-01-01T00:00:00.000Z";
+  const replay = await h.ensure({ source: "manual_enrolment" });
+  assert.equal(replay.status, "already_sent");
+  assert.equal(h.db.daily_portal_access_tokens[0].token, token);
+  assert.equal(h.sends.length, 1);
+});
+
+test("renewal is conditional on the previous token to protect concurrent workers", () => {
+  assert.match(helper, /\.eq\("token", previousToken\)/);
+  assert.match(helper, /Renouvellement concurrent de l'accès apprenant non confirmé/);
+  assert.match(helper, /delivery_token_fingerprint/);
+});
+
 test("missing email or a provider failure never cancels the enrolment", () => {
   assert.match(helper, /status: "missing_email"/);
   assert.match(helper, /status: "send_failed"/);
