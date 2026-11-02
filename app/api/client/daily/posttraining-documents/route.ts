@@ -10,9 +10,13 @@ function text(value: unknown) {
   return String(value ?? "").trim();
 }
 
+function privateJson(body: unknown, init: { status?: number } = {}) {
+  return NextResponse.json(body, { ...init, headers: { "Cache-Control": "private, no-store" } });
+}
+
 export async function GET(req: Request) {
   const context = await getDailyOrganisationContext(req, "sessions", { allowAssistanceRead: true });
-  if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
+  if (!context.ok) return privateJson({ error: context.error }, { status: context.status });
   const sessionId = new URL(req.url).searchParams.get("session_id") ?? "";
   let query = context.admin
     .from("daily_documents")
@@ -23,20 +27,20 @@ export async function GET(req: Request) {
     .order("created_at", { ascending: false });
   if (sessionId) query = query.contains("metadata", { session_id: sessionId });
   const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ documents: data ?? [] });
+  if (error) return privateJson({ error: "Lecture des documents de fin temporairement indisponible." }, { status: 503 });
+  return privateJson({ documents: data ?? [] });
 }
 
 export async function POST(req: Request) {
   const context = await getDailyOrganisationContext(req, "sessions");
-  if (!context.ok) return NextResponse.json({ error: context.error }, { status: context.status });
+  if (!context.ok) return privateJson({ error: context.error }, { status: context.status });
   if (context.assisted) {
-    return NextResponse.json({ error: "L’assistance agent est en lecture seule." }, { status: 403 });
+    return privateJson({ error: "L’assistance agent est en lecture seule." }, { status: 403 });
   }
 
   const body = await req.json().catch(() => ({}));
   const sessionId = text(body.session_id);
-  if (!sessionId) return NextResponse.json({ error: "Session manquante." }, { status: 400 });
+  if (!sessionId) return privateJson({ error: "Session manquante." }, { status: 400 });
 
   try {
     const result = await generatePosttrainingDocuments({
@@ -46,15 +50,15 @@ export async function POST(req: Request) {
       sessionId,
       mode: "manual",
     });
-    return NextResponse.json({
+    return privateJson({
       documents: result.documents,
       count: result.count,
       eligibleCertificates: result.eligibleCertificates,
     });
   } catch (cause) {
-    const status = cause instanceof PosttrainingDocumentError ? cause.status : 400;
-    return NextResponse.json(
-      { error: cause instanceof Error ? cause.message : "Génération impossible." },
+    const status = cause instanceof PosttrainingDocumentError ? cause.status : 503;
+    return privateJson(
+      { error: cause instanceof PosttrainingDocumentError ? cause.message : "Génération temporairement indisponible." },
       { status },
     );
   }
