@@ -138,7 +138,8 @@ for(const failure of ['late-upload','render']) test(`${failure} preserves the pr
   assert.equal(response.status,503);
   assert.deepEqual(f.rows[0],original);
   assert.equal(current(f,'convocation').length,1);
-  assert.equal(f.calls.filter(call=>call.operation==='update').length,0);
+  assert.equal(f.calls.filter(call=>call.operation==='update').length,1);
+  assert.ok(f.rows.slice(1).every(row=>row.is_current===false));
 });
 test('retry after a partial convocation failure leaves exactly one current version per logical document',async()=>{
   const f=fixture({documents:[convocation()],failure:'late-upload'});
