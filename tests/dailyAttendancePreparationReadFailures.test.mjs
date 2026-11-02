@@ -7,14 +7,14 @@ const sessionId = "session-test";
 const slotId = "slot-test";
 const slotKey = "2026-11-02-09:00-12:00-1";
 
-function fixture({ slotsReadError = false, enrolmentsReadError = false, forbidden = false } = {}) {
+function fixture({ slotsReadError = false, enrolmentsReadError = false, sessionStatus = "active", forbidden = false } = {}) {
   const queries = [];
   const writes = [];
   let slotReads = 0;
   let enrolmentReads = 0;
   let refreshes = 0;
   const session = {
-    id: sessionId, organisation_id: organisationId, status: "active",
+    id: sessionId, organisation_id: organisationId, status: sessionStatus,
     schedule_blocks: [{ date: "2026-11-02", start: "09:00", end: "12:00" }],
     modality: "presentiel",
   };
@@ -124,4 +124,15 @@ test("P0: accès OF refusé avant toute lecture et écriture", async () => {
   assert.equal(response.status, 403);
   assert.deepEqual(f.writes, []);
   assert.deepEqual(f.queries, []);
+});
+
+test("P0-03: une session annulée ou archivée ne recrée ni créneau ni émargement", async () => {
+  for (const sessionStatus of ["cancelled", "archived"]) {
+    const f = fixture({ sessionStatus });
+    const response = await f.post();
+    assert.equal(response.status, 409, sessionStatus);
+    assert.deepEqual(f.writes, [], sessionStatus);
+    assert.deepEqual(f.queries.map(q => q.table), ["daily_sessions"], sessionStatus);
+    assert.equal(f.refreshes, 0);
+  }
 });
