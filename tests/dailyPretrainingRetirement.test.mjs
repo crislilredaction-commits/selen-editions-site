@@ -88,7 +88,7 @@ test('invalid company validation leaves opposite document current without upload
 });
 for(const failure of ['read','upload','late-upload','insert','render']) test(`${failure} error preserves opposite and replaced contractual documents`,async()=>{
   for(const config of [{documents:[contract()]},{enrolments:[enrolment('one','individual')],documents:[agreement()]},{companies:[{name:'A',siret:'456'}],documents:[agreement()]}]) {
-    const f=fixture({...config,failure}), response=await f.post();assert.equal(response.status,503);assert.doesNotMatch(response.body.error,/failed|SQL|storage/i);assert.match(response.body.error,/Vérifiez les pièces/);assert.equal(f.rows[0].is_current,true);assert.equal(f.calls.filter(c=>c.operation==='update').length,0);
+    const f=fixture({...config,failure}), response=await f.post();assert.equal(response.status,503);assert.doesNotMatch(response.body.error,/failed|SQL|storage/i);assert.match(response.body.error,/Vérifiez les pièces/);assert.equal(f.rows[0].is_current,true);const updates=f.calls.filter(c=>c.operation==='update');assert.equal(updates.length,['late-upload','render'].includes(failure)?1:0);assert.ok(f.rows.slice(1).every(row=>row.is_current===false));
   }
 });
 test('retirement failure propagates without false success',async()=>{
@@ -107,9 +107,10 @@ for(const failure of ['retire','late-upload']) for(const party of ['company','in
   const type=original.document_type;
   const f=fixture({enrolments:[enrolment('one',party)],documents:[original],failure});
   assert.equal((await f.post()).status,503);
-  assert.equal(current(f,type).length,2);
+  assert.equal(current(f,type).length,1,'ancienne version seule courante après échec');
   assert.deepEqual(f.rows[0],original);
   const previous=structuredClone(current(f,type));
+  assert.ok(f.rows.slice(1).every(row=>row.is_current===false));
   f.clearFailure();
   const response=await f.post();
   assert.equal(response.status,200);
@@ -137,7 +138,8 @@ for(const failure of ['late-upload','render']) test(`${failure} preserves the pr
   assert.equal(response.status,503);
   assert.deepEqual(f.rows[0],original);
   assert.equal(current(f,'convocation').length,1);
-  assert.equal(f.calls.filter(call=>call.operation==='update').length,0);
+  assert.equal(f.calls.filter(call=>call.operation==='update').length,1);
+  assert.ok(f.rows.slice(1).every(row=>row.is_current===false));
 });
 test('retry after a partial convocation failure leaves exactly one current version per logical document',async()=>{
   const f=fixture({documents:[convocation()],failure:'late-upload'});
