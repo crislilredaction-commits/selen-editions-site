@@ -83,3 +83,9 @@ test('P0-01 contrainte unique : conflit non divulgué',async()=>{
   await safe(await h.route.POST(h.request()),409,/déjà reçu une décision/i);
   assert.equal(h.notifications,0);
 });
+
+for(const code of ['23502','23514','P0001']) test('P0-01 échec atomique '+code+' : conflit sans fuite SQL ni notification',async()=>{
+  const h=fixture({rpcError:{message:'SQL constraint secret_registration_decisions failed',code}});
+  await safe(await h.route.POST(h.request()),409,/décision.*finalisée/i);
+  assert.equal(h.rpcCalls,1);assert.equal(h.notifications,0);
+});

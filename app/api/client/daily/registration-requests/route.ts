@@ -20,6 +20,11 @@ function registrationDecisionFailure(error: { message?: string; code?: string } 
   if (detail.includes("permission required") || error?.code === "42501") return { status: 403, message: "Action non autorisée pour cet organisme." };
   if (error?.code === "P0002") return { status: 404, message: "Candidature ou session introuvable." };
   if (error?.code === "22023") return { status: 400, message: "Paramètres de décision invalides." };
+  // SQL integrity violations and explicit domain exceptions mean the atomic
+  // transaction was rejected; keep 409 without exposing constraint names.
+  if (error?.code === "P0001" || /^23[0-9A-Z]{3}$/.test(String(error?.code ?? ""))) {
+    return { status: 409, message: "La décision n’a pas pu être finalisée. Vérifiez le dossier." };
+  }
   return { status: 503, message: "La décision est temporairement indisponible. Réessayez dans quelques instants." };
 }
 

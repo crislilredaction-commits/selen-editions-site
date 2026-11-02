@@ -107,3 +107,5 @@
 - **État candidat** : tests/TypeScript/ESLint/build/CI/Preview à contrôler sur HEAD exacte ; aucune fusion ni production prétendue. Corriger sur même branche si échec.
 - Mesure : 10 parcours, TERMINÉ 0, restant 10, P0-01 TESTS AUTOMATISÉS OK sur lots précédents / À RECETTER authentifié, 9 À AUDITER, 1 bloqué pour recette ; delta terminés 0, bloqués 0.
 - **Prochaine action unique :** valider CI/Preview de ce lot et fusionner uniquement après protections ; puis recette sandbox publique → Studio réelle → décision OF → inscription sur deux OF fictifs, sans données réelles.
+
+- **CI rouge intermédiaire identifiée sur HEAD deed50a7 :** 2252/2256 tests PASS, 4 échecs de non-régression attendent HTTP 409 pour les rejets atomiques PostgreSQL (intégrité 23502/23514 et exception métier P0001). Sept nouveaux tests P0-01 PASS. Correction sur la MÊME branche : conserver 409 sans fuite SQL pour ces codes et ajouter trois tests dédiés ; relancer toute la CI, ne pas fusionner avant SUCCESS.
