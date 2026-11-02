@@ -30,11 +30,25 @@ async function generateCanonicalDocument(args: {
   const { data: previousRows, error: previousError } = await admin.from("daily_documents").select("*").eq("organisation_id",organisationId).eq("document_type",documentType).eq("linked_object_type",linkedObjectType).eq("linked_object_id",linkedObjectId).eq("logical_name",logicalName).order("version",{ascending:false}).limit(1);
   if (previousError) throw new Error(previousError.message);
   const previous = previousRows?.[0] ?? null;
-  if(args.onlyMissing && previous?.is_current && previous.status!=="archived")return previous;
+  // A failed pack can leave a newer, non-current draft. Reuse the actual
+  // current version for only_missing, while reserving the next version number
+  // from the newest row (including failed drafts).
+  let current = previous?.is_current ? previous : null;
+  if (previous && !current) {
+    const { data: currentRows, error: currentError } = await admin.from("daily_documents")
+      .select("*").eq("organisation_id",organisationId).eq("document_type",documentType)
+      .eq("linked_object_type",linkedObjectType).eq("linked_object_id",linkedObjectId)
+      .eq("logical_name",logicalName).eq("is_current",true)
+      .order("version",{ascending:false}).limit(1);
+    if (currentError) throw new Error(currentError.message);
+    current = currentRows?.[0] ?? null;
+  }
+  if(args.onlyMissing && current && current.status!=="archived")return current;
   const rendered=await renderDailyPretrainingTemplate({admin,organisationId,template:args.template,variables:args.variables??{},html});
   const version = Number(previous?.version ?? 0) + 1;
-  if (previous?.is_current && !args.deferRetirement) {
-    const { error } = await admin.from("daily_documents").update({ is_current:false, updated_by:userId }).eq("id",previous.id);
+  if (current && !args.deferRetirement) {
+    const { error } = await admin.from("daily_documents").update({ is_current:false, updated_by:userId })
+      .eq("organisation_id",organisationId).eq("id",current.id);
     if (error) throw new Error(error.message);
   }
   const stamp = new Date().toISOString().replaceAll(":","-").replaceAll(".","-");
@@ -47,7 +61,7 @@ async function generateCanonicalDocument(args: {
     organisation_id:organisationId, formation_id:metadata.formation_id ?? null, session_id:metadata.session_id ?? null, learner_id:metadata.learner_id ?? null, enrolment_id:metadata.enrolment_id ?? null, document_type:documentType, linked_object_type:linkedObjectType, linked_object_id:linkedObjectId,
     version, status:"to_check", logical_name:logicalName, bucket:"documents", storage_path:storagePath, mime_type:rendered.mimeType,
     size_bytes:rendered.bytes.byteLength, sha256:hash, created_by:userId, updated_by:userId, is_current:true,
-    previous_document_id:previous?.id ?? null, metadata:{...metadata,...rendered.metadata,generated_by:"daily_lot2e",generated_at:new Date().toISOString()}
+    previous_document_id:current?.id ?? previous?.id ?? null, metadata:{...metadata,...rendered.metadata,generated_by:"daily_lot2e",generated_at:new Date().toISOString()}
   }).select("*").single();
   if (error) { await admin.storage.from("documents").remove([storagePath]); throw new Error(error.message); }
   args.onCreated?.(data);
