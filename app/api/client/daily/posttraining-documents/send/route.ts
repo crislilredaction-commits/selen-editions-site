@@ -48,7 +48,7 @@ export async function POST(request: Request) {
     .eq("is_current", true)
     .maybeSingle();
 
-  if (documentError) return privateJson({ error: "Lecture du certificat temporairement indisponible." }, { status: 500 });
+  if (documentError) return privateJson({ error: "Lecture du certificat temporairement indisponible." }, { status: 503 });
   if (!document) return privateJson({ error: "Certificat introuvable ou remplacé par une version plus récente." }, { status: 404 });
   if (!sendableStatuses.includes(document.status)) {
     return privateJson({ error: "Le certificat doit être publié par Selen avant son envoi." }, { status: 409 });
@@ -60,7 +60,7 @@ export async function POST(request: Request) {
     .eq("id", document.linked_object_id)
     .eq("organisation_id", context.organisationId)
     .maybeSingle();
-  if (enrolmentError) return privateJson({ error: "Lecture de l’inscription temporairement indisponible." }, { status: 500 });
+  if (enrolmentError) return privateJson({ error: "Lecture de l’inscription temporairement indisponible." }, { status: 503 });
   if (!enrolment || ["declined", "cancelled", "abandoned"].includes(enrolment.status)) {
     return privateJson({ error: "L’inscription liée à ce certificat n’est plus active." }, { status: 409 });
   }
@@ -94,7 +94,7 @@ export async function POST(request: Request) {
     .maybeSingle();
 
   if (existingCommunicationError) {
-    return privateJson({ error: "Lecture de l’historique d’envoi temporairement indisponible." }, { status: 500 });
+    return privateJson({ error: "Lecture de l’historique d’envoi temporairement indisponible." }, { status: 503 });
   }
   if (existingCommunication) {
     return privateJson({
@@ -113,7 +113,7 @@ export async function POST(request: Request) {
     .eq("id", enrolment.session_id)
     .eq("organisation_id", context.organisationId)
     .maybeSingle();
-  if (sessionError) return privateJson({ error: "Lecture de la session temporairement indisponible." }, { status: 500 });
+  if (sessionError) return privateJson({ error: "Lecture de la session temporairement indisponible." }, { status: 503 });
   if (!session) return privateJson({ error: "Session introuvable." }, { status: 404 });
   if (["cancelled", "archived"].includes(session.status)) {
     return privateJson({ error: "La session n’est plus active. Aucun nouveau document ne peut être envoyé." }, { status: 409 });
