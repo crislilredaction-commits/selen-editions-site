@@ -5,6 +5,8 @@ import { matchesDailyLearnerPortalAccess, hasUniqueDailyLearnerRecipientEmail } 
 import { resolveEnterprisePortalCompany } from "@/lib/daily/enterprisePortalIdentity.mjs";
 import { isValidPortalExpiry } from "@/lib/daily/portalAttendanceAccess.mjs";
 
+const portalJson = (body: unknown, init: { status?: number } = {}) => NextResponse.json(body, { ...init, headers: { "Cache-Control": "private, no-store" } });
+const portalReadFailure = () => portalJson({ error: "Les documents sont temporairement indisponibles. Réessayez." }, { status: 503 });
 type Params = { params: Promise<{ token: string }> };
 
 function clean(value?: string | null) {
@@ -20,7 +22,7 @@ export async function GET(request: Request, { params }: Params) {
   const cleanToken = clean(token);
   const conventionId = clean(new URL(request.url).searchParams.get("id"));
   if (!cleanToken || !conventionId) {
-    return NextResponse.json({ error: "Lien invalide." }, { status: 400 });
+    return portalJson({ error: "Lien invalide." }, { status: 400 });
   }
 
   const supabase = getAdminSupabase();
@@ -30,21 +32,21 @@ export async function GET(request: Request, { params }: Params) {
     .eq("token", cleanToken)
     .maybeSingle();
 
-  if (accessError) return NextResponse.json({ error: accessError.message }, { status: 500 });
+  if (accessError) return portalReadFailure();
   if (!access || !isValidPortalExpiry(access.expires_at)) {
-    return NextResponse.json({ error: "Portail introuvable ou expire." }, { status: 404 });
+    return portalJson({ error: "Portail introuvable ou expire." }, { status: 404 });
   }
   if (!["pending", "viewed"].includes(String(access.status ?? ""))) {
-    return NextResponse.json({ error: "Cet accès n’est plus actif." }, { status: 403 });
+    return portalJson({ error: "Cet accès n’est plus actif." }, { status: 403 });
   }
   if (!["learner", "enterprise"].includes(String(access.portal_type ?? ""))) {
-    return NextResponse.json({ error: "Rôle de portail non autorisé." }, { status: 403 });
+    return portalJson({ error: "Rôle de portail non autorisé." }, { status: 403 });
   }
   const { data: session, error: sessionError } = await supabase.from("daily_sessions")
     .select("id,organisation_id,companies")
     .eq("id", access.session_id).neq("status", "archived").maybeSingle();
-  if (sessionError) return NextResponse.json({ error: sessionError.message }, { status: 500 });
-  if (!session) return NextResponse.json({ error: "Session introuvable." }, { status: 404 });
+  if (sessionError) return portalReadFailure();
+  if (!session) return portalJson({ error: "Session introuvable." }, { status: 404 });
 
   const { data: convention, error } = await supabase
     .from("daily_conventions")
@@ -53,9 +55,9 @@ export async function GET(request: Request, { params }: Params) {
     .eq("session_id", access.session_id)
     .maybeSingle();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return portalReadFailure();
   if (!convention?.storage_path) {
-    return NextResponse.json({ error: "Convention introuvable." }, { status: 404 });
+    return portalJson({ error: "Convention introuvable." }, { status: 404 });
   }
 
   const entityEmail = normalizedEmail(access.entity_email);
@@ -64,14 +66,14 @@ export async function GET(request: Request, { params }: Params) {
       .select("learner_id,status,daily_learners(email,first_name,last_name)")
       .eq("session_id", access.session_id)
       ;
-    if (enrolmentError) return NextResponse.json({ error: enrolmentError.message }, { status: 500 });
+    if (enrolmentError) return portalReadFailure();
     const matches = (rows ?? []).filter((row) => !["declined", "cancelled", "abandoned"].includes(String(row.status ?? "")) && matchesDailyLearnerPortalAccess(access, row));
-    if (matches.length !== 1) return NextResponse.json({ error: "Accès apprenant absent ou ambigu." }, { status: matches.length ? 409 : 403 });
-    if (!hasUniqueDailyLearnerRecipientEmail(access, rows ?? [])) return NextResponse.json({ error: "Document à destinataire email ambigu." }, { status: 403 });
+    if (matches.length !== 1) return portalJson({ error: "Accès apprenant absent ou ambigu." }, { status: matches.length ? 409 : 403 });
+    if (!hasUniqueDailyLearnerRecipientEmail(access, rows ?? [])) return portalJson({ error: "Document à destinataire email ambigu." }, { status: 403 });
   }
   if (access.portal_type === "enterprise") {
     const companyIdentity = resolveEnterprisePortalCompany(Array.isArray(session?.companies) ? session.companies : [], entityEmail);
-    if (companyIdentity.status !== "ok") return NextResponse.json({ error: "Identité entreprise absente ou ambiguë." }, { status: companyIdentity.status === "ambiguous" ? 409 : 403 });
+    if (companyIdentity.status !== "ok") return portalJson({ error: "Identité entreprise absente ou ambiguë." }, { status: companyIdentity.status === "ambiguous" ? 409 : 403 });
   }
   const allowed =
     (access.portal_type === "learner" &&
@@ -81,22 +83,19 @@ export async function GET(request: Request, { params }: Params) {
       convention.recipient_type === "company" &&
       Boolean(entityEmail && normalizedEmail(convention.recipient_email) === entityEmail));
 
-  if (!allowed) return NextResponse.json({ error: "Document non disponible pour ce portail." }, { status: 403 });
+  if (!allowed) return portalJson({ error: "Document non disponible pour ce portail." }, { status: 403 });
 
   const storagePath = personalSignatureStorageObjectPath(convention.storage_path, session.organisation_id);
-  if (!storagePath) return NextResponse.json({ error: "Document introuvable." }, { status: 404 });
+  if (!storagePath) return portalJson({ error: "Document introuvable." }, { status: 404 });
 
   const { data: signedUrlData, error: signedUrlError } = await supabase.storage
     .from("documents")
-    .createSignedUrl(storagePath, 60 * 5, {
+    .createSignedUrl(storagePath, 120, {
       download: convention.document_name ?? true,
     });
 
   if (signedUrlError || !signedUrlData?.signedUrl) {
-    return NextResponse.json(
-      { error: signedUrlError?.message ?? "Impossible de generer le lien de telechargement." },
-      { status: 500 },
-    );
+    return portalReadFailure();
   }
 
   return NextResponse.redirect(signedUrlData.signedUrl, { headers: { "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } });

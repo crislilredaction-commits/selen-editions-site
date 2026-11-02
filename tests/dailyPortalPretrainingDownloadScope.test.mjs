@@ -24,15 +24,15 @@ function setup(kind, options = {}) {
    maybeSingle() { single = true; return q; },
    update(v) { patch = v; return q; },
    then(ok,fail) { return Promise.resolve().then(() => {
-    if (table === "daily_sessions" && options.sqlError) return { data: null, error: { message: "SQL failure" } };
+    if ((table === "daily_sessions" && options.sqlError) || table === options.failTable || (table === "daily_convocations" && patch && options.failViewedUpdate)) return { data: null, error: { message: "internal SQL failure" } };
     const result = (rows[table] ?? []).filter(r => filters.every(f => f(r)));
     if (patch) for (const r of result) Object.assign(r,patch);
     return { data: single ? result[0] ?? null : result, error: null };
    }).then(ok,fail); }
   }; return q;
  }, storage: { from(bucket) { assert.equal(bucket,"documents"); return { async createSignedUrl(objectPath,ttl) {
-  assert.equal(objectPath,path); assert.equal(ttl,300); signed++;
-  return { data: { signedUrl: "https://files.test.invalid/document.pdf" }, error: null };
+  assert.equal(objectPath,path); assert.equal(ttl,120); signed++;
+  return options.signError ? { data: null, error: { message: "internal storage error" } } : { data: { signedUrl: "https://files.test.invalid/document.pdf" }, error: null };
  } }; } } };
  const { GET } = loadTypeScript(`app/api/daily-portal/[token]/${kind}/route.ts`, {
   "next/server": { NextResponse: { json: Response.json, redirect: (url,init) => new Response(null,{ status:302, headers:{ location:String(url), ...(init?.headers ?? {}) } }) } },
@@ -60,7 +60,7 @@ for (const kind of ["convention","convocation"]) {
   ["non-ISO future date",{expiresAt:"12/31/9999"},404],
   ["impossible ISO date",{expiresAt:"2030-02-30T00:00:00Z"},404],
   ["revoked",{status:"revoked"},403],["unknown token state",{status:"disabled"},403],
-  ["archived session",{archived:true},404],["SQL error",{sqlError:true},500],
+  ["archived session",{archived:true},404],["SQL error",{sqlError:true},503],
   ["cross-OF path",{path:"daily/other/private.pdf"},404],
   ["traversal",{path:"daily/org/../other/private.pdf"},404],
   ["ambiguous company",{role:"enterprise",companyStatus:"ambiguous"},409],
@@ -85,3 +85,23 @@ for (const kind of ["convention", "convocation"]) {
     assert.equal(h.signed(), 0);
   });
 }
+
+for(const kind of ["convention","convocation"]){
+ for(const table of ["daily_portal_access_tokens","daily_sessions",kind==="convention"?"daily_conventions":"daily_convocations"]){
+  test(`P0-09 ${kind}: panne SQL ${table} privée`,async()=>{
+   const h=setup(kind,{role:"enterprise",failTable:table}),r=await h.get();
+   assert.equal(r.status,503);assert.equal(r.headers.get("cache-control"),"private, no-store");
+   assert.doesNotMatch(JSON.stringify(await r.json()),/SQL|internal/i);assert.equal(h.signed(),0);
+  });
+ }
+ test(`P0-09 ${kind}: panne stockage privée`,async()=>{
+  const h=setup(kind,{role:"enterprise",signError:true}),r=await h.get();
+  assert.equal(r.status,503);assert.equal(r.headers.get("cache-control"),"private, no-store");
+  assert.doesNotMatch(JSON.stringify(await r.json()),/storage|internal/i);
+ });
+}
+test("P0-09 convocation: échec de trace bloque le téléchargement",async()=>{
+ const h=setup("convocation",{role:"enterprise",failViewedUpdate:true}),r=await h.get();
+ assert.equal(r.status,503);assert.equal(r.headers.get("cache-control"),"private, no-store");
+ assert.doesNotMatch(JSON.stringify(await r.json()),/SQL|internal/i);
+});
