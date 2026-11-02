@@ -142,6 +142,11 @@ export async function POST(req: Request) {
     .maybeSingle();
   if (sessionError) return NextResponse.json({ error: sessionError.message }, { status: 500 });
   if (!session) return NextResponse.json({ error: "Session introuvable." }, { status: 404 });
+  // No new attendance slots or signing links for a cancelled or archived session.
+  // Historical absence reviews and slot closure remain available for audit.
+  if (["prepare_session", "create_link"].includes(action) && ["cancelled", "archived"].includes(session.status)) {
+    return NextResponse.json({ error: "La session est annulée ou archivée : aucun nouvel émargement ne peut être préparé." }, { status: 409 });
+  }
 
   if (action === "prepare_session") {
     const blocks = Array.isArray(session.schedule_blocks) ? session.schedule_blocks : [];
