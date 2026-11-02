@@ -11,19 +11,19 @@
 5. Ne jamais déclarer TERMINÉ sur la seule base de tests verts, fusion ou Vercel READY : une recette bout-en-bout authentifiée et des critères d'acceptation prouvés sont nécessaires. Sans comptes de test : À RECETTER.
 6. Aucune modification de données réelles, signature pour autrui, email réel, migration risquée ou désactivation de protections.
 
-## Chantier actif — actualisé le 02/11/2026 à 05h40 (Paris)
+## Chantier actif — actualisé le 02/11/2026 à 05h43 (Paris)
 - Identifiant : **SELEN-P0-AVANT** (P0-02). P0-01 reste **TESTS AUTOMATISÉS OK / À RECETTER**, bloqué pour la recette authentifiée multi-OF et email sandbox ; il n'est pas terminé.
-- Parcours : préparation → validation → diffusion des documents avant formation → preuve → consultation/téléchargement. **État global : TESTS AUTOMATISÉS OK / À RECETTER** sur #499/#501, sans recette authentifiée.
-- Daily main contrôlée : `cb8f62d4722c868d2326464f113edf35dbbe49c8` (#501 fusionnée, 2274/2274 tests, CI et production READY). Studio main `adcd01565e398b83d8aacebfbde1660c1fe98fd6` (#449).
-- **Maillon manquant prouvé :** l'envoi manuel d'une convocation validée n'exigeait pas que le contenu stocké corresponde au SHA-256 validé, nommait toute pièce jointe .doc même si PDF/DOCX et n'empêchait pas l'envoi d'un document rattaché à une autre session/inscription/apprenant après changement.
-- Lot candidat sur branche `fix/p0-avant-convocation-integrity-20261102-0435` : comparaison SHA-256 avant réservation de preuve ou appel au fournisseur, rejet des pièces vides/altérées, extension MIME réelle, contrôle des identifiants de rattachement si renseignés. Tests runtime supplémentaires avec DB et messagerie simulées. **CI/Preview non encore vérifiées au moment de cette écriture ; ne pas fusionner avant SUCCESS/READY sur HEAD finale.**
-- **Prochaine action unique :** vérifier CI tests/TS/ESLint/build et Preview de cette branche sur SHA exacte, corriger dans la même PR si rouge, fusionner seulement après protections, puis contrôler CI main et production SHA. Recette P0-02 en sandbox A/B dès que comptes, sessions, stockage et messagerie fictifs existent.
+- Parcours : préparation → validation → diffusion des documents avant formation → preuve → consultation/téléchargement. **État global : TESTS AUTOMATISÉS OK / À RECETTER** sur #499/#501/#502, sans recette authentifiée.
+- Daily main contrôlée : `b1172dd14d2af09f1a66ff32938d6cd6bb714951` (#502 fusionnée, CI et production READY selon journal vérifié). Studio main `adcd01565e398b83d8aacebfbde1660c1fe98fd6` (#449).
+- **Maillon manquant prouvé :** le téléchargement d'une version remplacée/absente via `pretraining-documents/download` traitait le zéro ligne PostgREST comme panne 503 au lieu de 404 ; les exceptions du stockage et emplacements vides n'étaient pas maîtrisés.
+- **Lot actif PR [#503](https://github.com/crislilredaction-commits/selen-editions-site/pull/503)**, branche `fix/p0-avant-document-download-reliability-20261102-0540` : `.maybeSingle()`, 404/503 distincts, contrôle de l'emplacement, exception de signature traitée, réponses privées non cachables, tests runtime et statique. **CI/Preview non encore validées sur HEAD finale ; ne pas fusionner avant SUCCESS/READY.**
+- **Prochaine action unique :** vérifier CI tests/TypeScript/ESLint/build et Preview de #503 sur SHA exacte, corriger dans la même PR si rouge, fusionner seulement après protections, puis contrôler CI main et production SHA. Recette P0-02 en sandbox A/B dès que comptes, sessions, stockage et messagerie fictifs existent.
 
 ## Matrice des parcours — actualisée le 02/11/2026
 | ID | Critères d'acceptation | Statut | Preuves, blocages et prochaine action |
 | --- | --- | --- | --- |
 | P0-01 | Dépôt candidature → analyse Studio → décision OF → inscription unique, notifications et séparation OF | TESTS AUTOMATISÉS OK / À RECETTER | Daily #495/#498, Studio #449 ; manque E2E authentifié A/B et boîte sandbox ; préparer recette |
-| P0-02 | Génération, validation, diffusion unique, preuve, téléchargement privé et exactitude du fichier | TESTS AUTOMATISÉS OK / À RECETTER | Daily #499/#501, lot intégrité convocation candidat ; CI puis recette sandbox A/B |
+| P0-02 | Génération, validation, diffusion unique, preuve, téléchargement privé et exactitude du fichier | TESTS AUTOMATISÉS OK / À RECETTER | Daily #499/#501/#502 ; PR #503 téléchargement candidat ; CI/Preview puis recette sandbox A/B |
 | P0-03 | Présence apprenant/formateur, absences, PDF individuel, permissions | À AUDITER | Auditer chaîne et tests, après P0-02 |
 | P0-04 | Évaluations, acquis, satisfaction, relances | À AUDITER | Auditer réponses et notifications |
 | P0-05 | Après, clôture, attestations et régularisations | À AUDITER | Auditer complétude et preuves |
@@ -39,7 +39,7 @@
 - **Total 10 ; TERMINÉ 0 ; restant à valider 10 ; TESTS AUTOMATISÉS OK / À RECETTER 2 ; À AUDITER 8 ; bloqué pour recette authentifiée 1 (P0-01).**
 - Delta depuis la passation #501 : **TERMINÉ 0 ; restant 0 ; à recetter 0 ; à auditer 0 ; bloqués 0.** Aucun test authentifié multi-OF réalisé.
 
-## Compte rendu de passage
+## Compte rendu précédent (#502, archivé)
 - Lot candidat P0-02 : rattachement et intégrité des pièces jointes des convocations, extension PDF/DOCX correcte ; aucun email réel, donnée client, signature, migration ou autre automatisation modifiée.
 - Tests unitaires/runtime proposés, CI/Preview à vérifier sur HEAD ; tests locaux complets impossibles sans checkout/dépendances. Ne pas inventer un succès.
 - Cahier maître : lecture effectuée ; écriture historiquement bloquée `FAILED_PRECONDITION`, tenter une mise à jour contrôlée et, si refus, conserver le journal complémentaire.
