@@ -49,12 +49,12 @@ function fixture(options = {}) {
           } else assert.fail("Unexpected table " + table);
           return Promise.resolve({ data: error ? null : data, error }).then(resolve, reject);
         },
-        async single() {
+        async maybeSingle() {
           assert.equal(table, "daily_documents");
           if (options.documentsFailure) return { data: null, error: { message: sqlSecret } };
           const document = {
             id: "document-a", organisation_id: "of-a", document_type: "convocation",
-            bucket: "documents", storage_path: "daily/of-a/private.pdf", is_current: true
+            bucket: "documents", storage_path: options.missingStoragePath ? "" : "daily/of-a/private.pdf", is_current: true
           };
           const matches = filters.every(([key, value]) =>
             Array.isArray(value) ? value.includes(document[key]) : document[key] === value);
@@ -69,6 +69,7 @@ function fixture(options = {}) {
         return {
           async createSignedUrl(path, seconds) {
             signed.push({ path, seconds });
+            if (options.signingThrow) throw new Error(sqlSecret);
             if (options.signingFailure) return { data: null, error: { message: sqlSecret } };
             return { data: { signedUrl: "https://storage.invalid/temporary-token" }, error: null };
           }
@@ -187,4 +188,37 @@ test("Avant : téléchargement valide reste privé, signé pour 120 secondes", a
   assert.equal(result.headers["Cache-Control"], "private, no-store");
   assert.deepEqual(f.signed, [{ path: "daily/of-a/private.pdf", seconds: 120 }]);
   assert.match(result.url, /^https:\/\/storage\.invalid\//);
+});
+
+test("Avant : document remplacé ou absent retourne 404 privé, jamais 503 ni signature", async () => {
+  const f = fixture({ missingDocument: true });
+  const result = await f.fetchDocument();
+  assert.equal(result.status, 404);
+  assert.equal(result.headers["Cache-Control"], "private, no-store");
+  assert.equal(f.signed.length, 0);
+});
+
+test("Avant : emplacement de stockage manquant refuse la signature", async () => {
+  const f = fixture({ missingStoragePath: true });
+  const result = await f.fetchDocument();
+  assert.equal(result.status, 503);
+  assert.equal(result.headers["Cache-Control"], "private, no-store");
+  assert.equal(f.signed.length, 0);
+});
+
+test("Avant : exception du stockage reste privée et ne divulgue pas SQL", async () => {
+  const f = fixture({ signingThrow: true });
+  const result = await f.fetchDocument();
+  assert.equal(result.status, 503);
+  assert.equal(result.headers["Cache-Control"], "private, no-store");
+  assert.doesNotMatch(JSON.stringify(result.body), /SQL private|do-not-disclose/);
+  assert.equal(f.signed.length, 1);
+});
+
+test("Avant : téléchargement non autorisé n'interroge ni base ni stockage", async () => {
+  const f = fixture({ unauthorized: true });
+  const result = await f.fetchDocument();
+  assert.equal(result.status, 403);
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.signed.length, 0);
 });
