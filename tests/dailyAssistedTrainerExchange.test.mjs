@@ -30,7 +30,7 @@ test("aucun choix implicite lorsque la paire formateur/session est incomplète",
  const h=exchangeHarness(),r=await h.load(api).GET(request(`?trainer_id=${ids.trainer}`));assert.equal(r.status,400);assert.equal(h.reads.length,0);
 });
 test("une erreur Supabase reste une erreur et ne devient pas une liste vide",async()=>{
- const h=exchangeHarness({failTable:"daily_attendance_slots"}),r=await h.load(api).GET(request(selection));assert.equal(r.status,500);assert.match((await r.json()).error,/fixture read failure/);assert.equal(h.logs.length,0);
+ const h=exchangeHarness({failTable:"daily_attendance_slots"}),r=await h.load(api).GET(request(selection));assert.equal(r.status,503);const body=await r.json();assert.match(body.error,/temporairement indisponible/);assert.doesNotMatch(JSON.stringify(body),/fixture read failure/);assert.equal(h.logs.length,0);
 });
 test("le mode délégué ne permet aucune signature ni écriture",async()=>{
  const h=exchangeHarness(),before=JSON.stringify(h.db),r=await h.load(api).POST(request(selection));assert.equal(r.status,403);assert.equal(h.reads.length,0);assert.equal(JSON.stringify(h.db),before);
