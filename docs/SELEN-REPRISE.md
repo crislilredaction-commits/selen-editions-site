@@ -98,3 +98,12 @@
 - Studio main après fusion `adcd01565e398b83d8aacebfbde1660c1fe98fd6`, production Vercel `dpl_3F67ygq1WruLWfnpqVFav6XGCE4s` **READY** sur cette SHA exacte, `aliasError=null`, domaines `studio.selen-editions.fr` et `selen-studio.vercel.app` associés. CI post-fusion Studio main **non prouvée** (workflow PR uniquement, aucune check-run retournée sur la SHA main) ; ne pas la déclarer SUCCESS.
 - L'action réelle `saveAnalysis` a été exécutée en tests isolés Studio pour deux OF/agents fictifs ; la décision OF et le POST public ne sont pas dans **ce même** test inter-dépôts. **P0-01 : TESTS AUTOMATISÉS OK / À RECETTER, pas TERMINÉ**. Mesures 10 total, 0 terminé, 10 restant, 1 à recetter, 9 à auditer, 1 bloqué pour recette authentifiée, delta 0.
 - **Prochaine action unique :** rapprocher les scénarios testés Daily (POST public et décision) et Studio (action réelle), puis exécuter une recette authentifiée complète sur deux OF fictifs avec email sandbox ; sans comptes/sessions, conserver À RECETTER. Ne pas modifier les autres parcours ni les automatisations.
+
+
+## Développement horaire P0-01 — 02/11/2026, 01h41 (Paris) : erreurs décision OF / délégation
+- Daily main initial `271ca8a109a90be83719117482d24337ba9cc29c`, Studio main `adcd01565e398b83d8aacebfbde1660c1fe98fd6`, PR #497/#449 déjà fusionnées. Cahier maître et journal relus ; pas de doublon.
+- Recette authentifiée bloquée faute de comptes fictifs A/B, sessions et emails sandbox. Anomalie confirmée : erreurs SQL brutes des décisions OF et Studio déléguées, matérialisation, régularisation et lecture.
+- Lot sur branche `fix/p0-registration-decision-errors-20261102-0141` : réponses génériques 503 en cas de panne SQL, messages métier explicites 400/403/404/409, aucun changement des RPC, droits, transactions ou envois ; 7 tests runtime de non-divulgation, droits, refus inter-OF, absence de notification.
+- **État candidat** : tests/TypeScript/ESLint/build/CI/Preview à contrôler sur HEAD exacte ; aucune fusion ni production prétendue. Corriger sur même branche si échec.
+- Mesure : 10 parcours, TERMINÉ 0, restant 10, P0-01 TESTS AUTOMATISÉS OK sur lots précédents / À RECETTER authentifié, 9 À AUDITER, 1 bloqué pour recette ; delta terminés 0, bloqués 0.
+- **Prochaine action unique :** valider CI/Preview de ce lot et fusionner uniquement après protections ; puis recette sandbox publique → Studio réelle → décision OF → inscription sur deux OF fictifs, sans données réelles.
