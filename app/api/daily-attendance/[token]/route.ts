@@ -146,7 +146,7 @@ async function loadSlotAndSession(
 ) {
   const [{ data: slot, error: slotError }, { data: session, error: sessionError }] = await Promise.all([
     admin.from("daily_attendance_slots").select("id,slot_date,starts_at,ends_at,mode,label,status").eq("id", access.slot_id).eq("organisation_id", access.organisation_id).maybeSingle(),
-    admin.from("daily_sessions").select("id,internal_reference,modality,start_date,end_date,daily_formations(id,title)").eq("id", access.session_id).eq("organisation_id", access.organisation_id).maybeSingle(),
+    admin.from("daily_sessions").select("id,internal_reference,modality,status,start_date,end_date,daily_formations(id,title)").eq("id", access.session_id).eq("organisation_id", access.organisation_id).maybeSingle(),
   ]);
   if (slotError || sessionError) throw new Error("Attendance slot or session unavailable");
   return { slot, session };
@@ -167,7 +167,7 @@ export async function GET(_request: Request, { params }: Params) {
     if (isLateAttendanceRecord(accessRecord) && !correction) {
       return attendanceJson({ error: "Ce lien de correction n’est plus actif." }, { status: 410 });
     }
-    if (!slot || !session || slot.status === "cancelled" || (slot.status === "closed" && !correction)) {
+    if (!slot || !session || ["cancelled", "archived"].includes(session.status) || slot.status === "cancelled" || (slot.status === "closed" && !correction)) {
       return attendanceJson({ error: "Ce créneau d'émargement n'est plus disponible." }, { status: 410 });
     }
     if (!attendanceSlotHasStarted(slot)) {
@@ -216,7 +216,7 @@ export async function POST(request: Request, { params }: Params) {
     if (isLateAttendanceRecord(accessRecord) && !correctionAtOpen) {
       return attendanceJson({ error: "Ce lien de correction n’est plus actif." }, { status: 410 });
     }
-    if (!slot || !session || slot.status === "cancelled" || (slot.status === "closed" && !correctionAtOpen)) {
+    if (!slot || !session || ["cancelled", "archived"].includes(session.status) || slot.status === "cancelled" || (slot.status === "closed" && !correctionAtOpen)) {
       return attendanceJson({ error: "Ce créneau est fermé." }, { status: 410 });
     }
     if (!attendanceSlotHasStarted(slot)) {
