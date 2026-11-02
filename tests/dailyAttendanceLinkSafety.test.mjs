@@ -7,7 +7,7 @@ const sessionId = "session-a";
 const slotId = "slot-a";
 const enrolmentId = "enrolment-a";
 
-function fixture({ slotStatus = "open", enrolmentReadError = false, revokeError = false, forbidden = false } = {}) {
+function fixture({ slotStatus = "open", sessionStatus = "active", enrolmentReadError = false, revokeError = false, forbidden = false } = {}) {
   const reads = [];
   const writes = [];
   let refreshes = 0;
@@ -23,7 +23,7 @@ function fixture({ slotStatus = "open", enrolmentReadError = false, revokeError 
         insert(value) { operation = "insert"; payload = value; writes.push({ table, operation, payload, filters }); return this; },
         async maybeSingle() {
           reads.push({ table, filters: [...filters] });
-          if (table === "daily_sessions") return { data: { id: sessionId, status: "active" }, error: null };
+          if (table === "daily_sessions") return { data: { id: sessionId, status: sessionStatus }, error: null };
           if (table === "daily_attendance_slots") return { data: { id: slotId, slot_date: "2026-10-30", mode: "presentiel", status: slotStatus }, error: null };
           if (table === "daily_session_enrolments") return {
             data: enrolmentReadError ? null : { id: enrolmentId, status: "active" },
@@ -117,4 +117,23 @@ test("P0: refus de permission avant toute lecture ou écriture", async () => {
   assert.equal(result.status, 403);
   assert.equal(f.reads.length, 0);
   assert.equal(f.writes.length, 0);
+});
+
+test("P0-03: aucune création de lien sur session annulée ou archivée, même si le créneau est ouvert", async () => {
+  for (const sessionStatus of ["cancelled", "archived"]) {
+    const f = fixture({ sessionStatus });
+    const response = await f.post("create_link", { slot_id: slotId, enrolment_id: enrolmentId });
+    assert.equal(response.status, 409, sessionStatus);
+    assert.deepEqual(f.writes, [], sessionStatus);
+    assert.deepEqual(f.reads.map(r => r.table), ["daily_sessions"], sessionStatus);
+  }
+});
+
+test("P0-03: une session annulée permet encore de fermer le créneau et révoquer ses anciens liens", async () => {
+  const f = fixture({ sessionStatus: "cancelled" });
+  const response = await f.post("close_slot", { slot_id: slotId });
+  assert.equal(response.status, 200);
+  assert.equal(f.writes.length, 2);
+  assert.equal(f.writes[1].table, "daily_attendance_access_tokens");
+  assert.equal(f.writes[1].payload.status, "revoked");
 });
