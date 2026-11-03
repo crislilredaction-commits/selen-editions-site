@@ -32,6 +32,49 @@ export type Article = {
 // date de publication, mise à la une.
 export const articles: Article[] = [
   {
+    "slug": "formateur-independant-annulations-reports-fin-annee",
+    "title": "Novembre arrive : votre planning de formation va-t-il survivre à la fin d'année ? 📅",
+    "category": "Gestion quotidienne",
+    "excerpt": "Jours fériés, reports de dernière minute, participants absents et convocations à reprendre : six réflexes pour protéger vos sessions de novembre et décembre.",
+    "publishedAt": "2026-11-03",
+    "coverImage": "/plum.png",
+    "coverAlt": "Plume de la Gazette Selen sur fond parchemin",
+    "featured": true,
+    "readingTime": "7 min",
+    "introduction": "Mardi 3 novembre, 8 h 46. Camille est formatrice indépendante. Son planning est magnifique : quatre sessions en novembre, trois en décembre, les supports prêts, quelques créneaux pour souffler. Puis un client téléphone : « On pourrait décaler la semaine prochaine ? » Le 11 novembre 2026 tombe un mercredi, le 25 décembre un vendredi, et les congés se multiplient. Camille regarde son planning. Son planning la regarde. Le combat peut commencer. Voici six réflexes pour éviter que la fin d'année ne transforme l'activité en partie de Tetris.",
+    "sections": [
+      {
+        "title": "1. Le calendrier qui semblait parfaitement libre",
+        "body": "Un créneau vide n'est pas toujours un créneau exploitable. Le mercredi 11 novembre 2026 est férié en France ; autour de cette date, certains salariés peuvent être en congé, sans que cela soit systématique. Deux semaines avant une session, confirmez avec le commanditaire la date, l'effectif prévu, la disponibilité des participants, les déplacements et les éventuels besoins d'adaptation. Faites confirmer les changements par écrit. Un devis signé en septembre ne prouve pas que douze personnes seront présentes en novembre. Référence : Code du travail numérique, « Jours fériés et ponts dans le secteur privé », https://code.travail.gouv.fr/fiche-service-public/jours-feries-et-ponts-dans-le-secteur-prive."
+      },
+      {
+        "title": "2. Le client qui reporte « juste de quelques jours »",
+        "body": "« On va finalement reporter à janvier, ça ne vous dérange pas ? » Vous avez bloqué du temps et parfois refusé une autre mission. Le bon moment pour gérer cette situation est avant qu'elle arrive : dans vos conditions contractuelles, distinguez annulation, report demandé par le client, report par le prestataire et événements exceptionnels. Précisez les délais de notification et conséquences financières éventuelles selon le cadre juridique applicable et les accords conclus. N'empruntez pas une clause au hasard sur Internet : elle doit être adaptée à la prestation et au type de client. Le but n'est pas de punir, mais de répartir clairement les conséquences d'un changement."
+      },
+      {
+        "title": "3. L'apprenant absent qui reste inscrit partout",
+        "body": "Dix participants attendus. Huit présents. Un malade. Et un dixième dont personne ne sait rien. Pourtant tous figurent encore sur les mêmes documents. Distinguez les statuts : prévu, confirmé, présent, absent, désinscrit. Une personne inscrite n'est pas automatiquement présente ; une personne absente n'est pas nécessairement désinscrite ; une personne désinscrite ne doit pas continuer à recevoir toutes les relances destinées aux participants attendus. Les preuves de présence doivent refléter le déroulement réel de la session. Un tableau impeccable mais faux reste faux, même avec des bordures bleu pastel."
+      },
+      {
+        "title": "4. Le report et l'avalanche des documents",
+        "body": "Camille modifie la date dans son agenda. Terminé ? Pas vraiment : convocations, informations pratiques, réservations, documents transmis au client, intervenants et liens de visioconférence peuvent encore afficher l'ancienne date. Faites un contrôle en cascade : (1) nouvelle date confirmée ; (2) commanditaire informé ; (3) participants recontactés ; (4) intervenants et salle disponibles ; (5) accès à distance mis à jour ; (6) documents de session cohérents. Un avenant ou un autre écrit peut être nécessaire selon le contrat. Conservez la trace de l'accord de modification, au lieu d'espérer que tout se synchronise par magie."
+      },
+      {
+        "title": "5. Le syndrome « je remplirai décembre plus tard »",
+        "body": "Deux journées libres en décembre ne signifient pas nécessairement deux nouvelles formations vendues : les entreprises réorganisent leurs congés, leurs budgets et leurs priorités. Plutôt que de forcer une longue formation, proposez, lorsque les objectifs le justifient, un atelier de consolidation, un perfectionnement ciblé ou une analyse des besoins préparatoire à un parcours de janvier. Ne découpez pas artificiellement une formation pour remplir un agenda. Réservez aussi du temps aux supports, à la gestion et à la préparation de l'année suivante. Une prestation courte et utile vaut mieux qu'une formation longue programmée dans la précipitation."
+      },
+      {
+        "title": "6. Le bilan qu'on repousse jusqu'en février",
+        "body": "« Je ferai le bilan en janvier », dit Camille. Puis janvier arrive avec ses devis et ses urgences. Après chaque session, accordez-vous vingt minutes : qu'est-ce qui a fonctionné ? Qu'est-ce qui a compliqué l'organisation ou l'apprentissage ? Quelle amélioration envisager, qui en sera chargé et pour quand ? Ce suivi interne ne remplace ni les obligations documentaires applicables ni le bilan pédagogique et financier annuel. Il évite en revanche de reconstituer en janvier ce qui s'est passé un mardi de novembre à 14 h 37. Référence pour le BPF : https://hauts-de-france.dreets.gouv.fr/Organismes-de-formation-teledeclarez-votre-bilan-pedagogique-et-financier-BPF."
+      },
+      {
+        "title": "🎁 Le défi Selen : 5 + 5 + 5 minutes",
+        "body": "Cinq minutes pour repérer les jours fériés, les congés possibles et les contraintes des trois prochaines sessions. Cinq minutes pour identifier les effectifs, dates ou intervenants à reconfirmer. Cinq minutes pour prévoir les messages à envoyer et les documents à actualiser en cas de modification. Ce contrôle ne supprimera pas toutes les annulations, mais il peut empêcher qu'une difficulté prévisible devienne une urgence. Quinze minutes de prévention valent mieux que quatre heures à démêler des convocations contradictoires."
+      }
+    ],
+    "conclusion": "Le vendredi suivant, Camille a subi un report, un désistement et une nouvelle demande de changement. Mais elle a vérifié les disponibilités, obtenu des confirmations écrites et mis les documents à jour. Son téléphone sonne : « Finalement, on garde la date initiale ! » Elle ferme les yeux, puis répond : « Très bien, je vous confirme cela par écrit. » Un planning n'est pas la promesse que rien ne changera ; c'est un outil pour gérer les changements. Son ordinateur affiche alors : « Votre réunion de demain a été déplacée à hier. » Le numérique a encore une marge de progression. L'équipe Selen Éditions. Article du 3 novembre 2026. Exemples fictifs et conseils d'organisation ; les dispositions contractuelles et réglementaires applicables font foi. Transparence éditoriale : article proposé et préparé avec l'assistance d'une intelligence artificielle ; publication autorisée après validation humaine par Selen Éditions."
+  },
+  {
     "slug": "animation-formation-faire-participer-apprenants",
     "title": "Le conseil des fantômes : quand vos apprenants disparaissent en pleine formation 🎃",
     "category": "Gestion quotidienne",
