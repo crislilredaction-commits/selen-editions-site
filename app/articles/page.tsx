@@ -29,7 +29,13 @@ export default function ArticlesPage() {
           Qualiopi, la gestion administrative et le suivi de vos formations.
         </p>
 
-        <aside aria-label="Transparence éditoriale de la Gazette" className="mx-auto mt-6 max-w-2xl border border-[#b28a62]/40 bg-[#f8efdf]/80 px-5 py-4 text-left text-sm leading-6 text-[#5a4031]">
+      </section>
+
+      <section className="mx-auto max-w-6xl px-4 md:px-6 py-12 md:py-16">
+        <ArticlesList articles={sortedArticles} />
+      </section>
+
+      <aside aria-label="Transparence éditoriale de la Gazette" className="mx-auto my-10 max-w-2xl border border-[#b28a62]/40 bg-[#f8efdf]/80 px-5 py-4 text-left text-sm leading-6 text-[#5a4031]">
           <p className="font-semibold text-[#3e2a1f]">Notre transparence sur l&apos;IA</p>
           <p className="mt-2">
             Certains articles de la Gazette sont préparés avec l&apos;aide d&apos;une intelligence artificielle.
@@ -37,11 +43,6 @@ export default function ArticlesPage() {
             avant publication. L&apos;IA propose ; la responsabilité de publier reste humaine.
           </p>
         </aside>
-      </section>
-
-      <section className="mx-auto max-w-6xl px-4 md:px-6 py-12 md:py-16">
-        <ArticlesList articles={sortedArticles} />
-      </section>
 
       <Footer />
     </main>
