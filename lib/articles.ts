@@ -32,6 +32,57 @@ export type Article = {
 // date de publication, mise à la une.
 export const articles: Article[] = [
   {
+    "slug": "ai-act-transparence-contenus-ia-formateurs-2026",
+    "title": "AI Act : faut-il mettre une étiquette sur chaque texte rédigé avec ChatGPT ?",
+    "category": "Vision Selen",
+    "excerpt": "AI Act 2026 : faut-il signaler chaque texte produit avec ChatGPT ? Les règles, les exceptions et notre méthode de validation humaine.",
+    "publishedAt": "2026-11-03",
+    "coverImage": "/plum.png",
+    "coverAlt": "Plume de la Gazette Selen sur parchemin",
+    "featured": true,
+    "readingTime": "9 min",
+    "introduction": "*L'IA rédige, l'humain vérifie, le public mérite de comprendre qui fait quoi. Bienvenue dans le grand théâtre de la transparence, sans tampon « robot » sur chaque virgule.*",
+    "sections": [
+      {
+        "title": "Le stagiaire numérique qui travaille beaucoup trop vite",
+        "body": "Marion est formatrice indépendante. Elle a demandé à une IA de préparer un premier brouillon d'article sur la gestion des formations. En trente secondes, la machine lui propose 1 500 mots, trois conseils astucieux… et une référence réglementaire qui n'existe pas.\n\nMarion corrige la référence, vérifie les textes, retire deux conseils douteux, réécrit une partie des exemples et décide, elle-même, de la publication.\n\nUn collègue lui lance : « Avec l'AI Act, tu dois obligatoirement afficher GÉNÉRÉ PAR IA en énorme partout, non ? »\n\nLa réponse est plus subtile. Heureusement, sinon nos pages ressembleraient à des emballages de céréales."
+      },
+      {
+        "title": "1. AI Act : la vraie date",
+        "body": "Le règlement européen (UE) 2024/1689, dit AI Act, entre en application par étapes. Ses obligations de transparence de l'article 50 s'appliquent depuis le **2 août 2026**. Les obligations de culture de l'IA de l'article 4 s'appliquent depuis le **2 février 2025**.\n\nAttention aux calendriers piochés dans de vieux articles : le règlement (UE) 2026/1744 a modifié certaines échéances, notamment pour des systèmes à haut risque. Cela ne supprime pas l'entrée en application de l'article 50 au 2 août 2026.\n\nSources : Commission européenne, 2 août 2026, https://commission.europa.eu/news-and-media/news/safer-and-more-transparent-ai-2026-08-02_fr ; règlement consolidé https://eur-lex.europa.eu/eli/reg/2024/1689/2026-07-27/eng ."
+      },
+      {
+        "title": "2. Ne mélangeons pas fournisseurs, utilisateurs et contenus",
+        "body": "Le fournisseur d'un système d'IA générative a notamment des obligations techniques de marquage détectable de certains contenus produits par son système : ce n'est pas la même chose que l'étiquette visible publiée par un formateur sur son blog.\n\nL'organisation qui utilise une IA, appelée **déployeur**, peut être soumise à des obligations particulières de transparence, par exemple lorsqu'elle diffuse des deepfakes ou publie certains textes générés par IA pour informer le public sur des questions d'intérêt public.\n\nEt un outil conversationnel directement utilisé par des apprenants doit les informer de l'interaction avec l'IA, sauf si cela est évident dans les circonstances. Cette dernière exigence vise d'abord la conception des systèmes par les fournisseurs ; les responsabilités précises dépendent du rôle exercé.\n\nUne vidéo fictive qui fait croire à une déclaration réelle, un chatbot d'accompagnement et un article de blog ne relèvent donc pas automatiquement de la même règle. Ce serait trop simple, et l'Europe adore les distinctions utiles."
+      },
+      {
+        "title": "3. L'exception dont on parle trop vite : la vérification humaine",
+        "body": "L'article 50, paragraphe 4, prévoit une exception pour les textes destinés à informer le public sur des sujets d'intérêt public lorsque le contenu a fait l'objet d'un examen humain ou d'un contrôle éditorial **et** qu'une personne physique ou morale assume la responsabilité éditoriale de sa publication.\n\nLa Commission précise que la vérification humaine doit porter sur le **fond**. Corriger deux fautes, déplacer une virgule ou cliquer « approuvé » ne suffit pas. Il faut une personne en mesure de modifier, refuser et contrôler réellement les informations et les sources.\n\nTraduction pour Marion : elle peut s'appuyer sur l'IA pour construire un premier texte, mais elle doit vérifier les affirmations, les dates, les références et l'adéquation des conseils à ses lecteurs. Et si elle publie, elle en répond.\n\nRéférence : Commission européenne, lignes directrices du 20 juillet 2026, https://digital-strategy.ec.europa.eu/en/library/guidelines-transparency-obligations-providers-and-deployers-ai-systems ; FAQ Article 50, https://digital-strategy.ec.europa.eu/en/faqs/transparency-obligations-under-article-50-ai-act ."
+      },
+      {
+        "title": "4. Trois cas pratiques pour les formateurs",
+        "body": "**Cas A.** Une IA propose dix questions de quiz. Le formateur les révise et les adapte aux objectifs avant diffusion. La transparence est une bonne pratique ; cela ne signifie pas que chaque question doit obligatoirement porter une étiquette visible.\n\n**Cas B.** Un organisme publie une tribune d'actualité entièrement générée par IA, sans relecture de fond ni responsabilité éditoriale réellement exercée. Si elle vise l'information du public sur une question d'intérêt public, l'obligation de divulgation de l'article 50, paragraphe 4, peut s'appliquer.\n\n**Cas C.** Un chatbot répond directement aux apprenants. Ceux-ci doivent être correctement informés qu'ils interagissent avec un système d'IA lorsque l'obligation correspondante s'applique. Un simple bandeau sur la page d'accueil ne remplace pas nécessairement une information claire lors de l'interaction.\n\nEt surtout : le RGPD ne disparaît pas dès que l'on prononce « intelligence artificielle ». Évitez d'envoyer des données personnelles d'apprenants à un outil externe sans cadre approprié."
+      },
+      {
+        "title": "5. La méthode Selen : cinq portes, aucune publication automatique",
+        "body": "**Porte 1 : proposition.** L'IA suggère le sujet, le plan, le premier texte et les sources potentielles.\n\n**Porte 2 : vérification humaine.** Une personne contrôle le sujet, les dates, les références officielles, les risques d'erreur, les conseils concrets et l'absence de données personnelles inutiles.\n\n**Porte 3 : correction.** Les erreurs sont modifiées, les affirmations non confirmées retirées, et une nouvelle version est produite.\n\n**Porte 4 : validation.** Une personne habilitée peut accepter, demander de nouvelles corrections ou refuser la publication. L'IA ne valide pas à sa place.\n\n**Porte 5 : traçabilité et transparence.** La décision et sa date sont conservées ; la publication indique clairement le recours à l'IA et la responsabilité éditoriale humaine.\n\nÀ la Gazette Selen, nous choisissons volontairement d'afficher une mention de transparence même lorsque l'exception de contrôle éditorial pourrait s'appliquer. C'est une règle éditoriale interne, pas une nouvelle obligation générale inventée par le règlement."
+      },
+      {
+        "title": "6. La mention à utiliser, sans fausses promesses",
+        "body": "« Cet article a été préparé avec l'assistance d'une intelligence artificielle. Son contenu a fait l'objet d'une vérification éditoriale humaine et sa publication a été validée par Selen Éditions. »\n\nAttention : cette formule ne doit être affichée comme un fait que si une personne a effectivement réalisé la vérification de fond. Tant que l'article n'a pas été validé, la bonne mention est : « Brouillon préparé avec une IA, en attente de vérification et de validation humaines. »\n\nNe confondons pas la transparence et le décor de transparence."
+      },
+      {
+        "title": "7. Le défi de quinze minutes",
+        "body": "Prenez votre prochain texte préparé avec une IA. Soulignez trois affirmations factuelles. Retrouvez les sources originales et leurs dates. Vérifiez une citation réglementaire directement dans le texte officiel. Retirez une phrase trop sûre d'elle si elle n'est pas démontrable. Notez qui a relu, ce qui a changé et qui prendra la décision finale.\n\nSi votre IA vous propose une loi imaginaire avec beaucoup d'aplomb, vous venez de découvrir pourquoi le contrôle humain ne peut pas se résumer à un bouton vert."
+      },
+      {
+        "title": "Épilogue : le robot n'a pas signé le bon à tirer",
+        "body": "Marion termine son article. Elle a utilisé l'IA, mais elle n'a pas délégué son jugement. Elle sait où les informations ont été vérifiées, pourquoi certains passages ont été retirés et qui prendra la responsabilité de la publication.\n\nElle écrit sa mention de transparence.\n\nSon collègue demande : « Et si ChatGPT dit que tout est conforme ? »\n\nMarion sourit.\n\n« On vérifie. »\n\nCe n'est pas très spectaculaire. C'est précisément ce qui rend la méthode sérieuse.\n\n*L'équipe Selen Éditions. Brouillon du 3 novembre 2026, en attente de relecture substantielle et de validation humaine avant toute publication.*\n\n### Sources officielles\n\n- Parlement européen et Conseil, règlement (UE) 2024/1689, version consolidée au 27 juillet 2026 : https://eur-lex.europa.eu/eli/reg/2024/1689/2026-07-27/eng\n- Commission européenne, « Une IA plus sûre et plus transparente », 2 août 2026 : https://commission.europa.eu/news-and-media/news/safer-and-more-transparent-ai-2026-08-02_fr\n- Commission européenne, lignes directrices sur l'article 50, publiées le 20 juillet 2026 : https://digital-strategy.ec.europa.eu/en/library/guidelines-transparency-obligations-providers-and-deployers-ai-systems\n- Commission européenne, FAQ officielle sur les obligations de transparence : https://digital-strategy.ec.europa.eu/en/faqs/transparency-obligations-under-article-50-ai-act"
+      }
+    ],
+    "conclusion": "Article préparé avec l'assistance d'une intelligence artificielle, vérifié et approuvé pour publication sous la responsabilité éditoriale de Selen Éditions le 3 novembre 2026."
+  },
+  {
     "slug": "formateur-independant-annulations-reports-fin-annee",
     "title": "Novembre arrive : votre planning de formation va-t-il survivre à la fin d'année ? 📅",
     "category": "Gestion quotidienne",
