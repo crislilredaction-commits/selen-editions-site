@@ -32,6 +32,108 @@ export type Article = {
 // date de publication, mise à la une.
 export const articles: Article[] = [
   {
+    "slug": "facture-electronique-reception-test-formateur-novembre-2026",
+    "title": "Facture électronique reçue : le test de 20 minutes que les formateurs indépendants devraient faire en novembre",
+    "category": "Gestion quotidienne",
+    "excerpt": "Depuis septembre 2026, recevoir une facture électronique ne se résume plus à ouvrir un PDF. Voici un test de 20 minutes pour vérifier que votre petite activité ne découvre pas sa plateforme au pire moment.",
+    "publishedAt": "2026-11-10",
+    "coverImage": "/plum.png",
+    "coverAlt": "Plume de la Gazette Selen sur parchemin",
+    "featured": true,
+    "readingTime": "8 min",
+    "introduction": "*Votre fournisseur d'électricité a peut-être changé de manière de facturer. Votre boîte mail, elle, n'a pas reçu le mémo. C'est le moment de faire un essai sans attendre que la comptabilité se transforme en escape game.*",
+    "sections": [
+      {
+        "title": "Novembre : le mois où l'on teste plutôt que de paniquer",
+        "body": "Vous animez une formation lundi, vous préparez un devis mardi et vous tentez de comprendre pourquoi la facture de votre abonnement professionnel n'est plus arrivée comme avant mercredi. Pendant ce temps, une voix intérieure répète : « La facturation électronique, c'est pour septembre 2027. »\n\nPas tout à fait.\n\n**Depuis le 1er septembre 2026, les entreprises françaises concernées doivent pouvoir recevoir des factures électroniques.** Pour les microentreprises et PME, l'obligation générale d'en émettre démarre le **1er septembre 2027**, dans le champ prévu par la réforme. La distinction entre recevoir et émettre est le piège numéro un. Source : Service Public Entreprendre, actualité publiée le 2 septembre 2026.\n\nL'objectif de ce mardi n'est pas de devenir fiscaliste. Il est de savoir, en vingt minutes, où atterrit une facture, qui la contrôle et comment on la retrouve."
+      },
+      {
+        "title": "Minute 0 à 4 : retrouvez la porte d'entrée",
+        "body": "Posez trois questions : quelle plateforme agréée est désignée pour mon entreprise ? Ai-je réellement accès à mon espace ? Qui reçoit les notifications ?\n\nNe confondez pas votre logiciel habituel et la plateforme agréée : un logiciel peut être une solution compatible raccordée à une plateforme. L'important est de vérifier le circuit réel, pas de collectionner les logos.\n\n**Test terrain :** connectez-vous, vérifiez le nom de l'entreprise et son SIREN, puis notez dans votre procédure interne l'adresse de connexion officielle et la personne chargée du suivi. Ne notez jamais le mot de passe dans un document partagé.\n\nSi vous n'avez aucune idée de la plateforme désignée, ce n'est pas un « détail administratif à voir un jour ». C'est le premier point à résoudre. La liste officielle des plateformes agréées est publiée sur Service Public."
+      },
+      {
+        "title": "Minute 4 à 8 : faites l'inventaire de vos fournisseurs",
+        "body": "Prenez quatre dépenses habituelles : électricité, téléphone, matériel pédagogique, logiciel professionnel. Pour chacune, demandez-vous si le fournisseur est établi en France, si la dépense concerne votre activité et par quel canal la facture est attendue.\n\nCe mini-inventaire sert à anticiper les factures qui arrivent désormais par un circuit structuré. Il ne remplace pas l'analyse fiscale de chaque opération.\n\nÉcrivez simplement :\n\n| Fournisseur | Canal attendu | Responsable | Facture retrouvée ? |\n| --- | --- | --- | --- |\n| Énergie | À confirmer | Moi | Oui / Non |\n| Téléphone | À confirmer | Moi | Oui / Non |\n| Logiciel | À confirmer | Moi | Oui / Non |\n| Matériel | À confirmer | Moi | Oui / Non |\n\nLe tableau est volontairement petit. Une procédure qui demande trois heures par semaine à un indépendant n'est pas une procédure, c'est une punition."
+      },
+      {
+        "title": "Minute 8 à 12 : contrôlez une facture de bout en bout",
+        "body": "Sur une facture réellement reçue, vérifiez le fournisseur, le client, les montants, la date, la nature de la dépense et la cohérence avec la commande. Puis regardez comment la plateforme permet de la consulter, de la traiter et de retrouver sa trace.\n\nUn PDF envoyé par mail n'est pas automatiquement une facture électronique conforme au nouveau dispositif. Les factures électroniques de la réforme circulent dans des formats structurés et par une plateforme agréée ou une solution compatible raccordée.\n\n**Astuce :** conservez une référence de rapprochement entre la facture, la commande et le justificatif de paiement. Si vous achetez une formation à un prestataire, associez aussi la facture au dossier concerné lorsque cela a un intérêt réel. Pas besoin de créer un dossier « factures diverses diverses définitives 2 »."
+      },
+      {
+        "title": "Minute 12 à 16 : vérifiez les cas particuliers",
+        "body": "Vous êtes microentrepreneur en franchise en base de TVA ? Ce statut ne vous dispense pas automatiquement de la réforme : l'assujettissement à la TVA et le fait de la facturer sont deux choses différentes.\n\nVous réalisez des formations exonérées de TVA ? Ne concluez pas que toutes vos opérations suivent exactement le même circuit. Certaines opérations exonérées peuvent être hors du champ de l'e-invoicing, et les obligations d'e-reporting varient selon les opérations. Vérifiez votre situation et votre type de clientèle plutôt que d'appliquer une règle unique.\n\nVous facturez un particulier, un organisme public ou un client étranger ? Les circuits et obligations ne sont pas nécessairement identiques. Le questionnaire officiel de la DGFiP permet de partir de votre taille, de votre activité, de votre clientèle et de votre régime TVA.\n\n**Réflexe utile :** écrivez « situation à vérifier » lorsqu'une opération est ambiguë. C'est plus professionnel qu'une certitude inventée."
+      },
+      {
+        "title": "Minute 16 à 20 : simulez un incident",
+        "body": "Imaginez que votre facture de téléphone est attendue et qu'elle n'apparaît nulle part. Que faites-vous ?\n\n1. Vous vérifiez l'espace et les notifications de la plateforme.\n2. Vous contrôlez les informations d'identification de votre entreprise.\n3. Vous demandez au fournisseur quel canal il a utilisé et la référence d'envoi.\n4. Vous consignez la date, la réponse et l'éventuelle correction.\n5. Vous escaladez vers le support de votre plateforme si le problème persiste.\n\nLe but n'est pas de cliquer partout avec la rage d'un hamster enfermé dans Excel. Le but est de pouvoir expliquer, preuves à l'appui, où le flux s'est interrompu."
+      },
+      {
+        "title": "Trois erreurs à éviter avant décembre",
+        "body": "**« J'ai jusqu'en 2027, donc je ne fais rien. »** Non : la réception est déjà applicable depuis septembre 2026 pour les entreprises concernées.\n\n**« Je suis en franchise de TVA, donc rien ne me concerne. »** Faux raccourci : une entreprise peut être assujettie à la TVA sans être redevable de la TVA collectée.\n\n**« J'ai un PDF, donc j'ai une facture électronique au sens de la réforme. »** Pas nécessairement : le format et le circuit de transmission comptent.\n\nEt une quatrième pour la route : acheter un logiciel coûteux avant d'avoir identifié son besoin. La réforme n'oblige pas à choisir l'outil le plus cher, juste un circuit conforme et adapté."
+      },
+      {
+        "title": "Le kit de survie à conserver",
+        "body": "Une seule page suffit pour consigner le nom de votre plateforme, la personne responsable, le canal d'accès, les quatre principaux fournisseurs, le dernier contrôle effectué et la procédure de résolution d'un incident. Ajoutez une date de révision et rangez la page là où vous la retrouverez.\n\nPour un petit organisme avec plusieurs personnes, désignez un titulaire et un remplaçant. Pour un indépendant seul, bloquez un créneau mensuel de dix minutes. Ce n'est pas spectaculaire, mais une facture perdue n'a jamais été retrouvée grâce à une présentation PowerPoint de 68 diapositives."
+      },
+      {
+        "title": "Le verdict de novembre",
+        "body": "La bonne question n'est pas « suis-je prêt pour 2027 ? ». C'est : **« si une facture électronique arrive aujourd'hui, est-ce que je sais la recevoir, la contrôler et la retrouver ? »**\n\nSi oui, vous venez de gagner un peu de sérénité. Si non, vous avez désormais une méthode courte pour corriger le tir avant que le problème ne prenne des proportions absurdes.\n\nLa technologie est censée simplifier la vie. Il faut parfois la surveiller de près pour qu'elle se souvienne de sa mission.\n\n---\n\n### Sources officielles et dates\n\n- **Service Public Entreprendre, 2 septembre 2026**, « La facturation électronique est effective depuis le 1er septembre 2026 ! » : https://entreprendre.service-public.gouv.fr/actualites/A18953\n- **Service Public Entreprendre, fiche vérifiée le 7 août 2026**, « Tout savoir sur la facturation » : https://entreprendre.service-public.gouv.fr/vosdroits/F23208\n- **Service Public Entreprendre, 19 janvier 2026**, « Facturation électronique : la liste des plateformes agréées immatriculées » : https://entreprendre.service-public.gouv.fr/actualites/A18759\n- **DGFiP**, questionnaire officiel sur la situation de l'entreprise : https://www.impots.gouv.fr/facturation-electronique-qu-est-ce-que-ca-change-pour-moi\n- **Service Public Entreprendre**, « Comment se mettre en conformité avec l'obligation de facturation électronique ? » : https://entreprendre.service-public.gouv.fr/vosdroits/F39785\n\n*Brouillon du 10 novembre 2026, préparé avec assistance IA. Publication approuvée par Selen Éditions le 10 novembre 2026.*"
+      }
+    ],
+    "conclusion": "Transparence éditoriale : contenu préparé avec l'assistance d'une intelligence artificielle. Publication approuvée par Selen Éditions le 10 novembre 2026 après relecture humaine."
+  },
+  {
+    "slug": "proces-planning-novembre-formateur-independant",
+    "title": "Le procès du planning de novembre : sept suspects, un formateur et zéro journée de 48 heures",
+    "category": "Gestion quotidienne",
+    "excerpt": "Sept accusés comparaissent au tribunal du planning : devis urgents, dossiers égarés, jour férié, BPF et perfectionnisme. Une chronique drôle avec des solutions concrètes.",
+    "publishedAt": "2026-11-06",
+    "coverImage": "/plum.png",
+    "coverAlt": "Plume de la Gazette Selen sur parchemin",
+    "featured": true,
+    "readingTime": "9 min",
+    "introduction": "*Chronique judiciaire parfaitement fictive d’un tribunal qui ressemble beaucoup trop à votre bureau.*\n\n**6 novembre 2026, 8 h 47.** Dans la salle d’audience du tribunal des Plannings Impossibles, le juge frappe avec une agrafeuse. L’accusé, un calendrier de novembre, affiche trois formations, deux devis, une relance client, douze dossiers à compléter et une case intitulée « respirer, éventuellement ».\n\nLe procureur est formateur indépendant. Il a les yeux de quelqu’un qui a passé la soirée à chercher une pièce jointe appelée « version_definitive_V4_bis_BONNE.pdf ».\n\n— Faites entrer les suspects.",
+    "sections": [
+      {
+        "title": "Premier suspect : le devis qui voulait être envoyé « hier »",
+        "body": "Le devis se présente avec assurance. Il explique qu’il est urgent, mais que le client n’a pas encore précisé le nombre de participants, le lieu ni les objectifs.\n\n— Vous exigez donc un tarif sans fournir les éléments nécessaires ?\n— Exactement. Et si possible avec une remise.\n\n**Verdict : demande de précisions, puis chiffrage.** Un devis incomplet n’est pas une urgence professionnelle, c’est une devinette commerciale. Préparez une mini-fiche de qualification : besoin, public, nombre de personnes, format, dates, lieu, contraintes, financement, livrables. Dix minutes pour obtenir les informations peuvent éviter trois versions de devis.\n\n**Pièce à conviction :** un modèle de mail qui demande les six données manquantes en un seul envoi. Le client n’a pas besoin de découvrir les questions au compte-gouttes, façon jeu télévisé."
+      },
+      {
+        "title": "Deuxième suspect : le dossier apprenant qui vivait dans six dossiers",
+        "body": "Il entre avec une chemise cartonnée, deux clés USB et un fichier nommé « signature_finale(3).jpg ».\n\nLe juge soupire.\n\n— Où est la preuve de positionnement ?\n— Dans les téléchargements.\n— Et l’évaluation ?\n— Peut-être sur le bureau.\n— Et la convention ?\n— Je crois qu’elle a pris son indépendance.\n\n**Verdict : classement par session, pas par panique.** Un dossier unique par session, avec des sous-ensembles logiques « avant », « pendant » et « après », réduit les recherches. Pour chaque pièce, notez : attendue, reçue, vérifiée, manquante, non applicable. La distinction compte : « non applicable » n’est pas « oubliée », et « déposée » ne signifie pas « contrôlée ».\n\n**Astuce de terrain :** consacrez cinq minutes à la fin de chaque demi-journée à vérifier les pièces réellement produites. Pas à fabriquer rétroactivement des preuves. La mémoire humaine est un excellent outil pour retrouver une chanson de 2008, beaucoup moins pour reconstituer une signature absente."
+      },
+      {
+        "title": "Troisième suspect : le jour férié qui a mangé le mercredi",
+        "body": "La défense exhibe le calendrier : le **11 novembre 2026 tombe un mercredi**, date de la commémoration de l’Armistice de 1918 et jour férié légal en France.\n\n— Vous avez planifié une session ce jour-là ?\n— Oui, mais j’ai écrit « à confirmer » en tout petit.\n\nLe tribunal rappelle une nuance : jour férié ne veut pas dire automatiquement interdiction générale de travailler pour tout le monde. Les règles de chômage des jours fériés, de rémunération et d’organisation dépendent notamment du statut, des accords et du contexte. Pour un indépendant, le vrai sujet est aussi la disponibilité du client, des apprenants, du lieu et des prestataires.\n\n**Verdict : vérification avant convocation.** Relisez les calendriers de formation, les disponibilités et les conditions contractuelles. Si une date change, confirmez-la explicitement et mettez à jour les documents concernés. Un « je pensais que tout le monde savait » n’est pas une stratégie logistique.\n\n**Source officielle :** Code du travail, article L3133-1, liste des fêtes légales, sur Légifrance : https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000033020899"
+      },
+      {
+        "title": "Quatrième suspect : le mail « petite question rapide »",
+        "body": "Il arrive suivi de vingt-sept cousins.\n\n— Combien de temps prend une petite question rapide ?\n— Trois minutes.\n— Et vingt-sept ?\n— Je refuse de répondre sans mon avocat.\n\n**Verdict : fenêtres de communication.** Deux créneaux de réponse dans la journée, plus un canal clairement identifié pour les urgences réelles, peuvent protéger les plages de préparation et d’animation. Ne promettez pas une réponse immédiate à toute heure si vous travaillez seul.\n\n**Astuce de terrain :** dans la signature de mail, précisez un délai habituel de réponse réaliste. Pas « sous cinq minutes, même pendant une formation », sauf si vous possédez secrètement trois clones."
+      },
+      {
+        "title": "Cinquième suspect : le tableau de bord qui criait tout en rouge",
+        "body": "Le tableau porte trente-quatre pastilles écarlates.\n\n— Combien de tâches sont vraiment bloquantes aujourd’hui ?\n— Deux.\n— Et pourquoi les trente-deux autres hurlent-elles ?\n— Pour créer une ambiance.\n\n**Verdict : trois niveaux, pas trente-quatre incendies.** Séparez « bloquant pour une session proche », « à traiter cette semaine » et « amélioration sans échéance immédiate ». Associez à chaque tâche une prochaine action concrète. « Gérer Qualiopi » n’est pas une action ; « vérifier les émargements de la session du 4 novembre » en est une.\n\n**Astuce de terrain :** imposez une limite de trois priorités majeures par journée. Les autres ne disparaissent pas ; elles cessent simplement de se déguiser en urgences."
+      },
+      {
+        "title": "Sixième suspect : le BPF qui surgissait au mauvais moment",
+        "body": "Le bilan pédagogique et financier (BPF) s’avance en robe d’avocat.\n\n— Vous venez nous réclamer un dépôt immédiat en novembre ?\n— Non. Mais je veux qu’on arrête de découvrir en urgence les chiffres de l’année passée quand arrive la campagne annuelle.\n\nLe BPF est une obligation annuelle des organismes et formateurs concernés, à déclarer via le portail **Mon activité formation**. La fiche officielle Service Public, vérifiée le **21 janvier 2026**, rappelle notamment que l’absence de transmission entraîne la caducité de la déclaration d’activité. Elle ne fixe pas ici une prétendue nouvelle échéance de novembre. <https://entreprendre.service-public.fr/vosdroits/R53727>\n\n**Verdict : préparation sans fausse alerte.** Faites un point mensuel simple : sessions réalisées, heures, bénéficiaires, nature des actions et données financières utiles. Vérifiez la campagne et ses dates officielles lorsqu’elles sont publiées. Ce n’est pas un dépôt anticipé : c’est une manière d’éviter le marathon administratif de dernière minute.\n\n**Astuce de terrain :** gardez une table « donnée nécessaire / source / responsable / date de mise à jour ». Vous gagnerez plus de temps avec une donnée fiable qu’avec cinq tableurs colorés qui se contredisent."
+      },
+      {
+        "title": "Septième suspect : le perfectionnisme, récidiviste notoire",
+        "body": "Il est entré dans la salle en réécrivant la police d’une convocation pour la sixième fois.\n\n— Votre document était-il compréhensible ?\n— Oui.\n— Exact ?\n— Oui.\n— Conforme au besoin ?\n— Oui.\n— Pourquoi l’avez-vous encore modifié ?\n— Le bleu n’était pas assez professionnel.\n\n**Verdict : standardiser ce qui se répète.** Un document doit d’abord être exact, complet, accessible et adapté au destinataire. Le logo légèrement plus à gauche ne sauvera pas une date erronée.\n\nCréez un modèle validé pour chaque communication fréquente : demande de pièces, convocation, rappel, information de changement, clôture de session. Gardez les variables visibles pour ne pas envoyer « Bonjour [PRÉNOM] » à quelqu’un qui commence déjà à douter de votre sérieux."
+      },
+      {
+        "title": "Le jugement : trente minutes de remise en ordre",
+        "body": "Le tribunal prononce une peine de trente minutes de rangement utile, avec sursis pour les jours de fatigue.\n\n**Minutes 0 à 5 :** regardez les sept prochains jours. Identifiez les sessions, indisponibilités, jours fériés et décisions en attente.\n\n**Minutes 5 à 10 :** choisissez trois actions réellement prioritaires, dont au moins une qui évite un problème futur.\n\n**Minutes 10 à 15 :** vérifiez une session de bout en bout : documents attendus, informations envoyées, éléments manquants, personnes responsables.\n\n**Minutes 15 à 20 :** répondez en un seul message aux questions regroupables. Préparez les modèles récurrents.\n\n**Minutes 20 à 25 :** classez les preuves et signalez les manques. Une absence de preuve doit rester visible tant qu’elle n’est pas résolue.\n\n**Minutes 25 à 30 :** fermez le tableau de bord. Oui, réellement. Une organisation efficace doit aussi permettre de finir sa journée."
+      },
+      {
+        "title": "Dernière audience : l’indépendant n’est pas un service administratif de 47 personnes",
+        "body": "Le juge range son agrafeuse.\n\n— L’accusé est-il coupable ?\n— De quoi ?\n— D’avoir cru que tout pouvait être urgent, parfait et terminé avant midi.\n\nAcquittement. Avec une recommandation ferme : quand une journée déborde, il faut d’abord revoir les priorités et les processus, pas chercher à inventer une huitième heure entre 17 h et 18 h.\n\nL’administration est censée soutenir la formation, pas devenir la formation principale de celui qui la dispense.\n\n**La morale de l’histoire :** votre planning n’a pas besoin d’un miracle. Il a besoin de dates fiables, de dossiers retrouvables et de tâches qui savent attendre leur tour.\n\n---\n\n*Gazette Selen. Chronique humoristique fictive préparée avec assistance IA, relu et autorisé à la publication par Selen Éditions le 10 novembre 2026.*\n\n### Sources officielles consultées\n\n- Légifrance, Code du travail, article L3133-1 (fêtes légales) : https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000033020899\n- Service Public Entreprendre, « Déclaration et dépôt du bilan pédagogique et financier (BPF) », fiche vérifiée le 21 janvier 2026 : https://entreprendre.service-public.fr/vosdroits/R53727\n- Service Public, « Jour férié pendant les congés d’un salarié », fiche vérifiée le 14 février 2024 : https://www.service-public.fr/particuliers/vosdroits/F682\n\n*Les personnages, dialogues et procédures du tribunal sont fictifs ; les conseils d’organisation sont des recommandations, non de nouvelles obligations réglementaires.*"
+      }
+    ],
+    "conclusion": "Transparence éditoriale : contenu préparé avec l'assistance d'une intelligence artificielle. Publication approuvée par Selen Éditions le 10 novembre 2026 après relecture humaine."
+  },
+  {
     "slug": "ai-act-transparence-contenus-ia-formateurs-2026",
     "title": "AI Act : faut-il mettre une étiquette sur chaque texte rédigé avec ChatGPT ?",
     "category": "Vision Selen",
