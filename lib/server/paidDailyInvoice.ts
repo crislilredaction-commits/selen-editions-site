@@ -22,7 +22,7 @@ export async function resolvePaidDailyInvoice(
 
   const subscription = await stripe.subscriptions.retrieve(subscriptionId);
   if (subscription.metadata?.product_key !== "selen_daily") return null;
-  if (typeof invoice.amount_paid !== "number" || invoice.amount_paid < 0) return null;
+  if (typeof invoice.amount_paid !== "number" || invoice.amount_paid <= 0) return null;
   if (invoice.currency !== "eur") return null;
 
   return {

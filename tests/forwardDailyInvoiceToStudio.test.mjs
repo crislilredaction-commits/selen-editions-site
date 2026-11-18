@@ -9,7 +9,7 @@ const { outputText } = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 });
 
-function load({ env = {}, fetchImpl = async () => ({ ok: true }) } = {}) {
+function load({ env = {}, fetchImpl = async () => ({ ok: true, json: async () => ({stripeInvoiceId:"in_123",status:"sent"}) }) } = {}) {
   const exports = {};
   const calls = [];
   const context = {
@@ -61,4 +61,14 @@ test("Studio HTTP errors cause a retryable webhook failure", async () => {
     SELEN_DAILY_INVOICE_INTERNAL_SECRET: "x".repeat(40),
   }, fetchImpl: async () => ({ ok: false, status: 503 }) });
   await assert.rejects(forward({ id: "in_123" }), /HTTP 503/);
+});
+
+test("a 2xx response for another invoice or an unfinished delivery must be retried", async () => {
+  for (const receipt of [{status:"sent",stripeInvoiceId:"in_other"},{status:"pending",stripeInvoiceId:"in_123"}]) {
+    const { forward } = load({env:{
+      SELEN_DAILY_INVOICE_FORWARD_ENABLED:"true",SELEN_STUDIO_DAILY_INVOICE_ISSUE_URL:"https://studio.example.com",
+      SELEN_DAILY_INVOICE_INTERNAL_SECRET:"x".repeat(40),
+    },fetchImpl:async()=>({ok:true,json:async()=>receipt})});
+    await assert.rejects(forward({id:"in_123"}),/not confirmed/);
+  }
 });

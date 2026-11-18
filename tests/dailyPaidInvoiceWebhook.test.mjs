@@ -14,7 +14,7 @@ test("Stripe paid invoice is gated by signed webhook and Daily subscription meta
   assert.match(resolver, /subscription\.metadata\?\.product_key !== "selen_daily"/);
 });
 
-test("paid invoice hook is observation-only until Studio issuance is transactional", () => {
-  assert.match(webhook, /daily_invoice_paid_awaiting_studio_integration/);
+test("paid invoice hook forwards to Studio and logs its outcome", () => {
+  assert.match(webhook, /daily_invoice_processing/);
   assert.doesNotMatch(webhook, /sendDailyInvoiceEmail\(/);
 });

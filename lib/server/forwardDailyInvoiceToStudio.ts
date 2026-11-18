@@ -36,11 +36,16 @@ export async function forwardPaidDailyInvoiceToStudio(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ stripeInvoiceId: invoice.id } satisfies DailyInvoiceForwardPayload),
+    redirect: "error",
     cache: "no-store",
     signal: AbortSignal.timeout(15000),
   });
   if (!response.ok) {
     throw new Error(`Studio Daily invoice endpoint returned HTTP ${response.status}`);
+  }
+  const receipt = await response.json();
+  if (receipt?.stripeInvoiceId !== invoice.id || !["sent", "historical"].includes(receipt.status)) {
+    throw new Error("Studio has not confirmed completion for this invoice.");
   }
   return "forwarded";
 }

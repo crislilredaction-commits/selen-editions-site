@@ -1,6 +1,6 @@
 # Factures d'abonnement Selen Daily : contrat d'intégration Studio / Daily
 
-Statut : spécification validée par Lil le 18 novembre 2026. **Non implémenté, non testé, non déployé.**
+Statut : spécification validée par Lil le 18 novembre 2026. Le flux automatique est implémenté sur les deux branches de PR. La production reste fermée. Les objectifs du document initial sont conservés ci-dessous.
 
 ## Source de vérité
 - Studio : `src/lib/server/lilInvoices.ts`, `lil_invoices`, `lil_invoice_sequence`, RPC `next_lil_invoice_number`.
@@ -33,3 +33,9 @@ Statut : spécification validée par Lil le 18 novembre 2026. **Non implémenté
 - PR séparées Studio et Daily ; CI et recette avant fusion. Aucun envoi réel ou migration de production avant validation.
 
 Suivi : https://github.com/crislilredaction-commits/selen-editions-site/issues/521
+
+## Livraison du flux automatique
+
+Daily vérifie la signature Stripe, identifie l’abonnement et attend une confirmation Studio pour la même facture. Studio revérifie la charge, rapproche les factures antérieures puis numérote, archive et envoie le PDF. Les paiements hors régime pris en charge sont à rapprocher. Les interfaces manuelles et l’historique client décrits plus haut sont des objectifs distincts.
+
+Procédure et résultats de recette dans le dépôt Studio, branche de la [PR 453](https://github.com/crislilredaction-commits/selen-studio/pull/453), fichiers `docs/daily-invoice-activation-checklist.md` et `docs/daily-invoice-recette.md`.
