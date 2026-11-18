@@ -7,7 +7,7 @@ export async function resolvePaidDailyInvoice(
   stripe: Stripe,
   invoice: Stripe.Invoice,
 ): Promise<{ invoiceId: string; subscriptionId: string; customerId: string; amountPaid: number; currency: string } | null> {
-  if (invoice.status !== "paid" || !invoice.paid || invoice.amount_remaining !== 0) return null;
+  if (invoice.status !== "paid" || invoice.amount_remaining !== 0) return null;
   if (!invoice.id || !invoice.customer || typeof invoice.customer !== "string") return null;
 
   // Stripe API versions differ: newer invoices may expose subscription via
