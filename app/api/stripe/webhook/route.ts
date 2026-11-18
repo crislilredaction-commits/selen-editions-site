@@ -4,6 +4,8 @@ import { Resend } from "resend";
 import { createClient } from "@supabase/supabase-js";
 import { markDiscountCodeUsed } from "@/lib/server/discountCodes";
 import { recordStripeCheckoutPayment } from "@/lib/server/selenPayments";
+import { resolvePaidDailyInvoice } from "@/lib/server/paidDailyInvoice";
+import { forwardPaidDailyInvoiceToStudio } from "@/lib/server/forwardDailyInvoiceToStudio";
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY?.trim();
 const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET?.trim();
@@ -966,7 +968,7 @@ async function activateDailyAccess(session: Stripe.Checkout.Session) {
     email,
   });
 
-  await ensureStudioClientAndDossier({ session, toolSlug: "selen_daily" });
+  const { organisation } = await ensureStudioClientAndDossier({ session, toolSlug: "selen_daily" });
 
   const userId = await ensureAuthUserIdByEmail(email);
   const stripeCustomerId =
@@ -976,6 +978,21 @@ async function activateDailyAccess(session: Stripe.Checkout.Session) {
       ? session.subscription
       : session.subscription?.id;
   const now = new Date().toISOString();
+
+  // Only enrol checkouts created after the reviewed cutover. Replaying an
+  // older checkout cannot open a previously invoiced period for issuance.
+  if (process.env.SELEN_DAILY_INVOICE_FORWARD_ENABLED === "true") {
+    const cutover = Date.parse(process.env.SELEN_DAILY_INVOICE_CUTOVER_AT || "");
+    if (!Number.isFinite(cutover)) throw new Error("Date de bascule facturation Daily manquante.");
+    if (session.created * 1000 >= cutover) {
+      if (!stripeSubscriptionId || !stripeCustomerId) throw new Error("Abonnement Stripe incomplet.");
+      const {error} = await supabaseAdmin.from("lil_daily_billing_accounts").upsert({
+        stripe_subscription_id: stripeSubscriptionId, stripe_customer_id: stripeCustomerId,
+        organisation_id: organisation.id, first_unbilled_period_start: new Date(cutover).toISOString(),
+      }, { onConflict: "stripe_subscription_id", ignoreDuplicates: true });
+      if (error) throw new Error("Rattachement facturation Daily à reprendre.");
+    }
+  }
 
   const { error: accessError } = await supabaseAdmin
     .from("selen_client_tool_access")
@@ -1118,6 +1135,19 @@ export async function POST(request: Request) {
   }
 
   try {
+    if (event.type === "invoice.paid") {
+      const paidInvoice = await resolvePaidDailyInvoice(stripe, event.data.object as Stripe.Invoice);
+      if (paidInvoice) {
+        const outcome = await forwardPaidDailyInvoiceToStudio(event.data.object as Stripe.Invoice);
+        console.info("daily_invoice_processing", {
+          outcome,
+          stripeInvoiceId: paidInvoice.invoiceId,
+          subscriptionId: paidInvoice.subscriptionId,
+          amountPaidCents: paidInvoice.amountPaid,
+          currency: paidInvoice.currency,
+        });
+      }
+    }
     if (event.type === "checkout.session.completed") {
       const session = event.data.object as Stripe.Checkout.Session;
 
