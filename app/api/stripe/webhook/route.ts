@@ -5,6 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import { markDiscountCodeUsed } from "@/lib/server/discountCodes";
 import { recordStripeCheckoutPayment } from "@/lib/server/selenPayments";
 import { resolvePaidDailyInvoice } from "@/lib/server/paidDailyInvoice";
+import { forwardPaidDailyInvoiceToStudio } from "@/lib/server/forwardDailyInvoiceToStudio";
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY?.trim();
 const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET?.trim();
@@ -1124,6 +1125,7 @@ export async function POST(request: Request) {
       if (paidInvoice) {
         // Safe observation-only phase. NEVER create/send invoices from this handler
         // until the canonical Studio transactional issuance endpoint is deployed.
+        await forwardPaidDailyInvoiceToStudio(event.data.object as Stripe.Invoice);
         console.info("daily_invoice_paid_awaiting_studio_integration", {
           stripeInvoiceId: paidInvoice.invoiceId,
           subscriptionId: paidInvoice.subscriptionId,
