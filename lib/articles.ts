@@ -32,6 +32,49 @@ export type Article = {
 // date de publication, mise à la une.
 export const articles: Article[] = [
   {
+    "slug": "black-friday-budget-outils-formateur-independant",
+    "title": "Black Friday : votre formateur intérieur a-t-il vraiment besoin d'un douzième logiciel ?",
+    "category": "Gestion quotidienne",
+    "excerpt": "Avant le Black Friday du 27 novembre, faites le tri dans vos logiciels de formation : coût annuel, temps gagné, doublons et test concret en 25 minutes.",
+    "publishedAt": "2026-11-24",
+    "coverImage": "/plum.png",
+    "coverAlt": "Plume de la Gazette Selen sur parchemin",
+    "featured": true,
+    "readingTime": "5 min",
+    "introduction": "Vendredi 27 novembre, les compteurs promotionnels vont s'affoler. Votre boîte mail vous expliquera qu'il ne reste que trois heures pour révolutionner votre pédagogie, automatiser votre comptabilité et probablement apprendre à votre imprimante à éprouver des sentiments.\n\nAvant de sortir la carte bancaire, consacrez vingt-cinq minutes à votre équipement professionnel. Le meilleur outil n'est pas celui qui affiche la plus grosse remise : c'est celui qui résout un problème que vous avez réellement.",
+    "sections": [
+      {
+        "title": "1. Cinq minutes pour dresser l'inventaire",
+        "body": "Ouvrez vos relevés professionnels et vos espaces d'abonnement. Notez chaque logiciel, son prix annuel, sa prochaine échéance et sa fonction réelle. Incluez les abonnements annuels : ils savent très bien se faire oublier pendant onze mois.\n\nPour chaque outil, demandez-vous quand vous l'avez utilisé pour la dernière fois. Attention : un outil de sauvegarde ou de comptabilité peut être indispensable même si vous ne l'ouvrez pas quotidiennement.\n\n| Outil | Coût annuel | Usage réel | Décision |\n| --- | ---: | --- | --- |\n| Visio | 144 € | Sessions chaque semaine | Garder |\n| Création graphique | 120 € | Supports chaque mois | Comparer |\n| Second outil de questionnaires | 96 € | Même fonction que le premier | Examiner |\n| Générateur de présentations | 180 € | Deux essais depuis juin | Tester avant renouvellement |\n\nCes montants sont fictifs. L'objectif est de rendre visibles les dépenses, pas de vous convaincre que toute application doit disparaître."
+      },
+      {
+        "title": "2. Cinq minutes pour définir le problème avant le produit",
+        "body": "Écrivez une phrase commençant par « Je perds du temps lorsque… ». Par exemple : je ressaisis les coordonnées des apprenants dans trois documents ; je prépare les mêmes convocations chaque semaine ; je transforme mes supports en exercices à la main.\n\nPuis notez la fréquence du problème et le temps qu'il vous coûte. Un outil qui économise deux heures chaque mois peut être précieux. Un outil qui génère des présentations animées en forme de licorne alors que vous dispensez uniquement des ateliers pratiques l'est peut-être moins.\n\nNe confondez pas une fonctionnalité séduisante avec un besoin. Votre activité n'est pas une démonstration commerciale permanente."
+      },
+      {
+        "title": "3. Cinq minutes pour calculer le vrai prix",
+        "body": "Imaginons un abonnement affiché à 9 € par mois pendant trois mois, puis 29 € pendant neuf mois. Son coût sur la première année est de 288 €, et de 348 € l'année suivante si le tarif reste identique. Un abonnement à 19 € par mois sans promotion revient à 228 € par an.\n\nLa première offre paraît moins chère sur la bannière. Elle coûte pourtant 60 € de plus la première année. Les confettis publicitaires ne figurent malheureusement pas dans le calcul.\n\nAjoutez les frais de migration, les options nécessaires, les utilisateurs supplémentaires et le temps de prise en main. Comparez sur une même base fiscale : TTC si vous ne récupérez pas la TVA, hors TVA récupérable dans le cas contraire.\n\nSi un outil à 288 € vous économise une heure par mois, il revient à 24 € par heure économisée, avant les autres coûts. Ce n'est pas automatiquement rentable : demandez-vous si cette heure libérée vous permet de produire davantage, de réduire votre charge ou simplement de terminer votre journée à une heure décente. Ce dernier bénéfice compte aussi."
+      },
+      {
+        "title": "4. Cinq minutes pour tester la sortie avant l'entrée",
+        "body": "Avant de souscrire, vérifiez si vous pouvez exporter vos documents, vos résultats d'évaluation et vos données dans des formats réutilisables. Faites un essai avec un dossier fictif, sans données réelles d'apprenants.\n\nVérifiez également les limites de stockage, les droits d'accès, la durée d'engagement, le renouvellement et les conditions de résiliation. Un logiciel qui vous fait gagner dix minutes mais retient ensuite tous vos documents en otage mérite quelques questions supplémentaires.\n\nPour un petit organisme, vérifiez que les collaborateurs disposent des accès nécessaires sans devoir partager un mot de passe. Pour un CFA, ajoutez les besoins de continuité du suivi des apprentis et les interfaces avec les outils existants."
+      },
+      {
+        "title": "5. Cinq minutes pour résister au compteur",
+        "body": "Pour chaque achat envisagé, attribuez un point à chacune des réponses positives :\n\n- Le problème existe déjà dans mon activité.\n- J'ai testé la fonctionnalité sur un cas réaliste.\n- Je connais le coût complet sur douze mois.\n- Je sais récupérer mes données et quitter le service.\n- Cet outil ne fait pas inutilement doublon.\n\nCinq points : achat envisageable dans le budget. Trois ou quatre : test complémentaire. Deux ou moins : laissez passer la promotion. Ce barème est une aide à la décision, pas une norme officielle."
+      },
+      {
+        "title": "Et si vous proposez vous-même une promotion sur vos formations ?",
+        "body": "Vous pouvez aussi profiter de cette période pour réfléchir à vos propres offres. Présentez clairement le prix, le contenu, les conditions et les dates. Ne créez pas de fausse urgence ni de réduction fictive.\n\nLes règles de protection du consommateur et les conditions des contrats professionnels ne se confondent pas. Service Public distingue notamment l'information sur le prix des prestations et les règles spécifiques aux promotions de produits. Ne transposez donc pas mécaniquement les règles des marchandises à vos prestations de formation. Vérifiez les règles applicables à votre clientèle et à votre canal de vente, notamment si vous commercialisez une formation auprès de particuliers.\n\nUne réduction n'a aucun intérêt si elle vous oblige à supprimer l'accompagnement nécessaire ou à promettre des résultats que vous ne pouvez garantir."
+      },
+      {
+        "title": "Le défi Selen : une dépense supprimée, une amélioration conservée",
+        "body": "Choisissez un abonnement à examiner avant sa prochaine échéance et une tâche récurrente à simplifier. Avant toute résiliation, sauvegardez les données nécessaires et vérifiez vos engagements contractuels. Mesurez ensuite le temps réellement gagné pendant un mois.\n\nSi vous économisez 96 € par an en supprimant un doublon, vous pouvez garder cet argent, investir dans un support pédagogique plus utile ou financer une partie d'un outil réellement adapté. Vous n'êtes pas obligé de dépenser une économie pour qu'elle existe.\n\nLe Black Friday dure quelques jours. Vos abonnements, eux, ont parfois une remarquable espérance de vie. Achetez ce qui vous aide à former, pas ce qui vous donne une nouvelle interface à administrer.\n\n### Sources officielles\n\n- Service Public Entreprendre, « Affichage des prix : règles à respecter », consulté le 24 novembre 2026 : https://entreprendre.service-public.gouv.fr/vosdroits/F34344\n- Service Public Entreprendre, « Soldes : règles à respecter », fiche vérifiée le 21 janvier 2026, consultée le 24 novembre 2026 : https://entreprendre.service-public.gouv.fr/vosdroits/F24037\n\nLes exemples tarifaires et le barème sont fictifs et pédagogiques."
+      }
+    ],
+    "conclusion": "Transparence éditoriale : article préparé avec assistance IA, publication expressément validée par Selen Éditions le 24 novembre 2026."
+  },
+  {
     "slug": "formation-accessible-test-parcours-apprenant-30-minutes",
     "title": "Votre formation est-elle vraiment accessible ? Le test de 30 minutes avant qu'un apprenant ne vous le demande",
     "category": "Gestion quotidienne",
