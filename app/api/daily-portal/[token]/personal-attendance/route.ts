@@ -41,7 +41,7 @@ export async function GET(request: Request, { params }: Params) {
   const admin = getAdminSupabase();
   const { data: access, error: accessError } = await admin
     .from("daily_portal_access_tokens")
-    .select("session_id,portal_type,entity_key,entity_name,entity_email,status,expires_at")
+    .select("session_id,portal_type,entity_key,entity_name,entity_email,status,expires_at,metadata")
     .eq("token", text(token))
     .maybeSingle();
   if (accessError) return personalAttendanceReadError();
@@ -123,7 +123,12 @@ export async function GET(request: Request, { params }: Params) {
   ]);
   const attendanceError = slotsError ?? recordsError ?? organisationError ?? publicationError ?? trainerSignatureError;
   if (attendanceError) return personalAttendanceReadError();
-  if (!publishedAttendance) {
+  // A staff release applies to this portal and enrolment only.
+  const learnerCopy = new URL(request.url).searchParams.get("copy") === "learner";
+  if (learnerCopy && one(access.metadata).released_attendance_enrolment !== enrolment.id) {
+    return NextResponse.json({ error: "Copie individuelle non disponible." }, { status: 403 });
+  }
+  if (!publishedAttendance && !learnerCopy) {
     return NextResponse.json({ error: "La feuille individuelle sera disponible après validation et publication du relevé d’émargement." }, { status: 409 });
   }
   if (!attendanceIsSettled((slots ?? []).map((slot: Json) => slot.id), records ?? [])) {
@@ -131,6 +136,10 @@ export async function GET(request: Request, { params }: Params) {
   }
 
   const recordBySlot = new Map((records ?? []).map((record: Json) => [text(record.slot_id), record]));
+  if (learnerCopy && (!slots?.length || !slots.every((slot: Json) => {
+    const record = recordBySlot.get(text(slot.id));
+    return record?.status === "present" && record.signed_at && record.signature_storage_path;
+  }))) return NextResponse.json({ error: "Les émargements sont incomplets." }, { status: 409 });
   const learnerName = [text(learner.first_name), text(learner.last_name)].filter(Boolean).join(" ") || text(learner.email).toLowerCase() || "Apprenant";
   const formation = one(session.daily_formations);
   const doc = new jsPDF({ unit: "mm", format: "a4" });
@@ -144,17 +153,19 @@ export async function GET(request: Request, { params }: Params) {
     const parts = doc.splitTextToSize(value, right - left) as string[];
     for (const part of parts) { ensure(5); doc.text(part, left, y); y += 5; }
   };
+  let signatureUnavailable = false;
   const addSignature = async (label: string, path: unknown, signedAt: unknown) => {
     const storagePath = text(path);
     line(`${label}${signedAt ? ` · ${formatDate(signedAt, true)}` : ""}`, 8, true);
-    if (!storagePath) { line("Signature non enregistrée.", 8); return; }
+    if (!storagePath) { signatureUnavailable = true; line("Signature non enregistrée.", 8); return; }
     const objectPath = personalSignatureStorageObjectPath(storagePath, session.organisation_id);
-    if (!objectPath) { line("Signature conservée, chemin de preuve invalide.", 8); return; }
+    if (!objectPath) { signatureUnavailable = true; line("Signature conservée, chemin de preuve invalide.", 8); return; }
     const { data, error } = await admin.storage.from("documents").download(objectPath);
-    if (error || !data) { line("Signature conservée, aperçu temporairement indisponible.", 8); return; }
+    if (error || !data) { signatureUnavailable = true; line("Signature conservée, aperçu temporairement indisponible.", 8); return; }
     const bytes = Buffer.from(await data.arrayBuffer());
     const pngMagic = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
     if (bytes.length < pngMagic.length || !bytes.subarray(0, 8).equals(pngMagic)) {
+      signatureUnavailable = true;
       line("Signature conservée, image non valide.", 8);
       return;
     }
@@ -163,6 +174,7 @@ export async function GET(request: Request, { params }: Params) {
       doc.addImage(bytes.toString("base64"), "PNG", left, y, 48, 20, undefined, "FAST");
       y += 24;
     } catch {
+      signatureUnavailable = true;
       line("Signature conservée, image non lisible.", 8);
     }
   };
@@ -187,6 +199,7 @@ export async function GET(request: Request, { params }: Params) {
     if (status === "present") await addSignature("Signature de l’apprenant", record?.signature_storage_path, record?.signed_at);
     else line("Signature de l’apprenant : non requise pour ce statut.", 8);
 
+    if (learnerCopy) { y += 2; continue; }
     const slotTrainerSignatures = (trainerSignatures ?? []).filter((signature: Json) => text(one(signature.metadata).slot_id) === text(slot.id));
     if (!slotTrainerSignatures.length) line("Signature du formateur : non enregistrée.", 8, true);
     for (const signature of slotTrainerSignatures) {
@@ -200,9 +213,10 @@ export async function GET(request: Request, { params }: Params) {
   doc.setDrawColor(190);
   doc.line(left, y, right, y);
   y += 6;
-  line("Document personnel généré après la session à partir du relevé validé et publié. Il contient uniquement les créneaux et signatures de cet apprenant ainsi que les signatures des formateurs rattachées aux mêmes créneaux.", 7);
+  line(learnerCopy ? "Relevé individuel des signatures électroniques de l’apprenant." : "Document personnel généré après la session à partir du relevé validé et publié. Il contient uniquement les créneaux et signatures de cet apprenant ainsi que les signatures des formateurs rattachées aux mêmes créneaux.", 7);
   line(`Généré le ${formatDate(new Date().toISOString(), true)}.`, 7);
 
+  if (learnerCopy && signatureUnavailable) return personalAttendanceReadError();
   const filename = safePersonalDownloadName(`feuille-emargement-${learnerName}`, ".pdf");
   return new NextResponse(doc.output("arraybuffer"), {
     status: 200,
