@@ -18,7 +18,27 @@ function portalLoginRedirect(request: NextRequest, switchAccount = false) {
   return NextResponse.redirect(loginUrl);
 }
 
+function isLearnerCopyNavigation(request: NextRequest) {
+  return request.method === "GET"
+    && /^\/api\/daily-portal\/[^/]+\/personal-attendance$/.test(request.nextUrl.pathname)
+    && request.nextUrl.searchParams.get("copy") === "learner"
+    && (request.headers.get("accept") ?? "").includes("text/html");
+}
+
+function learnerCopyLogin(request: NextRequest, switchAccount = false) {
+  const loginUrl = request.nextUrl.clone();
+  const { token } = portalContext(request.nextUrl.pathname);
+  const next = new URL(`/daily/portail/apprenant/${encodeURIComponent(token ?? "")}/feuille`, loginUrl.origin);
+  next.searchParams.set("enrolment", request.nextUrl.searchParams.get("enrolment") ?? "");
+  loginUrl.pathname = "/client/login";
+  loginUrl.search = "";
+  loginUrl.searchParams.set("next", next.pathname + next.search);
+  if (switchAccount) loginUrl.searchParams.set("switch", "1");
+  return NextResponse.redirect(loginUrl);
+}
+
 function unauthorized(request: NextRequest) {
+  if (isLearnerCopyNavigation(request)) return learnerCopyLogin(request);
   if (isApiRequest(request.nextUrl.pathname)) {
     return NextResponse.json({ error: "Authentification requise." }, { status: 401 });
   }
@@ -99,6 +119,7 @@ export async function proxy(request: NextRequest) {
   }
 
   if (!normalizeEmail(user.email) || normalizeEmail(user.email) !== normalizeEmail(access.entity_email)) {
+    if (isLearnerCopyNavigation(request)) return learnerCopyLogin(request, true);
     if (!isApiRequest(request.nextUrl.pathname)) {
       return portalLoginRedirect(request, true);
     }
